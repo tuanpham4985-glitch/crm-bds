@@ -58,9 +58,10 @@ export async function GET(request: NextRequest) {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
 
-    const allPipelines = await getPipeline();
-    const allCustomers = await getKhachHang();
-    await getNhanVien();
+    const [allPipelines, allCustomers] = await Promise.all([
+      getPipeline(),
+      getKhachHang(),
+    ]);
 
     let dateRange = getDateRange(period);
     if (fromParam && toParam) {

@@ -1,20 +1,35 @@
 // ============================================================
 // CRM BĐS — Google Sheets Service (Server-side only)
+// Hardened for Vercel serverless production
 // ============================================================
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import path from 'path';
-import fs from 'fs';
 import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc } from './types';
+
+// ---- Environment Variable Validation ----
+function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+
+  const missing: string[] = [];
+  if (!clientEmail) missing.push('GOOGLE_CLIENT_EMAIL');
+  if (!privateKey) missing.push('GOOGLE_PRIVATE_KEY');
+  if (!sheetId) missing.push('GOOGLE_SHEET_ID');
+
+  if (missing.length > 0) {
+    throw new Error(
+      `[GSheets] Missing required environment variables: ${missing.join(', ')}. ` +
+      `Configure them in Vercel Dashboard → Settings → Environment Variables.`
+    );
+  }
+
+  return { clientEmail: clientEmail!, privateKey: privateKey!, sheetId: sheetId! };
+}
 
 // ---- Auth ----
 function getJWT(): JWT {
-  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
-
-  if (!clientEmail || !privateKey) {
-    throw new Error('Missing GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY');
-  }
+  const { clientEmail, privateKey } = validateEnvVars();
 
   return new JWT({
     email: clientEmail,
@@ -24,17 +39,50 @@ function getJWT(): JWT {
 }
 
 async function getDoc(): Promise<GoogleSpreadsheet> {
-  const sheetId = process.env.GOOGLE_SHEET_ID;
-  if (!sheetId) throw new Error('GOOGLE_SHEET_ID is not set in .env.local');
-  const doc = new GoogleSpreadsheet(sheetId, getJWT());
-  await doc.loadInfo();
-  return doc;
+  const { sheetId } = validateEnvVars();
+
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, getJWT());
+    await doc.loadInfo();
+    return doc;
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[GSheets] Failed to connect to Google Spreadsheet:', {
+      sheetId,
+      error: msg,
+    });
+
+    // Provide actionable error messages for common issues
+    if (msg.includes('invalid_grant') || msg.includes('invalid_client')) {
+      throw new Error(
+        '[GSheets] Authentication failed. Check GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY values. ' +
+        'Ensure the private key newlines are preserved correctly.'
+      );
+    }
+    if (msg.includes('not found') || msg.includes('404')) {
+      throw new Error(
+        `[GSheets] Spreadsheet "${sheetId}" not found. Check GOOGLE_SHEET_ID and ensure the service account has access.`
+      );
+    }
+    if (msg.includes('ENOTFOUND') || msg.includes('ETIMEDOUT')) {
+      throw new Error('[GSheets] Network error connecting to Google APIs. This may be a temporary issue.');
+    }
+    throw new Error(`[GSheets] Connection error: ${msg}`);
+  }
 }
 
-// Always loads header row so headerValues is available
+// Safe sheet lookup with detailed error
 async function getSheet(doc: GoogleSpreadsheet, title: string): Promise<GoogleSpreadsheetWorksheet> {
   const sheet = doc.sheetsByTitle[title];
-  if (!sheet) throw new Error(`Sheet "${title}" not found in the Google Spreadsheet`);
+  if (!sheet) {
+    const available = Object.keys(doc.sheetsByTitle).join(', ');
+    console.error(`[GSheets] Sheet "${title}" not found. Available sheets: [${available}]`);
+    throw new Error(
+      `[GSheets] Sheet "${title}" not found in spreadsheet. ` +
+      `Available sheets: [${available}]. ` +
+      `Please ensure the sheet name matches exactly (case-sensitive).`
+    );
+  }
   await sheet.loadHeaderRow();
   return sheet;
 }
@@ -279,8 +327,10 @@ async function addLog(
       [h[0]]: now, [h[1]]: hanh_dong, [h[2]]: doi_tuong,
       [h[3]]: id_lien_quan, [h[4]]: nguoi_thuc_hien, [h[5]]: now,
     });
-  } catch {
+  } catch (err: unknown) {
     // Log errors should not crash the main operation
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[GSheets] addLog failed (non-fatal):', msg);
   }
 }
 

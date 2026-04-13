@@ -251,11 +251,6 @@ export default function DashboardPage() {
                           {rank === 1 && <span className="podium-crown">👑</span>}
                           <div
                             className="podium-avatar-initials"
-                            style={
-                              sale.avatar
-                                ? undefined
-                                : undefined
-                            }
                           >
                             {initials}
                           </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getKhachHang, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/google-sheets';
 import { generateId } from '@/lib/utils';
+import type { KhachHang } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   try {
