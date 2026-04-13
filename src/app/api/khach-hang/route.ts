@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body: Partial<KhachHang> = await request.json();
+    const body = await request.json();
 
     // ✅ Validate
     if (!body.ten_KH || !body.so_dien_thoai) {
