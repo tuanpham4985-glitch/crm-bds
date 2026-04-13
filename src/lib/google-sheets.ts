@@ -9,13 +9,16 @@ import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc } from './t
 
 // ---- Auth ----
 function getJWT(): JWT {
-  const credPath = process.env.GOOGLE_CREDENTIALS_PATH;
-  if (!credPath) throw new Error('GOOGLE_CREDENTIALS_PATH is not set in .env.local');
-  const resolved = path.resolve(credPath);
-  const creds = JSON.parse(fs.readFileSync(resolved, 'utf-8'));
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+
+  if (!clientEmail || !privateKey) {
+    throw new Error('Missing GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY');
+  }
+
   return new JWT({
-    email: creds.client_email,
-    key: creds.private_key,
+    email: clientEmail,
+    key: privateKey.replace(/\\n/g, '\n'),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 }
