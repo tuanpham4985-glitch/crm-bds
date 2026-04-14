@@ -611,5 +611,6 @@ export async function deleteNhanVien(id: string): Promise<boolean> {
 // --- AUTH helper ---
 export async function findNhanVienByEmail(email: string): Promise<NhanVien | null> {
   const list = await getNhanVien();
-  return list.find(nv => nv.email === email) || null;
+  const safeEmail = email.trim().toLowerCase();
+  return list.find(nv => (nv.email || '').trim().toLowerCase() === safeEmail) || null;
 }

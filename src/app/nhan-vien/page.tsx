@@ -8,8 +8,10 @@ import {
 import type { NhanVien, Pipeline, KhachHang } from '@/lib/types';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { VAI_TRO } from '@/lib/constants';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function NhanVienPage() {
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
@@ -214,6 +216,10 @@ export default function NhanVienPage() {
 
   const handleSave = async () => {
     if (!form.ho_ten.trim()) return;
+    if (!form.email.trim()) {
+      alert('Email là bắt buộc (dùng để đăng nhập)');
+      return;
+    }
     setSaving(true);
     try {
       const method = editingItem ? 'PUT' : 'POST';
@@ -296,7 +302,7 @@ export default function NhanVienPage() {
     );
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return <div className="loading-spinner"><div className="spinner" /></div>;
   }
 
@@ -308,10 +314,12 @@ export default function NhanVienPage() {
           <h1>Nhân viên</h1>
           <p>Quản lý nhân viên kinh doanh ({employees.length} nhân viên)</p>
         </div>
-        <button className="btn btn-primary" onClick={openCreate}>
-          <Plus size={18} />
-          Thêm nhân viên
-        </button>
+        {isAdmin && (
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Plus size={18} />
+            Thêm nhân viên
+          </button>
+        )}
       </div>
 
       {/* Employee Table */}
@@ -338,7 +346,7 @@ export default function NhanVienPage() {
                   <th style={{ textAlign: 'right' }}>Doanh thu</th>
                   <th style={{ textAlign: 'right' }}>Hoa hồng</th>
                   <th>Ngày tạo</th>
-                  <th style={{ width: 90, textAlign: 'center' }}>Thao tác</th>
+                  {isAdmin && <th style={{ width: 90, textAlign: 'center' }}>Thao tác</th>}
                 </tr>
               </thead>
               <tbody>
@@ -398,13 +406,15 @@ export default function NhanVienPage() {
                         {formatCurrency(stats.commission)}
                       </td>
                       <td>{formatDate(nv.ngay_tao)}</td>
-                      <td>
-                        <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
-                          <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(nv)}><Edit3 size={15} /></button>
-                          <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
-                            onClick={() => { setDeletingId(nv.id_nhan_vien); setShowConfirm(true); }}><Trash2 size={15} /></button>
-                        </div>
-                      </td>
+                      {isAdmin && (
+                        <td>
+                          <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
+                            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(nv)}><Edit3 size={15} /></button>
+                            <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
+                              onClick={() => { setDeletingId(nv.id_nhan_vien); setShowConfirm(true); }}><Trash2 size={15} /></button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -520,9 +530,9 @@ export default function NhanVienPage() {
                     onChange={(e) => setForm({ ...form, so_dien_thoai: e.target.value })} placeholder="0901234567" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Email</label>
+                  <label className="form-label">Email * <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 400 }}>(dùng để đăng nhập)</span></label>
                   <input className="form-input" type="email" value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
+                    onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" required />
                 </div>
               </div>
 
@@ -544,9 +554,21 @@ export default function NhanVienPage() {
                 </div>
               </div>
             </div>
+
+            {/* Password info note */}
+            <div style={{
+              padding: '10px 14px', margin: '0 20px',
+              background: 'var(--info-bg)', borderRadius: 'var(--radius-md)',
+              fontSize: '0.75rem', color: 'var(--info-text)', lineHeight: 1.5,
+            }}>
+              <strong>Thông tin đăng nhập:</strong><br/>
+              • Tài khoản: Email nhân viên<br/>
+              • Mật khẩu mặc định: <code style={{ background: 'rgba(0,0,0,0.08)', padding: '1px 5px', borderRadius: 4 }}>123456</code> hoặc Số điện thoại
+            </div>
+
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Hủy</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving || uploading || !form.ho_ten.trim()}>
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving || uploading || !form.ho_ten.trim() || !form.email.trim()}>
                 {saving ? 'Đang lưu...' : (editingItem ? 'Cập nhật' : 'Thêm mới')}
               </button>
             </div>

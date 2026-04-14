@@ -7,8 +7,10 @@ import {
 } from 'lucide-react';
 import type { DuAn, Pipeline } from '@/lib/types';
 import { formatCurrency, formatPercent } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function DuAnPage() {
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,7 +117,7 @@ export default function DuAnPage() {
     }
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return <div className="loading-spinner"><div className="spinner" /></div>;
   }
 
@@ -133,10 +135,12 @@ export default function DuAnPage() {
             {showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
             {showHidden ? 'Hiển thị tất cả' : 'Ẩn DA tắt'}
           </button>
-          <button className="btn btn-primary" onClick={openCreate}>
-            <Plus size={18} />
-            Thêm dự án
-          </button>
+          {isAdmin && (
+            <button className="btn btn-primary" onClick={openCreate}>
+              <Plus size={18} />
+              Thêm dự án
+            </button>
+          )}
         </div>
       </div>
 
@@ -238,15 +242,17 @@ export default function DuAnPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-2" style={{ justifyContent: 'flex-end' }}>
-                  <button className="btn btn-secondary btn-sm" onClick={() => openEdit(da)}>
-                    <Edit3 size={14} />Sửa
-                  </button>
-                  <button className="btn btn-danger btn-sm"
-                    onClick={() => { setDeletingId(da.id_du_an); setShowConfirm(true); }}>
-                    <Trash2 size={14} />Xóa
-                  </button>
-                </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-2" style={{ justifyContent: 'flex-end' }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => openEdit(da)}>
+                      <Edit3 size={14} />Sửa
+                    </button>
+                    <button className="btn btn-danger btn-sm"
+                      onClick={() => { setDeletingId(da.id_du_an); setShowConfirm(true); }}>
+                      <Trash2 size={14} />Xóa
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

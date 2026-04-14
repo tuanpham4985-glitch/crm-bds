@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
-  Building2, UserCog, LogOut, Download
+  Building2, UserCog, LogOut, Download, ShieldCheck, Shield
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
+import { useAuth } from '@/hooks/useAuth';
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [logo, setLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -197,6 +199,24 @@ export default function Sidebar() {
 
       {/* User section */}
       <div className={styles.userSection}>
+        {/* Current user info */}
+        {user && (
+          <div className={styles.userInfo}>
+            <div className={styles.userAvatar}>
+              {user.ho_ten?.split(' ').pop()?.charAt(0).toUpperCase() || '?'}
+            </div>
+            <div className={styles.userMeta}>
+              <div className={styles.userName}>{user.ho_ten}</div>
+              <div className={styles.userRole}>
+                {user.vai_tro === 'Admin' ? (
+                  <><ShieldCheck size={11} /> Admin</>
+                ) : (
+                  <><Shield size={11} /> {user.vai_tro}</>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         {!isStandalone && (
           <button onClick={handleInstallApp} className={styles.installBtn}>
             <Download size={18} />
