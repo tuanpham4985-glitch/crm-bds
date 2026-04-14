@@ -101,7 +101,7 @@ export default function Sidebar() {
     <aside className={styles.sidebar}>
       {/* Logo */}
       <div className={styles.logo}>
-        <div 
+        <div
           className={styles.logoIcon}
           onClick={() => fileInputRef.current?.click()}
           title="Thay đổi avatar công ty"
@@ -116,12 +116,12 @@ export default function Sidebar() {
           <div className={styles.logoTitle}>CRM BĐS</div>
           <div className={styles.logoSubtitle}>Quản lý bất động sản</div>
         </div>
-        <input 
-          type="file" 
-          accept="image/*" 
-          ref={fileInputRef} 
-          style={{ display: 'none' }} 
-          onChange={handleLogoUpload} 
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={handleLogoUpload}
         />
       </div>
 
@@ -130,7 +130,7 @@ export default function Sidebar() {
         <div className={styles.navSection}>
           <span className={styles.navLabel}>Menu chính</span>
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || 
+            const isActive = pathname === item.href ||
               (item.href !== '/' && pathname.startsWith(item.href));
             const Icon = item.icon;
             return (
