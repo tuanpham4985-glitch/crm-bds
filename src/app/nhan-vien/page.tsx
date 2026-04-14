@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
-  Shield, ShieldCheck, TrendingUp
+  Shield, ShieldCheck, TrendingUp, Upload, Loader2
 } from 'lucide-react';
 import type { NhanVien, Pipeline, KhachHang } from '@/lib/types';
 import { formatDate, formatCurrency } from '@/lib/utils';
@@ -21,6 +21,11 @@ export default function NhanVienPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Avatar upload state
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form
   const [form, setForm] = useState({
@@ -66,14 +71,12 @@ export default function NhanVienPage() {
 
   const openCreate = () => {
     setEditingItem(null);
-    setForm({ 
-      ho_ten: '', 
-      so_dien_thoai: '', 
-      email: '', 
-      vai_tro: 'Sale', 
-      trang_thai: 'Đang làm',
-      avatar_url: '' // ✅ thêm dòng này
+    setForm({
+      ho_ten: '', so_dien_thoai: '', email: '',
+      vai_tro: 'Sale', trang_thai: 'Đang làm',
+      avatar_url: '',
     });
+    setUploadError('');
     setShowModal(true);
   };
 
@@ -87,7 +90,126 @@ export default function NhanVienPage() {
       trang_thai: nv.trang_thai,
       avatar_url: nv.avatar_url || '',
     });
+    setUploadError('');
     setShowModal(true);
+  };
+
+  // Image compression helper
+  const compressImage = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const MAX_DIMENSION = 200; // max width/height
+
+          if (width > height) {
+            if (width > MAX_DIMENSION) {
+              height = Math.round((height * MAX_DIMENSION) / width);
+              width = MAX_DIMENSION;
+            }
+          } else {
+            if (height > MAX_DIMENSION) {
+              width = Math.round((width * MAX_DIMENSION) / height);
+              height = MAX_DIMENSION;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return reject(new Error('No canvas context'));
+          ctx.drawImage(img, 0, 0, width, height);
+
+          let quality = 0.9;
+          const attemptCompress = () => {
+            canvas.toBlob((blob) => {
+              if (!blob) return reject(new Error('Canvas toBlob failed'));
+              // Target < 35KB to be safe for Google Sheets 50,000 character limit
+              if (blob.size > 35 * 1024 && quality > 0.1) {
+                quality -= 0.1;
+                attemptCompress();
+              } else {
+                const resizedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+                  type: 'image/webp',
+                  lastModified: Date.now(),
+                });
+                resolve(resizedFile);
+              }
+            }, 'image/webp', quality);
+          };
+          attemptCompress();
+        };
+        img.onerror = () => reject(new Error('Image load failed'));
+      };
+      reader.onerror = () => reject(new Error('File read failed'));
+    });
+  };
+
+  // Avatar upload handler
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Client-side validation
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      setUploadError('Chỉ chấp nhận ảnh JPG, PNG, WebP hoặc GIF');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError('');
+
+    try {
+      // Auto resize to fit Google Sheets cell limit (< 35KB) and use webp
+      let finalFile = file;
+      if (file.size > 35 * 1024 || file.type !== 'image/webp') {
+        try {
+          finalFile = await compressImage(file);
+        } catch (err) {
+          console.error('Compression error:', err);
+          setUploadError('Không thể xử lý ảnh. Vui lòng thử ảnh khác.');
+          setUploading(false);
+          return;
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('file', finalFile);
+
+      const res = await fetch('/api/upload-avatar', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setUploadError(data.error || 'Upload thất bại');
+        return;
+      }
+
+      if (data.url) {
+        setForm(prev => ({ ...prev, avatar_url: data.url }));
+        setUploadError('');
+      } else {
+        setUploadError('Upload thất bại: không nhận được URL');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      setUploadError('Lỗi kết nối. Vui lòng thử lại.');
+    } finally {
+      setUploading(false);
+      // Reset file input so same file can be re-selected
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   const handleSave = async () => {
@@ -128,6 +250,50 @@ export default function NhanVienPage() {
     } catch (err) {
       console.error('Delete error:', err);
     }
+  };
+
+  // Render avatar from URL or fallback to initials
+  const renderAvatar = (nv: NhanVien, size = 36) => {
+    if (nv.avatar_url) {
+      return (
+        <img
+          src={nv.avatar_url}
+          alt={nv.ho_ten}
+          style={{
+            width: size,
+            height: size,
+            borderRadius: '50%',
+            objectFit: 'cover',
+            flexShrink: 0,
+          }}
+          // If Google Drive image fails, fallback to initials
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+            const fallback = target.nextElementSibling as HTMLElement;
+            if (fallback) fallback.style.display = 'flex';
+          }}
+        />
+      );
+    }
+    return null;
+  };
+
+  const renderAvatarFallback = (nv: NhanVien, size = 36) => {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: '50%',
+        background: nv.vai_tro === 'Admin'
+          ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)'
+          : 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
+        display: nv.avatar_url ? 'none' : 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        color: '#fff', fontSize: size * 0.38, fontWeight: 600,
+        flexShrink: 0,
+      }}>
+        {nv.ho_ten.split(' ').pop()?.charAt(0).toUpperCase()}
+      </div>
+    );
   };
 
   if (loading) {
@@ -183,37 +349,11 @@ export default function NhanVienPage() {
                       <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
                       <td>
                         <div className="flex items-center gap-3" style={{ whiteSpace: 'nowrap' }}>
-                          
-                          {nv.avatar_url ? (
-                            <img
-                              src="https://randomuser.me/api/portraits/men/32.jpg"
-                              alt={nv.ho_ten}
-                              style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: '50%',
-                                objectFit: 'cover',
-                                flexShrink: 0,
-                              }}
-                            />
-                          ) : (
-                            <div style={{
-                              width: 36, height: 36, borderRadius: '50%',
-                              background: nv.vai_tro === 'Admin'
-                                ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)'
-                                : 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              color: '#fff', fontSize: '0.75rem', fontWeight: 600,
-                              flexShrink: 0,
-                            }}>
-                              {nv.ho_ten.split(' ').pop()?.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-
+                          {renderAvatar(nv)}
+                          {renderAvatarFallback(nv)}
                           <span style={{ fontWeight: 500, color: 'var(--text-title)' }}>
                             {nv.ho_ten}
                           </span>
-
                         </div>
                       </td>
                       <td>
@@ -283,6 +423,90 @@ export default function NhanVienPage() {
               <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
             </div>
             <div className="modal-body">
+              {/* Avatar Upload Section */}
+              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
+                <div style={{ position: 'relative', marginBottom: 12 }}>
+                  {/* Avatar preview */}
+                  {form.avatar_url ? (
+                    <img
+                      src={form.avatar_url}
+                      alt="Avatar preview"
+                      style={{
+                        width: 80, height: 80, borderRadius: '50%',
+                        objectFit: 'cover', border: '3px solid var(--border)',
+                      }}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: 80, height: 80, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: '3px dashed var(--border)',
+                      color: 'var(--text-label)', fontSize: 28,
+                    }}>
+                      <Upload size={28} />
+                    </div>
+                  )}
+
+                  {/* Upload spinner overlay */}
+                  {uploading && (
+                    <div style={{
+                      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                      borderRadius: '50%',
+                      background: 'rgba(0,0,0,0.5)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Loader2 size={24} color="#fff" style={{ animation: 'spin 1s linear infinite' }} />
+                    </div>
+                  )}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleAvatarUpload}
+                  style={{ display: 'none' }}
+                  id="avatar-upload-input"
+                />
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  style={{ fontSize: '0.8rem', padding: '6px 16px' }}
+                >
+                  {uploading ? 'Đang tải...' : (form.avatar_url ? 'Đổi ảnh' : 'Chọn ảnh đại diện')}
+                </button>
+
+                {/* Remove avatar button */}
+                {form.avatar_url && !uploading && (
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, avatar_url: '' }))}
+                    style={{
+                      marginTop: 4, background: 'none', border: 'none',
+                      color: 'var(--danger-text)', cursor: 'pointer',
+                      fontSize: '0.75rem', textDecoration: 'underline',
+                    }}
+                  >
+                    Xóa ảnh
+                  </button>
+                )}
+
+                {/* Upload error */}
+                {uploadError && (
+                  <p style={{ color: 'var(--danger-text)', fontSize: '0.8rem', marginTop: 8, textAlign: 'center' }}>
+                    {uploadError}
+                  </p>
+                )}
+              </div>
+
               <div className="form-group">
                 <label className="form-label">Họ tên *</label>
                 <input className="form-input" value={form.ho_ten}
@@ -300,52 +524,6 @@ export default function NhanVienPage() {
                   <input className="form-input" type="email" value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
                 </div>
-              </div>
-
-              {/* 🔥 THÊM AVATAR UPLOAD Ở ĐÂY */}
-              <div className="form-group">
-                <label className="form-label">Avatar</label>
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-
-                    const formData = new FormData();
-                    formData.append('file', file);
-
-                    const res = await fetch('/api/upload-avatar', {
-                      method: 'POST',
-                      body: formData,
-                    });
-
-                    const data = await res.json();
-
-                    if (data.url) {
-                      setForm(prev => ({
-                        ...prev,
-                        avatar_url: data.url,
-                      }));
-                    }
-                  }}
-                />
-
-                {/* Preview ảnh */}
-                {form.avatar_url && (
-                  <img
-                    src={form.avatar_url}
-                    alt="avatar"
-                    style={{
-                      marginTop: 8,
-                      width: 60,
-                      height: 60,
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                    }}
-                  />
-                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -368,7 +546,7 @@ export default function NhanVienPage() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Hủy</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.ho_ten.trim()}>
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving || uploading || !form.ho_ten.trim()}>
                 {saving ? 'Đang lưu...' : (editingItem ? 'Cập nhật' : 'Thêm mới')}
               </button>
             </div>
@@ -389,6 +567,14 @@ export default function NhanVienPage() {
           </div>
         </div>
       )}
+
+      {/* Spin animation for upload loading */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

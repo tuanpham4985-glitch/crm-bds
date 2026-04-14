@@ -32,6 +32,19 @@
   color: var(--primary);
   border-radius: var(--radius-lg);
   flex-shrink: 0;
+  cursor: pointer;
+  transition: opacity 0.2s ease-in-out;
+  overflow: hidden;
+}
+
+.logoIcon:hover {
+  opacity: 0.8;
+}
+
+.logoIcon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .logoTitle {

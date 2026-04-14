@@ -1,7 +1,11 @@
 export const runtime = 'nodejs';
 
-import { google } from 'googleapis';
-import { Readable } from 'stream';
+// Max file size: ~36KB (base64 string must be < 50,000 chars for Google Sheets limit)
+const MAX_FILE_SIZE = 36 * 1024;
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// Target avatar dimensions for resizing
+const TARGET_SIZE = 200; // 200x200 pixels max
 
 export async function POST(req: Request) {
   try {
@@ -12,66 +16,33 @@ export async function POST(req: Request) {
       return Response.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
+    // Validate file type
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return Response.json(
+        { error: `Định dạng không hỗ trợ. Chấp nhận: JPG, PNG, WebP` },
+        { status: 400 }
+      );
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return Response.json(
+        { error: 'Ảnh quá lớn (vượt quá giới hạn Google Sheets).' },
+        { status: 400 }
+      );
+    }
+
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // ✅ Validate environment variables
-    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY;
-    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+    // Convert to base64 data URL
+    // This is stored directly in Google Sheets - no Google Drive needed
+    const base64 = buffer.toString('base64');
+    const dataUrl = `data:${file.type};base64,${base64}`;
 
-    if (!clientEmail || !privateKey) {
-      console.error('[UploadAvatar] Missing GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY');
-      return Response.json({ error: 'Server configuration error: missing Google credentials' }, { status: 500 });
-    }
+    console.log(`[UploadAvatar] Converted "${file.name}" (${file.size} bytes) to base64 data URL (${dataUrl.length} chars)`);
 
-    if (!folderId) {
-      console.error('[UploadAvatar] Missing GOOGLE_DRIVE_FOLDER_ID');
-      return Response.json({ error: 'Server configuration error: missing Drive folder ID' }, { status: 500 });
-    }
-
-    const auth = new google.auth.JWT({
-      email: clientEmail,
-      key: privateKey.replace(/\\n/g, '\n'),
-      scopes: ['https://www.googleapis.com/auth/drive'],
-    });
-
-    const drive = google.drive({ version: 'v3', auth });
-
-    // ✅ Convert buffer → stream
-    const stream = Readable.from(buffer);
-
-    // Upload file
-    const res = await drive.files.create({
-      requestBody: {
-        name: file.name,
-        parents: [folderId],
-      },
-      media: {
-        mimeType: file.type,
-        body: stream,
-      },
-    });
-
-    const fileId = res.data.id;
-
-    if (!fileId) {
-      console.error('[UploadAvatar] Google Drive returned no file ID');
-      return Response.json({ error: 'Upload failed: no file ID returned' }, { status: 500 });
-    }
-
-    // Set public permission
-    await drive.permissions.create({
-      fileId: fileId,
-      requestBody: {
-        role: 'reader',
-        type: 'anyone',
-      },
-    });
-
-    const url = `https://drive.google.com/uc?id=${fileId}`;
-
-    return Response.json({ url });
+    return Response.json({ url: dataUrl });
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
