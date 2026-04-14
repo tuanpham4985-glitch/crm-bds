@@ -1637,14 +1637,70 @@ h4 { font-size: 1rem; }
   }
 }
 
+/* === Mobile Navigation & Header === */
+.mobile-header {
+  display: none;
+}
+.sidebar-overlay {
+  display: none;
+}
+.sidebar-wrapper {
+  display: contents;
+}
+
 @media (max-width: 768px) {
   :root {
-    --sidebar-width: 0px;
+    --sidebar-width: 270px;
   }
-  
+
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    padding: 0 16px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-light);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
   .main-content {
     margin-left: 0;
     padding: 16px;
+  }
+
+  .sidebar-wrapper {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 101;
+    transform: translateX(-100%);
+    transition: transform var(--transition);
+  }
+
+  .sidebar-wrapper.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    z-index: 100;
+  }
+
+  /* Make sure Sidebar module CSS resolves width correctly */
+  aside[class*="sidebar"] {
+    width: var(--sidebar-width) !important;
   }
   
   .kpi-grid {
