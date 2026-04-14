@@ -3,13 +3,13 @@ import AppShell from "@/components/layout/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CRM BĐS - Quản lý Bất Động Sản",
+  title: "VICTORY HOLDINGS - Quản lý Bất Động Sản",
   description: "Hệ thống CRM quản lý khách hàng, pipeline, dự án bất động sản",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "CRM BĐS",
+    title: "VICTORY HOLDINGS",
   },
   formatDetection: {
     telephone: false,
