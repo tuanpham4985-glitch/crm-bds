@@ -58,9 +58,10 @@ export async function GET(request: NextRequest) {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
 
-    const [allPipelines, allCustomers] = await Promise.all([
+    const [allPipelines, allCustomers, allEmployees] = await Promise.all([
       getPipeline(),
       getKhachHang(),
+      getNhanVien(),
     ]);
 
     let dateRange = getDateRange(period);
@@ -106,7 +107,16 @@ export async function GET(request: NextRequest) {
     const saleMap = new Map<string, DoanhThuTheoSale>();
     daKy.forEach(pl => {
       const key = pl.sale_phu_trach || 'Chưa phân';
-      const existing = saleMap.get(key) || { nhan_vien: key, doanh_thu: 0, hoa_hong: 0, so_deal: 0 };
+      let existing = saleMap.get(key);
+      if (!existing) {
+        existing = { nhan_vien: key, doanh_thu: 0, hoa_hong: 0, so_deal: 0 };
+        if (key !== 'Chưa phân') {
+          const emp = allEmployees.find(nv => nv.ho_ten === key);
+          if (emp && emp.avatar_url) {
+            existing.avatar_url = emp.avatar_url;
+          }
+        }
+      }
       existing.doanh_thu += pl.gia_tri_thuc_te;
       existing.hoa_hong += pl.tien_hoa_hong;
       existing.so_deal += 1;

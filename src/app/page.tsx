@@ -249,11 +249,18 @@ export default function DashboardPage() {
                       <div key={sale.nhan_vien} className="podium-item">
                         <div className="podium-avatar-wrapper">
                           {rank === 1 && <span className="podium-crown">👑</span>}
-                          <div
-                            className="podium-avatar-initials"
-                          >
-                            {initials}
-                          </div>
+                          {sale.avatar_url ? (
+                            <img 
+                              src={sale.avatar_url} 
+                              alt={sale.nhan_vien}
+                              className="podium-avatar-initials"
+                              style={{ objectFit: 'cover', background: '#fff' }}
+                            />
+                          ) : (
+                            <div className="podium-avatar-initials">
+                              {initials}
+                            </div>
+                          )}
                         </div>
                         <div className="podium-name">{sale.nhan_vien}</div>
                         <div className="podium-score">
@@ -284,12 +291,21 @@ export default function DashboardPage() {
                       return (
                         <div key={sale.nhan_vien} className="leaderboard-row">
                           <div className="leaderboard-rank">{rank}</div>
-                          <div
-                            className="leaderboard-avatar-initials"
-                            style={{ background: color }}
-                          >
-                            {initials}
-                          </div>
+                          {sale.avatar_url ? (
+                            <img 
+                              src={sale.avatar_url} 
+                              alt={sale.nhan_vien}
+                              className="leaderboard-avatar-initials"
+                              style={{ objectFit: 'cover', background: '#fff' }}
+                            />
+                          ) : (
+                            <div
+                              className="leaderboard-avatar-initials"
+                              style={{ background: color }}
+                            >
+                              {initials}
+                            </div>
+                          )}
                           <div className="leaderboard-info">
                             <div className="leaderboard-name">{sale.nhan_vien}</div>
                             <div className="leaderboard-detail">{sale.so_deal} deal đã ký</div>
@@ -327,9 +343,18 @@ export default function DashboardPage() {
                         <div className="leaderboard-rank" style={{ background: '#fffbeb', color: '#b45309' }}>
                           {i + 1}
                         </div>
-                        <div className="leaderboard-avatar-initials" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
-                          {initials}
-                        </div>
+                        {sale.avatar_url ? (
+                          <img 
+                            src={sale.avatar_url} 
+                            alt={sale.nhan_vien}
+                            className="leaderboard-avatar-initials"
+                            style={{ objectFit: 'cover', background: '#fff' }}
+                          />
+                        ) : (
+                          <div className="leaderboard-avatar-initials" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+                            {initials}
+                          </div>
+                        )}
                         <div className="leaderboard-info">
                           <div className="leaderboard-name">{sale.nhan_vien}</div>
                           <div className="leaderboard-detail">{sale.so_deal} deal đã ký</div>

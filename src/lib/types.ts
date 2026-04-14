@@ -104,6 +104,7 @@ export interface DoanhThuTheoSale {
   doanh_thu: number;
   hoa_hong: number;
   so_deal: number;
+  avatar_url?: string;
 }
 
 export interface DoanhThuTheoDuAn {
