@@ -40,7 +40,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Sidebar Wrapper */}
       <div className={`sidebar-wrapper ${mobileMenuOpen ? 'open' : ''}`}>
-        <Sidebar className="w-full" />
+        <Sidebar />
       </div>
 
       <main className="main-content">
