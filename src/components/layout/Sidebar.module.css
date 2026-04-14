@@ -135,3 +135,27 @@
   background: var(--danger-bg);
   color: var(--danger-text);
 }
+
+.installBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-family);
+  transition: all var(--transition-fast);
+  margin-bottom: 8px;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+}
+
+.installBtn:hover {
+  background: var(--primary-deep);
+  transform: translateY(-1px);
+}

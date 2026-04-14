@@ -5,9 +5,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
-  Building2, UserCog, LogOut
+  Building2, UserCog, LogOut, Download
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
+
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -22,17 +31,56 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [logo, setLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
     const savedLogo = localStorage.getItem('company_logo');
     if (savedLogo) {
       setLogo(savedLogo);
     }
+
+    // PWA Check
+    setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone);
+    
+    // Check iOS
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    if (/iphone|ipad|ipod/.test(userAgent)) {
+      setIsIOS(true);
+    }
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
 
   const handleLogout = async () => {
     await fetch('/api/auth', { method: 'DELETE' });
     window.location.href = '/login';
+  };
+
+  const handleInstallApp = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the A2HS prompt');
+        }
+        setDeferredPrompt(null);
+      });
+    } else if (isIOS) {
+      alert("Trên iPhone/iPad:\n1. Bấm nút Chia sẻ (biểu tượng ô vuông có mũi tên lên) ở thanh dưới cùng của Safari.\n2. Chọn 'Thêm vào MH chính' (Add to Home Screen) để cài đặt App.");
+    } else {
+      alert("Trình duyệt của bạn không hỗ trợ cài đặt tự động. Vui lòng mở menu trình duyệt (dấu 3 chấm) và chọn 'Thêm vào Màn hình chính' để cài đặt App.");
+    }
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,6 +197,12 @@ export default function Sidebar() {
 
       {/* User section */}
       <div className={styles.userSection}>
+        {!isStandalone && (
+          <button onClick={handleInstallApp} className={styles.installBtn}>
+            <Download size={18} />
+            <span>Cài đặt App</span>
+          </button>
+        )}
         <button onClick={handleLogout} className={styles.logoutBtn}>
           <LogOut size={18} />
           <span>Đăng xuất</span>
