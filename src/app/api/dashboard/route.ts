@@ -58,11 +58,13 @@ export async function GET(request: NextRequest) {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
 
-    const [allPipelines, allCustomers, allEmployees] = await Promise.all([
+    const [allPipelines, allCustomers, allEmployeesRaw] = await Promise.all([
       getPipeline(),
       getKhachHang(),
       getNhanVien(),
     ]);
+    // Ẩn nhân viên "Nghỉ việc" khỏi dashboard
+    const allEmployees = allEmployeesRaw.filter(nv => nv.trang_thai !== 'Nghỉ việc');
 
     let dateRange = getDateRange(period);
     if (fromParam && toParam) {

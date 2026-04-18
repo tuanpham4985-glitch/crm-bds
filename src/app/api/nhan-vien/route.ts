@@ -4,7 +4,9 @@ import { generateId } from '@/lib/utils';
 
 export async function GET() {
   try {
-    const data = await getNhanVien();
+    const all = await getNhanVien();
+    // Ẩn nhân viên "Nghỉ việc" khỏi CRM web — dữ liệu vẫn giữ trong Google Sheet
+    const data = all.filter(nv => nv.trang_thai !== 'Nghỉ việc');
     return NextResponse.json({ success: true, data, total: data.length });
   } catch (error) {
     console.error('NhanVien GET error:', error);

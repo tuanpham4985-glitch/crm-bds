@@ -202,23 +202,74 @@ export async function getNhanVien(): Promise<NhanVien[]> {
   const rows = await sheet.getRows();
   const h = sheet.headerValues;
 
-  return rows
-    .map(row => {
-      const v = row.toObject();
-      const id = str(v[h[0]]);
-      if (!id) return null;
-      return {
-        id_nhan_vien: id,
-        ho_ten: str(v[h[1]]),
-        so_dien_thoai: str(v[h[2]]),
-        email: str(v[h[3]]),
-        vai_tro: str(v[h[4]]),
-        trang_thai: str(v[h[5]]),
-        ngay_tao: str(v[h[6]]),
-        avatar_url: str(v[h[7]]),
-      } as NhanVien;
-    })
-    .filter((x): x is NhanVien => x !== null);
+  const result: NhanVien[] = [];
+  for (const row of rows) {
+    const v = row.toObject();
+    let id = str(v[h[0]]);
+    const hoTen = str(v[h[1]]);
+
+    // Skip completely empty rows
+    if (!id && !hoTen) continue;
+
+    // Auto-repair: generate ID for imported rows missing id_nhan_vien
+    if (!id && hoTen) {
+      id = `NV${Date.now()}`;
+      try {
+        row.set(h[0], id);
+        await row.save();
+        console.log(`[GSheets] Auto-generated id_nhan_vien="${id}" for "${hoTen}"`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[GSheets] Failed to backfill ID for "${hoTen}":`, msg);
+        continue; // Skip this row if we can't save
+      }
+    }
+
+    result.push({
+      id_nhan_vien: id,
+      ho_ten: hoTen,
+      so_dien_thoai: str(v[h[2]]),
+      email: str(v[h[3]]),
+      vai_tro: str(v[h[4]]),
+      trang_thai: str(v[h[5]]),
+      ngay_tao: str(v[h[6]]),
+      avatar_url: str(v[h[7]]),
+    } as NhanVien);
+  }
+  return result;
+}
+
+/**
+ * Backfill missing id_nhan_vien for all rows in NHAN_VIEN sheet.
+ * Returns the number of rows that were fixed.
+ */
+export async function backfillNhanVienIds(): Promise<{ fixed: number; total: number; details: string[] }> {
+  const doc = await getDoc();
+  const sheet = await getSheet(doc, SHEETS.NHAN_VIEN);
+  const rows = await sheet.getRows();
+  const h = sheet.headerValues;
+
+  let fixed = 0;
+  const details: string[] = [];
+
+  for (const row of rows) {
+    const v = row.toObject();
+    const id = str(v[h[0]]);
+    const hoTen = str(v[h[1]]);
+
+    if (!id && hoTen) {
+      const newId = `NV${Date.now()}`;
+      row.set(h[0], newId);
+      await row.save();
+      fixed++;
+      details.push(`"${hoTen}" → ${newId}`);
+      console.log(`[GSheets] Backfill: "${hoTen}" → ${newId}`);
+      // Small delay to avoid rate limiting
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
+
+  return { fixed, total: rows.length, details };
 }
 
 export async function getKhachHang(): Promise<KhachHang[]> {

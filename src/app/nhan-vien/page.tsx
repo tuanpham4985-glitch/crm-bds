@@ -549,8 +549,10 @@ export default function NhanVienPage() {
                   <select className="form-select" value={form.trang_thai}
                     onChange={(e) => setForm({ ...form, trang_thai: e.target.value })}>
                     <option value="Đang làm">Đang làm</option>
-                    <option value="Nghỉ việc">Nghỉ việc</option>
                   </select>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                    💡 Đổi &quot;Nghỉ việc&quot; trực tiếp trong Google Sheet
+                  </span>
                 </div>
               </div>
             </div>
