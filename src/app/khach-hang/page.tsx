@@ -153,6 +153,52 @@ export default function KhachHangPage() {
     setPage(1);
   };
 
+  const generateContract = async (kh: any) => {
+  try {
+    const now = new Date();
+
+    const res = await fetch("/api/contracts/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        so_hop_dong: `HD-${Date.now()}`,
+
+        ngay_ky: now.getDate().toString(),
+        thang_ky: (now.getMonth() + 1).toString(),
+        nam_ky: now.getFullYear().toString(),
+
+        // ===== MAP DATA THẬT =====
+        ten_ctv: kh.ten_KH,
+
+        so_cccd: kh.so_cccd || '',
+        ngay_thang_nam_cap: kh.ngay_cap || '',
+        noi_cap: kh.noi_cap || '',
+
+        hk_thuong_tru: kh.dia_chi || '',
+        ma_so_thue: kh.ma_so_thue || '',
+
+        so_tk_ngan_hang: kh.so_tk || '',
+        ten_ngan_hang_thu_huong: kh.ngan_hang || '',
+      }),
+    });
+
+    if (!res.ok) throw new Error("API lỗi");
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `hop-dong-${kh.ten_KH}.docx`;
+    a.click();
+  } catch (err) {
+    console.error("Generate contract error:", err);
+    alert("Lỗi tạo hợp đồng");
+  }
+};
+
   const hasFilters = searchInput || nguon || sale || fromDate || toDate;
 
   return (
@@ -234,7 +280,7 @@ export default function KhachHangPage() {
                     <th>Nhu cầu</th>
                     <th>Sale</th>
                     <th>Ngày tạo</th>
-                    <th style={{ width: 90, textAlign: 'center' }}>Thao tác</th>
+                    <th style={{ width: 140, textAlign: 'center' }}>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -266,6 +312,15 @@ export default function KhachHangPage() {
                       <td>{formatDate(kh.ngay_tao)}</td>
                       <td>
                         <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
+                          
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => generateContract(kh)}
+                            title="Tạo hợp đồng"
+                          >
+                            HĐ
+                          </button>
+
                           <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(kh)} title="Sửa">
                             <Edit3 size={15} />
                           </button>

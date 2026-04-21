@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
-  Building2, UserCog, LogOut, Download, ShieldCheck, Shield
+  Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,6 +26,8 @@ const NAV_ITEMS = [
   { href: '/cong-viec', label: 'Công việc', icon: CheckSquare },
   { href: '/du-an', label: 'Dự án', icon: Building2 },
   { href: '/nhan-vien', label: 'Nhân viên', icon: UserCog },
+  { href: '/nhan-vien/hop-dong', label: 'Hợp đồng', icon: FileText },
+  { href: '/nhan-vien/bang-luong', label: 'Bảng lương', icon: BadgeDollarSign },
 ];
 
 export default function Sidebar() {
@@ -181,7 +183,7 @@ export default function Sidebar() {
           <span className={styles.navLabel}>Menu chính</span>
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href ||
-              (item.href !== '/' && pathname.startsWith(item.href));
+              (item.href !== '/' && item.href !== '/nhan-vien' && pathname.startsWith(item.href));
             const Icon = item.icon;
             return (
               <Link

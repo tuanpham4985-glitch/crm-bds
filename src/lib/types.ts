@@ -33,6 +33,19 @@ export interface NhanVien {
   mat_khau?: string;
 }
 
+// === HỢP ĐỒNG ===
+export interface HopDong {
+  id: string;
+  id_nhan_vien: string;
+  so_hop_dong: string;
+  loai_hop_dong: string;
+  ngay_bat_dau: string;
+  ngay_ket_thuc: string;
+  luong_co_ban: number;
+  ghi_chu: string;
+  created_at: string;
+}
+
 // === KHÁCH HÀNG ===
 export interface KhachHang {
   id_khach_hang: string;
@@ -170,4 +183,20 @@ export interface ApiResponse<T> {
   total?: number;
   page?: number;
   limit?: number;
+}
+
+// === BẢNG LƯƠNG (Payroll) ===
+export interface BangLuong {
+  id: string;
+  id_nhan_vien: string;
+  thang: number;
+  nam: number;
+  luong_co_ban: number;
+  doanh_thu: number;
+  hoa_hong: number;
+  thuong: number;
+  phat: number;
+  tong_luong: number;
+  trang_thai: 'draft' | 'confirmed' | 'paid';
+  created_at: string;
 }

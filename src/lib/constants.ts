@@ -43,6 +43,14 @@ export const NGUON = [
 
 export const VAI_TRO = ['Admin', 'Sale'] as const;
 
+// === HỢP ĐỒNG ===
+export const LOAI_HOP_DONG = ['Thử việc', 'Chính thức', 'CTV'] as const;
+
+export const TRANG_THAI_HOP_DONG_COLORS: Record<string, { bg: string; text: string }> = {
+  'Còn hiệu lực': { bg: '#ecfdf5', text: '#065f46' },
+  'Hết hạn': { bg: '#fff1f2', text: '#9f1239' },
+};
+
 // Giai đoạn color mapping
 export const GIAI_DOAN_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   'Mới': { bg: '#f1f5f9', text: '#475569', border: '#94a3b8' },

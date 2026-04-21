@@ -69,6 +69,7 @@ const SHEET_CONFIG = {
   'PIPELINE':   { prefix: 'PL',  idCol: 1 },
   'CONG_VIEC':  { prefix: 'CV',  idCol: 1 },
   'DU_AN':      { prefix: 'DA_', idCol: 1 },
+  'HOP_DONG':   { prefix: 'HD',  idCol: 1 },
 };
 
 function getNextIdNumber_(sheet, config) {

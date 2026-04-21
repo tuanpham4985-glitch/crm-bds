@@ -4,7 +4,7 @@
 // ============================================================
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc } from './types';
+import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong } from './types';
 
 // ---- Environment Variable Validation ----
 function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
@@ -95,6 +95,7 @@ const SHEETS = {
   PIPELINE: 'PIPELINE',
   CONG_VIEC: 'CONG_VIEC',
   LOG_HE_THONG: 'LOG_HE_THONG',
+  HOP_DONG: 'HOP_DONG',
 } as const;
 
 function str(val: unknown): string {
@@ -664,4 +665,178 @@ export async function findNhanVienByEmail(email: string): Promise<NhanVien | nul
   const list = await getNhanVien();
   const safeEmail = email.trim().toLowerCase();
   return list.find(nv => (nv.email || '').trim().toLowerCase() === safeEmail) || null;
+}
+
+// ============================================================
+// HỢP ĐỒNG (Contracts)
+// ============================================================
+
+export async function getHopDong(): Promise<HopDong[]> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.HOP_DONG);
+  } catch (err) {
+    console.log('[GSheets] HOP_DONG not found in getHopDong. Auto-creating...');
+    sheet = await doc.addSheet({
+      title: SHEETS.HOP_DONG,
+      headerValues: ['id', 'id_nhan_vien', 'so_hop_dong', 'loai_hop_dong', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at']
+    });
+    return [];
+  }
+  const rows = await sheet.getRows();
+  const h = sheet.headerValues;
+
+  return rows
+    .map(row => {
+      const v = row.toObject();
+      const id = str(v[h[0]]);
+      if (!id) return null;
+      return {
+        id,
+        id_nhan_vien: str(v[h[1]]),
+        so_hop_dong: str(v[h[2]]),
+        loai_hop_dong: str(v[h[3]]),
+        ngay_bat_dau: str(v[h[4]]),
+        ngay_ket_thuc: str(v[h[5]]),
+        luong_co_ban: num(v[h[6]]),
+        ghi_chu: str(v[h[7]]),
+        created_at: str(v[h[8]]),
+      } as HopDong;
+    })
+    .filter((x): x is HopDong => x !== null);
+}
+
+export async function addHopDong(hd: HopDong): Promise<void> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.HOP_DONG);
+  } catch (err) {
+    console.log('[GSheets] HOP_DONG not found in addHopDong. Auto-creating...');
+    sheet = await doc.addSheet({
+      title: SHEETS.HOP_DONG,
+      headerValues: ['id', 'id_nhan_vien', 'so_hop_dong', 'loai_hop_dong', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at']
+    });
+  }
+  const h = sheet.headerValues;
+  const rowData: Record<string, string | number> = {};
+  if (h[0]) rowData[h[0]] = hd.id || '';
+  if (h[1]) rowData[h[1]] = hd.id_nhan_vien || '';
+  if (h[2]) rowData[h[2]] = hd.so_hop_dong || '';
+  if (h[3]) rowData[h[3]] = hd.loai_hop_dong || '';
+  if (h[4]) rowData[h[4]] = hd.ngay_bat_dau || '';
+  if (h[5]) rowData[h[5]] = hd.ngay_ket_thuc || '';
+  if (h[6]) rowData[h[6]] = hd.luong_co_ban || 0;
+  if (h[7]) rowData[h[7]] = hd.ghi_chu || '';
+  if (h[8]) rowData[h[8]] = hd.created_at || '';
+
+  await sheet.addRow(rowData);
+  await addLog(doc, 'CREATE_HD', hd.id, hd.id_nhan_vien, '');
+}
+
+export async function updateHopDong(hd: HopDong): Promise<boolean> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.HOP_DONG);
+  } catch (err) {
+    return false;
+  }
+  const rows = await sheet.getRows();
+  const h = sheet.headerValues;
+
+  const row = rows.find(r => str(r.toObject()[h[0]]) === hd.id);
+  if (!row) return false;
+
+  if (h[1]) row.set(h[1], hd.id_nhan_vien || '');
+  if (h[2]) row.set(h[2], hd.so_hop_dong || '');
+  if (h[3]) row.set(h[3], hd.loai_hop_dong || '');
+  if (h[4]) row.set(h[4], hd.ngay_bat_dau || '');
+  if (h[5]) row.set(h[5], hd.ngay_ket_thuc || '');
+  if (h[6]) row.set(h[6], hd.luong_co_ban || 0);
+  if (h[7]) row.set(h[7], hd.ghi_chu || '');
+  await row.save();
+  await addLog(doc, 'UPDATE_HD', hd.id, '', '');
+  return true;
+}
+
+export async function deleteHopDong(id: string): Promise<boolean> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.HOP_DONG);
+  } catch (err) {
+    return false;
+  }
+  const rows = await sheet.getRows();
+  const h = sheet.headerValues;
+
+  const row = rows.find(r => str(r.toObject()[h[0]]) === id);
+  if (!row) return false;
+  await row.delete();
+  await addLog(doc, 'DELETE_HD', id, '', '');
+  return true;
+}
+
+// ============================================================
+// BẢNG LƯƠNG (Payroll)
+// ============================================================
+
+export async function getBangLuong(): Promise<BangLuong[]> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, 'BANG_LUONG');
+  } catch (err) {
+    console.error('[GSheets] Sheet "BANG_LUONG" may not exist yet.');
+    return [];
+  }
+  const rows = await sheet.getRows();
+  const h = sheet.headerValues;
+
+  return rows
+    .map(row => {
+      const v = row.toObject();
+      const id = str(v[h[0]]);
+      if (!id) return null;
+      return {
+        id,
+        id_nhan_vien: str(v[h[1]]),
+        thang: num(v[h[2]]),
+        nam: num(v[h[3]]),
+        luong_co_ban: num(v[h[4]]),
+        doanh_thu: num(v[h[5]]),
+        hoa_hong: num(v[h[6]]),
+        thuong: num(v[h[7]]),
+        phat: num(v[h[8]]),
+        tong_luong: num(v[h[9]]),
+        trang_thai: str(v[h[10]]) as 'draft' | 'confirmed' | 'paid',
+        created_at: str(v[h[11]]),
+      } as BangLuong;
+    })
+    .filter((x): x is BangLuong => x !== null);
+}
+
+export async function addBangLuong(bl: Omit<BangLuong, 'id' | 'created_at'>): Promise<void> {
+  const doc = await getDoc();
+  const sheet = await getSheet(doc, 'BANG_LUONG');
+  const h = sheet.headerValues;
+  const id = `BL_${Date.now()}`;
+  const created_at = new Date().toISOString();
+  await sheet.addRow({
+    [h[0]]: id,
+    [h[1]]: bl.id_nhan_vien,
+    [h[2]]: bl.thang,
+    [h[3]]: bl.nam,
+    [h[4]]: bl.luong_co_ban,
+    [h[5]]: bl.doanh_thu,
+    [h[6]]: bl.hoa_hong,
+    [h[7]]: bl.thuong,
+    [h[8]]: bl.phat,
+    [h[9]]: bl.tong_luong,
+    [h[10]]: bl.trang_thai,
+    [h[11]]: created_at,
+  });
+  await addLog(doc, 'CREATE_BL', id, bl.id_nhan_vien, '');
 }

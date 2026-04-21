@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
-  Shield, ShieldCheck, TrendingUp, Upload, Loader2
+  Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText
 } from 'lucide-react';
-import type { NhanVien, Pipeline, KhachHang } from '@/lib/types';
+import type { NhanVien, Pipeline, KhachHang, HopDong } from '@/lib/types';
+import Link from 'next/link';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { VAI_TRO } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,6 +16,7 @@ export default function NhanVienPage() {
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
+  const [contracts, setContracts] = useState<HopDong[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modal
@@ -39,15 +41,16 @@ export default function NhanVienPage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [nvRes, plRes, khRes] = await Promise.all([
-        fetch('/api/nhan-vien'), fetch('/api/pipeline'), fetch('/api/khach-hang?limit=999'),
+      const [nvRes, plRes, khRes, hdRes] = await Promise.all([
+        fetch('/api/nhan-vien'), fetch('/api/pipeline'), fetch('/api/khach-hang?limit=999'), fetch('/api/contracts'),
       ]);
-      const [nvData, plData, khData] = await Promise.all([
-        nvRes.json(), plRes.json(), khRes.json(),
+      const [nvData, plData, khData, hdData] = await Promise.all([
+        nvRes.json(), plRes.json(), khRes.json(), hdRes.json(),
       ]);
       if (nvData.success) setEmployees(nvData.data);
       if (plData.success) setPipelines(plData.data);
       if (khData.success) setCustomers(khData.data);
+      if (hdData.success) setContracts(hdData.data);
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -69,6 +72,16 @@ export default function NhanVienPage() {
       revenue: daKy.reduce((s, pl) => s + pl.gia_tri_thuc_te, 0),
       commission: daKy.reduce((s, pl) => s + pl.tien_hoa_hong, 0),
     };
+  };
+
+  // Contract count per employee
+  const getContractCount = (employeeId: string) => {
+    const empContracts = contracts.filter(c => c.id_nhan_vien === employeeId);
+    const active = empContracts.filter(c => {
+      if (!c.ngay_ket_thuc) return true;
+      return new Date(c.ngay_ket_thuc) >= new Date();
+    });
+    return { total: empContracts.length, active: active.length };
   };
 
   const openCreate = () => {
@@ -345,13 +358,15 @@ export default function NhanVienPage() {
                   <th style={{ textAlign: 'right' }}>Deal</th>
                   <th style={{ textAlign: 'right' }}>Doanh thu</th>
                   <th style={{ textAlign: 'right' }}>Hoa hồng</th>
+                  <th style={{ textAlign: 'center' }}>Hợp đồng</th>
                   <th>Ngày tạo</th>
-                  {isAdmin && <th style={{ width: 90, textAlign: 'center' }}>Thao tác</th>}
+                  {isAdmin && <th style={{ width: 120, textAlign: 'center' }}>Thao tác</th>}
                 </tr>
               </thead>
               <tbody>
                 {employees.map((nv, idx) => {
                   const stats = getEmployeeStats(nv.ho_ten);
+                  const contractStats = getContractCount(nv.id_nhan_vien);
                   return (
                     <tr key={nv.id_nhan_vien}>
                       <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
@@ -405,13 +420,38 @@ export default function NhanVienPage() {
                       <td style={{ textAlign: 'right', color: 'var(--success-text)', fontWeight: 500 }}>
                         {formatCurrency(stats.commission)}
                       </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <Link
+                          href={`/nhan-vien/hop-dong?id_nhan_vien=${nv.id_nhan_vien}`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '4px 10px', borderRadius: 6,
+                            background: contractStats.active > 0 ? 'var(--success-bg)' : 'var(--bg-page)',
+                            color: contractStats.active > 0 ? 'var(--success-text)' : 'var(--text-label)',
+                            fontSize: '0.8125rem', fontWeight: 600,
+                            textDecoration: 'none', transition: 'all 0.15s',
+                          }}
+                          title={`${contractStats.total} hợp đồng (${contractStats.active} còn hiệu lực)`}
+                        >
+                          <FileText size={13} />
+                          {contractStats.active}/{contractStats.total}
+                        </Link>
+                      </td>
                       <td>{formatDate(nv.ngay_tao)}</td>
                       {isAdmin && (
                         <td>
-                          <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
-                            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(nv)}><Edit3 size={15} /></button>
+                          <div className="flex items-center gap-1" style={{ justifyContent: 'center' }}>
+                            <Link
+                              href={`/nhan-vien/hop-dong?id_nhan_vien=${nv.id_nhan_vien}&action=create`}
+                              className="btn btn-ghost btn-icon btn-sm"
+                              title="Tạo hợp đồng mới"
+                              style={{ color: 'var(--primary)' }}
+                            >
+                              <FileText size={15} />
+                            </Link>
+                            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(nv)} title="Chỉnh sửa"><Edit3 size={15} /></button>
                             <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
-                              onClick={() => { setDeletingId(nv.id_nhan_vien); setShowConfirm(true); }}><Trash2 size={15} /></button>
+                              title="Xóa" onClick={() => { setDeletingId(nv.id_nhan_vien); setShowConfirm(true); }}><Trash2 size={15} /></button>
                           </div>
                         </td>
                       )}
