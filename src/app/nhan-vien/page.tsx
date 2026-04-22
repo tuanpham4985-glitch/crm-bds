@@ -16,7 +16,7 @@ const NHAN_VIEN_FIELDS = [
   { id: 'ho_ten', label: 'Họ tên', public: true },
   { id: 'so_dien_thoai', label: 'SĐT', public: true },
   { id: 'email', label: 'Email', public: false },
-  { id: 'chuc_danh', label: 'Chức danh', public: true },
+  { id: 'employee_type', label: 'Chức danh', public: true },
   { id: 'trang_thai', label: 'Trạng thái', public: true },
   { id: 'khach_hang', label: 'KH', align: 'right', public: false },
   { id: 'deal', label: 'Deal', align: 'right', public: true },
@@ -35,7 +35,7 @@ export default function NhanVienPage() {
   const [customers, setCustomers] = useState<KhachHang[]>([]);
   const [contracts, setContracts] = useState<HopDong[]>([]);
   const [danhMuc, setDanhMuc] = useState<DanhMuc>({
-    chuc_danh: [], khu_vuc: [], gioi_tinh: [], phong_KD: [],
+    employee_types: [], khu_vuc: [], gioi_tinh: [], phong_KD: [],
     giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: []
   });
   const [loading, setLoading] = useState(true);
@@ -55,7 +55,7 @@ export default function NhanVienPage() {
   // Form
   const [form, setForm] = useState({
     ho_ten: '', so_dien_thoai: '', email: '',
-    vai_tro: 'Sale', chuc_danh: '', trang_thai: 'Đang làm',
+    vai_tro: 'Sale', employee_type: '', trang_thai: 'Đang làm',
     avatar_url: '',
     gioi_tinh: '', khu_vuc: '', phong_KD: '',
     so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
@@ -113,7 +113,7 @@ export default function NhanVienPage() {
     setEditingItem(null);
     setForm({
       ho_ten: '', so_dien_thoai: '', email: '',
-      vai_tro: 'Sale', chuc_danh: '', trang_thai: 'Đang làm',
+      vai_tro: 'Sale', employee_type: '', trang_thai: 'Đang làm',
       avatar_url: '',
       gioi_tinh: '', khu_vuc: '', phong_KD: '',
       so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
@@ -129,7 +129,7 @@ export default function NhanVienPage() {
       so_dien_thoai: nv.so_dien_thoai,
       email: nv.email,
       vai_tro: nv.vai_tro || 'Sale',
-      chuc_danh: nv.chuc_danh || '',
+      employee_type: nv.employee_type || '',
       trang_thai: nv.trang_thai,
       avatar_url: nv.avatar_url || '',
       gioi_tinh: nv.gioi_tinh || '',
@@ -446,16 +446,16 @@ export default function NhanVienPage() {
                             </td>
                           );
                         }
-                        if (col.id === 'chuc_danh') {
+                        if (col.id === 'employee_type') {
                           return (
                             <td key={col.id} style={{ textAlign: col.align as any }}>
                               <span className="flex items-center gap-2">
                                 {nv.vai_tro === 'Admin' ? (
                                   <><ShieldCheck size={14} style={{ color: 'var(--primary)' }} />
-                                    <span className="badge badge-info">{nv.chuc_danh || '—'}</span></>
+                                    <span className="badge badge-info">{nv.employee_type || '—'}</span></>
                                 ) : (
                                   <><Shield size={14} style={{ color: 'var(--success-text)' }} />
-                                    <span className="badge badge-success">{nv.chuc_danh || '—'}</span></>
+                                    <span className="badge badge-success">{nv.employee_type || '—'}</span></>
                                 )}
                               </span>
                             </td>
@@ -735,10 +735,10 @@ export default function NhanVienPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">Chức danh</label>
-                  <select className="form-select" value={form.chuc_danh}
-                    onChange={(e) => setForm({ ...form, chuc_danh: e.target.value })}>
+                  <select className="form-select" value={form.employee_type}
+                    onChange={(e) => setForm({ ...form, employee_type: e.target.value })}>
                     <option value="">— Chọn chức danh —</option>
-                    {danhMuc.chuc_danh.map(cd => <option key={cd} value={cd}>{cd}</option>)}
+                    {danhMuc.employee_types.map(cd => <option key={cd} value={cd}>{cd}</option>)}
                   </select>
                 </div>
                 <div className="form-group">

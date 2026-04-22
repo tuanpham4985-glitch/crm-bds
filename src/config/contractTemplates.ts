@@ -3,11 +3,11 @@
 // CORE LAYER: All keys must be English
 // ============================================================
 
-export type EmployeeType = 'PROBATION' | 'OFFICIAL';
+export type ContractCategory = 'PROBATION' | 'OFFICIAL';
 export type Department = 'BO' | 'KD';
 
 export interface ContractTemplateConfig {
-  employee_type: EmployeeType;
+  contract_category: ContractCategory;
   department: Department;
   template_file: string;
   contract_type: string;
@@ -15,25 +15,25 @@ export interface ContractTemplateConfig {
 
 export const CONTRACT_TEMPLATES: ContractTemplateConfig[] = [
   {
-    employee_type: 'PROBATION',
+    contract_category: 'PROBATION',
     department: 'BO',
     template_file: 'MẪU VIC_HĐTV (KHỐI BO).docx',
     contract_type: 'Thử việc (BO)',
   },
   {
-    employee_type: 'PROBATION',
+    contract_category: 'PROBATION',
     department: 'KD',
     template_file: 'MẪU VIC_HĐTV (KHỐI KD).docx',
     contract_type: 'Thử việc (KD)',
   },
   {
-    employee_type: 'OFFICIAL',
+    contract_category: 'OFFICIAL',
     department: 'BO',
     template_file: 'MẪU VIC_HĐLĐ (KHỐI BO).docx',
     contract_type: 'Chính thức (BO)',
   },
   {
-    employee_type: 'OFFICIAL',
+    contract_category: 'OFFICIAL',
     department: 'KD',
     template_file: 'MẪU VIC_HĐLĐ (KHỐI KD).docx',
     contract_type: 'Chính thức (KD)',

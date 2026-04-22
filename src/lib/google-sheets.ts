@@ -168,7 +168,7 @@ export async function getDanhMuc(): Promise<DanhMuc> {
     trang_thai_kh: [], 
     trang_thai_cong_viec: [], 
     nguon: [],
-    chuc_danh: [],
+    employee_types: [],
     khu_vuc: [],
     gioi_tinh: [],
     phong_KD: []
@@ -193,7 +193,7 @@ export async function getDanhMuc(): Promise<DanhMuc> {
     // Column E (index 4) is for Chức danh / employee_type as per user request
     if (h[4]) {
       const val = str(v[h[4]]);
-      if (val) result.chuc_danh.push(val);
+      if (val) result.employee_types.push(val);
     }
     
     pushIfValid('khu_vuc', result.khu_vuc);
@@ -260,7 +260,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       ho_ten: hoTen,
       so_dien_thoai: str(v[h[2]]),
       email: str(v[h[3]]),
-      chuc_danh: str(v[h[4]]),
+      employee_type: str(v[h[4]]),
       trang_thai: str(v[h[5]]),
       so_cccd: h[6] ? str(v[h[6]]) : '',
       ngay_cap: h[7] ? str(v[h[7]]) : '',
@@ -275,6 +275,8 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       vai_tro: v['vai_tro'] ? str(v['vai_tro']) : (h[15] ? str(v[h[15]]) : 'Sale'),
       khu_vuc: v['khu_vuc'] ? str(v['khu_vuc']) : '',
       phong_KD: v['phong_KD'] ? str(v['phong_KD']) : '',
+      so_tk_ngan_hang: v['so_tk_ngan_hang'] ? str(v['so_tk_ngan_hang']) : '',
+      ten_ngan_hang_thu_huong: v['ten_ngan_hang_thu_huong'] ? str(v['ten_ngan_hang_thu_huong']) : '',
     } as NhanVien);
   }
   return result;
@@ -663,13 +665,15 @@ export async function addNhanVien(nv: NhanVien): Promise<void> {
   const h = sheet.headerValues;
   await sheet.addRow({
     [h[0]]: nv.id_nhan_vien, [h[1]]: nv.ho_ten, [h[2]]: nv.so_dien_thoai,
-    [h[3]]: nv.email, [h[4]]: nv.chuc_danh || '', [h[5]]: nv.trang_thai,
+    [h[3]]: nv.email, [h[4]]: nv.employee_type || '', [h[5]]: nv.trang_thai,
     [h[6]]: nv.so_cccd || '', [h[7]]: nv.ngay_cap || '',
     [h[8]]: nv.noi_cap || '', [h[9]]: nv.HKTT || '',
     [h[10]]: nv.ngay_sinh || '', [h[11]]: nv.gioi_tinh || '',
     [h[12]]: nv.ma_so_thue || '', [h[13]]: nv.ngay_tao || '',
     [h[14]]: nv.avatar_url || '',
     [h[15] || 'vai_tro']: nv.vai_tro || 'Sale',
+    'so_tk_ngan_hang': nv.so_tk_ngan_hang || '',
+    'ten_ngan_hang_thu_huong': nv.ten_ngan_hang_thu_huong || '',
   });
   await addLog(doc, 'CREATE_NV', nv.id_nhan_vien, '', '');
 }
@@ -684,7 +688,7 @@ export async function updateNhanVien(nv: NhanVien): Promise<boolean> {
   if (!row) return false;
 
   row.set(h[1], nv.ho_ten); row.set(h[2], nv.so_dien_thoai);
-  row.set(h[3], nv.email); row.set(h[4], nv.chuc_danh || '');
+  row.set(h[3], nv.email); row.set(h[4], nv.employee_type || '');
   row.set(h[5], nv.trang_thai);
   if (h[6]) row.set(h[6], nv.so_cccd || '');
   if (h[7]) row.set(h[7], nv.ngay_cap || '');
@@ -696,6 +700,10 @@ export async function updateNhanVien(nv: NhanVien): Promise<boolean> {
   if (h[13]) row.set(h[13], nv.ngay_tao || '');
   if (h[14]) row.set(h[14], nv.avatar_url || '');
   if (h[15]) row.set(h[15], nv.vai_tro || 'Sale');
+  
+  if (h.includes('so_tk_ngan_hang')) row.set('so_tk_ngan_hang', nv.so_tk_ngan_hang || '');
+  if (h.includes('ten_ngan_hang_thu_huong')) row.set('ten_ngan_hang_thu_huong', nv.ten_ngan_hang_thu_huong || '');
+  
   await row.save();
   await addLog(doc, 'UPDATE_NV', nv.id_nhan_vien, '', '');
   return true;
@@ -725,7 +733,7 @@ export async function findNhanVienByEmail(email: string): Promise<NhanVien | nul
 // HỢP ĐỒNG (Contracts) — CORE LAYER: English keys
 // ============================================================
 
-const HOP_DONG_HEADERS = ['id', 'id_nhan_vien', 'so_hop_dong', 'phong_KD', 'employee_type', 'department', 'contract_type', 'template_file', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at', 'chuc_danh'];
+const HOP_DONG_HEADERS = ['id', 'id_nhan_vien', 'so_hop_dong', 'phong_KD', 'employee_type', 'department', 'contract_type', 'template_file', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at'];
 
 export async function getHopDong(): Promise<HopDong[]> {
   const doc = await getDoc();
@@ -762,7 +770,6 @@ export async function getHopDong(): Promise<HopDong[]> {
         luong_co_ban: h[10] ? num(v[h[10]]) : 0,
         ghi_chu: h[11] ? str(v[h[11]]) : '',
         created_at: h[12] ? str(v[h[12]]) : '',
-        chuc_danh: h[13] ? str(v[h[13]]) : '',
       } as HopDong;
     })
     .filter((x): x is HopDong => x !== null);
@@ -795,7 +802,6 @@ export async function addHopDong(hd: HopDong): Promise<void> {
   if (h[10]) rowData[h[10]] = hd.luong_co_ban || 0;
   if (h[11]) rowData[h[11]] = hd.ghi_chu || '';
   if (h[12]) rowData[h[12]] = hd.created_at || '';
-  if (h[13]) rowData[h[13]] = hd.chuc_danh || '';
 
   await sheet.addRow(rowData);
   await addLog(doc, 'CREATE_HD', hd.id, hd.id_nhan_vien, '');
@@ -826,7 +832,6 @@ export async function updateHopDong(hd: HopDong): Promise<boolean> {
   if (h[9]) row.set(h[9], hd.ngay_ket_thuc || '');
   if (h[10]) row.set(h[10], hd.luong_co_ban || 0);
   if (h[11]) row.set(h[11], hd.ghi_chu || '');
-  if (h[13]) row.set(h[13], hd.chuc_danh || '');
   await row.save();
   await addLog(doc, 'UPDATE_HD', hd.id, '', '');
   return true;

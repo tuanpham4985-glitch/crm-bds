@@ -23,8 +23,8 @@ export async function POST(req: Request) {
       linebreaks: true,
     });
 
-    // Map all fields from contract + employee data
-    doc.setData({
+    // Build the export data object — keys MUST match .docx placeholders exactly
+    const exportData = {
       // Contract fields
       so_hop_dong: data.so_hop_dong || '',
       loai_hop_dong: data.contract_type || '',
@@ -37,14 +37,19 @@ export async function POST(req: Request) {
       thang_ky: data.thang_ky || (new Date().getMonth() + 1).toString(),
       nam_ky: data.nam_ky || new Date().getFullYear().toString(),
 
-      // Employee fields
-      ten_nhan_vien: data.ten_nhan_vien || data.ten_ctv || '',
-      ten_ctv: data.ten_ctv || data.ten_nhan_vien || '',
+      // Employee fields from NHAN_VIEN — exact placeholder keys
+      ho_ten: data.ho_ten || data.ten_nhan_vien || '',
+      ten_nhan_vien: data.ten_nhan_vien || data.ho_ten || '',
+      ten_ctv: data.ten_ctv || data.ho_ten || '',
+      ngay_sinh: data.ngay_sinh || '',
+      gioi_tinh: data.gioi_tinh || '',
       so_cccd: data.so_cccd || '',
-      dia_chi: data.dia_chi || data.hk_thuong_tru || '',
-      ngay_thang_nam_cap: data.ngay_thang_nam_cap || '',
+      ngay_cap: data.ngay_cap || '',
+      ngay_thang_nam_cap: data.ngay_thang_nam_cap || data.ngay_cap || '',
       noi_cap: data.noi_cap || '',
-      hk_thuong_tru: data.hk_thuong_tru || data.dia_chi || '',
+      HKTT: data.HKTT || '',
+      hk_thuong_tru: data.HKTT || data.hk_thuong_tru || '',
+      dia_chi: data.dia_chi || data.HKTT || '',
       ma_so_thue: data.ma_so_thue || '',
 
       // Bank info
@@ -52,11 +57,15 @@ export async function POST(req: Request) {
       ten_ngan_hang_thu_huong: data.ten_ngan_hang_thu_huong || '',
 
       // HRM info
-      chuc_danh: data.chuc_danh || '',
+      chuc_danh: data.employee_type || '',
       khoi_lam_viec: data.department === 'KD' ? 'Khối Kinh doanh' : 'Khối BO',
       phong_KD: data.phong_KD || '',
-    });
+    };
 
+    // Debug: log all template data before rendering
+    console.log('[Contract Generate] exportData:', JSON.stringify(exportData, null, 2));
+
+    doc.setData(exportData);
     doc.render();
 
     // ✅ QUAN TRỌNG: dùng nodebuffer

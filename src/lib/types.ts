@@ -8,7 +8,7 @@ export interface DanhMuc {
   trang_thai_kh: string[];
   trang_thai_cong_viec: string[];
   nguon: string[];
-  chuc_danh: string[];
+  employee_types: string[];
   khu_vuc: string[];
   gioi_tinh: string[];
   phong_KD: string[];
@@ -31,7 +31,7 @@ export interface NhanVien {
   so_dien_thoai: string;
   email: string;
   vai_tro: string; // 'Sale' | 'Admin' (index 15)
-  chuc_danh: string; // index 4
+  employee_type: string; // index 4 (Position)
   gioi_tinh?: string;
   khu_vuc?: string;
   phong_KD?: string;
@@ -45,6 +45,8 @@ export interface NhanVien {
   ngay_tao: string;
   avatar_url?: string;
   mat_khau?: string;
+  so_tk_ngan_hang?: string;
+  ten_ngan_hang_thu_huong?: string;
 }
 
 // === HỢP ĐỒNG ===
@@ -53,10 +55,9 @@ export interface HopDong {
   id_nhan_vien: string;
   so_hop_dong: string;
   phong_KD?: string;
-  chuc_danh?: string;
+  employee_type?: string; // index 13/4 (Position)
 
   // Core business fields (EN standard)
-  employee_type?: 'PROBATION' | 'OFFICIAL';
   department: 'KD' | 'BO';
   contract_type: string;
 

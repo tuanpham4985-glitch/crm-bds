@@ -12,7 +12,7 @@ export const FIELD_LABELS: Record<string, string> = {
   phong_KD: 'Phòng KD',
   khu_vuc: 'Khu vực',
   gioi_tinh: 'Giới tính',
-  chuc_danh: 'Chức danh',
+  employee_type: 'Chức danh',
 
   // Common fields
   id: 'Mã',
@@ -41,10 +41,4 @@ export function getFieldLabel(key: string): string {
 export const DEPARTMENT_LABELS: Record<string, string> = {
   KD: 'Khối KD (Kinh doanh)',
   BO: 'Khối BO (Back Office)',
-};
-
-/** Employee type display labels */
-export const EMPLOYEE_TYPE_LABELS: Record<string, string> = {
-  PROBATION: 'Thử việc',
-  OFFICIAL: 'Chính thức',
 };

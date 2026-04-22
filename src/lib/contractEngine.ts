@@ -3,42 +3,42 @@
 // CORE LAYER: All keys must be English
 // ============================================================
 
-import { CONTRACT_TEMPLATES, EmployeeType, Department, ContractTemplateConfig } from '../config/contractTemplates';
+import { CONTRACT_TEMPLATES, ContractCategory, Department, ContractTemplateConfig } from '../config/contractTemplates';
 
-export function getContractTemplate(employee_type: EmployeeType, department: Department): ContractTemplateConfig | null {
+export function getContractTemplate(category: ContractCategory, department: Department): ContractTemplateConfig | null {
   const template = CONTRACT_TEMPLATES.find(
-    (t) => t.employee_type === employee_type && t.department === department
+    (t) => t.contract_category === category && t.department === department
   );
   return template || null;
 }
 
-export function getContractType(employee_type: EmployeeType, department: Department): string | null {
-  const template = getContractTemplate(employee_type, department);
+export function getContractType(category: ContractCategory, department: Department): string | null {
+  const template = getContractTemplate(category, department);
   return template ? template.contract_type : null;
 }
 
-export function getTemplateFile(employee_type: EmployeeType, department: Department): string | null {
-  const template = getContractTemplate(employee_type, department);
+export function getTemplateFile(category: ContractCategory, department: Department): string | null {
+  const template = getContractTemplate(category, department);
   return template ? template.template_file : null;
 }
 
 /**
- * Detect department and employee_type from role (vai_tro), chuc_danh (position) and base contract label.
+ * Detect department and contract_category from role (vai_tro), position (employee_type) and base contract label.
  */
 export function detectEmployeeClassification(
   role: string, 
   contractTypeLabel: string, 
-  chuc_danh?: string
-): { employee_type: EmployeeType, department: Department } {
-  // Priority 1: Detect by chuc_danh (position)
+  position?: string
+): { contract_category: ContractCategory, department: Department } {
+  // Priority 1: Detect by position
   let department: Department = 'KD';
-  if (chuc_danh) {
-    department = chuc_danh.includes('KD') ? 'KD' : 'BO';
+  if (position) {
+    department = position.includes('KD') ? 'KD' : 'BO';
   } else {
     // Fallback: Priority 2: Detect by role
     department = role?.toLowerCase() === 'admin' ? 'BO' : 'KD';
   }
 
-  const employee_type: EmployeeType = contractTypeLabel?.toLowerCase()?.includes('thử việc') ? 'PROBATION' : 'OFFICIAL';
-  return { employee_type, department };
+  const contract_category: ContractCategory = contractTypeLabel?.toLowerCase()?.includes('thử việc') ? 'PROBATION' : 'OFFICIAL';
+  return { contract_category, department };
 }
