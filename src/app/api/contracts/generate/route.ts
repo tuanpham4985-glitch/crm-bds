@@ -28,7 +28,7 @@ export async function POST(req: Request) {
       templateFileName
     );
 
-    const content = fs.readFileSync(filePath, "binary");
+    const content = fs.readFileSync(filePath);
 
     const zip = new PizZip(content);
     const doc = new Docxtemplater(zip, {
