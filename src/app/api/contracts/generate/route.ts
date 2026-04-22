@@ -11,6 +11,7 @@ export async function POST(req: Request) {
     const templateFileName = data.template_file || "contract-template.docx";
     const filePath = path.join(
       process.cwd(),
+      "public",
       "templates",
       templateFileName
     );
@@ -83,10 +84,10 @@ export async function POST(req: Request) {
         "Content-Disposition": `attachment; filename=${fileName}`,
       },
     });
-  } catch (error) {
-    console.error(error);
+  } catch (error: any) {
+    console.error('[Contract Generate] Error:', error);
     return NextResponse.json(
-      { error: "Generate failed" },
+      { error: "Generate failed", message: error.message },
       { status: 500 }
     );
   }

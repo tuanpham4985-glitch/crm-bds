@@ -329,7 +329,10 @@ function HopDongContent() {
         body: JSON.stringify(finalData),
       });
 
-      if (!res.ok) throw new Error('Export failed');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Export failed');
+      }
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -341,9 +344,9 @@ function HopDongContent() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
       setExportItem(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Export error:', err);
-      alert('Lỗi xuất hợp đồng. Vui lòng thử lại.');
+      alert('Lỗi xuất hợp đồng: ' + (err.message || 'Vui lòng thử lại.'));
     } finally {
       setExporting(false);
     }

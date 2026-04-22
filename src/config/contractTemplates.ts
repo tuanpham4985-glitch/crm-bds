@@ -17,25 +17,25 @@ export const CONTRACT_TEMPLATES: ContractTemplateConfig[] = [
   {
     contract_category: 'PROBATION',
     department: 'BO',
-    template_file: 'MẪU VIC_HĐTV (KHỐI BO).docx',
+    template_file: 'MAU_VIC_HDTV_BO.docx',
     contract_type: 'Thử việc (BO)',
   },
   {
     contract_category: 'PROBATION',
     department: 'KD',
-    template_file: 'MẪU VIC_HĐTV (KHỐI KD).docx',
+    template_file: 'MAU_VIC_HDTV_KD.docx',
     contract_type: 'Thử việc (KD)',
   },
   {
     contract_category: 'OFFICIAL',
     department: 'BO',
-    template_file: 'MẪU VIC_HĐLĐ (KHỐI BO).docx',
+    template_file: 'MAU_VIC_HDLD_BO.docx',
     contract_type: 'Chính thức (BO)',
   },
   {
     contract_category: 'OFFICIAL',
     department: 'KD',
-    template_file: 'MẪU VIC_HĐLĐ (KHỐI KD).docx',
+    template_file: 'MAU_VIC_HDLD_KD.docx',
     contract_type: 'Chính thức (KD)',
   }
 ];
