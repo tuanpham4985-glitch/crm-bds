@@ -7,8 +7,20 @@ import Docxtemplater from "docxtemplater";
 export async function POST(req: Request) {
   try {
     const data = await req.json();
+    
+    // Mapping old filenames to new ones for backward compatibility
+    const TEMPLATE_MAP: Record<string, string> = {
+      'MẪU VIC_HĐTV (KHỐI BO).docx': 'MAU_VIC_HDTV_BO.docx',
+      'MẪU VIC_HĐTV (KHỐI KD).docx': 'MAU_VIC_HDTV_KD.docx',
+      'MẪU VIC_HĐLĐ (KHỐI BO).docx': 'MAU_VIC_HDLD_BO.docx',
+      'MẪU VIC_HĐLĐ (KHỐI KD).docx': 'MAU_VIC_HDLD_KD.docx',
+    };
 
-    const templateFileName = data.template_file || "contract-template.docx";
+    let templateFileName = data.template_file || "MAU_VIC_HDTV_KD.docx";
+    if (TEMPLATE_MAP[templateFileName]) {
+      templateFileName = TEMPLATE_MAP[templateFileName];
+    }
+
     const filePath = path.join(
       process.cwd(),
       "public",
