@@ -6,10 +6,14 @@ import {
   Plus, Edit3, Trash2, X, FileText, Download,
   Search, Filter, Eye, Calendar, DollarSign, User
 } from 'lucide-react';
-import type { NhanVien, HopDong } from '@/lib/types';
+import { HopDong, NhanVien, DanhMuc } from '@/lib/types';
 import { formatDate, formatCurrency } from '@/lib/utils';
-import { LOAI_HOP_DONG, TRANG_THAI_HOP_DONG_COLORS } from '@/lib/constants';
+import { TRANG_THAI_HOP_DONG_COLORS } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
+import { CONTRACT_TEMPLATES } from '@/config/contractTemplates';
+import { detectEmployeeClassification, getContractTemplate } from '@/lib/contractEngine';
+import type { Department, EmployeeType } from '@/config/contractTemplates';
+import { FIELD_LABELS, getFieldLabel, DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS } from '@/config/fieldLabels';
 import Link from 'next/link';
 
 function getContractStatus(ngay_ket_thuc: string): string {
@@ -65,23 +69,45 @@ function HopDongContent() {
   const [form, setForm] = useState({
     id_nhan_vien: prefilledEmployeeId,
     so_hop_dong: '',
-    loai_hop_dong: 'Thử việc',
+    contract_type: 'Thử việc',
     ngay_bat_dau: '',
     ngay_ket_thuc: '',
     luong_co_ban: '',
     ghi_chu: '',
+    department: 'KD' as Department,
+    phong_KD: '',
+    chuc_danh: '',
   });
+
+  const [danhMuc, setDanhMuc] = useState<DanhMuc>({
+    chuc_danh: [], khu_vuc: [], gioi_tinh: [], phong_KD: [],
+    giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: []
+  });
+
+  // Auto-computed contract template based on form selections
+  const selectedEmployee = employees.find(e => e.id_nhan_vien === form.id_nhan_vien);
+  const classification = detectEmployeeClassification(
+    selectedEmployee?.vai_tro || 'Sale',
+    form.contract_type,
+    selectedEmployee?.chuc_danh
+  );
+  // Override department from form if user changed it manually
+  const resolvedTemplate = getContractTemplate(classification.employee_type, form.department);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [hdRes, nvRes] = await Promise.all([
+      const [hdRes, nvRes, dmRes] = await Promise.all([
         fetch('/api/contracts'),
         fetch('/api/nhan-vien'),
+        fetch('/api/danh-muc'),
       ]);
-      const [hdData, nvData] = await Promise.all([hdRes.json(), nvRes.json()]);
+      const [hdData, nvData, dmData] = await Promise.all([
+        hdRes.json(), nvRes.json(), dmRes.json()
+      ]);
       if (hdData.success) setContracts(hdData.data);
       if (nvData.success) setEmployees(nvData.data);
+      if (dmData.success) setDanhMuc(dmData.data);
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -117,7 +143,7 @@ function HopDongContent() {
     const matchSearch = !searchQuery ||
       hd.so_hop_dong.toLowerCase().includes(searchQuery.toLowerCase()) ||
       empName.includes(searchQuery.toLowerCase());
-    const matchType = !filterType || hd.loai_hop_dong === filterType;
+    const matchType = !filterType || hd.contract_type === filterType;
     const matchStatus = !filterStatus || getContractStatus(hd.ngay_ket_thuc) === filterStatus;
     const matchEmployee = !filterEmployee || hd.id_nhan_vien === filterEmployee;
     return matchSearch && matchType && matchStatus && matchEmployee;
@@ -127,28 +153,40 @@ function HopDongContent() {
     setEditingItem(null);
     const now = new Date();
     const soHD = `HD-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getTime()).slice(-4)}`;
+    const emp = employees.find(e => e.id_nhan_vien === employeeId);
+    const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', 'Thử việc', emp?.chuc_danh);
+    const dept: Department = classification.department;
     setForm({
       id_nhan_vien: employeeId || '',
       so_hop_dong: soHD,
-      loai_hop_dong: 'Thử việc',
+      contract_type: 'Thử việc',
       ngay_bat_dau: new Date().toISOString().split('T')[0],
       ngay_ket_thuc: '',
       luong_co_ban: '',
       ghi_chu: '',
+      department: dept,
+      phong_KD: emp?.phong_KD || '',
+      chuc_danh: emp?.chuc_danh || '',
     });
     setShowModal(true);
   };
 
   const openEdit = (hd: HopDong) => {
     setEditingItem(hd);
+    const emp = employees.find(e => e.id_nhan_vien === hd.id_nhan_vien);
+    const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', hd.contract_type || 'Thử việc', emp?.chuc_danh);
+    const dept: Department = (hd.department as Department) || classification.department;
     setForm({
       id_nhan_vien: hd.id_nhan_vien,
       so_hop_dong: hd.so_hop_dong,
-      loai_hop_dong: hd.loai_hop_dong,
+      contract_type: hd.contract_type || 'Thử việc',
       ngay_bat_dau: hd.ngay_bat_dau ? new Date(hd.ngay_bat_dau).toISOString().split('T')[0] : '',
       ngay_ket_thuc: hd.ngay_ket_thuc ? new Date(hd.ngay_ket_thuc).toISOString().split('T')[0] : '',
       luong_co_ban: String(hd.luong_co_ban || ''),
       ghi_chu: hd.ghi_chu,
+      department: dept,
+      phong_KD: hd.phong_KD || '',
+      chuc_danh: hd.chuc_danh || '',
     });
     setShowModal(true);
   };
@@ -161,9 +199,25 @@ function HopDongContent() {
     setSaving(true);
     try {
       const method = editingItem ? 'PUT' : 'POST';
+      // Use contract engine to resolve template
+      const engineResult = resolvedTemplate;
       const body = editingItem
-        ? { ...editingItem, ...form, luong_co_ban: Number(form.luong_co_ban) || 0 }
-        : { ...form, luong_co_ban: Number(form.luong_co_ban) || 0 };
+        ? {
+            ...editingItem, ...form,
+            luong_co_ban: Number(form.luong_co_ban) || 0,
+            employee_type: classification.employee_type,
+            department: form.department,
+            contract_type: engineResult?.contract_type || form.contract_type,
+            template_file: engineResult?.template_file || '',
+          }
+        : {
+            ...form,
+            luong_co_ban: Number(form.luong_co_ban) || 0,
+            employee_type: classification.employee_type,
+            department: form.department,
+            contract_type: engineResult?.contract_type || form.contract_type,
+            template_file: engineResult?.template_file || '',
+          };
       const res = await fetch('/api/contracts', {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -208,17 +262,25 @@ function HopDongContent() {
     try {
       const emp = employees.find(e => e.id_nhan_vien === exportItem.id_nhan_vien);
       const now = new Date();
+      // Resolve template_file from stored data or re-compute via engine
+      const exportClassification = detectEmployeeClassification(emp?.vai_tro || 'Sale', exportItem.contract_type, emp?.chuc_danh);
+      const exportDept = (exportItem.department || exportClassification.department) as Department;
+      const exportTemplate = getContractTemplate(exportClassification.employee_type, exportDept);
+      const templateFile = exportItem.template_file || exportTemplate?.template_file || '';
       const res = await fetch('/api/contracts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          template_file: templateFile,
           so_hop_dong: exportItem.so_hop_dong,
-          loai_hop_dong: exportItem.loai_hop_dong,
+          contract_type: exportItem.contract_type,
           ngay_bat_dau: formatDate(exportItem.ngay_bat_dau),
           ngay_ket_thuc: formatDate(exportItem.ngay_ket_thuc),
           luong_co_ban: new Intl.NumberFormat('vi-VN').format(exportItem.luong_co_ban),
           ten_nhan_vien: emp?.ho_ten || '',
           ten_ctv: emp?.ho_ten || '',
+          chuc_danh: emp?.chuc_danh || '',
+          department: exportDept,
           ngay_ky: String(now.getDate()),
           thang_ky: String(now.getMonth() + 1),
           nam_ky: String(now.getFullYear()),
@@ -315,7 +377,12 @@ function HopDongContent() {
           <select className="form-select" value={filterType}
             onChange={e => setFilterType(e.target.value)}>
             <option value="">Tất cả loại</option>
-            {LOAI_HOP_DONG.map(t => <option key={t} value={t}>{t}</option>)}
+            {CONTRACT_TEMPLATES.map(t => (
+              <option key={t.contract_type} value={t.contract_type}>{t.contract_type}</option>
+            ))}
+            <option value="Thử việc">Thử việc (cũ)</option>
+            <option value="Chính thức">Chính thức (cũ)</option>
+            <option value="CTV">CTV</option>
           </select>
           <select className="form-select" value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}>
@@ -352,13 +419,13 @@ function HopDongContent() {
               <thead>
                 <tr>
                   <th style={{ width: 50 }}>#</th>
-                  <th>Số hợp đồng</th>
+                  <th>{getFieldLabel('so_hop_dong')}</th>
                   <th>Nhân viên</th>
-                  <th>Loại HĐ</th>
-                  <th>Ngày bắt đầu</th>
-                  <th>Ngày kết thúc</th>
+                  <th>{getFieldLabel('contract_type')}</th>
+                  <th>{getFieldLabel('ngay_bat_dau')}</th>
+                  <th>{getFieldLabel('ngay_ket_thuc')}</th>
                   <th>Trạng thái</th>
-                  <th style={{ textAlign: 'right' }}>Lương cơ bản</th>
+                  <th style={{ textAlign: 'right' }}>{getFieldLabel('luong_co_ban')}</th>
                   {isAdmin && <th style={{ width: 150, textAlign: 'center' }}>Thao tác</th>}
                 </tr>
               </thead>
@@ -384,10 +451,10 @@ function HopDongContent() {
                       </td>
                       <td>
                         <span className={`badge ${
-                          hd.loai_hop_dong === 'Chính thức' ? 'badge-info' :
-                          hd.loai_hop_dong === 'Thử việc' ? 'badge-warning' : 'badge-neutral'
+                          hd.contract_type.includes('Chính thức') ? 'badge-info' :
+                          hd.contract_type.includes('Thử việc') ? 'badge-warning' : 'badge-neutral'
                         }`}>
-                          {hd.loai_hop_dong}
+                          {hd.contract_type}
                         </span>
                       </td>
                       <td>
@@ -475,7 +542,18 @@ function HopDongContent() {
               <div className="form-group">
                 <label className="form-label">Nhân viên *</label>
                 <select className="form-select" value={form.id_nhan_vien}
-                  onChange={e => setForm({ ...form, id_nhan_vien: e.target.value })}>
+                  onChange={e => {
+                    const empId = e.target.value;
+                    const emp = employees.find(x => x.id_nhan_vien === empId);
+                    const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', form.contract_type, emp?.chuc_danh);
+                    setForm({ 
+                      ...form, 
+                      id_nhan_vien: empId, 
+                      department: classification.department, 
+                      phong_KD: emp?.phong_KD || '',
+                      chuc_danh: emp?.chuc_danh || ''
+                    });
+                  }}>
                   <option value="">— Chọn nhân viên —</option>
                   {employees.map(emp => (
                     <option key={emp.id_nhan_vien} value={emp.id_nhan_vien}>
@@ -494,9 +572,59 @@ function HopDongContent() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Loại hợp đồng</label>
-                  <select className="form-select" value={form.loai_hop_dong}
-                    onChange={e => setForm({ ...form, loai_hop_dong: e.target.value })}>
-                    {LOAI_HOP_DONG.map(t => <option key={t} value={t}>{t}</option>)}
+                  <select className="form-select" value={form.contract_type}
+                    onChange={e => setForm({ ...form, contract_type: e.target.value })}>
+                    <option value="Thử việc">Thử việc</option>
+                    <option value="Chính thức">Chính thức</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">{getFieldLabel('department')}</label>
+                  <select className="form-select" value={form.department}
+                    onChange={e => setForm({ ...form, department: e.target.value as Department })}>
+                    <option value="KD">{DEPARTMENT_LABELS.KD}</option>
+                    <option value="BO">{DEPARTMENT_LABELS.BO}</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Mẫu hợp đồng</label>
+                  <div style={{
+                    padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                    background: resolvedTemplate ? 'var(--success-bg)' : 'var(--bg-page)',
+                    color: resolvedTemplate ? 'var(--success-text)' : 'var(--text-muted)',
+                    fontSize: '0.8125rem', fontWeight: 500,
+                    border: '1px solid var(--border)',
+                    display: 'flex', alignItems: 'center', gap: 6, minHeight: 38,
+                  }}>
+                    <FileText size={14} />
+                    {resolvedTemplate ? resolvedTemplate.contract_type : 'Chọn nhân viên & loại HĐ'}
+                  </div>
+                  {resolvedTemplate && (
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2, display: 'block' }}>
+                      📄 {resolvedTemplate.template_file}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">{getFieldLabel('chuc_danh')}</label>
+                  <select className="form-select" value={form.chuc_danh}
+                    onChange={e => setForm({ ...form, chuc_danh: e.target.value })}>
+                    <option value="">— Chọn chức danh —</option>
+                    {danhMuc.chuc_danh.map(cd => <option key={cd} value={cd}>{cd}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">{getFieldLabel('phong_KD')}</label>
+                  <select className="form-select" value={form.phong_KD}
+                    onChange={e => setForm({ ...form, phong_KD: e.target.value })}>
+                    <option value="">— Chọn phòng —</option>
+                    {danhMuc.phong_KD.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
               </div>
@@ -558,14 +686,16 @@ function HopDongContent() {
                 display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
               }}>
                 {[
-                  { label: 'Số hợp đồng', value: viewItem.so_hop_dong },
+                  { label: getFieldLabel('so_hop_dong'), value: viewItem.so_hop_dong },
                   { label: 'Nhân viên', value: getEmployeeName(viewItem.id_nhan_vien) },
-                  { label: 'Loại HĐ', value: viewItem.loai_hop_dong },
+                  { label: getFieldLabel('chuc_danh'), value: viewItem.chuc_danh || '—' },
+                  { label: getFieldLabel('phong_KD'), value: viewItem.phong_KD || '—' },
+                  { label: getFieldLabel('contract_type'), value: viewItem.contract_type },
                   { label: 'Trạng thái', value: getContractStatus(viewItem.ngay_ket_thuc), isBadge: true },
-                  { label: 'Ngày bắt đầu', value: formatDate(viewItem.ngay_bat_dau) },
-                  { label: 'Ngày kết thúc', value: viewItem.ngay_ket_thuc ? formatDate(viewItem.ngay_ket_thuc) : 'Không thời hạn' },
-                  { label: 'Lương cơ bản', value: formatCurrency(viewItem.luong_co_ban) },
-                  { label: 'Ngày tạo', value: formatDate(viewItem.created_at) },
+                  { label: getFieldLabel('ngay_bat_dau'), value: formatDate(viewItem.ngay_bat_dau) },
+                  { label: getFieldLabel('ngay_ket_thuc'), value: viewItem.ngay_ket_thuc ? formatDate(viewItem.ngay_ket_thuc) : 'Không thời hạn' },
+                  { label: getFieldLabel('luong_co_ban'), value: formatCurrency(viewItem.luong_co_ban) },
+                  { label: getFieldLabel('created_at'), value: formatDate(viewItem.created_at) },
                 ].map((item, i) => (
                   <div key={i} style={{
                     padding: '12px 14px',

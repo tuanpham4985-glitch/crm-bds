@@ -5,18 +5,39 @@ import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
   Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText
 } from 'lucide-react';
-import type { NhanVien, Pipeline, KhachHang, HopDong } from '@/lib/types';
+import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc } from '@/lib/types';
 import Link from 'next/link';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { VAI_TRO } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
 
+const NHAN_VIEN_FIELDS = [
+  { id: 'index', label: '#', width: 50, public: true },
+  { id: 'ho_ten', label: 'Họ tên', public: true },
+  { id: 'so_dien_thoai', label: 'SĐT', public: true },
+  { id: 'email', label: 'Email', public: false },
+  { id: 'chuc_danh', label: 'Chức danh', public: true },
+  { id: 'trang_thai', label: 'Trạng thái', public: true },
+  { id: 'khach_hang', label: 'KH', align: 'right', public: false },
+  { id: 'deal', label: 'Deal', align: 'right', public: true },
+  { id: 'doanh_thu', label: 'Doanh thu', align: 'right', public: true },
+  { id: 'hoa_hong', label: 'Hoa hồng', align: 'right', public: false },
+  { id: 'hop_dong', label: 'Hợp đồng', align: 'center', public: true },
+  { id: 'ngay_tao', label: 'Ngày tạo', public: false },
+  { id: 'thao_tac', label: 'Thao tác', align: 'center', width: 120, public: true, adminOnly: true }
+];
+
 export default function NhanVienPage() {
   const { isAdmin, isLoading: authLoading } = useAuth();
+  const visibleColumns = NHAN_VIEN_FIELDS.filter(f => f.public);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
   const [contracts, setContracts] = useState<HopDong[]>([]);
+  const [danhMuc, setDanhMuc] = useState<DanhMuc>({
+    chuc_danh: [], khu_vuc: [], gioi_tinh: [], phong_KD: [],
+    giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: []
+  });
   const [loading, setLoading] = useState(true);
 
   // Modal
@@ -34,23 +55,27 @@ export default function NhanVienPage() {
   // Form
   const [form, setForm] = useState({
     ho_ten: '', so_dien_thoai: '', email: '',
-    vai_tro: 'Sale', trang_thai: 'Đang làm',
+    vai_tro: 'Sale', chuc_danh: '', trang_thai: 'Đang làm',
     avatar_url: '',
+    gioi_tinh: '', khu_vuc: '', phong_KD: '',
+    so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
   });
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [nvRes, plRes, khRes, hdRes] = await Promise.all([
+      const [nvRes, plRes, khRes, hdRes, dmRes] = await Promise.all([
         fetch('/api/nhan-vien'), fetch('/api/pipeline'), fetch('/api/khach-hang?limit=999'), fetch('/api/contracts'),
+        fetch('/api/danh-muc'),
       ]);
-      const [nvData, plData, khData, hdData] = await Promise.all([
-        nvRes.json(), plRes.json(), khRes.json(), hdRes.json(),
+      const [nvData, plData, khData, hdData, dmData] = await Promise.all([
+        nvRes.json(), plRes.json(), khRes.json(), hdRes.json(), dmRes.json(),
       ]);
       if (nvData.success) setEmployees(nvData.data);
       if (plData.success) setPipelines(plData.data);
       if (khData.success) setCustomers(khData.data);
       if (hdData.success) setContracts(hdData.data);
+      if (dmData.success) setDanhMuc(dmData.data);
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -88,8 +113,10 @@ export default function NhanVienPage() {
     setEditingItem(null);
     setForm({
       ho_ten: '', so_dien_thoai: '', email: '',
-      vai_tro: 'Sale', trang_thai: 'Đang làm',
+      vai_tro: 'Sale', chuc_danh: '', trang_thai: 'Đang làm',
       avatar_url: '',
+      gioi_tinh: '', khu_vuc: '', phong_KD: '',
+      so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
     });
     setUploadError('');
     setShowModal(true);
@@ -101,9 +128,19 @@ export default function NhanVienPage() {
       ho_ten: nv.ho_ten,
       so_dien_thoai: nv.so_dien_thoai,
       email: nv.email,
-      vai_tro: nv.vai_tro,
+      vai_tro: nv.vai_tro || 'Sale',
+      chuc_danh: nv.chuc_danh || '',
       trang_thai: nv.trang_thai,
       avatar_url: nv.avatar_url || '',
+      gioi_tinh: nv.gioi_tinh || '',
+      khu_vuc: nv.khu_vuc || '',
+      phong_KD: nv.phong_KD || '',
+      so_cccd: nv.so_cccd || '',
+      ngay_cap: nv.ngay_cap || '',
+      noi_cap: nv.noi_cap || '',
+      HKTT: nv.HKTT || '',
+      ngay_sinh: nv.ngay_sinh || '',
+      ma_so_thue: nv.ma_so_thue || '',
     });
     setUploadError('');
     setShowModal(true);
@@ -348,19 +385,20 @@ export default function NhanVienPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ width: 50 }}>#</th>
-                  <th>Họ tên</th>
-                  <th>SĐT</th>
-                  <th>Email</th>
-                  <th>Vai trò</th>
-                  <th>Trạng thái</th>
-                  <th style={{ textAlign: 'right' }}>KH</th>
-                  <th style={{ textAlign: 'right' }}>Deal</th>
-                  <th style={{ textAlign: 'right' }}>Doanh thu</th>
-                  <th style={{ textAlign: 'right' }}>Hoa hồng</th>
-                  <th style={{ textAlign: 'center' }}>Hợp đồng</th>
-                  <th>Ngày tạo</th>
-                  {isAdmin && <th style={{ width: 120, textAlign: 'center' }}>Thao tác</th>}
+                  {visibleColumns.map(col => {
+                    if (col.adminOnly && !isAdmin) return null;
+                    return (
+                      <th
+                        key={col.id}
+                        style={{
+                          width: col.width,
+                          textAlign: col.align as any
+                        }}
+                      >
+                        {col.label}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -369,92 +407,141 @@ export default function NhanVienPage() {
                   const contractStats = getContractCount(nv.id_nhan_vien);
                   return (
                     <tr key={nv.id_nhan_vien}>
-                      <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
-                      <td>
-                        <div className="flex items-center gap-3" style={{ whiteSpace: 'nowrap' }}>
-                          {renderAvatar(nv)}
-                          {renderAvatarFallback(nv)}
-                          <span style={{ fontWeight: 500, color: 'var(--text-title)' }}>
-                            {nv.ho_ten}
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="flex items-center gap-2">
-                          <Phone size={13} style={{ color: 'var(--text-label)' }} />
-                          {nv.so_dien_thoai || '—'}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="flex items-center gap-2">
-                          <Mail size={13} style={{ color: 'var(--text-label)' }} />
-                          {nv.email || '—'}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="flex items-center gap-2">
-                          {nv.vai_tro === 'Admin' ? (
-                            <><ShieldCheck size={14} style={{ color: 'var(--primary)' }} />
-                              <span className="badge badge-info">{nv.vai_tro}</span></>
-                          ) : (
-                            <><Shield size={14} style={{ color: 'var(--success-text)' }} />
-                              <span className="badge badge-success">{nv.vai_tro}</span></>
-                          )}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge ${nv.trang_thai === 'Đang làm' ? 'badge-success' : 'badge-neutral'}`}>
-                          {nv.trang_thai}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 500 }}>{stats.customers}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 500 }}>
-                        {stats.signedDeals}/{stats.totalDeals}
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        <span className="flex items-center gap-2" style={{ justifyContent: 'flex-end' }}>
-                          <TrendingUp size={13} style={{ color: 'var(--success-text)' }} />
-                          {formatCurrency(stats.revenue)}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', color: 'var(--success-text)', fontWeight: 500 }}>
-                        {formatCurrency(stats.commission)}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <Link
-                          href={`/nhan-vien/hop-dong?id_nhan_vien=${nv.id_nhan_vien}`}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '4px 10px', borderRadius: 6,
-                            background: contractStats.active > 0 ? 'var(--success-bg)' : 'var(--bg-page)',
-                            color: contractStats.active > 0 ? 'var(--success-text)' : 'var(--text-label)',
-                            fontSize: '0.8125rem', fontWeight: 600,
-                            textDecoration: 'none', transition: 'all 0.15s',
-                          }}
-                          title={`${contractStats.total} hợp đồng (${contractStats.active} còn hiệu lực)`}
-                        >
-                          <FileText size={13} />
-                          {contractStats.active}/{contractStats.total}
-                        </Link>
-                      </td>
-                      <td>{formatDate(nv.ngay_tao)}</td>
-                      {isAdmin && (
-                        <td>
-                          <div className="flex items-center gap-1" style={{ justifyContent: 'center' }}>
-                            <Link
-                              href={`/nhan-vien/hop-dong?id_nhan_vien=${nv.id_nhan_vien}&action=create`}
-                              className="btn btn-ghost btn-icon btn-sm"
-                              title="Tạo hợp đồng mới"
-                              style={{ color: 'var(--primary)' }}
-                            >
-                              <FileText size={15} />
-                            </Link>
-                            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(nv)} title="Chỉnh sửa"><Edit3 size={15} /></button>
-                            <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
-                              title="Xóa" onClick={() => { setDeletingId(nv.id_nhan_vien); setShowConfirm(true); }}><Trash2 size={15} /></button>
-                          </div>
-                        </td>
-                      )}
+                      {visibleColumns.map((col) => {
+                        if (col.adminOnly && !isAdmin) return null;
+
+                        if (col.id === 'index') {
+                          return <td key={col.id} style={{ color: 'var(--text-label)', textAlign: col.align as any }}>{idx + 1}</td>;
+                        }
+                        if (col.id === 'ho_ten') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any }}>
+                              <div className="flex items-center gap-3" style={{ whiteSpace: 'nowrap' }}>
+                                {renderAvatar(nv)}
+                                {renderAvatarFallback(nv)}
+                                <span style={{ fontWeight: 500, color: 'var(--text-title)' }}>
+                                  {nv.ho_ten}
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        }
+                        if (col.id === 'so_dien_thoai') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any }}>
+                              <span className="flex items-center gap-2">
+                                <Phone size={13} style={{ color: 'var(--text-label)' }} />
+                                {nv.so_dien_thoai || '—'}
+                              </span>
+                            </td>
+                          );
+                        }
+                        if (col.id === 'email') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any }}>
+                              <span className="flex items-center gap-2">
+                                <Mail size={13} style={{ color: 'var(--text-label)' }} />
+                                {nv.email || '—'}
+                              </span>
+                            </td>
+                          );
+                        }
+                        if (col.id === 'chuc_danh') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any }}>
+                              <span className="flex items-center gap-2">
+                                {nv.vai_tro === 'Admin' ? (
+                                  <><ShieldCheck size={14} style={{ color: 'var(--primary)' }} />
+                                    <span className="badge badge-info">{nv.chuc_danh || '—'}</span></>
+                                ) : (
+                                  <><Shield size={14} style={{ color: 'var(--success-text)' }} />
+                                    <span className="badge badge-success">{nv.chuc_danh || '—'}</span></>
+                                )}
+                              </span>
+                            </td>
+                          );
+                        }
+                        if (col.id === 'trang_thai') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any }}>
+                              <span className={`badge ${nv.trang_thai === 'Đang làm' ? 'badge-success' : 'badge-neutral'}`}>
+                                {nv.trang_thai}
+                              </span>
+                            </td>
+                          );
+                        }
+                        if (col.id === 'khach_hang') {
+                          return <td key={col.id} style={{ textAlign: col.align as any, fontWeight: 500 }}>{stats.customers}</td>;
+                        }
+                        if (col.id === 'deal') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any, fontWeight: 500 }}>
+                              {stats.signedDeals}/{stats.totalDeals}
+                            </td>
+                          );
+                        }
+                        if (col.id === 'doanh_thu') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any, fontWeight: 600 }}>
+                              <span className="flex items-center gap-2" style={{ justifyContent: 'flex-end' }}>
+                                <TrendingUp size={13} style={{ color: 'var(--success-text)' }} />
+                                {formatCurrency(stats.revenue)}
+                              </span>
+                            </td>
+                          );
+                        }
+                        if (col.id === 'hoa_hong') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any, color: 'var(--success-text)', fontWeight: 500 }}>
+                              {formatCurrency(stats.commission)}
+                            </td>
+                          );
+                        }
+                        if (col.id === 'hop_dong') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any }}>
+                              <Link
+                                href={`/nhan-vien/hop-dong?id_nhan_vien=${nv.id_nhan_vien}`}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  padding: '4px 10px', borderRadius: 6,
+                                  background: contractStats.active > 0 ? 'var(--success-bg)' : 'var(--bg-page)',
+                                  color: contractStats.active > 0 ? 'var(--success-text)' : 'var(--text-label)',
+                                  fontSize: '0.8125rem', fontWeight: 600,
+                                  textDecoration: 'none', transition: 'all 0.15s',
+                                }}
+                                title={`${contractStats.total} hợp đồng (${contractStats.active} còn hiệu lực)`}
+                              >
+                                <FileText size={13} />
+                                {contractStats.active}/{contractStats.total}
+                              </Link>
+                            </td>
+                          );
+                        }
+                        if (col.id === 'ngay_tao') {
+                          return <td key={col.id} style={{ textAlign: col.align as any }}>{formatDate(nv.ngay_tao)}</td>;
+                        }
+                        if (col.id === 'thao_tac') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any }}>
+                              <div className="flex items-center gap-1" style={{ justifyContent: 'center' }}>
+                                <Link
+                                  href={`/nhan-vien/hop-dong?id_nhan_vien=${nv.id_nhan_vien}&action=create`}
+                                  className="btn btn-ghost btn-icon btn-sm"
+                                  title="Tạo hợp đồng mới"
+                                  style={{ color: 'var(--primary)' }}
+                                >
+                                  <FileText size={15} />
+                                </Link>
+                                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(nv)} title="Chỉnh sửa"><Edit3 size={15} /></button>
+                                <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
+                                  title="Xóa" onClick={() => { setDeletingId(nv.id_nhan_vien); setShowConfirm(true); }}><Trash2 size={15} /></button>
+                              </div>
+                            </td>
+                          );
+                        }
+                        return null;
+                      })}
                     </tr>
                   );
                 })}
@@ -578,10 +665,11 @@ export default function NhanVienPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
-                  <label className="form-label">Vai trò</label>
+                  <label className="form-label">Vai trò (Hệ thống)</label>
                   <select className="form-select" value={form.vai_tro}
                     onChange={(e) => setForm({ ...form, vai_tro: e.target.value })}>
-                    {VAI_TRO.map(vt => <option key={vt} value={vt}>{vt}</option>)}
+                    <option value="Sale">Sale</option>
+                    <option value="Admin">Admin</option>
                   </select>
                 </div>
                 <div className="form-group">
@@ -594,6 +682,82 @@ export default function NhanVienPage() {
                     💡 Đổi &quot;Nghỉ việc&quot; trực tiếp trong Google Sheet
                   </span>
                 </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Số CCCD</label>
+                  <input className="form-input" value={form.so_cccd}
+                    onChange={(e) => setForm({ ...form, so_cccd: e.target.value })} placeholder="Số CCCD/CMND" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Ngày sinh</label>
+                  <input className="form-input" type="date" value={form.ngay_sinh}
+                    onChange={(e) => setForm({ ...form, ngay_sinh: e.target.value })} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Ngày cấp CCCD</label>
+                  <input className="form-input" type="date" value={form.ngay_cap}
+                    onChange={(e) => setForm({ ...form, ngay_cap: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Nơi cấp</label>
+                  <input className="form-input" value={form.noi_cap}
+                    onChange={(e) => setForm({ ...form, noi_cap: e.target.value })} placeholder="Cục Cảnh sát..." />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">HKTT (Hộ khẩu thường trú)</label>
+                <input className="form-input" value={form.HKTT}
+                  onChange={(e) => setForm({ ...form, HKTT: e.target.value })} placeholder="Địa chỉ ghi trên CCCD" />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Mã số thuế</label>
+                  <input className="form-input" value={form.ma_so_thue}
+                    onChange={(e) => setForm({ ...form, ma_so_thue: e.target.value })} placeholder="MST cá nhân" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Giới tính</label>
+                  <select className="form-select" value={form.gioi_tinh}
+                    onChange={(e) => setForm({ ...form, gioi_tinh: e.target.value })}>
+                    <option value="">— Chọn —</option>
+                    {danhMuc.gioi_tinh.map(gt => <option key={gt} value={gt}>{gt}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Chức danh</label>
+                  <select className="form-select" value={form.chuc_danh}
+                    onChange={(e) => setForm({ ...form, chuc_danh: e.target.value })}>
+                    <option value="">— Chọn chức danh —</option>
+                    {danhMuc.chuc_danh.map(cd => <option key={cd} value={cd}>{cd}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Khu vực</label>
+                  <select className="form-select" value={form.khu_vuc}
+                    onChange={(e) => setForm({ ...form, khu_vuc: e.target.value })}>
+                    <option value="">— Chọn khu vực —</option>
+                    {danhMuc.khu_vuc.map(kv => <option key={kv} value={kv}>{kv}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Phòng KD</label>
+                <select className="form-select" value={form.phong_KD}
+                  onChange={(e) => setForm({ ...form, phong_KD: e.target.value })}>
+                  <option value="">— Chọn phòng —</option>
+                  {danhMuc.phong_KD.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
               </div>
             </div>
 

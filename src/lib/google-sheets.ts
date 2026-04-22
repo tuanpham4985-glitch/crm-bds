@@ -163,13 +163,42 @@ export async function getDanhMuc(): Promise<DanhMuc> {
   const rows = await sheet.getRows();
   const h = sheet.headerValues;
 
-  const result: DanhMuc = { giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: [] };
+  const result: DanhMuc = { 
+    giai_doan_pipeline: [], 
+    trang_thai_kh: [], 
+    trang_thai_cong_viec: [], 
+    nguon: [],
+    chuc_danh: [],
+    khu_vuc: [],
+    gioi_tinh: [],
+    phong_KD: []
+  };
+
   for (const row of rows) {
     const v = row.toObject();
-    if (str(v[h[0]])) result.giai_doan_pipeline.push(str(v[h[0]]));
-    if (str(v[h[1]])) result.trang_thai_kh.push(str(v[h[1]]));
-    if (str(v[h[2]])) result.trang_thai_cong_viec.push(str(v[h[2]]));
-    if (str(v[h[3]])) result.nguon.push(str(v[h[3]]));
+    
+    // Helper to push if header exists and value is not empty
+    const pushIfValid = (headerName: string, target: string[]) => {
+      if (h.includes(headerName)) {
+        const val = str(v[headerName]);
+        if (val) target.push(val);
+      }
+    };
+
+    pushIfValid('giai_doan_pipeline', result.giai_doan_pipeline);
+    pushIfValid('trang_thai_kh', result.trang_thai_kh);
+    pushIfValid('trang_thai_cong_viec', result.trang_thai_cong_viec);
+    pushIfValid('nguon', result.nguon);
+    
+    // Column E (index 4) is for Chức danh / employee_type as per user request
+    if (h[4]) {
+      const val = str(v[h[4]]);
+      if (val) result.chuc_danh.push(val);
+    }
+    
+    pushIfValid('khu_vuc', result.khu_vuc);
+    pushIfValid('gioi_tinh', result.gioi_tinh);
+    pushIfValid('phong_KD', result.phong_KD);
   }
   return result;
 }
@@ -231,10 +260,21 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       ho_ten: hoTen,
       so_dien_thoai: str(v[h[2]]),
       email: str(v[h[3]]),
-      vai_tro: str(v[h[4]]),
+      chuc_danh: str(v[h[4]]),
       trang_thai: str(v[h[5]]),
-      ngay_tao: str(v[h[6]]),
-      avatar_url: str(v[h[7]]),
+      so_cccd: h[6] ? str(v[h[6]]) : '',
+      ngay_cap: h[7] ? str(v[h[7]]) : '',
+      noi_cap: h[8] ? str(v[h[8]]) : '',
+      HKTT: h[9] ? str(v[h[9]]) : '',
+      ngay_sinh: h[10] ? str(v[h[10]]) : '',
+      gioi_tinh: h[11] ? str(v[h[11]]) : '',
+      ma_so_thue: h[12] ? str(v[h[12]]) : '',
+      ngay_tao: h[13] ? str(v[h[13]]) : '',
+      avatar_url: h[14] ? str(v[h[14]]) : '',
+      // Fallback for vai_tro (system role) - check index 15 or named
+      vai_tro: v['vai_tro'] ? str(v['vai_tro']) : (h[15] ? str(v[h[15]]) : 'Sale'),
+      khu_vuc: v['khu_vuc'] ? str(v['khu_vuc']) : '',
+      phong_KD: v['phong_KD'] ? str(v['phong_KD']) : '',
     } as NhanVien);
   }
   return result;
@@ -623,8 +663,13 @@ export async function addNhanVien(nv: NhanVien): Promise<void> {
   const h = sheet.headerValues;
   await sheet.addRow({
     [h[0]]: nv.id_nhan_vien, [h[1]]: nv.ho_ten, [h[2]]: nv.so_dien_thoai,
-    [h[3]]: nv.email, [h[4]]: nv.vai_tro, [h[5]]: nv.trang_thai,
-    [h[6]]: nv.ngay_tao,[h[7]]: nv.avatar_url || '',
+    [h[3]]: nv.email, [h[4]]: nv.chuc_danh || '', [h[5]]: nv.trang_thai,
+    [h[6]]: nv.so_cccd || '', [h[7]]: nv.ngay_cap || '',
+    [h[8]]: nv.noi_cap || '', [h[9]]: nv.HKTT || '',
+    [h[10]]: nv.ngay_sinh || '', [h[11]]: nv.gioi_tinh || '',
+    [h[12]]: nv.ma_so_thue || '', [h[13]]: nv.ngay_tao || '',
+    [h[14]]: nv.avatar_url || '',
+    [h[15] || 'vai_tro']: nv.vai_tro || 'Sale',
   });
   await addLog(doc, 'CREATE_NV', nv.id_nhan_vien, '', '');
 }
@@ -639,9 +684,18 @@ export async function updateNhanVien(nv: NhanVien): Promise<boolean> {
   if (!row) return false;
 
   row.set(h[1], nv.ho_ten); row.set(h[2], nv.so_dien_thoai);
-  row.set(h[3], nv.email); row.set(h[4], nv.vai_tro);
+  row.set(h[3], nv.email); row.set(h[4], nv.chuc_danh || '');
   row.set(h[5], nv.trang_thai);
-  row.set(h[7], nv.avatar_url || '');
+  if (h[6]) row.set(h[6], nv.so_cccd || '');
+  if (h[7]) row.set(h[7], nv.ngay_cap || '');
+  if (h[8]) row.set(h[8], nv.noi_cap || '');
+  if (h[9]) row.set(h[9], nv.HKTT || '');
+  if (h[10]) row.set(h[10], nv.ngay_sinh || '');
+  if (h[11]) row.set(h[11], nv.gioi_tinh || '');
+  if (h[12]) row.set(h[12], nv.ma_so_thue || '');
+  if (h[13]) row.set(h[13], nv.ngay_tao || '');
+  if (h[14]) row.set(h[14], nv.avatar_url || '');
+  if (h[15]) row.set(h[15], nv.vai_tro || 'Sale');
   await row.save();
   await addLog(doc, 'UPDATE_NV', nv.id_nhan_vien, '', '');
   return true;
@@ -668,8 +722,10 @@ export async function findNhanVienByEmail(email: string): Promise<NhanVien | nul
 }
 
 // ============================================================
-// HỢP ĐỒNG (Contracts)
+// HỢP ĐỒNG (Contracts) — CORE LAYER: English keys
 // ============================================================
+
+const HOP_DONG_HEADERS = ['id', 'id_nhan_vien', 'so_hop_dong', 'phong_KD', 'employee_type', 'department', 'contract_type', 'template_file', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at', 'chuc_danh'];
 
 export async function getHopDong(): Promise<HopDong[]> {
   const doc = await getDoc();
@@ -680,7 +736,7 @@ export async function getHopDong(): Promise<HopDong[]> {
     console.log('[GSheets] HOP_DONG not found in getHopDong. Auto-creating...');
     sheet = await doc.addSheet({
       title: SHEETS.HOP_DONG,
-      headerValues: ['id', 'id_nhan_vien', 'so_hop_dong', 'loai_hop_dong', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at']
+      headerValues: HOP_DONG_HEADERS
     });
     return [];
   }
@@ -696,12 +752,17 @@ export async function getHopDong(): Promise<HopDong[]> {
         id,
         id_nhan_vien: str(v[h[1]]),
         so_hop_dong: str(v[h[2]]),
-        loai_hop_dong: str(v[h[3]]),
-        ngay_bat_dau: str(v[h[4]]),
-        ngay_ket_thuc: str(v[h[5]]),
-        luong_co_ban: num(v[h[6]]),
-        ghi_chu: str(v[h[7]]),
-        created_at: str(v[h[8]]),
+        phong_KD: h[3] ? str(v[h[3]]) : '',
+        employee_type: h[4] ? str(v[h[4]]) : '',
+        department: h[5] ? str(v[h[5]]) : '',
+        contract_type: h[6] ? str(v[h[6]]) : '',
+        template_file: h[7] ? str(v[h[7]]) : '',
+        ngay_bat_dau: h[8] ? str(v[h[8]]) : '',
+        ngay_ket_thuc: h[9] ? str(v[h[9]]) : '',
+        luong_co_ban: h[10] ? num(v[h[10]]) : 0,
+        ghi_chu: h[11] ? str(v[h[11]]) : '',
+        created_at: h[12] ? str(v[h[12]]) : '',
+        chuc_danh: h[13] ? str(v[h[13]]) : '',
       } as HopDong;
     })
     .filter((x): x is HopDong => x !== null);
@@ -716,7 +777,7 @@ export async function addHopDong(hd: HopDong): Promise<void> {
     console.log('[GSheets] HOP_DONG not found in addHopDong. Auto-creating...');
     sheet = await doc.addSheet({
       title: SHEETS.HOP_DONG,
-      headerValues: ['id', 'id_nhan_vien', 'so_hop_dong', 'loai_hop_dong', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at']
+      headerValues: HOP_DONG_HEADERS
     });
   }
   const h = sheet.headerValues;
@@ -724,12 +785,17 @@ export async function addHopDong(hd: HopDong): Promise<void> {
   if (h[0]) rowData[h[0]] = hd.id || '';
   if (h[1]) rowData[h[1]] = hd.id_nhan_vien || '';
   if (h[2]) rowData[h[2]] = hd.so_hop_dong || '';
-  if (h[3]) rowData[h[3]] = hd.loai_hop_dong || '';
-  if (h[4]) rowData[h[4]] = hd.ngay_bat_dau || '';
-  if (h[5]) rowData[h[5]] = hd.ngay_ket_thuc || '';
-  if (h[6]) rowData[h[6]] = hd.luong_co_ban || 0;
-  if (h[7]) rowData[h[7]] = hd.ghi_chu || '';
-  if (h[8]) rowData[h[8]] = hd.created_at || '';
+  if (h[3]) rowData[h[3]] = hd.phong_KD || '';
+  if (h[4]) rowData[h[4]] = hd.employee_type || '';
+  if (h[5]) rowData[h[5]] = hd.department || '';
+  if (h[6]) rowData[h[6]] = hd.contract_type || '';
+  if (h[7]) rowData[h[7]] = hd.template_file || '';
+  if (h[8]) rowData[h[8]] = hd.ngay_bat_dau || '';
+  if (h[9]) rowData[h[9]] = hd.ngay_ket_thuc || '';
+  if (h[10]) rowData[h[10]] = hd.luong_co_ban || 0;
+  if (h[11]) rowData[h[11]] = hd.ghi_chu || '';
+  if (h[12]) rowData[h[12]] = hd.created_at || '';
+  if (h[13]) rowData[h[13]] = hd.chuc_danh || '';
 
   await sheet.addRow(rowData);
   await addLog(doc, 'CREATE_HD', hd.id, hd.id_nhan_vien, '');
@@ -751,11 +817,16 @@ export async function updateHopDong(hd: HopDong): Promise<boolean> {
 
   if (h[1]) row.set(h[1], hd.id_nhan_vien || '');
   if (h[2]) row.set(h[2], hd.so_hop_dong || '');
-  if (h[3]) row.set(h[3], hd.loai_hop_dong || '');
-  if (h[4]) row.set(h[4], hd.ngay_bat_dau || '');
-  if (h[5]) row.set(h[5], hd.ngay_ket_thuc || '');
-  if (h[6]) row.set(h[6], hd.luong_co_ban || 0);
-  if (h[7]) row.set(h[7], hd.ghi_chu || '');
+  if (h[3]) row.set(h[3], hd.phong_KD || '');
+  if (h[4]) row.set(h[4], hd.employee_type || '');
+  if (h[5]) row.set(h[5], hd.department || '');
+  if (h[6]) row.set(h[6], hd.contract_type || '');
+  if (h[7]) row.set(h[7], hd.template_file || '');
+  if (h[8]) row.set(h[8], hd.ngay_bat_dau || '');
+  if (h[9]) row.set(h[9], hd.ngay_ket_thuc || '');
+  if (h[10]) row.set(h[10], hd.luong_co_ban || 0);
+  if (h[11]) row.set(h[11], hd.ghi_chu || '');
+  if (h[13]) row.set(h[13], hd.chuc_danh || '');
   await row.save();
   await addLog(doc, 'UPDATE_HD', hd.id, '', '');
   return true;

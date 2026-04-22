@@ -8,10 +8,11 @@ export async function POST(req: Request) {
   try {
     const data = await req.json();
 
+    const templateFileName = data.template_file || "contract-template.docx";
     const filePath = path.join(
       process.cwd(),
       "templates",
-      "contract-template.docx"
+      templateFileName
     );
 
     const content = fs.readFileSync(filePath, "binary");
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
     doc.setData({
       // Contract fields
       so_hop_dong: data.so_hop_dong || '',
-      loai_hop_dong: data.loai_hop_dong || '',
+      loai_hop_dong: data.contract_type || '',
       ngay_bat_dau: data.ngay_bat_dau || '',
       ngay_ket_thuc: data.ngay_ket_thuc || '',
       luong_co_ban: data.luong_co_ban || '',
@@ -49,6 +50,11 @@ export async function POST(req: Request) {
       // Bank info
       so_tk_ngan_hang: data.so_tk_ngan_hang || '',
       ten_ngan_hang_thu_huong: data.ten_ngan_hang_thu_huong || '',
+
+      // HRM info
+      chuc_danh: data.chuc_danh || '',
+      khoi_lam_viec: data.department === 'KD' ? 'Khối Kinh doanh' : 'Khối BO',
+      phong_KD: data.phong_KD || '',
     });
 
     doc.render();

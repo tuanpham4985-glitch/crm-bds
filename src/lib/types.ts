@@ -8,6 +8,10 @@ export interface DanhMuc {
   trang_thai_kh: string[];
   trang_thai_cong_viec: string[];
   nguon: string[];
+  chuc_danh: string[];
+  khu_vuc: string[];
+  gioi_tinh: string[];
+  phong_KD: string[];
 }
 
 // === DỰ ÁN ===
@@ -26,7 +30,17 @@ export interface NhanVien {
   ho_ten: string;
   so_dien_thoai: string;
   email: string;
-  vai_tro: string; // 'Sale' | 'Admin'
+  vai_tro: string; // 'Sale' | 'Admin' (index 15)
+  chuc_danh: string; // index 4
+  gioi_tinh?: string;
+  khu_vuc?: string;
+  phong_KD?: string;
+  so_cccd?: string;
+  ngay_cap?: string;
+  noi_cap?: string;
+  HKTT?: string;
+  ngay_sinh?: string;
+  ma_so_thue?: string;
   trang_thai: string;
   ngay_tao: string;
   avatar_url?: string;
@@ -38,10 +52,22 @@ export interface HopDong {
   id: string;
   id_nhan_vien: string;
   so_hop_dong: string;
-  loai_hop_dong: string;
+  phong_KD?: string;
+  chuc_danh?: string;
+
+  // Core business fields (EN standard)
+  employee_type?: 'PROBATION' | 'OFFICIAL';
+  department: 'KD' | 'BO';
+  contract_type: string;
+
+  // Template engine
+  template_file: string;
+
   ngay_bat_dau: string;
   ngay_ket_thuc: string;
+
   luong_co_ban: number;
+
   ghi_chu: string;
   created_at: string;
 }
