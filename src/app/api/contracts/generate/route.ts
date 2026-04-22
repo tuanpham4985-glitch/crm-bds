@@ -29,8 +29,9 @@ export async function POST(req: Request) {
     );
 
     const content = fs.readFileSync(filePath);
-
-    const zip = new PizZip(content);
+    
+    // Use Uint8Array to ensure binary integrity across environments
+    const zip = new PizZip(new Uint8Array(content));
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
@@ -75,21 +76,19 @@ export async function POST(req: Request) {
       phong_KD: data.phong_KD || '',
     };
 
-    // Debug: log all template data before rendering
-    console.log('[Contract Generate] exportData:', JSON.stringify(exportData, null, 2));
+    console.log('[Contract Generate] data merge successful');
 
     doc.setData(exportData);
     doc.render();
 
-    // ✅ QUAN TRỌNG: dùng nodebuffer
-    const buffer = doc.getZip().generate({
+    const outputBuffer = doc.getZip().generate({
       type: "nodebuffer",
+      compression: "DEFLATE",
     });
 
     const fileName = `hop-dong-${data.so_hop_dong || 'draft'}.docx`;
 
-    // ✅ FIX TRIỆT ĐỂ lỗi TypeScript
-    return new NextResponse(buffer as unknown as BodyInit, {
+    return new NextResponse(new Uint8Array(outputBuffer), {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
