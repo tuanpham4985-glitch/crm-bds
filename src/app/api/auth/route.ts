@@ -6,13 +6,16 @@ import { findNhanVienByEmail } from '@/lib/google-sheets';
 // POST /api/auth — Login
 export async function POST(request: NextRequest) {
   try {
-    const { email, mat_khau } = await request.json();
+    const body = await request.json();
+    const { email, mat_khau } = body;
     
     if (!email) {
       return NextResponse.json({ success: false, error: 'Email là bắt buộc' }, { status: 400 });
     }
 
     const nv = await findNhanVienByEmail(email);
+    console.log('[Auth] Result of findNhanVienByEmail:', nv ? nv.email : 'Not found');
+
     if (!nv) {
       return NextResponse.json({ success: false, error: 'Email không tồn tại trong hệ thống' }, { status: 401 });
     }
@@ -35,8 +38,11 @@ export async function POST(request: NextRequest) {
       vai_tro: nv.vai_tro,
     });
 
+    // Use btoa for Edge compatibility (Note: handle UTF-8 if needed)
+    const base64Session = btoa(unescape(encodeURIComponent(sessionData)));
+
     const cookieStore = await cookies();
-    cookieStore.set('crm_session', Buffer.from(sessionData).toString('base64'), {
+    cookieStore.set('crm_session', base64Session, {
       httpOnly: true,
       secure: true,
       sameSite: 'none',
@@ -53,9 +59,9 @@ export async function POST(request: NextRequest) {
         vai_tro: nv.vai_tro,
       },
     });
-  } catch (error) {
-    console.error('Auth error:', error);
-    return NextResponse.json({ success: false, error: 'Lỗi hệ thống' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[Auth] Login Catch Error:', error);
+    return NextResponse.json({ success: false, error: 'Lỗi hệ thống: ' + error.message }, { status: 500 });
   }
 }
 
@@ -68,9 +74,12 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     }
 
-    const userData = JSON.parse(Buffer.from(session.value, 'base64').toString());
+    // Use atob for Edge compatibility
+    const decoded = decodeURIComponent(escape(atob(session.value)));
+    const userData = JSON.parse(decoded);
     return NextResponse.json({ success: true, data: userData });
-  } catch {
+  } catch (error: any) {
+    console.error('[Auth] Session Catch Error:', error);
     return NextResponse.json({ success: false, error: 'Session không hợp lệ' }, { status: 401 });
   }
 }
