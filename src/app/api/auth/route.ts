@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
     const cookieStore = await cookies();
     cookieStore.set('crm_session', Buffer.from(sessionData).toString('base64'), {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',
     });
