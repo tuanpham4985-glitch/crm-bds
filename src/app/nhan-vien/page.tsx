@@ -786,8 +786,8 @@ export default function NhanVienPage() {
               background: 'var(--info-bg)', borderRadius: 'var(--radius-md)',
               fontSize: '0.75rem', color: 'var(--info-text)', lineHeight: 1.5,
             }}>
-              <strong>Thông tin đăng nhập:</strong><br/>
-              • Tài khoản: Email nhân viên<br/>
+              <strong>Thông tin đăng nhập:</strong><br />
+              • Tài khoản: Email nhân viên<br />
               • Mật khẩu mặc định: <code style={{ background: 'rgba(0,0,0,0.08)', padding: '1px 5px', borderRadius: 4 }}>123456</code> hoặc Số điện thoại
             </div>
 
