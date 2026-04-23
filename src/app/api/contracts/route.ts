@@ -1,63 +1,63 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getHopDong, addHopDong, updateHopDong, deleteHopDong } from '@/lib/google-sheets';
-import { generateId } from '@/lib/utils';
 
 export async function GET() {
   try {
     const data = await getHopDong();
-    return NextResponse.json({ success: true, data, total: data.length });
-  } catch (error) {
-    console.error('Contracts GET error:', error);
-    return NextResponse.json({ success: false, error: 'Lỗi đọc dữ liệu hợp đồng' }, { status: 500 });
+    return NextResponse.json({ success: true, data });
+  } catch (error: any) {
+    console.error('[API Contracts] GET Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await request.json();
-    console.log('[Contracts API] Incoming POST body:', JSON.stringify(body, null, 2));
-
-    const hd = {
+    const body = await req.json();
+    const id = `HD${Date.now()}`;
+    const newContract = {
       ...body,
-      id: generateId('HD'),
+      id,
       created_at: new Date().toISOString(),
     };
-    
-    console.log('[Contracts API] Attempting to add HopDong to Google Sheets:', JSON.stringify(hd, null, 2));
-    await addHopDong(hd);
-    console.log('[Contracts API] Successfully written to Google Sheets');
-    
-    return NextResponse.json({ success: true, data: hd });
-  } catch (error) {
-    console.error('Contracts POST error:', error);
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined }, { status: 500 });
+    await addHopDong(newContract);
+    return NextResponse.json({ success: true, data: newContract });
+  } catch (error: any) {
+    console.error('[API Contracts] POST Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-export async function PUT(request: NextRequest) {
+export async function PUT(req: Request) {
   try {
-    const body = await request.json();
-    const updated = await updateHopDong(body);
-    if (!updated) {
-      return NextResponse.json({ success: false, error: 'Không tìm thấy hợp đồng' }, { status: 404 });
+    const body = await req.json();
+    if (!body.id) {
+      return NextResponse.json({ success: false, error: 'Missing contract ID' }, { status: 400 });
     }
-    return NextResponse.json({ success: true, data: body });
-  } catch (error) {
-    console.error('Contracts PUT error:', error);
-    return NextResponse.json({ success: false, error: 'Lỗi cập nhật hợp đồng' }, { status: 500 });
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { id } = await request.json();
-    const deleted = await deleteHopDong(id);
-    if (!deleted) {
-      return NextResponse.json({ success: false, error: 'Không tìm thấy hợp đồng' }, { status: 404 });
+    const success = await updateHopDong(body);
+    if (!success) {
+      return NextResponse.json({ success: false, error: 'Contract not found' }, { status: 404 });
     }
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Contracts DELETE error:', error);
-    return NextResponse.json({ success: false, error: 'Lỗi xóa hợp đồng' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[API Contracts] PUT Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const body = await req.json();
+    if (!body.id) {
+      return NextResponse.json({ success: false, error: 'Missing contract ID' }, { status: 400 });
+    }
+    const success = await deleteHopDong(body.id);
+    if (!success) {
+      return NextResponse.json({ success: false, error: 'Contract not found' }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('[API Contracts] DELETE Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

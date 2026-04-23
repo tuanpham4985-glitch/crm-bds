@@ -61,23 +61,42 @@ export default function NhanVienPage() {
     so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
   });
 
+  // Helper: Safe JSON parser to avoid crash on empty/invalid response
+  const safeJson = async (res: Response) => {
+    const text = await res.text();
+    try {
+      if (!text) return { success: false, error: 'Empty response' };
+      return JSON.parse(text);
+    } catch (err) {
+      console.error(`[API Error] Failed to parse JSON from ${res.url}. Status: ${res.status}. Body preview:`, text.slice(0, 200));
+      return { success: false, error: 'Invalid JSON response' };
+    }
+  };
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [nvRes, plRes, khRes, hdRes, dmRes] = await Promise.all([
-        fetch('/api/nhan-vien'), fetch('/api/pipeline'), fetch('/api/khach-hang?limit=999'), fetch('/api/contracts'),
+      // Fetch all APIs in parallel
+      const responses = await Promise.all([
+        fetch('/api/nhan-vien'),
+        fetch('/api/pipeline'),
+        fetch('/api/khach-hang?limit=999'),
+        fetch('/api/contracts'),
         fetch('/api/danh-muc'),
       ]);
-      const [nvData, plData, khData, hdData, dmData] = await Promise.all([
-        nvRes.json(), plRes.json(), khRes.json(), hdRes.json(), dmRes.json(),
-      ]);
+
+      // Parse JSON safely
+      const [nvData, plData, khData, hdData, dmData] = await Promise.all(
+        responses.map(res => safeJson(res))
+      );
+
       if (nvData.success) setEmployees(nvData.data);
       if (plData.success) setPipelines(plData.data);
       if (khData.success) setCustomers(khData.data);
       if (hdData.success) setContracts(hdData.data);
       if (dmData.success) setDanhMuc(dmData.data);
     } catch (err) {
-      console.error('Fetch error:', err);
+      console.error('Fetch all error:', err);
     } finally {
       setLoading(false);
     }
@@ -239,7 +258,7 @@ export default function NhanVienPage() {
         body: formData,
       });
 
-      const data = await res.json();
+      const data = await safeJson(res);
 
       if (!res.ok) {
         setUploadError(data.error || 'Upload thất bại');
@@ -279,7 +298,7 @@ export default function NhanVienPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const result = await res.json();
+      const result = await safeJson(res);
       if (result.success) {
         setShowModal(false);
         fetchAll();
@@ -298,7 +317,7 @@ export default function NhanVienPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: deletingId }),
       });
-      const result = await res.json();
+      const result = await safeJson(res);
       if (result.success) {
         setShowConfirm(false);
         fetchAll();
