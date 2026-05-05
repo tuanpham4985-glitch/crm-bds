@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Email không tồn tại trong hệ thống' }, { status: 401 });
     }
 
-    if (nv.trang_thai !== 'Đang làm') {
+    const ACTIVE_STATUSES = ['Đang làm', 'Chính thức', 'Thử việc'];
+    if (!ACTIVE_STATUSES.includes(nv.trang_thai)) {
       return NextResponse.json({ success: false, error: 'Tài khoản đã bị khóa' }, { status: 401 });
     }
 
