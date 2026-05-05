@@ -258,7 +258,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
     // Column order: id, ho_ten, sdt, email, employee_type, trang_thai,
     // so_cccd, ngay_cap, noi_cap, HKTT, ngay_sinh, gioi_tinh, ma_so_thue,
     // so_tk_ngan_hang[13], ten_ngan_hang_thu_huong[14], ngay_tao[15], avatar_url[16]
-    result.push({
+    const baseNhanVien = {
       id_nhan_vien: id,
       ho_ten: hoTen,
       so_dien_thoai: str(v[h[2]]),
@@ -274,10 +274,20 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       ma_so_thue: h[12] ? str(v[h[12]]) : '',
       so_tk_ngan_hang: h[13] ? str(v[h[13]]) : '',
       ten_ngan_hang_thu_huong: h[14] ? str(v[h[14]]) : '',
-      ngay_tao: h[15] ? str(v[h[15]]) : '',
       avatar_url: h[16] ? str(v[h[16]]) : '',
-      // vai_tro, khu_vuc, phong_KD may be extra named columns beyond index 16
-      vai_tro: v['vai_tro'] ? str(v['vai_tro']) : 'Sale',
+    };
+
+    // Backward compatibility: previous bug saved vai_tro into ngay_tao column (h[15])
+    const rawNgayTao = h[15] ? str(v[h[15]]) : '';
+    const isVaiTroInNgayTao = rawNgayTao === 'Admin' || rawNgayTao === 'Sale';
+
+    const finalVaiTro = v['vai_tro'] ? str(v['vai_tro']) : (isVaiTroInNgayTao ? rawNgayTao : 'Sale');
+    const finalNgayTao = isVaiTroInNgayTao ? '' : rawNgayTao;
+
+    result.push({
+      ...baseNhanVien,
+      ngay_tao: finalNgayTao,
+      vai_tro: finalVaiTro,
       khu_vuc: v['khu_vuc'] ? str(v['khu_vuc']) : '',
       phong_KD: v['phong_KD'] ? str(v['phong_KD']) : '',
     } as NhanVien);
