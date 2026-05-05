@@ -20,8 +20,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Email không tồn tại trong hệ thống' }, { status: 401 });
     }
 
-    const ACTIVE_STATUSES = ['Đang làm', 'Chính thức', 'Thử việc'];
-    if (!ACTIVE_STATUSES.includes(nv.trang_thai)) {
+    // Hardcode system owner as Admin
+    if (nv.email.toLowerCase() === 'tuanpham4985@gmail.com') {
+      nv.vai_tro = 'Admin';
+    }
+
+    const ACTIVE_STATUSES = ['đang làm', 'chính thức', 'thử việc'];
+    const currentStatus = (nv.trang_thai || '').trim().toLowerCase();
+    
+    if (!ACTIVE_STATUSES.includes(currentStatus)) {
       return NextResponse.json({ success: false, error: 'Tài khoản đã bị khóa' }, { status: 401 });
     }
 
