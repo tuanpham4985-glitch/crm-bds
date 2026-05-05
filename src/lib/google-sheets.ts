@@ -255,6 +255,9 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       }
     }
 
+    // Column order: id, ho_ten, sdt, email, employee_type, trang_thai,
+    // so_cccd, ngay_cap, noi_cap, HKTT, ngay_sinh, gioi_tinh, ma_so_thue,
+    // so_tk_ngan_hang[13], ten_ngan_hang_thu_huong[14], ngay_tao[15], avatar_url[16]
     result.push({
       id_nhan_vien: id,
       ho_ten: hoTen,
@@ -269,14 +272,14 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       ngay_sinh: h[10] ? str(v[h[10]]) : '',
       gioi_tinh: h[11] ? str(v[h[11]]) : '',
       ma_so_thue: h[12] ? str(v[h[12]]) : '',
-      ngay_tao: h[13] ? str(v[h[13]]) : '',
-      avatar_url: h[14] ? str(v[h[14]]) : '',
-      // Fallback for vai_tro (system role) - check index 15 or named
-      vai_tro: v['vai_tro'] ? str(v['vai_tro']) : (h[15] ? str(v[h[15]]) : 'Sale'),
+      so_tk_ngan_hang: h[13] ? str(v[h[13]]) : '',
+      ten_ngan_hang_thu_huong: h[14] ? str(v[h[14]]) : '',
+      ngay_tao: h[15] ? str(v[h[15]]) : '',
+      avatar_url: h[16] ? str(v[h[16]]) : '',
+      // vai_tro, khu_vuc, phong_KD may be extra named columns beyond index 16
+      vai_tro: v['vai_tro'] ? str(v['vai_tro']) : 'Sale',
       khu_vuc: v['khu_vuc'] ? str(v['khu_vuc']) : '',
       phong_KD: v['phong_KD'] ? str(v['phong_KD']) : '',
-      so_tk_ngan_hang: v['so_tk_ngan_hang'] ? str(v['so_tk_ngan_hang']) : '',
-      ten_ngan_hang_thu_huong: v['ten_ngan_hang_thu_huong'] ? str(v['ten_ngan_hang_thu_huong']) : '',
     } as NhanVien);
   }
   return result;
@@ -669,11 +672,14 @@ export async function addNhanVien(nv: NhanVien): Promise<void> {
     [h[6]]: nv.so_cccd || '', [h[7]]: nv.ngay_cap || '',
     [h[8]]: nv.noi_cap || '', [h[9]]: nv.HKTT || '',
     [h[10]]: nv.ngay_sinh || '', [h[11]]: nv.gioi_tinh || '',
-    [h[12]]: nv.ma_so_thue || '', [h[13]]: nv.ngay_tao || '',
-    [h[14]]: nv.avatar_url || '',
-    [h[15] || 'vai_tro']: nv.vai_tro || 'Sale',
-    'so_tk_ngan_hang': nv.so_tk_ngan_hang || '',
-    'ten_ngan_hang_thu_huong': nv.ten_ngan_hang_thu_huong || '',
+    [h[12]]: nv.ma_so_thue || '',
+    [h[13]]: nv.so_tk_ngan_hang || '',
+    [h[14]]: nv.ten_ngan_hang_thu_huong || '',
+    [h[15]]: nv.ngay_tao || '',
+    [h[16]]: nv.avatar_url || '',
+    'vai_tro': nv.vai_tro || 'Sale',
+    'khu_vuc': nv.khu_vuc || '',
+    'phong_KD': nv.phong_KD || '',
   });
   await addLog(doc, 'CREATE_NV', nv.id_nhan_vien, '', '');
 }
@@ -697,12 +703,13 @@ export async function updateNhanVien(nv: NhanVien): Promise<boolean> {
   if (h[10]) row.set(h[10], nv.ngay_sinh || '');
   if (h[11]) row.set(h[11], nv.gioi_tinh || '');
   if (h[12]) row.set(h[12], nv.ma_so_thue || '');
-  if (h[13]) row.set(h[13], nv.ngay_tao || '');
-  if (h[14]) row.set(h[14], nv.avatar_url || '');
-  if (h[15]) row.set(h[15], nv.vai_tro || 'Sale');
-  
-  if (h.includes('so_tk_ngan_hang')) row.set('so_tk_ngan_hang', nv.so_tk_ngan_hang || '');
-  if (h.includes('ten_ngan_hang_thu_huong')) row.set('ten_ngan_hang_thu_huong', nv.ten_ngan_hang_thu_huong || '');
+  if (h[13]) row.set(h[13], nv.so_tk_ngan_hang || '');
+  if (h[14]) row.set(h[14], nv.ten_ngan_hang_thu_huong || '');
+  if (h[15]) row.set(h[15], nv.ngay_tao || '');
+  if (h[16]) row.set(h[16], nv.avatar_url || '');
+  if (h.includes('vai_tro')) row.set('vai_tro', nv.vai_tro || 'Sale');
+  if (h.includes('khu_vuc')) row.set('khu_vuc', nv.khu_vuc || '');
+  if (h.includes('phong_KD')) row.set('phong_KD', nv.phong_KD || '');
   
   await row.save();
   await addLog(doc, 'UPDATE_NV', nv.id_nhan_vien, '', '');
