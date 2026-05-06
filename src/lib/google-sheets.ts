@@ -996,7 +996,7 @@ export async function addBangLuong(
  */
 export async function updateBangLuong(
   id: string,
-  updates: Partial<Pick<BangLuong, 'trang_thai' | 'thuong' | 'phat' | 'tong_luong'>>
+  updates: Partial<Pick<BangLuong, 'trang_thai' | 'thuong' | 'phat' | 'tong_luong' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot'>>
 ): Promise<boolean> {
   const doc = await getDoc();
   let sheet: GoogleSpreadsheetWorksheet;
