@@ -245,8 +245,16 @@ export async function getDuAn(): Promise<DuAn[]> {
 export async function getNhanVien(): Promise<NhanVien[]> {
   const doc = await getDoc();
   const sheet = await getSheet(doc, SHEETS.NHAN_VIEN);
-  const rows = await sheet.getRows();
   const h = sheet.headerValues;
+
+  // Auto-add so_nguoi_phu_thuoc if missing
+  if (!h.includes('so_nguoi_phu_thuoc')) {
+    console.log('[GSheets] Adding missing column "so_nguoi_phu_thuoc" to NHAN_VIEN');
+    await sheet.setHeaderRow([...h, 'so_nguoi_phu_thuoc']);
+  }
+
+  const rows = await sheet.getRows();
+  const updatedHeader = sheet.headerValues;
 
   const result: NhanVien[] = [];
   for (const row of rows) {
@@ -291,7 +299,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       so_tk_ngan_hang: h[13] ? str(v[h[13]]) : '',
       ten_ngan_hang_thu_huong: h[14] ? str(v[h[14]]) : '',
       avatar_url: h[16] ? str(v[h[16]]) : '',
-      so_nguoi_phu_thuoc: v['so_nguoi_phu_thuoc'] ? num(v['so_nguoi_phu_thuoc']) : 0,
+      so_nguoi_phu_thuoc: num(v['so_nguoi_phu_thuoc']), // num handles null/undefined/NaN
     };
 
     // Backward compatibility: previous bug saved vai_tro into ngay_tao column (h[15])
