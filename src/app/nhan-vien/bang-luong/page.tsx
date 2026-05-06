@@ -360,23 +360,23 @@ export default function BangLuongPage() {
               </div>
             ) : (
               <div className="table-wrapper">
-                <table className="data-table">
+                <table className="data-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th style={{ width: 40 }}>#</th>
-                      <th style={{ minWidth: 180 }}>Nhân viên</th>
-                      <th style={{ textAlign: 'right', width: 90 }}>Lương CB</th>
+                      <th style={{ width: 30 }}>#</th>
+                      <th style={{ minWidth: 140 }}>Nhân viên</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>Lương CB</th>
                       <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
                       <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
-                      <th style={{ textAlign: 'center', width: 60 }}>OT (h)</th>
-                      <th style={{ textAlign: 'right', width: 100 }}>Hoa hồng</th>
-                      <th style={{ textAlign: 'right', width: 80 }}>Thưởng</th>
-                      <th style={{ textAlign: 'right', width: 80 }}>Phạt</th>
-                      <th style={{ textAlign: 'right', width: 100 }}>Gross</th>
-                      <th style={{ textAlign: 'right', width: 90 }}>BHXH</th>
-                      <th style={{ textAlign: 'right', width: 90 }}>Thuế</th>
-                      <th style={{ textAlign: 'center', width: 50 }}>Phụ thuộc</th>
-                      <th style={{ textAlign: 'right', minWidth: 120, fontWeight: 700 }}>NET</th>
+                      <th style={{ textAlign: 'center', width: 50 }}>OT (h)</th>
+                      <th style={{ textAlign: 'right', width: 80 }}>Hoa hồng</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>Thưởng</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>Phạt</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>Gross</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>BHXH</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>Thuế</th>
+                      <th style={{ textAlign: 'center', width: 60 }}>P.Thuộc</th>
+                      <th style={{ textAlign: 'right', minWidth: 100, fontWeight: 700 }}>NET</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -392,7 +392,7 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'center' }}>
                           <input
                             type="number" className="form-input" step="0.5"
-                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 45 }}
+                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 40 }}
                             value={row.so_ngay_nghi_khong_luong || 0}
                             onChange={e => updateField(idx, 'so_ngay_nghi_khong_luong', e.target.value)}
                           />
@@ -400,7 +400,7 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'center' }}>
                           <input
                             type="number" className="form-input"
-                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 45 }}
+                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 40 }}
                             value={row.so_gio_ot || 0}
                             onChange={e => updateField(idx, 'so_gio_ot', e.target.value)}
                           />
@@ -409,7 +409,7 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'right' }}>
                           <input
                             type="number" className="form-input"
-                            style={{ padding: '4px 6px', textAlign: 'right', height: 28, fontSize: '0.8rem', width: 70 }}
+                            style={{ padding: '4px 6px', textAlign: 'right', height: 28, fontSize: '0.8rem', width: 60 }}
                             value={row.thuong || ''}
                             placeholder="0"
                             onChange={e => updateField(idx, 'thuong', e.target.value)}
@@ -418,7 +418,7 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'right' }}>
                           <input
                             type="number" className="form-input"
-                            style={{ padding: '4px 6px', textAlign: 'right', height: 28, fontSize: '0.8rem', width: 70 }}
+                            style={{ padding: '4px 6px', textAlign: 'right', height: 28, fontSize: '0.8rem', width: 60 }}
                             value={row.phat || ''}
                             placeholder="0"
                             onChange={e => updateField(idx, 'phat', e.target.value)}
@@ -430,7 +430,7 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'center' }}>
                           <input
                             type="number" className="form-input"
-                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 35 }}
+                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 40 }}
                             value={row.so_nguoi_phu_thuoc || 0}
                             onChange={e => updateField(idx, 'so_nguoi_phu_thuoc', e.target.value)}
                           />
@@ -470,22 +470,22 @@ export default function BangLuongPage() {
             </div>
           ) : (
             <div className="table-wrapper">
-              <table className="data-table">
+              <table className="data-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th style={{ width: 40 }}>#</th>
-                      <th style={{ minWidth: 180 }}>Nhân viên</th>
-                      <th style={{ textAlign: 'right', width: 90 }}>Lương CB</th>
+                      <th style={{ width: 30 }}>#</th>
+                      <th style={{ minWidth: 140 }}>Nhân viên</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>Lương CB</th>
                       <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
                       <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
-                      <th style={{ textAlign: 'center', width: 60 }}>OT (h)</th>
-                      <th style={{ textAlign: 'right', width: 100 }}>Hoa hồng</th>
-                      <th style={{ textAlign: 'right', width: 80 }}>Thưởng</th>
-                      <th style={{ textAlign: 'right', width: 80 }}>Phạt</th>
-                      <th style={{ textAlign: 'center', width: 50 }}>P.Thuộc</th>
-                      <th style={{ textAlign: 'right', minWidth: 120, fontWeight: 700 }}>NET</th>
+                      <th style={{ textAlign: 'center', width: 50 }}>OT (h)</th>
+                      <th style={{ textAlign: 'right', width: 80 }}>Hoa hồng</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>Thưởng</th>
+                      <th style={{ textAlign: 'right', width: 70 }}>Phạt</th>
+                      <th style={{ textAlign: 'center', width: 60 }}>P.Thuộc</th>
+                      <th style={{ textAlign: 'right', minWidth: 100, fontWeight: 700 }}>NET</th>
                       <th style={{ width: 100 }}>Trạng thái</th>
-                      {isAdmin && <th style={{ width: 130 }}>Hành động</th>}
+                      {isAdmin && <th style={{ width: 110 }}>Hành động</th>}
                     </tr>
                   </thead>
                 <tbody>
