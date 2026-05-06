@@ -102,7 +102,15 @@ const SHEETS = {
   CONG_VIEC: 'CONG_VIEC',
   LOG_HE_THONG: 'LOG_HE_THONG',
   HOP_DONG: 'HOP_DONG',
+  BANG_LUONG: 'BANG_LUONG',
 } as const;
+
+// Exact column headers of the BANG_LUONG sheet (must match Google Sheets exactly)
+const BANG_LUONG_HEADERS = [
+  'id', 'id_nhan_vien', 'thang', 'nam',
+  'luong_co_ban', 'doanh_thu', 'hoa_hong', 'thuong', 'phat',
+  'tong_luong', 'trang_thai', 'created_at',
+] as const;
 
 function str(val: unknown): string {
   if (val === null || val === undefined) return '';
@@ -882,60 +890,124 @@ export async function deleteHopDong(id: string): Promise<boolean> {
 // BẢNG LƯƠNG (Payroll)
 // ============================================================
 
+/**
+ * Tự động tạo sheet BANG_LUONG nếu chưa tồn tại.
+ */
+async function getOrCreateBangLuongSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
+  try {
+    return await getSheet(doc, SHEETS.BANG_LUONG);
+  } catch {
+    console.log('[GSheets] BANG_LUONG sheet not found. Auto-creating...');
+    return await doc.addSheet({
+      title: SHEETS.BANG_LUONG,
+      headerValues: [...BANG_LUONG_HEADERS],
+    });
+  }
+}
+
 export async function getBangLuong(): Promise<BangLuong[]> {
   const doc = await getDoc();
   let sheet: GoogleSpreadsheetWorksheet;
   try {
-    sheet = await getSheet(doc, 'BANG_LUONG');
-  } catch (err) {
-    console.error('[GSheets] Sheet "BANG_LUONG" may not exist yet.');
+    sheet = await getSheet(doc, SHEETS.BANG_LUONG);
+  } catch {
+    console.warn('[GSheets] BANG_LUONG sheet does not exist yet — returning empty list.');
     return [];
   }
   const rows = await sheet.getRows();
-  const h = sheet.headerValues;
 
   return rows
     .map(row => {
       const v = row.toObject();
-      const id = str(v[h[0]]);
+      // Đọc theo tên cột (không theo vị trí) để an toàn với thứ tự cột
+      const id = str(v['id']);
       if (!id) return null;
       return {
         id,
-        id_nhan_vien: str(v[h[1]]),
-        thang: num(v[h[2]]),
-        nam: num(v[h[3]]),
-        luong_co_ban: num(v[h[4]]),
-        doanh_thu: num(v[h[5]]),
-        hoa_hong: num(v[h[6]]),
-        thuong: num(v[h[7]]),
-        phat: num(v[h[8]]),
-        tong_luong: num(v[h[9]]),
-        trang_thai: str(v[h[10]]) as 'draft' | 'confirmed' | 'paid',
-        created_at: str(v[h[11]]),
+        id_nhan_vien: str(v['id_nhan_vien']),
+        thang:        num(v['thang']),
+        nam:          num(v['nam']),
+        luong_co_ban: num(v['luong_co_ban']),
+        doanh_thu:    num(v['doanh_thu']),
+        hoa_hong:     num(v['hoa_hong']),
+        thuong:       num(v['thuong']),
+        phat:         num(v['phat']),
+        tong_luong:   num(v['tong_luong']),
+        trang_thai:   (str(v['trang_thai']) || 'draft') as 'draft' | 'confirmed' | 'paid',
+        created_at:   str(v['created_at']),
       } as BangLuong;
     })
     .filter((x): x is BangLuong => x !== null);
 }
 
-export async function addBangLuong(bl: Omit<BangLuong, 'id' | 'created_at'>): Promise<void> {
+export async function addBangLuong(
+  bl: Omit<BangLuong, 'id' | 'created_at'>
+): Promise<string> {
   const doc = await getDoc();
-  const sheet = await getSheet(doc, 'BANG_LUONG');
-  const h = sheet.headerValues;
+  const sheet = await getOrCreateBangLuongSheet(doc);
   const id = `BL_${Date.now()}`;
   const created_at = new Date().toISOString();
+
+  // Ghi theo tên cột — an toàn với thứ tự cột bất kỳ
   await sheet.addRow({
-    [h[0]]: id,
-    [h[1]]: bl.id_nhan_vien,
-    [h[2]]: bl.thang,
-    [h[3]]: bl.nam,
-    [h[4]]: bl.luong_co_ban,
-    [h[5]]: bl.doanh_thu,
-    [h[6]]: bl.hoa_hong,
-    [h[7]]: bl.thuong,
-    [h[8]]: bl.phat,
-    [h[9]]: bl.tong_luong,
-    [h[10]]: bl.trang_thai,
-    [h[11]]: created_at,
+    id,
+    id_nhan_vien: bl.id_nhan_vien,
+    thang:        Number(bl.thang),
+    nam:          Number(bl.nam),
+    luong_co_ban: Number(bl.luong_co_ban),
+    doanh_thu:    Number(bl.doanh_thu),
+    hoa_hong:     Number(bl.hoa_hong),
+    thuong:       Number(bl.thuong),
+    phat:         Number(bl.phat),
+    tong_luong:   Number(bl.tong_luong),
+    trang_thai:   bl.trang_thai || 'draft',
+    created_at,
   });
+
   await addLog(doc, 'CREATE_BL', id, bl.id_nhan_vien, '');
+  return id;
+}
+
+/**
+ * Cập nhật trạng thái hoặc thưởng/phạt của một bản ghi bảng lương.
+ */
+export async function updateBangLuong(
+  id: string,
+  updates: Partial<Pick<BangLuong, 'trang_thai' | 'thuong' | 'phat' | 'tong_luong'>>
+): Promise<boolean> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.BANG_LUONG);
+  } catch {
+    return false;
+  }
+  const rows = await sheet.getRows();
+  const row = rows.find(r => str(r.toObject()['id']) === id);
+  if (!row) return false;
+
+  if (updates.trang_thai !== undefined) row.set('trang_thai', updates.trang_thai);
+  if (updates.thuong     !== undefined) row.set('thuong',     Number(updates.thuong));
+  if (updates.phat       !== undefined) row.set('phat',       Number(updates.phat));
+  if (updates.tong_luong !== undefined) row.set('tong_luong', Number(updates.tong_luong));
+  await row.save();
+
+  await addLog(doc, 'UPDATE_BL', id, '', '');
+  return true;
+}
+
+export async function deleteBangLuong(id: string): Promise<boolean> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.BANG_LUONG);
+  } catch {
+    return false;
+  }
+  const rows = await sheet.getRows();
+  const row = rows.find(r => str(r.toObject()['id']) === id);
+  if (!row) return false;
+  await row.delete();
+  await addLog(doc, 'DELETE_BL', id, '', '');
+  return true;
 }

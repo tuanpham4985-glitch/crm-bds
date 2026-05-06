@@ -1,0 +1,319 @@
+// ============================================================
+// BANG_LUONG — Payroll Engine
+// Tách biệt: getData → calculate → save
+// Không hard-code, có thể mở rộng config hoa hồng theo DU_AN
+// ============================================================
+
+import {
+  getNhanVien,
+  getPipeline,
+  getHopDong,
+  getBangLuong,
+  addBangLuong,
+} from '@/lib/google-sheets';
+import type { NhanVien, HopDong, Pipeline, BangLuong } from '@/lib/types';
+
+// ============================================================
+// CONFIG — Có thể mở rộng theo DU_AN hoặc loại hợp đồng
+// ============================================================
+
+export interface PayrollConfig {
+  /** Tỷ lệ BHXH/BHYT/BHTN nhân viên đóng (mặc định 10.5%) */
+  tileBAO_HIEM: number;
+  /** Mức giảm trừ gia cảnh bản thân (triệu đồng, mặc định 11tr) */
+  giam_tru_ca_nhan: number;
+  /** Thuế suất thu nhập cá nhân (mặc định 10%) */
+  thue_suat: number;
+  /**
+   * Override tỷ lệ hoa hồng theo DU_AN (id_du_an → tỉ lệ %)
+   * Nếu không có entry → dùng tien_hoa_hong trực tiếp từ PIPELINE
+   */
+  hoa_hong_theo_du_an?: Record<string, number>;
+}
+
+export const DEFAULT_PAYROLL_CONFIG: PayrollConfig = {
+  tileBAO_HIEM: 0.105,      // 10.5% = BHXH 8% + BHYT 1.5% + BHTN 1%
+  giam_tru_ca_nhan: 11_000_000,
+  thue_suat: 0.1,
+  hoa_hong_theo_du_an: {},  // Trống → dùng tien_hoa_hong từ Pipeline
+};
+
+// ============================================================
+// TYPES
+// ============================================================
+
+export interface PayrollEntry extends Omit<BangLuong, 'id' | 'created_at'> {
+  /** Gross trước khi trừ bảo hiểm và thuế */
+  gross: number;
+  /** BHXH/BHYT/BHTN nhân viên đóng */
+  bao_hiem: number;
+  /** Thuế TNCN */
+  thue: number;
+  /** Tên nhân viên (để hiển thị) */
+  ho_ten?: string;
+}
+
+// ============================================================
+// LAYER 1: GET DATA
+// Batch fetch tất cả data cần thiết một lần duy nhất
+// ============================================================
+
+interface PayrollRawData {
+  activeEmployees: NhanVien[];
+  contractMap: Map<string, HopDong>;   // id_nhan_vien → HopDong (active nhất)
+  closedPipelinesForMonth: Pipeline[]; // Đã lọc: giai_doan=chốt + đúng tháng
+  existingPayrollKeys: Set<string>;    // "id_nhan_vien|thang|nam" → đã lưu
+}
+
+/**
+ * Fetch và pre-process tất cả data cần thiết.
+ * Gọi 1 lần, dùng cho cả generate và save.
+ */
+export async function fetchPayrollData(
+  thang: number,
+  nam: number
+): Promise<PayrollRawData> {
+  // Batch: parallel fetch tất cả sheets cùng lúc
+  const [employees, pipelines, contracts, savedPayrolls] = await Promise.all([
+    getNhanVien(),
+    getPipeline(),
+    getHopDong(),
+    getBangLuong(),
+  ]);
+
+  // 1. Nhân viên active (không bao gồm "Nghỉ việc")
+  const activeEmployees = employees.filter(
+    (nv) => nv.trang_thai?.toLowerCase() !== 'nghỉ việc'
+  );
+
+  // 2. Map hợp đồng đang có hiệu lực → mỗi NV lấy 1 hợp đồng active nhất
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  const contractMap = new Map<string, HopDong>();
+  for (const hd of contracts) {
+    if (!hd.id_nhan_vien || !hd.ngay_bat_dau) continue;
+
+    const start = new Date(hd.ngay_bat_dau);
+    start.setHours(0, 0, 0, 0);
+    if (isNaN(start.getTime()) || start > now) continue;
+
+    // Kiểm tra hợp đồng chưa hết hạn
+    if (hd.ngay_ket_thuc?.trim()) {
+      const end = new Date(hd.ngay_ket_thuc);
+      end.setHours(0, 0, 0, 0);
+      if (!isNaN(end.getTime()) && end < now) continue;
+    }
+
+    // Nếu đã có entry → giữ hợp đồng mới hơn (ngay_bat_dau lớn hơn)
+    const existing = contractMap.get(hd.id_nhan_vien);
+    if (existing) {
+      const existingStart = new Date(existing.ngay_bat_dau);
+      if (start > existingStart) {
+        contractMap.set(hd.id_nhan_vien, hd);
+      }
+    } else {
+      contractMap.set(hd.id_nhan_vien, hd);
+    }
+  }
+
+  // 3. Pipeline đã chốt trong tháng/năm chỉ định
+  // Format cột "thang" trong sheet: "MM-YYYY"
+  const monthKey = `${String(thang).padStart(2, '0')}-${nam}`;
+
+  const closedPipelinesForMonth = pipelines.filter((pl) => {
+    const giaiDoanNorm = (pl.giai_doan || '').trim().toLowerCase();
+    return pl.thang === monthKey && giaiDoanNorm === 'chốt';
+  });
+
+  // 4. Tập hợp các payroll đã lưu → tránh trùng
+  const existingPayrollKeys = new Set<string>(
+    savedPayrolls.map((bl) => `${bl.id_nhan_vien}|${bl.thang}|${bl.nam}`)
+  );
+
+  return {
+    activeEmployees,
+    contractMap,
+    closedPipelinesForMonth,
+    existingPayrollKeys,
+  };
+}
+
+// ============================================================
+// LAYER 2: CALCULATE
+// Pure function — không gọi I/O, chỉ tính toán
+// ============================================================
+
+/**
+ * Tính lương một nhân viên từ raw data đã fetch.
+ */
+export function calculateEmployeePayroll(
+  nv: NhanVien,
+  thang: number,
+  nam: number,
+  contractMap: Map<string, HopDong>,
+  pipelinesForEmployee: Pipeline[],
+  config: PayrollConfig = DEFAULT_PAYROLL_CONFIG
+): PayrollEntry {
+  // A. Lương cơ bản từ HOP_DONG
+  const hopDong = contractMap.get(nv.id_nhan_vien);
+  const luong_co_ban = hopDong ? Number(hopDong.luong_co_ban) || 0 : 0;
+
+  // B. Doanh thu + Hoa hồng từ PIPELINE đã chốt
+  let doanh_thu = 0;
+  let hoa_hong = 0;
+
+  for (const pl of pipelinesForEmployee) {
+    doanh_thu += Number(pl.gia_tri_thuc_te) || 0;
+
+    // Override hoa hồng nếu có config theo DU_AN
+    const overrideRate = config.hoa_hong_theo_du_an?.[pl.id_du_an];
+    if (overrideRate !== undefined) {
+      hoa_hong += (Number(pl.gia_tri_thuc_te) || 0) * overrideRate;
+    } else {
+      // Dùng tien_hoa_hong trực tiếp từ Pipeline
+      hoa_hong += Number(pl.tien_hoa_hong) || 0;
+    }
+  }
+
+  // C. Thưởng / Phạt (mặc định 0, có thể điều chỉnh trên UI)
+  const thuong = 0;
+  const phat = 0;
+
+  // D. Gross
+  const gross = luong_co_ban + hoa_hong + thuong - phat;
+
+  // E. Bảo hiểm (tính trên lương cơ bản)
+  const bao_hiem = luong_co_ban * config.tileBAO_HIEM;
+
+  // F. Thuế TNCN
+  const thu_nhap_tinh_thue = gross - bao_hiem;
+  const thue =
+    thu_nhap_tinh_thue <= config.giam_tru_ca_nhan
+      ? 0
+      : (thu_nhap_tinh_thue - config.giam_tru_ca_nhan) * config.thue_suat;
+
+  // G. NET
+  const tong_luong = gross - bao_hiem - thue;
+
+  return {
+    id_nhan_vien: nv.id_nhan_vien,
+    ho_ten: nv.ho_ten,
+    thang,
+    nam,
+    luong_co_ban,
+    doanh_thu,
+    hoa_hong,
+    thuong,
+    phat,
+    gross,
+    bao_hiem,
+    thue,
+    tong_luong,
+    trang_thai: 'draft',
+  };
+}
+
+// ============================================================
+// PUBLIC API: generatePayroll(thang, nam)
+// ============================================================
+
+/**
+ * Tính bảng lương tháng/năm cho tất cả nhân viên active.
+ * KHÔNG lưu vào Sheets — chỉ trả về kết quả để preview.
+ */
+export async function generatePayroll(
+  thang: number,
+  nam: number,
+  config: PayrollConfig = DEFAULT_PAYROLL_CONFIG
+): Promise<PayrollEntry[]> {
+  const rawData = await fetchPayrollData(thang, nam);
+  const { activeEmployees, contractMap, closedPipelinesForMonth } = rawData;
+
+  // Group pipelines theo id_nhan_vien (sale_phu_trach)
+  const pipelinesByEmployee = new Map<string, Pipeline[]>();
+  for (const pl of closedPipelinesForMonth) {
+    const key = pl.sale_phu_trach;
+    if (!pipelinesByEmployee.has(key)) pipelinesByEmployee.set(key, []);
+    pipelinesByEmployee.get(key)!.push(pl);
+  }
+
+  const results: PayrollEntry[] = activeEmployees.map((nv) => {
+    const empPipelines = pipelinesByEmployee.get(nv.id_nhan_vien) || [];
+    return calculateEmployeePayroll(
+      nv,
+      thang,
+      nam,
+      contractMap,
+      empPipelines,
+      config
+    );
+  });
+
+  return results;
+}
+
+// ============================================================
+// PUBLIC API: savePayroll(thang, nam, entries)
+// ============================================================
+
+export interface SavePayrollResult {
+  saved: number;
+  skipped: number;   // Đã tồn tại (duplicate)
+  errors: string[];
+}
+
+/**
+ * Lưu bảng lương vào sheet BANG_LUONG.
+ * - Không tạo trùng (check id_nhan_vien + thang + nam)
+ * - Auto generate id: BL_timestamp
+ * - Default trang_thai = draft
+ * - Batch: lưu tuần tự để tránh rate limit GSheets
+ */
+export async function savePayroll(
+  thang: number,
+  nam: number,
+  entries: PayrollEntry[],
+  forceOverwrite = false
+): Promise<SavePayrollResult> {
+  // Fetch existing keys để check duplicate
+  const { existingPayrollKeys } = await fetchPayrollData(thang, nam);
+
+  let saved = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const entry of entries) {
+    if (!entry.id_nhan_vien) continue;
+
+    const key = `${entry.id_nhan_vien}|${entry.thang}|${entry.nam}`;
+
+    if (!forceOverwrite && existingPayrollKeys.has(key)) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      await addBangLuong({
+        id_nhan_vien: entry.id_nhan_vien,
+        thang: entry.thang,
+        nam: entry.nam,
+        luong_co_ban: entry.luong_co_ban,
+        doanh_thu: entry.doanh_thu,
+        hoa_hong: entry.hoa_hong,
+        thuong: entry.thuong,
+        phat: entry.phat,
+        tong_luong: entry.tong_luong,
+        trang_thai: entry.trang_thai || 'draft',
+      });
+      saved++;
+      // Small delay để tránh GSheets rate limit
+      await new Promise((r) => setTimeout(r, 80));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${entry.id_nhan_vien}: ${msg}`);
+    }
+  }
+
+  return { saved, skipped, errors };
+}
