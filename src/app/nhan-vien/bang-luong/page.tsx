@@ -29,7 +29,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
 
 // ================================================================
 export default function BangLuongPage() {
-  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
 
   const now = new Date();
   const [thang, setThang] = useState(now.getMonth() + 1);
@@ -115,6 +115,12 @@ export default function BangLuongPage() {
   useEffect(() => {
     if (tab === 'saved') loadSaved();
   }, [tab, loadSaved]);
+
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      setTab('saved');
+    }
+  }, [authLoading, isAdmin]);
 
   // ── Inline edit fields ──
   function updateField(idx: number, field: 'thuong' | 'phat' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot' | 'so_nguoi_phu_thuoc', val: string) {
@@ -203,6 +209,9 @@ export default function BangLuongPage() {
 
   if (authLoading) return <div className="loading-spinner"><div className="spinner" /></div>;
 
+  // ── Access Control Filter ──
+  const displaySaved = isAdmin ? saved : saved.filter(bl => bl.id_nhan_vien === user?.id_nhan_vien);
+
   // ── Tổng kết preview ──
   const totalNet  = preview.reduce((s, r) => s + r.tong_luong, 0);
   const totalComm = preview.reduce((s, r) => s + r.hoa_hong,   0);
@@ -283,30 +292,32 @@ export default function BangLuongPage() {
             </button>
           )}
           {/* Tab switcher */}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            {(['preview', 'saved'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                style={{
-                  padding: '7px 16px', borderRadius: 'var(--radius-full)',
-                  fontSize: '0.8125rem', fontWeight: 500, cursor: 'pointer',
-                  border: '1px solid',
-                  background: tab === t ? 'var(--primary)' : 'var(--bg-page)',
-                  color: tab === t ? '#fff' : 'var(--text-muted)',
-                  borderColor: tab === t ? 'var(--primary)' : 'var(--border-light)',
-                  transition: 'all var(--transition-fast)',
-                }}
-              >
-                {t === 'preview' ? '📊 Preview' : '📁 Đã lưu'}
-              </button>
-            ))}
-          </div>
+          {isAdmin && (
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              {(['preview', 'saved'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  style={{
+                    padding: '7px 16px', borderRadius: 'var(--radius-full)',
+                    fontSize: '0.8125rem', fontWeight: 500, cursor: 'pointer',
+                    border: '1px solid',
+                    background: tab === t ? 'var(--primary)' : 'var(--bg-page)',
+                    color: tab === t ? '#fff' : 'var(--text-muted)',
+                    borderColor: tab === t ? 'var(--primary)' : 'var(--border-light)',
+                    transition: 'all var(--transition-fast)',
+                  }}
+                >
+                  {t === 'preview' ? '📊 Preview' : '📁 Đã lưu'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* ===== TAB: PREVIEW ===== */}
-      {tab === 'preview' && (
+      {isAdmin && tab === 'preview' && (
         <>
           {/* KPI summary */}
           {preview.length > 0 && (
@@ -445,11 +456,11 @@ export default function BangLuongPage() {
               <div className="spinner" style={{ margin: '0 auto 12px' }} />
               Đang tải...
             </div>
-          ) : saved.length === 0 ? (
+          ) : displaySaved.length === 0 ? (
             <div className="empty-state" style={{ padding: 60 }}>
               <Clock size={40} />
               <h3>Chưa có bảng lương tháng {thang}/{nam}</h3>
-              <p>Chuyển sang tab Preview, tính lương rồi lưu.</p>
+              {isAdmin && <p>Chuyển sang tab Preview, tính lương rồi lưu.</p>}
             </div>
           ) : (
             <div className="table-wrapper">
@@ -472,7 +483,7 @@ export default function BangLuongPage() {
                     </tr>
                   </thead>
                 <tbody>
-                  {saved.map((bl, idx) => {
+                  {displaySaved.map((bl, idx) => {
                     const meta = STATUS_META[bl.trang_thai] ?? STATUS_META.draft;
                     return (
                       <tr key={bl.id}>
