@@ -50,8 +50,9 @@ export default function BangLuongPage() {
   const [saving, setSaving] = useState(false);
   const [toast,  setToast]  = useState<{ msg: string; ok: boolean } | null>(null);
 
-  // Employee name map
+  // Employee maps
   const [empMap, setEmpMap] = useState<Map<string, string>>(new Map());
+  const [depMap, setDepMap] = useState<Map<string, number>>(new Map());
 
   // ── Load employee names ──
   useEffect(() => {
@@ -60,8 +61,13 @@ export default function BangLuongPage() {
       .then(d => {
         if (d.success) {
           const m = new Map<string, string>();
-          d.data.forEach((nv: NhanVien) => m.set(nv.id_nhan_vien, nv.ho_ten));
+          const dm = new Map<string, number>();
+          d.data.forEach((nv: NhanVien) => {
+            m.set(nv.id_nhan_vien, nv.ho_ten);
+            dm.set(nv.id_nhan_vien, nv.so_nguoi_phu_thuoc || 0);
+          });
           setEmpMap(m);
+          setDepMap(dm);
         }
       })
       .catch(() => {});
@@ -496,7 +502,7 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'right', color: '#f59e0b' }}>{fmtShort(bl.hoa_hong)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--success-text)' }}>+{fmtShort(bl.thuong)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(bl.phat)}</td>
-                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_nguoi_phu_thuoc}</td>
+                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_nguoi_phu_thuoc ?? depMap.get(bl.id_nhan_vien) ?? 0}</td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)', whiteSpace: 'nowrap' }}>
                           {fmt(bl.tong_luong)}
                         </td>
