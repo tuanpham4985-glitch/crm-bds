@@ -41,6 +41,7 @@ export interface NhanVien {
   HKTT?: string;
   ngay_sinh?: string;
   ma_so_thue?: string;
+  so_nguoi_phu_thuoc?: number;
   trang_thai: string;
   ngay_tao: string;
   avatar_url?: string;
@@ -223,6 +224,8 @@ export interface BangLuong {
   hoa_hong: number;
   thuong: number;
   phat: number;
+  bao_hiem: number;
+  thue: number;
   tong_luong: number;
   trang_thai: 'draft' | 'confirmed' | 'paid';
   created_at: string;

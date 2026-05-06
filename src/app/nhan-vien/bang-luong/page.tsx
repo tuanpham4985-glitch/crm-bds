@@ -8,6 +8,7 @@ import {
 import type { BangLuong, NhanVien } from '@/lib/types';
 import type { PayrollEntry } from '@/lib/payroll';
 import { useAuth } from '@/hooks/useAuth';
+import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 
 // ---- helpers ----
 function fmt(n: number) {
@@ -125,8 +126,12 @@ export default function BangLuongPage() {
       // Tính lại gross → NET
       const gross    = row.luong_co_ban + row.hoa_hong + row.thuong - row.phat;
       const bao_hiem = row.luong_co_ban * 0.105;
-      const tttt     = gross - bao_hiem;
-      const thue_    = tttt <= 11_000_000 ? 0 : (tttt - 11_000_000) * 0.1;
+      
+      const so_phu_thuoc = row.so_nguoi_phu_thuoc || 0;
+      const giam_tru     = TAX_CONFIG.giam_tru_ban_than + (TAX_CONFIG.giam_tru_phu_thuoc * so_phu_thuoc);
+      const tttt         = gross - bao_hiem - giam_tru;
+      const thue_        = calculateTaxMonthly(tttt);
+      
       row.gross      = gross;
       row.bao_hiem   = bao_hiem;
       row.thue       = thue_;

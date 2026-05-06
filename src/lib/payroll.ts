@@ -12,6 +12,7 @@ import {
   addBangLuong,
 } from '@/lib/google-sheets';
 import type { NhanVien, HopDong, Pipeline, BangLuong } from '@/lib/types';
+import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 
 // ============================================================
 // CONFIG — Có thể mở rộng theo DU_AN hoặc loại hợp đồng
@@ -51,6 +52,8 @@ export interface PayrollEntry extends Omit<BangLuong, 'id' | 'created_at'> {
   thue: number;
   /** Tên nhân viên (để hiển thị) */
   ho_ten?: string;
+  /** Số người phụ thuộc */
+  so_nguoi_phu_thuoc?: number;
 }
 
 // ============================================================
@@ -187,11 +190,11 @@ export function calculateEmployeePayroll(
   const bao_hiem = luong_co_ban * config.tileBAO_HIEM;
 
   // F. Thuế TNCN
-  const thu_nhap_tinh_thue = gross - bao_hiem;
-  const thue =
-    thu_nhap_tinh_thue <= config.giam_tru_ca_nhan
-      ? 0
-      : (thu_nhap_tinh_thue - config.giam_tru_ca_nhan) * config.thue_suat;
+  const so_nguoi_phu_thuoc = nv.so_nguoi_phu_thuoc || 0;
+  const giam_tru = TAX_CONFIG.giam_tru_ban_than + (TAX_CONFIG.giam_tru_phu_thuoc * so_nguoi_phu_thuoc);
+  const thu_nhap_tinh_thue = gross - bao_hiem - giam_tru;
+  
+  const thue = calculateTaxMonthly(thu_nhap_tinh_thue);
 
   // G. NET
   const tong_luong = gross - bao_hiem - thue;
@@ -211,6 +214,7 @@ export function calculateEmployeePayroll(
     thue,
     tong_luong,
     trang_thai: 'draft',
+    so_nguoi_phu_thuoc: nv.so_nguoi_phu_thuoc,
   };
 }
 
@@ -303,6 +307,8 @@ export async function savePayroll(
         hoa_hong: entry.hoa_hong,
         thuong: entry.thuong,
         phat: entry.phat,
+        bao_hiem: entry.bao_hiem,
+        thue: entry.thue,
         tong_luong: entry.tong_luong,
         trang_thai: entry.trang_thai || 'draft',
       });
