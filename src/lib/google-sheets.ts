@@ -109,7 +109,8 @@ const SHEETS = {
 const BANG_LUONG_HEADERS = [
   'id', 'id_nhan_vien', 'thang', 'nam',
   'luong_co_ban', 'doanh_thu', 'hoa_hong', 'thuong', 'phat',
-  'bao_hiem', 'thue',
+  'so_ngay_cong_chuan', 'so_ngay_lam_viec_thuc_te', 'so_ngay_nghi_khong_luong', 'so_gio_ot',
+  'salary_by_day', 'ot_pay', 'bao_hiem', 'bh_company', 'thue',
   'tong_luong', 'trang_thai', 'created_at',
 ] as const;
 
@@ -936,11 +937,18 @@ export async function getBangLuong(): Promise<BangLuong[]> {
         hoa_hong:     num(v['hoa_hong']),
         thuong:       num(v['thuong']),
         phat:         num(v['phat']),
-        bao_hiem:     num(v['bao_hiem']),
-        thue:         num(v['thue']),
-        tong_luong:   num(v['tong_luong']),
-        trang_thai:   (str(v['trang_thai']) || 'draft') as 'draft' | 'confirmed' | 'paid',
-        created_at:   str(v['created_at']),
+        so_ngay_cong_chuan:       num(v['so_ngay_cong_chuan']),
+        so_ngay_lam_viec_thuc_te: num(v['so_ngay_lam_viec_thuc_te']),
+        so_ngay_nghi_khong_luong: num(v['so_ngay_nghi_khong_luong']),
+        so_gio_ot:     num(v['so_gio_ot']),
+        salary_by_day: num(v['salary_by_day']),
+        ot_pay:        num(v['ot_pay']),
+        bao_hiem:      num(v['bao_hiem']),
+        bh_company:    num(v['bh_company']),
+        thue:          num(v['thue']),
+        tong_luong:    num(v['tong_luong']),
+        trang_thai:    (str(v['trang_thai']) || 'draft') as 'draft' | 'confirmed' | 'paid',
+        created_at:    str(v['created_at']),
       } as BangLuong;
     })
     .filter((x): x is BangLuong => x !== null);
@@ -965,10 +973,17 @@ export async function addBangLuong(
     hoa_hong:     Number(bl.hoa_hong),
     thuong:       Number(bl.thuong),
     phat:         Number(bl.phat),
-    bao_hiem:     Number(bl.bao_hiem),
-    thue:         Number(bl.thue),
-    tong_luong:   Number(bl.tong_luong),
-    trang_thai:   bl.trang_thai || 'draft',
+    so_ngay_cong_chuan:       Number(bl.so_ngay_cong_chuan),
+    so_ngay_lam_viec_thuc_te: Number(bl.so_ngay_lam_viec_thuc_te),
+    so_ngay_nghi_khong_luong: Number(bl.so_ngay_nghi_khong_luong),
+    so_gio_ot:     Number(bl.so_gio_ot),
+    salary_by_day: Number(bl.salary_by_day),
+    ot_pay:        Number(bl.ot_pay),
+    bao_hiem:      Number(bl.bao_hiem),
+    bh_company:    Number(bl.bh_company),
+    thue:          Number(bl.thue),
+    tong_luong:    Number(bl.tong_luong),
+    trang_thai:    bl.trang_thai || 'draft',
     created_at,
   });
 
@@ -997,6 +1012,8 @@ export async function updateBangLuong(
   if (updates.trang_thai !== undefined) row.set('trang_thai', updates.trang_thai);
   if (updates.thuong     !== undefined) row.set('thuong',     Number(updates.thuong));
   if (updates.phat       !== undefined) row.set('phat',       Number(updates.phat));
+  if (updates.so_ngay_nghi_khong_luong !== undefined) row.set('so_ngay_nghi_khong_luong', Number(updates.so_ngay_nghi_khong_luong));
+  if (updates.so_gio_ot !== undefined) row.set('so_gio_ot', Number(updates.so_gio_ot));
   if (updates.tong_luong !== undefined) row.set('tong_luong', Number(updates.tong_luong));
   await row.save();
 

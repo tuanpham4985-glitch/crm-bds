@@ -224,7 +224,14 @@ export interface BangLuong {
   hoa_hong: number;
   thuong: number;
   phat: number;
-  bao_hiem: number;
+  so_ngay_cong_chuan: number;
+  so_ngay_lam_viec_thuc_te: number;
+  so_ngay_nghi_khong_luong: number;
+  so_gio_ot: number;
+  salary_by_day: number;
+  ot_pay: number;
+  bao_hiem: number; // bh_employee
+  bh_company: number;
   thue: number;
   tong_luong: number;
   trang_thai: 'draft' | 'confirmed' | 'paid';

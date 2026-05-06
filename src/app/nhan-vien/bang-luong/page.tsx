@@ -116,26 +116,44 @@ export default function BangLuongPage() {
     if (tab === 'saved') loadSaved();
   }, [tab, loadSaved]);
 
-  // ── Inline edit thuong / phat ──
-  function updateField(idx: number, field: 'thuong' | 'phat', val: string) {
+  // ── Inline edit fields ──
+  function updateField(idx: number, field: 'thuong' | 'phat' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot', val: string) {
     const raw = Number(val) || 0;
     setPreview(prev => {
       const next = [...prev];
       const row  = { ...next[idx] };
       row[field] = raw;
-      // Tính lại gross → NET
-      const gross    = row.luong_co_ban + row.hoa_hong + row.thuong - row.phat;
-      const bao_hiem = row.luong_co_ban * 0.105;
+
+      // 1. Tính công thực tế
+      row.so_ngay_lam_viec_thuc_te = row.so_ngay_cong_chuan - row.so_ngay_nghi_khong_luong;
       
+      // 2. Lương theo ngày công: salary_by_day = (luong_co_ban / so_ngay_cong_chuan) * thực tế
+      row.salary_by_day = row.so_ngay_cong_chuan > 0 
+        ? (row.luong_co_ban / row.so_ngay_cong_chuan) * row.so_ngay_lam_viec_thuc_te
+        : 0;
+
+      // 3. Tính OT: hourly_rate = luong_co_ban / so_ngay_cong_chuan / 8
+      const hourly_rate = row.so_ngay_cong_chuan > 0 ? (row.luong_co_ban / row.so_ngay_cong_chuan / 8) : 0;
+      row.ot_pay = row.so_gio_ot * hourly_rate * 1.5;
+
+      // 4. Gross = salary_by_day + hoa_hong + thuong + ot_pay - phat
+      const gross = row.salary_by_day + row.hoa_hong + row.thuong + row.ot_pay - row.phat;
+      row.gross = gross;
+
+      // 5. Bảo hiểm (giữ nguyên logic probation từ API ban đầu hoặc re-calc)
+      // Nếu là chính thức (isProbation=false) thì tính 10.5% trên luong_co_ban
+      const bao_hiem = row.isProbation ? 0 : row.luong_co_ban * 0.105;
+      row.bao_hiem = bao_hiem;
+
+      // 6. Thuế TNCN
       const so_phu_thuoc = row.so_nguoi_phu_thuoc || 0;
       const giam_tru     = TAX_CONFIG.giam_tru_ban_than + (TAX_CONFIG.giam_tru_phu_thuoc * so_phu_thuoc);
       const tttt         = gross - bao_hiem - giam_tru;
       const thue_        = calculateTaxMonthly(tttt);
       
-      row.gross      = gross;
-      row.bao_hiem   = bao_hiem;
       row.thue       = thue_;
       row.tong_luong = gross - bao_hiem - thue_;
+      
       next[idx] = row;
       return next;
     });
@@ -332,10 +350,12 @@ export default function BangLuongPage() {
                       <th style={{ width: 40 }}>#</th>
                       <th>Nhân viên</th>
                       <th style={{ textAlign: 'right' }}>Lương CB</th>
-                      <th style={{ textAlign: 'right' }}>Doanh thu</th>
+                      <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
+                      <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
+                      <th style={{ textAlign: 'center', width: 60 }}>OT (h)</th>
                       <th style={{ textAlign: 'right' }}>Hoa hồng</th>
-                      <th style={{ textAlign: 'right', width: 120 }}>Thưởng</th>
-                      <th style={{ textAlign: 'right', width: 120 }}>Phạt</th>
+                      <th style={{ textAlign: 'right', width: 80 }}>Thưởng</th>
+                      <th style={{ textAlign: 'right', width: 80 }}>Phạt</th>
                       <th style={{ textAlign: 'right' }}>Gross</th>
                       <th style={{ textAlign: 'right' }}>BHXH</th>
                       <th style={{ textAlign: 'right' }}>Thuế</th>
@@ -347,15 +367,32 @@ export default function BangLuongPage() {
                       <tr key={row.id_nhan_vien}>
                         <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
-                          {empMap.get(row.id_nhan_vien) || row.ho_ten || row.id_nhan_vien}
+                          <div>{empMap.get(row.id_nhan_vien) || row.ho_ten || row.id_nhan_vien}</div>
+                          {row.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4 }}>Thử việc</span>}
                         </td>
                         <td style={{ textAlign: 'right' }}>{fmtShort(row.luong_co_ban)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--primary)' }}>{fmtShort(row.doanh_thu)}</td>
+                        <td style={{ textAlign: 'center', fontSize: '0.85rem' }}>{row.so_ngay_cong_chuan}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="number" className="form-input" step="0.5"
+                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 45 }}
+                            value={row.so_ngay_nghi_khong_luong || 0}
+                            onChange={e => updateField(idx, 'so_ngay_nghi_khong_luong', e.target.value)}
+                          />
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="number" className="form-input"
+                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 45 }}
+                            value={row.so_gio_ot || 0}
+                            onChange={e => updateField(idx, 'so_gio_ot', e.target.value)}
+                          />
+                        </td>
                         <td style={{ textAlign: 'right', color: '#f59e0b', fontWeight: 500 }}>{fmtShort(row.hoa_hong)}</td>
                         <td style={{ textAlign: 'right' }}>
                           <input
                             type="number" className="form-input"
-                            style={{ padding: '4px 8px', textAlign: 'right', height: 30, fontSize: '0.8125rem' }}
+                            style={{ padding: '4px 6px', textAlign: 'right', height: 28, fontSize: '0.8rem', width: 70 }}
                             value={row.thuong || ''}
                             placeholder="0"
                             onChange={e => updateField(idx, 'thuong', e.target.value)}
@@ -364,15 +401,15 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'right' }}>
                           <input
                             type="number" className="form-input"
-                            style={{ padding: '4px 8px', textAlign: 'right', height: 30, fontSize: '0.8125rem' }}
+                            style={{ padding: '4px 6px', textAlign: 'right', height: 28, fontSize: '0.8rem', width: 70 }}
                             value={row.phat || ''}
                             placeholder="0"
                             onChange={e => updateField(idx, 'phat', e.target.value)}
                           />
                         </td>
-                        <td style={{ textAlign: 'right' }}>{fmtShort(row.gross ?? (row.luong_co_ban + row.hoa_hong))}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(row.bao_hiem ?? row.luong_co_ban * 0.105)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--warning-text)' }}>-{fmtShort(row.thue ?? 0)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmtShort(row.gross)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(row.bao_hiem)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--warning-text)' }}>-{fmtShort(row.thue)}</td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)' }}>
                           {fmtShort(row.tong_luong)}
                         </td>
@@ -386,7 +423,7 @@ export default function BangLuongPage() {
           {preview.length > 0 && (
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: '0.8rem' }}>
               <AlertCircle size={13} />
-              Điền thưởng/phạt trực tiếp trên bảng. NET = Gross − BHXH(10.5%) − Thuế. Thuế = 0 nếu TNTT ≤ 11tr, ngược lại (TNTT−11tr)×10%.
+              Công chuẩn: T2-T6=1, T7=0.5. Lương = (Lương CB / Công chuẩn) × Thực tế. OT × 1.5. Thử việc: 0 BHXH. Chính thức: 10.5% BHXH.
             </div>
           )}
         </>

@@ -54,6 +54,8 @@ export interface PayrollEntry extends Omit<BangLuong, 'id' | 'created_at'> {
   ho_ten?: string;
   /** Số người phụ thuộc */
   so_nguoi_phu_thuoc?: number;
+  /** Thử việc hay chính thức (để tính BHXH) */
+  isProbation?: boolean;
 }
 
 // ============================================================
@@ -143,6 +145,52 @@ export async function fetchPayrollData(
 }
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+/**
+ * Tính số công chuẩn trong tháng (T2-T6=1, T7=0.5, CN=0)
+ */
+export function getWorkingDaysInMonth(month: number, year: number): number {
+  const lastDay = new Date(year, month, 0).getDate();
+  let totalWorkDays = 0;
+
+  for (let day = 1; day <= lastDay; day++) {
+    const date = new Date(year, month - 1, day);
+    const dayOfWeek = date.getDay(); // 0: CN, 1: T2, ..., 6: T7
+
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      totalWorkDays += 1;
+    } else if (dayOfWeek === 6) {
+      totalWorkDays += 0.5;
+    }
+  }
+
+  return totalWorkDays;
+}
+
+/**
+ * Tính toán công thực tế
+ */
+export function calculateAttendance(so_ngay_cong_chuan: number, so_ngay_nghi_khong_luong: number) {
+  return Math.max(0, so_ngay_cong_chuan - so_ngay_nghi_khong_luong);
+}
+
+/**
+ * Tính toán tiền lương và OT
+ */
+export function calculateSalary(luong_co_ban: number, so_ngay_cong_chuan: number, so_ngay_lam_viec_thuc_te: number, so_gio_ot: number) {
+  const salary_by_day = so_ngay_cong_chuan > 0 
+    ? (luong_co_ban / so_ngay_cong_chuan) * so_ngay_lam_viec_thuc_te 
+    : 0;
+
+  const hourly_rate = so_ngay_cong_chuan > 0 ? (luong_co_ban / so_ngay_cong_chuan / 8) : 0;
+  const ot_pay = so_gio_ot * hourly_rate * 1.5;
+
+  return { salary_by_day, ot_pay, hourly_rate };
+}
+
+// ============================================================
 // LAYER 2: CALCULATE
 // Pure function — không gọi I/O, chỉ tính toán
 // ============================================================
@@ -183,11 +231,27 @@ export function calculateEmployeePayroll(
   const thuong = 0;
   const phat = 0;
 
-  // D. Gross
-  const gross = luong_co_ban + hoa_hong + thuong - phat;
+  // D. Gross & Chi tiết công
+  const so_ngay_cong_chuan = getWorkingDaysInMonth(thang, nam);
+  const so_ngay_nghi_khong_luong = 0; // Mặc định 0
+  const so_ngay_lam_viec_thuc_te = calculateAttendance(so_ngay_cong_chuan, so_ngay_nghi_khong_luong);
+  const so_gio_ot = 0;
 
-  // E. Bảo hiểm (tính trên lương cơ bản)
-  const bao_hiem = luong_co_ban * config.tileBAO_HIEM;
+  const { salary_by_day, ot_pay } = calculateSalary(luong_co_ban, so_ngay_cong_chuan, so_ngay_lam_viec_thuc_te, so_gio_ot);
+
+  const gross = salary_by_day + hoa_hong + thuong + ot_pay - phat;
+
+  // E. Bảo hiểm
+  // Nếu thử việc (contract_type contains 'thử việc') -> 0
+  const isProbation = (hopDong?.contract_type || '').toLowerCase().includes('thử việc');
+  
+  let bao_hiem = 0; // bh_employee
+  let bh_company = 0;
+
+  if (!isProbation && luong_co_ban > 0) {
+    bao_hiem = luong_co_ban * config.tileBAO_HIEM;
+    bh_company = luong_co_ban * 0.215; // BHXH doanh nghiệp đóng 21.5%
+  }
 
   // F. Thuế TNCN
   const so_nguoi_phu_thuoc = nv.so_nguoi_phu_thuoc || 0;
@@ -209,12 +273,20 @@ export function calculateEmployeePayroll(
     hoa_hong,
     thuong,
     phat,
+    so_ngay_cong_chuan,
+    so_ngay_lam_viec_thuc_te,
+    so_ngay_nghi_khong_luong,
+    so_gio_ot,
+    salary_by_day,
+    ot_pay,
     gross,
-    bao_hiem,
+    bao_hiem, // bh_employee
+    bh_company,
     thue,
     tong_luong,
     trang_thai: 'draft',
     so_nguoi_phu_thuoc: nv.so_nguoi_phu_thuoc,
+    isProbation,
   };
 }
 
@@ -307,7 +379,14 @@ export async function savePayroll(
         hoa_hong: entry.hoa_hong,
         thuong: entry.thuong,
         phat: entry.phat,
+        so_ngay_cong_chuan: entry.so_ngay_cong_chuan,
+        so_ngay_lam_viec_thuc_te: entry.so_ngay_lam_viec_thuc_te,
+        so_ngay_nghi_khong_luong: entry.so_ngay_nghi_khong_luong,
+        so_gio_ot: entry.so_gio_ot,
+        salary_by_day: entry.salary_by_day,
+        ot_pay: entry.ot_pay,
         bao_hiem: entry.bao_hiem,
+        bh_company: entry.bh_company,
         thue: entry.thue,
         tong_luong: entry.tong_luong,
         trang_thai: entry.trang_thai || 'draft',
