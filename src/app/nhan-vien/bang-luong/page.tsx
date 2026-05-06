@@ -231,7 +231,7 @@ export default function BangLuongPage() {
       {/* Header */}
       <div className="page-header">
         <div className="page-header-left">
-          <h1>Bảng lương</h1>
+          <h1>Bảng lương & Chấm công</h1>
           <p>Tự động tính từ HOP_DONG (lương cơ bản) + PIPELINE (giai_doan = Chốt)</p>
         </div>
         {isAdmin && tab === 'preview' && preview.length > 0 && (
@@ -451,7 +451,9 @@ export default function BangLuongPage() {
                     <th style={{ width: 40 }}>#</th>
                     <th>Nhân viên</th>
                     <th style={{ textAlign: 'right' }}>Lương CB</th>
-                    <th style={{ textAlign: 'right' }}>Doanh thu</th>
+                    <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
+                    <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
+                    <th style={{ textAlign: 'center', width: 60 }}>OT (h)</th>
                     <th style={{ textAlign: 'right' }}>Hoa hồng</th>
                     <th style={{ textAlign: 'right' }}>Thưởng</th>
                     <th style={{ textAlign: 'right' }}>Phạt</th>
@@ -468,7 +470,9 @@ export default function BangLuongPage() {
                         <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 500 }}>{empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}</td>
                         <td style={{ textAlign: 'right' }}>{fmtShort(bl.luong_co_ban)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--primary)' }}>{fmtShort(bl.doanh_thu)}</td>
+                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_ngay_cong_chuan}</td>
+                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_ngay_nghi_khong_luong}</td>
+                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_gio_ot}</td>
                         <td style={{ textAlign: 'right', color: '#f59e0b' }}>{fmtShort(bl.hoa_hong)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--success-text)' }}>+{fmtShort(bl.thuong)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(bl.phat)}</td>
