@@ -348,18 +348,18 @@ export default function BangLuongPage() {
                   <thead>
                     <tr>
                       <th style={{ width: 40 }}>#</th>
-                      <th>Nhân viên</th>
-                      <th style={{ textAlign: 'right' }}>Lương CB</th>
+                      <th style={{ minWidth: 180 }}>Nhân viên</th>
+                      <th style={{ textAlign: 'right', width: 90 }}>Lương CB</th>
                       <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
                       <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
                       <th style={{ textAlign: 'center', width: 60 }}>OT (h)</th>
-                      <th style={{ textAlign: 'right' }}>Hoa hồng</th>
+                      <th style={{ textAlign: 'right', width: 100 }}>Hoa hồng</th>
                       <th style={{ textAlign: 'right', width: 80 }}>Thưởng</th>
                       <th style={{ textAlign: 'right', width: 80 }}>Phạt</th>
-                      <th style={{ textAlign: 'right' }}>Gross</th>
-                      <th style={{ textAlign: 'right' }}>BHXH</th>
-                      <th style={{ textAlign: 'right' }}>Thuế</th>
-                      <th style={{ textAlign: 'right', fontWeight: 700 }}>NET</th>
+                      <th style={{ textAlign: 'right', width: 100 }}>Gross</th>
+                      <th style={{ textAlign: 'right', width: 90 }}>BHXH</th>
+                      <th style={{ textAlign: 'right', width: 90 }}>Thuế</th>
+                      <th style={{ textAlign: 'right', minWidth: 120, fontWeight: 700 }}>NET</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -410,8 +410,8 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'right' }}>{fmtShort(row.gross)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(row.bao_hiem)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--warning-text)' }}>-{fmtShort(row.thue)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)' }}>
-                          {fmtShort(row.tong_luong)}
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)', whiteSpace: 'nowrap' }}>
+                          {fmt(row.tong_luong)}
                         </td>
                       </tr>
                     ))}
@@ -446,22 +446,22 @@ export default function BangLuongPage() {
           ) : (
             <div className="table-wrapper">
               <table className="data-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 40 }}>#</th>
-                    <th>Nhân viên</th>
-                    <th style={{ textAlign: 'right' }}>Lương CB</th>
-                    <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
-                    <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
-                    <th style={{ textAlign: 'center', width: 60 }}>OT (h)</th>
-                    <th style={{ textAlign: 'right' }}>Hoa hồng</th>
-                    <th style={{ textAlign: 'right' }}>Thưởng</th>
-                    <th style={{ textAlign: 'right' }}>Phạt</th>
-                    <th style={{ textAlign: 'right', fontWeight: 700 }}>NET</th>
-                    <th>Trạng thái</th>
-                    {isAdmin && <th style={{ width: 130 }}>Hành động</th>}
-                  </tr>
-                </thead>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40 }}>#</th>
+                      <th style={{ minWidth: 180 }}>Nhân viên</th>
+                      <th style={{ textAlign: 'right', width: 90 }}>Lương CB</th>
+                      <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
+                      <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
+                      <th style={{ textAlign: 'center', width: 60 }}>OT (h)</th>
+                      <th style={{ textAlign: 'right', width: 100 }}>Hoa hồng</th>
+                      <th style={{ textAlign: 'right', width: 80 }}>Thưởng</th>
+                      <th style={{ textAlign: 'right', width: 80 }}>Phạt</th>
+                      <th style={{ textAlign: 'right', minWidth: 120, fontWeight: 700 }}>NET</th>
+                      <th style={{ width: 100 }}>Trạng thái</th>
+                      {isAdmin && <th style={{ width: 130 }}>Hành động</th>}
+                    </tr>
+                  </thead>
                 <tbody>
                   {saved.map((bl, idx) => {
                     const meta = STATUS_META[bl.trang_thai] ?? STATUS_META.draft;
@@ -476,7 +476,7 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'right', color: '#f59e0b' }}>{fmtShort(bl.hoa_hong)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--success-text)' }}>+{fmtShort(bl.thuong)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(bl.phat)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)' }}>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)', whiteSpace: 'nowrap' }}>
                           {fmt(bl.tong_luong)}
                         </td>
                         <td>
