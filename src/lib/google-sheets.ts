@@ -31,9 +31,15 @@ function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: 
 function getJWT(): JWT {
   const { clientEmail, privateKey } = validateEnvVars();
 
+  // Strip surrounding quotes if Vercel stored the value with literal " " wrapping
+  // Then convert escaped \n to actual newlines
+  const cleanKey = privateKey
+    .replace(/^"([\s\S]*)"$/, '$1')  // strip surrounding quotes "..."
+    .replace(/\\n/g, '\n');           // convert literal \n to newline
+
   return new JWT({
     email: clientEmail,
-    key: privateKey.replace(/\\n/g, '\n'),
+    key: cleanKey,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 }
