@@ -117,7 +117,7 @@ export default function BangLuongPage() {
   }, [tab, loadSaved]);
 
   // ── Inline edit fields ──
-  function updateField(idx: number, field: 'thuong' | 'phat' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot', val: string) {
+  function updateField(idx: number, field: 'thuong' | 'phat' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot' | 'so_nguoi_phu_thuoc', val: string) {
     const raw = Number(val) || 0;
     setPreview(prev => {
       const next = [...prev];
@@ -127,21 +127,20 @@ export default function BangLuongPage() {
       // 1. Tính công thực tế
       row.so_ngay_lam_viec_thuc_te = row.so_ngay_cong_chuan - row.so_ngay_nghi_khong_luong;
       
-      // 2. Lương theo ngày công: salary_by_day = (luong_co_ban / so_ngay_cong_chuan) * thực tế
+      // 2. Lương theo ngày công
       row.salary_by_day = row.so_ngay_cong_chuan > 0 
         ? (row.luong_co_ban / row.so_ngay_cong_chuan) * row.so_ngay_lam_viec_thuc_te
         : 0;
 
-      // 3. Tính OT: hourly_rate = luong_co_ban / so_ngay_cong_chuan / 8
+      // 3. Tính OT
       const hourly_rate = row.so_ngay_cong_chuan > 0 ? (row.luong_co_ban / row.so_ngay_cong_chuan / 8) : 0;
       row.ot_pay = row.so_gio_ot * hourly_rate * 1.5;
 
-      // 4. Gross = salary_by_day + hoa_hong + thuong + ot_pay - phat
+      // 4. Gross
       const gross = row.salary_by_day + row.hoa_hong + row.thuong + row.ot_pay - row.phat;
       row.gross = gross;
 
-      // 5. Bảo hiểm (giữ nguyên logic probation từ API ban đầu hoặc re-calc)
-      // Nếu là chính thức (isProbation=false) thì tính 10.5% trên luong_co_ban
+      // 5. Bảo hiểm
       const bao_hiem = row.isProbation ? 0 : row.luong_co_ban * 0.105;
       row.bao_hiem = bao_hiem;
 
@@ -359,6 +358,7 @@ export default function BangLuongPage() {
                       <th style={{ textAlign: 'right', width: 100 }}>Gross</th>
                       <th style={{ textAlign: 'right', width: 90 }}>BHXH</th>
                       <th style={{ textAlign: 'right', width: 90 }}>Thuế</th>
+                      <th style={{ textAlign: 'center', width: 50 }}>Phụ thuộc</th>
                       <th style={{ textAlign: 'right', minWidth: 120, fontWeight: 700 }}>NET</th>
                     </tr>
                   </thead>
@@ -410,6 +410,14 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'right' }}>{fmtShort(row.gross)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(row.bao_hiem)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--warning-text)' }}>-{fmtShort(row.thue)}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="number" className="form-input"
+                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 35 }}
+                            value={row.so_nguoi_phu_thuoc || 0}
+                            onChange={e => updateField(idx, 'so_nguoi_phu_thuoc', e.target.value)}
+                          />
+                        </td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)', whiteSpace: 'nowrap' }}>
                           {fmt(row.tong_luong)}
                         </td>
@@ -457,6 +465,7 @@ export default function BangLuongPage() {
                       <th style={{ textAlign: 'right', width: 100 }}>Hoa hồng</th>
                       <th style={{ textAlign: 'right', width: 80 }}>Thưởng</th>
                       <th style={{ textAlign: 'right', width: 80 }}>Phạt</th>
+                      <th style={{ textAlign: 'center', width: 50 }}>P.Thuộc</th>
                       <th style={{ textAlign: 'right', minWidth: 120, fontWeight: 700 }}>NET</th>
                       <th style={{ width: 100 }}>Trạng thái</th>
                       {isAdmin && <th style={{ width: 130 }}>Hành động</th>}
@@ -476,6 +485,7 @@ export default function BangLuongPage() {
                         <td style={{ textAlign: 'right', color: '#f59e0b' }}>{fmtShort(bl.hoa_hong)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--success-text)' }}>+{fmtShort(bl.thuong)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(bl.phat)}</td>
+                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_nguoi_phu_thuoc}</td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)', whiteSpace: 'nowrap' }}>
                           {fmt(bl.tong_luong)}
                         </td>

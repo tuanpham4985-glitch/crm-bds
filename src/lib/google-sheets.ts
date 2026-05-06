@@ -299,7 +299,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       so_tk_ngan_hang: h[13] ? str(v[h[13]]) : '',
       ten_ngan_hang_thu_huong: h[14] ? str(v[h[14]]) : '',
       avatar_url: h[16] ? str(v[h[16]]) : '',
-      so_nguoi_phu_thuoc: num(v['so_nguoi_phu_thuoc']), // num handles null/undefined/NaN
+      so_nguoi_phu_thuoc: num(v['so_nguoi_phu_thuoc'] || v['nguoi_phu_thuoc']),
     };
 
     // Backward compatibility: previous bug saved vai_tro into ngay_tao column (h[15])
