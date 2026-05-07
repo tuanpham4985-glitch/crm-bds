@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -12,13 +12,12 @@ import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 
 // ---- helpers ----
 function fmt(n: number) {
-  if (!n) return '0 ₫';
-  return n.toLocaleString('vi-VN') + ' ₫';
-}
-function fmtShort(n: number) {
   if (!n) return '0';
-  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace('.0', '') + 'tr';
-  return n.toLocaleString('vi-VN');
+  return Math.round(n).toLocaleString('vi-VN');
+}
+function fmtCurrency(n: number) {
+  if (!n) return '0 ₫';
+  return Math.round(n).toLocaleString('vi-VN') + ' ₫';
 }
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -474,7 +473,7 @@ export default function BangLuongPage() {
                           <div>{empMap.get(row.id_nhan_vien) || row.ho_ten || row.id_nhan_vien}</div>
                           {row.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4 }}>Thử việc</span>}
                         </td>
-                        <td style={{ textAlign: 'right' }}>{fmtShort(row.luong_co_ban)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmt(row.luong_co_ban)}</td>
                         <td style={{ textAlign: 'center', fontSize: '0.85rem' }}>{row.so_ngay_cong_chuan}</td>
                         <td style={{ textAlign: 'center' }}>
                           <input
@@ -492,7 +491,7 @@ export default function BangLuongPage() {
                             onChange={e => updateField(idx, 'so_gio_ot', e.target.value)}
                           />
                         </td>
-                        <td style={{ textAlign: 'right', color: '#f59e0b', fontWeight: 500 }}>{fmtShort(row.hoa_hong)}</td>
+                        <td style={{ textAlign: 'right', color: '#f59e0b', fontWeight: 500 }}>{fmt(row.hoa_hong)}</td>
                         <td style={{ textAlign: 'right' }}>
                           <input
                             type="number" className="form-input"
@@ -511,9 +510,9 @@ export default function BangLuongPage() {
                             onChange={e => updateField(idx, 'phat', e.target.value)}
                           />
                         </td>
-                        <td style={{ textAlign: 'right' }}>{fmtShort(row.gross)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(row.bao_hiem)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--warning-text)' }}>-{fmtShort(row.thue)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmt(row.gross)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(row.bao_hiem)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--warning-text)' }}>-{fmt(row.thue)}</td>
                         <td style={{ textAlign: 'center' }}>
                           <input
                             type="number" className="form-input"
@@ -582,13 +581,13 @@ export default function BangLuongPage() {
                       <tr key={bl.id}>
                         <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 500 }}>{empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}</td>
-                        <td style={{ textAlign: 'right' }}>{fmtShort(bl.luong_co_ban)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmt(bl.luong_co_ban)}</td>
                         <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_ngay_cong_chuan}</td>
                         <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_ngay_nghi_khong_luong}</td>
                         <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_gio_ot}</td>
-                        <td style={{ textAlign: 'right', color: '#f59e0b' }}>{fmtShort(bl.hoa_hong)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--success-text)' }}>+{fmtShort(bl.thuong)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmtShort(bl.phat)}</td>
+                        <td style={{ textAlign: 'right', color: '#f59e0b' }}>{fmt(bl.hoa_hong)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--success-text)' }}>+{fmt(bl.thuong)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(bl.phat)}</td>
                         <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_nguoi_phu_thuoc ?? depMap.get(bl.id_nhan_vien) ?? 0}</td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)', whiteSpace: 'nowrap' }}>
                           {fmt(bl.tong_luong)}

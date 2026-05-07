@@ -37,17 +37,17 @@ export class PayrollEngine {
     const totalFine = empAdjustments.filter(a => a.type === 'fine').reduce((s, a) => s + a.amount, 0);
 
     // 6. Gross
-    const gross = salaryByDay + otPay + totalBonus - totalFine;
+    const gross = Math.round(salaryByDay + otPay + totalBonus - totalFine);
 
     // 7. Bảo hiểm & Thuế (Logic hiện có)
     const isProbation = nv.employee_type?.toLowerCase().includes('thử việc');
-    const bao_hiem = isProbation ? 0 : baseSalary * 0.105;
+    const bao_hiem = isProbation ? 0 : Math.round(baseSalary * 0.105);
     
     // Thuế TNCN
     const so_phu_thuoc = nv.so_nguoi_phu_thuoc || 0;
     const giam_tru = 11000000 + (4400000 * so_phu_thuoc);
     const thu_nhap_tinh_thue = Math.max(0, gross - bao_hiem - giam_tru);
-    const thue = calculateTaxMonthly(thu_nhap_tinh_thue);
+    const thue = Math.round(calculateTaxMonthly(thu_nhap_tinh_thue));
 
     return {
       id_nhan_vien: nv.id_nhan_vien,
@@ -55,20 +55,20 @@ export class PayrollEngine {
       thang,
       nam,
       luong_co_ban: baseSalary,
-      doanh_thu: 0, // Sẽ được merge thêm từ Pipeline
-      hoa_hong: 0,  // Sẽ được merge thêm từ Pipeline
+      doanh_thu: 0,
+      hoa_hong: 0,
       so_ngay_cong_chuan: standardWorkdays,
       so_ngay_lam_viec_thuc_te: actualWorkdays,
       so_ngay_nghi_khong_luong: Math.max(0, standardWorkdays - actualWorkdays),
       so_gio_ot: totalOT,
-      salary_by_day: salaryByDay,
-      ot_pay: otPay,
+      salary_by_day: Math.round(salaryByDay),
+      ot_pay: Math.round(otPay),
       thuong: totalBonus,
       phat: totalFine,
       bao_hiem,
-      bh_company: isProbation ? 0 : baseSalary * 0.215,
+      bh_company: isProbation ? 0 : Math.round(baseSalary * 0.215),
       thue,
-      tong_luong: gross - bao_hiem - thue,
+      tong_luong: Math.max(0, gross - bao_hiem - thue),
       trang_thai: 'draft' as const,
     };
   }
