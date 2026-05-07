@@ -44,7 +44,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <main className="main-content">
-        <div className="content-wrapper">
+        <div className={pathname === '/nhan-vien/bang-luong' ? 'content-fluid' : 'content-wrapper'}>
           {children}
         </div>
       </main>
