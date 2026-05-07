@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   BadgeDollarSign, Calculator, Save, RefreshCw,
-  AlertCircle, CheckCircle2, Clock, Banknote, ChevronDown, FileText
+  AlertCircle, CheckCircle2, Clock, Banknote, FileText
 } from 'lucide-react';
 import type { BangLuong, NhanVien } from '@/lib/types';
 import type { PayrollEntry } from '@/lib/payroll';
@@ -46,7 +46,7 @@ export default function BangLuongPage() {
   const [saved,     setSaved]     = useState<BangLuong[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
 
-  // Saving
+  // Status
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [toast,  setToast]  = useState<{ msg: string; ok: boolean } | null>(null);
@@ -54,6 +54,39 @@ export default function BangLuongPage() {
   // Employee maps
   const [empMap, setEmpMap] = useState<Map<string, string>>(new Map());
   const [depMap, setDepMap] = useState<Map<string, number>>(new Map());
+
+  // --- Tính ngày công chuẩn (Trừ T7 nửa buổi, CN nghỉ, Trừ Lễ VN) ---
+  const getVietnameseHolidays = (year: number) => {
+    return [
+      `${year}-01-01`, // Tết Dương lịch
+      `${year}-04-30`, // Giải phóng miền Nam
+      `${year}-05-01`, // Quốc tế Lao động
+      `${year}-09-02`, // Quốc khánh
+    ];
+  };
+
+  const calculateWorkdays = (m: number, y: number) => {
+    const daysInMonth = new Date(y, m, 0).getDate();
+    let standard = 0;
+    const holidays = getVietnameseHolidays(y);
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(y, m - 1, d);
+      const dayOfWeek = date.getDay(); // 0: CN, 1: T2, ..., 6: T7
+      const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+      if (holidays.includes(dateStr)) continue;
+
+      if (dayOfWeek === 0) {
+        // Chủ nhật nghỉ
+      } else if (dayOfWeek === 6) {
+        standard += 0.5; // Thứ 7 làm nửa buổi
+      } else {
+        standard += 1;   // Thứ 2-6 làm cả ngày
+      }
+    }
+    return standard;
+  };
 
   // ── Load employee names ──
   useEffect(() => {
@@ -502,7 +535,7 @@ export default function BangLuongPage() {
           {preview.length > 0 && (
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: '0.8rem' }}>
               <AlertCircle size={13} />
-              Công chuẩn: T2-T6=1, T7=0.5. Lương = (Lương CB / Công chuẩn) × Thực tế. OT × 1.5. Thử việc: 0 BHXH. Chính thức: 10.5% BHXH.
+              Công chuẩn {nam}: T2-T6=1, T7=0.5. Đã trừ các ngày lễ VN. Lương = (Lương CB / Công chuẩn) × Thực tế. OT × 1.5.
             </div>
           )}
         </>
@@ -525,23 +558,23 @@ export default function BangLuongPage() {
           ) : (
             <div className="table-wrapper">
               <table className="data-table" style={{ fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: 30 }}>#</th>
-                      <th style={{ minWidth: 140 }}>Nhân viên</th>
-                      <th style={{ textAlign: 'right', width: 70 }}>Lương CB</th>
-                      <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
-                      <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
-                      <th style={{ textAlign: 'center', width: 50 }}>OT (h)</th>
-                      <th style={{ textAlign: 'right', width: 80 }}>Hoa hồng</th>
-                      <th style={{ textAlign: 'right', width: 70 }}>Thưởng</th>
-                      <th style={{ textAlign: 'right', width: 70 }}>Phạt</th>
-                      <th style={{ textAlign: 'center', width: 60 }}>P.Thuộc</th>
-                      <th style={{ textAlign: 'right', minWidth: 100, fontWeight: 700 }}>NET</th>
-                      <th style={{ width: 100 }}>Trạng thái</th>
-                      {isAdmin && <th style={{ width: 110 }}>Hành động</th>}
-                    </tr>
-                  </thead>
+                <thead>
+                  <tr>
+                    <th style={{ width: 30 }}>#</th>
+                    <th style={{ minWidth: 140 }}>Nhân viên</th>
+                    <th style={{ textAlign: 'right', width: 70 }}>Lương CB</th>
+                    <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
+                    <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
+                    <th style={{ textAlign: 'center', width: 50 }}>OT (h)</th>
+                    <th style={{ textAlign: 'right', width: 80 }}>Hoa hồng</th>
+                    <th style={{ textAlign: 'right', width: 70 }}>Thưởng</th>
+                    <th style={{ textAlign: 'right', width: 70 }}>Phạt</th>
+                    <th style={{ textAlign: 'center', width: 60 }}>P.Thuộc</th>
+                    <th style={{ textAlign: 'right', minWidth: 100, fontWeight: 700 }}>NET</th>
+                    <th style={{ width: 100 }}>Trạng thái</th>
+                    {isAdmin && <th style={{ width: 110 }}>Hành động</th>}
+                  </tr>
+                </thead>
                 <tbody>
                   {displaySaved.map((bl, idx) => {
                     const meta = STATUS_META[bl.trang_thai] ?? STATUS_META.draft;
