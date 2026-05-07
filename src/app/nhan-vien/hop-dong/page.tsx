@@ -531,10 +531,9 @@ function HopDongContent() {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        <span className="flex items-center gap-2" style={{ justifyContent: 'flex-end' }}>
-                          <DollarSign size={13} style={{ color: 'var(--success-text)' }} />
+                        <div style={{ color: 'var(--success-text)' }}>
                           {formatCurrency(hd.luong_co_ban)}
-                        </span>
+                        </div>
                       </td>
                       {isAdmin && (
                         <td>
