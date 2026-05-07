@@ -19,7 +19,15 @@ export class PayrollEngine {
 
     // 2. Chấm công thực tế
     const attendanceResults = this.attendance.processEmployee(nv.id_nhan_vien, startDate, endDate);
-    const actualWorkdays = attendanceResults.reduce((s, r) => s + r.actualWorkday, 0);
+    const totalAttendanceLogs = this.adjustments.filter(a => a.id_nhan_vien === nv.id_nhan_vien).length; // Check if there's any data
+    
+    // Nếu hoàn toàn không có dữ liệu chấm công, mặc định là đi làm đủ (để HR tự chỉnh nghỉ sau)
+    // Nếu có dữ liệu (dù chỉ 1 ngày), thì tính theo thực tế chấm công.
+    const hasAttendanceData = attendanceResults.some(r => r.actualWorkday > 0 || r.otHours > 0);
+    const actualWorkdays = hasAttendanceData 
+      ? attendanceResults.reduce((s, r) => s + r.actualWorkday, 0)
+      : standardWorkdays; 
+
     const totalOT = attendanceResults.reduce((s, r) => s + r.otHours, 0);
     const totalLate = attendanceResults.reduce((s, r) => s + r.lateMinutes, 0);
 
