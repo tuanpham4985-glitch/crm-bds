@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         properties: {},
         children: [
           new Paragraph({
-            text: "CÔNG TY BẤT ĐỘNG SẢN CRM",
+            children: [new TextRun({ text: "CÔNG TY BẤT ĐỘNG SẢN CRM", bold: true })],
             heading: HeadingLevel.HEADING_1,
             alignment: AlignmentType.CENTER,
             spacing: { after: 200 }
@@ -78,7 +78,10 @@ export async function GET(request: NextRequest) {
                 children: [
                   "STT", "Họ tên", "Lương CB", "Hoa hồng", "Thưởng", "Phạt", "Bảo hiểm", "Thuế", "NET Nhận"
                 ].map(header => new TableCell({
-                  children: [new Paragraph({ text: header, bold: true, alignment: AlignmentType.CENTER })],
+                  children: [new Paragraph({ 
+                    children: [new TextRun({ text: header, bold: true })],
+                    alignment: AlignmentType.CENTER 
+                  })],
                   verticalAlign: VerticalAlign.CENTER,
                   shading: { fill: "F2F2F2" }
                 }))
@@ -108,13 +111,19 @@ export async function GET(request: NextRequest) {
               new TableRow({
                 children: [
                   new TableCell({
-                    children: [new Paragraph({ text: "TỔNG CỘNG", bold: true, alignment: AlignmentType.RIGHT })],
+                    children: [new Paragraph({ 
+                      children: [new TextRun({ text: "TỔNG CỘNG", bold: true })],
+                      alignment: AlignmentType.RIGHT 
+                    })],
                     columnSpan: 8,
                     verticalAlign: VerticalAlign.CENTER,
                     shading: { fill: "F2F2F2" }
                   }),
                   new TableCell({
-                    children: [new Paragraph({ text: fmt(totalNet), bold: true, alignment: AlignmentType.RIGHT })],
+                    children: [new Paragraph({ 
+                      children: [new TextRun({ text: fmt(totalNet), bold: true })],
+                      alignment: AlignmentType.RIGHT 
+                    })],
                     verticalAlign: VerticalAlign.CENTER,
                     shading: { fill: "F2F2F2" }
                   })
