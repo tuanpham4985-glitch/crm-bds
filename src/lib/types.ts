@@ -238,3 +238,38 @@ export interface BangLuong {
   trang_thai: 'draft' | 'confirmed' | 'paid';
   created_at: string;
 }
+// === CHẤM CÔNG VÀ LỊCH LÀM VIỆC (MỚI) ===
+export interface WorkCalendar {
+  date: string;       // YYYY-MM-DD
+  day_type: 'workday' | 'weekend' | 'holiday' | 'makeup_workday' | 'half_day';
+  description?: string;
+  weight: number;     // 1, 0.5, 0...
+}
+
+export interface AttendanceRaw {
+  id: string;
+  id_nhan_vien: string;
+  date: string;
+  check_in: string;   // HH:mm
+  check_out: string;  // HH:mm
+}
+
+export interface Shift {
+  id: string;
+  name: string;
+  start_time: string; // 08:00
+  end_time: string;   // 17:00
+  break_start?: string;
+  break_end?: string;
+  grace_period: number; // minutes
+}
+
+export interface PayrollAdjustment {
+  id: string;
+  id_nhan_vien: string;
+  thang: number;
+  nam: number;
+  type: 'bonus' | 'fine' | 'work_adjustment' | 'other';
+  amount: number;
+  reason: string;
+}

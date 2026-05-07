@@ -10,9 +10,16 @@ import {
   getHopDong,
   getBangLuong,
   addBangLuong,
+  getWorkCalendar,
+  getAttendanceRaw,
+  getShifts,
+  getPayrollAdjustments
 } from '@/lib/google-sheets';
-import type { NhanVien, HopDong, Pipeline, BangLuong } from '@/lib/types';
+import type { NhanVien, HopDong, Pipeline, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment } from '@/lib/types';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
+import { CalendarEngine } from './engines/calendarEngine';
+import { AttendanceEngine } from './engines/attendanceEngine';
+import { PayrollEngine } from './engines/payrollEngine';
 
 // ============================================================
 // CONFIG — Có thể mở rộng theo DU_AN hoặc loại hợp đồng
@@ -68,6 +75,10 @@ interface PayrollRawData {
   contractMap: Map<string, HopDong>;   // id_nhan_vien → HopDong (active nhất)
   closedPipelinesForMonth: Pipeline[]; // Đã lọc: giai_doan=chốt + đúng tháng
   existingPayrollKeys: Set<string>;    // "id_nhan_vien|thang|nam" → đã lưu
+  calendar: WorkCalendar[];
+  attendance: AttendanceRaw[];
+  shifts: Shift[];
+  adjustments: PayrollAdjustment[];
 }
 
 /**
@@ -79,11 +90,15 @@ export async function fetchPayrollData(
   nam: number
 ): Promise<PayrollRawData> {
   // Batch: parallel fetch tất cả sheets cùng lúc
-  const [employees, pipelines, contracts, savedPayrolls] = await Promise.all([
+  const [employees, pipelines, contracts, savedPayrolls, calendar, attendance, shifts, adjustments] = await Promise.all([
     getNhanVien(),
     getPipeline(),
     getHopDong(),
     getBangLuong(),
+    getWorkCalendar(),
+    getAttendanceRaw(thang, nam),
+    getShifts(),
+    getPayrollAdjustments(thang, nam),
   ]);
 
   // 1. Nhân viên active (không bao gồm "Nghỉ việc")
@@ -141,6 +156,10 @@ export async function fetchPayrollData(
     contractMap,
     closedPipelinesForMonth,
     existingPayrollKeys,
+    calendar,
+    attendance,
+    shifts,
+    adjustments,
   };
 }
 
@@ -306,7 +325,12 @@ export async function generatePayroll(
   const rawData = await fetchPayrollData(thang, nam);
   const { activeEmployees, contractMap, closedPipelinesForMonth } = rawData;
 
-  // Group pipelines theo id_nhan_vien (sale_phu_trach)
+  // Khởi tạo Engines
+  const calEngine = new CalendarEngine(rawData.calendar);
+  const attEngine = new AttendanceEngine(rawData.attendance, rawData.shifts, rawData.calendar);
+  const payEngine = new PayrollEngine(calEngine, attEngine, rawData.adjustments);
+
+  // Group pipelines theo id_nhan_vien
   const pipelinesByEmployee = new Map<string, Pipeline[]>();
   for (const pl of closedPipelinesForMonth) {
     const key = pl.sale_phu_trach;
@@ -316,14 +340,36 @@ export async function generatePayroll(
 
   const results: PayrollEntry[] = activeEmployees.map((nv) => {
     const empPipelines = pipelinesByEmployee.get(nv.id_nhan_vien) || [];
-    return calculateEmployeePayroll(
-      nv,
-      thang,
-      nam,
-      contractMap,
-      empPipelines,
-      config
-    );
+    const hopDong = contractMap.get(nv.id_nhan_vien);
+    
+    if (!hopDong) {
+      // Nếu không có hợp đồng, dùng logic cũ hoặc bỏ qua
+      return calculateEmployeePayroll(nv, thang, nam, contractMap, empPipelines, config);
+    }
+
+    // Dùng Payroll Engine mới để tính toán
+    const calc = payEngine.calculate(nv, hopDong, thang, nam);
+
+    // Bổ sung hoa hồng từ Pipeline (vì PayrollEngine mặc định chưa tính hoa hồng BĐS)
+    let hoa_hong = 0;
+    let doanh_thu = 0;
+    for (const pl of empPipelines) {
+      doanh_thu += Number(pl.gia_tri_thuc_te) || 0;
+      const overrideRate = config.hoa_hong_theo_du_an?.[pl.id_du_an];
+      hoa_hong += overrideRate !== undefined 
+        ? (Number(pl.gia_tri_thuc_te) || 0) * overrideRate 
+        : (Number(pl.tien_hoa_hong) || 0);
+    }
+
+    return {
+      ...calc,
+      doanh_thu,
+      hoa_hong,
+      gross: calc.salary_by_day + calc.ot_pay + calc.thuong + hoa_hong - calc.phat,
+      tong_luong: calc.tong_luong + hoa_hong, // Cộng thêm hoa hồng vào NET
+      trang_thai: 'draft',
+      isProbation: nv.employee_type?.toLowerCase().includes('thử việc')
+    };
   });
 
   return results;

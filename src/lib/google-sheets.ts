@@ -104,6 +104,10 @@ const SHEETS = {
   LOG_HE_THONG: 'LOG_HE_THONG',
   HOP_DONG: 'HOP_DONG',
   BANG_LUONG: 'BANG_LUONG',
+  WORK_CALENDAR: 'WORK_CALENDAR',
+  ATTENDANCE_RAW: 'ATTENDANCE_RAW',
+  SHIFTS: 'SHIFTS',
+  PAYROLL_ADJUSTMENTS: 'PAYROLL_ADJUSTMENTS',
 } as const;
 
 // Exact column headers of the BANG_LUONG sheet (must match Google Sheets exactly)
@@ -1060,4 +1064,82 @@ export async function deleteBangLuong(id: string): Promise<boolean> {
   await row.delete();
   await addLog(doc, 'DELETE_BL', id, '', '');
   return true;
+}
+
+// --- WORK CALENDAR ---
+export async function getWorkCalendar(): Promise<WorkCalendar[]> {
+  const doc = await getDoc();
+  const sheet = await getSheet(doc, SHEETS.WORK_CALENDAR);
+  const rows = await sheet.getRows();
+  return rows.map(r => {
+    const v = r.toObject();
+    return {
+      date: str(v.date),
+      day_type: str(v.day_type) as any,
+      description: str(v.description),
+      weight: num(v.weight),
+    };
+  });
+}
+
+// --- ATTENDANCE RAW ---
+export async function getAttendanceRaw(thang: number, nam: number): Promise<AttendanceRaw[]> {
+  const doc = await getDoc();
+  const sheet = await getSheet(doc, SHEETS.ATTENDANCE_RAW);
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id: str(v.id),
+        id_nhan_vien: str(v.id_nhan_vien),
+        date: str(v.date),
+        check_in: str(v.check_in),
+        check_out: str(v.check_out),
+      };
+    })
+    .filter(a => {
+      const d = new Date(a.date);
+      return (d.getMonth() + 1) === thang && d.getFullYear() === nam;
+    });
+}
+
+// --- SHIFTS ---
+export async function getShifts(): Promise<Shift[]> {
+  const doc = await getDoc();
+  const sheet = await getSheet(doc, SHEETS.SHIFTS);
+  const rows = await sheet.getRows();
+  return rows.map(r => {
+    const v = r.toObject();
+    return {
+      id: str(v.id),
+      name: str(v.name),
+      start_time: str(v.start_time),
+      end_time: str(v.end_time),
+      break_start: str(v.break_start),
+      break_end: str(v.break_end),
+      grace_period: num(v.grace_period),
+    };
+  });
+}
+
+// --- PAYROLL ADJUSTMENTS ---
+export async function getPayrollAdjustments(thang: number, nam: number): Promise<PayrollAdjustment[]> {
+  const doc = await getDoc();
+  const sheet = await getSheet(doc, SHEETS.PAYROLL_ADJUSTMENTS);
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id: str(v.id),
+        id_nhan_vien: str(v.id_nhan_vien),
+        thang: num(v.thang),
+        nam: num(v.nam),
+        type: str(v.type) as any,
+        amount: num(v.amount),
+        reason: str(v.reason),
+      };
+    })
+    .filter(adj => adj.thang === thang && adj.nam === nam);
 }
