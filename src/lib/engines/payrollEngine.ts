@@ -55,17 +55,21 @@ export class PayrollEngine {
       thang,
       nam,
       luong_co_ban: baseSalary,
+      doanh_thu: 0, // Sẽ được merge thêm từ Pipeline
+      hoa_hong: 0,  // Sẽ được merge thêm từ Pipeline
       so_ngay_cong_chuan: standardWorkdays,
       so_ngay_lam_viec_thuc_te: actualWorkdays,
+      so_ngay_nghi_khong_luong: Math.max(0, standardWorkdays - actualWorkdays),
       so_gio_ot: totalOT,
       salary_by_day: salaryByDay,
       ot_pay: otPay,
       thuong: totalBonus,
       phat: totalFine,
       bao_hiem,
+      bh_company: isProbation ? 0 : baseSalary * 0.215,
       thue,
       tong_luong: gross - bao_hiem - thue,
-      status: 'draft'
+      trang_thai: 'draft' as const,
     };
   }
 }

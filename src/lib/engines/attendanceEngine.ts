@@ -28,7 +28,15 @@ export class AttendanceEngine {
       const dayWeight = dayConfig ? dayConfig.weight : (current.getDay() === 6 ? 0.5 : (current.getDay() === 0 ? 0 : 1));
       
       const att = empData.find(a => a.date === dateStr);
-      const shift = this.shifts[0]; // Giả định dùng ca mặc định, có thể mở rộng sau
+      // Ca mặc định nếu không tìm thấy ca nào trong hệ thống
+      const defaultShift: Shift = {
+        id: 'default',
+        name: 'Hành chính',
+        start_time: '08:00',
+        end_time: '17:00',
+        grace_period: 15
+      };
+      const shift = this.shifts.length > 0 ? this.shifts[0] : defaultShift;
 
       if (att && shift) {
         const { late, early, ot } = this.calculateMetrics(att, shift, dayWeight);
