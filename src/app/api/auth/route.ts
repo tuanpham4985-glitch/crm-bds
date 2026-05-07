@@ -32,9 +32,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Tài khoản đã bị khóa' }, { status: 401 });
     }
 
-    // Simple password check (default password = '123456' if not set)
-    const expectedPassword = mat_khau || '123456';
-    if (expectedPassword !== '123456' && expectedPassword !== nv.so_dien_thoai) {
+    // Password check: Prioritize nv.mat_khau, fallback to '123456'
+    const storedPassword = nv.mat_khau || '123456';
+    if (mat_khau !== storedPassword) {
       return NextResponse.json({ success: false, error: 'Mật khẩu không đúng' }, { status: 401 });
     }
 

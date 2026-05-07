@@ -248,10 +248,23 @@ export async function getNhanVien(): Promise<NhanVien[]> {
   const sheet = await getSheet(doc, SHEETS.NHAN_VIEN);
   const h = sheet.headerValues;
 
-  // Auto-add so_nguoi_phu_thuoc if missing
+  // Auto-add missing columns
+  let needsHeaderUpdate = false;
+  const newHeaders = [...h];
+  
   if (!h.includes('so_nguoi_phu_thuoc')) {
     console.log('[GSheets] Adding missing column "so_nguoi_phu_thuoc" to NHAN_VIEN');
-    await sheet.setHeaderRow([...h, 'so_nguoi_phu_thuoc']);
+    newHeaders.push('so_nguoi_phu_thuoc');
+    needsHeaderUpdate = true;
+  }
+  if (!h.includes('mat_khau')) {
+    console.log('[GSheets] Adding missing column "mat_khau" to NHAN_VIEN');
+    newHeaders.push('mat_khau');
+    needsHeaderUpdate = true;
+  }
+
+  if (needsHeaderUpdate) {
+    await sheet.setHeaderRow(newHeaders);
   }
 
   const rows = await sheet.getRows();
@@ -301,6 +314,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       ten_ngan_hang_thu_huong: h[14] ? str(v[h[14]]) : '',
       avatar_url: h[16] ? str(v[h[16]]) : '',
       so_nguoi_phu_thuoc: num(v['so_nguoi_phu_thuoc'] || v['nguoi_phu_thuoc']),
+      mat_khau: str(v['mat_khau']),
     };
 
     // Backward compatibility: previous bug saved vai_tro into ngay_tao column (h[15])
@@ -717,6 +731,7 @@ export async function addNhanVien(nv: NhanVien): Promise<void> {
     'khu_vuc': nv.khu_vuc || '',
     'phong_KD': nv.phong_KD || '',
     'so_nguoi_phu_thuoc': nv.so_nguoi_phu_thuoc || 0,
+    'mat_khau': nv.mat_khau || '',
   });
   await addLog(doc, 'CREATE_NV', nv.id_nhan_vien, '', '');
 }
@@ -748,6 +763,7 @@ export async function updateNhanVien(nv: NhanVien): Promise<boolean> {
   if (h.includes('khu_vuc')) row.set('khu_vuc', nv.khu_vuc || '');
   if (h.includes('phong_KD')) row.set('phong_KD', nv.phong_KD || '');
   if (h.includes('so_nguoi_phu_thuoc')) row.set('so_nguoi_phu_thuoc', nv.so_nguoi_phu_thuoc || 0);
+  if (h.includes('mat_khau') && nv.mat_khau) row.set('mat_khau', nv.mat_khau);
   
   await row.save();
   await addLog(doc, 'UPDATE_NV', nv.id_nhan_vien, '', '');

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
-  Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign
+  Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -38,6 +38,13 @@ export default function Sidebar() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  
+  // Password Modal State
+  const [showPwdModal, setShowPwdModal] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ old: '', new: '', confirm: '' });
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [showOld, setShowOld] = useState(false);
+  const [showNew, setShowNew] = useState(false);
 
   useEffect(() => {
     const savedLogo = localStorage.getItem('company_logo');
@@ -83,7 +90,43 @@ export default function Sidebar() {
     } else if (isIOS) {
       alert("Trên iPhone/iPad:\n1. Bấm nút Chia sẻ (biểu tượng ô vuông có mũi tên lên) ở thanh dưới cùng của Safari.\n2. Chọn 'Thêm vào MH chính' (Add to Home Screen) để cài đặt App.");
     } else {
-      alert("Trình duyệt của bạn không hỗ trợ cài đặt tự động. Vui lòng mở menu trình duyệt (dấu 3 chấm) và chọn 'Thêm vào Màn hình chính' để cài đặt App.");
+      alert("Trình duyệt của bạn không hỗ trợ cài đặt tự động. Vui lòng mở menu trình duyệt (dấu 3 chấm) và chọn 'Thêm vào Màn hình chính' (Add to Home Screen) để cài đặt App.");
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwdForm.new !== pwdForm.confirm) {
+      alert('Mật khẩu mới không khớp nhau');
+      return;
+    }
+    if (pwdForm.new.length < 6) {
+      alert('Mật khẩu mới phải có ít nhất 6 ký tự');
+      return;
+    }
+
+    setPwdLoading(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oldPassword: pwdForm.old,
+          newPassword: pwdForm.new
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Đổi mật khẩu thành công!');
+        setShowPwdModal(false);
+        setPwdForm({ old: '', new: '', confirm: '' });
+      } else {
+        alert(data.error || 'Đổi mật khẩu thất bại');
+      }
+    } catch (err) {
+      alert('Lỗi kết nối server');
+    } finally {
+      setPwdLoading(false);
     }
   };
 
@@ -225,11 +268,84 @@ export default function Sidebar() {
             <span>Cài đặt App</span>
           </button>
         )}
+        <button onClick={() => setShowPwdModal(true)} className={styles.installBtn} style={{ marginTop: 4, background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)' }}>
+          <Key size={18} />
+          <span>Đổi mật khẩu</span>
+        </button>
         <button onClick={handleLogout} className={styles.logoutBtn}>
           <LogOut size={18} />
           <span>Đăng xuất</span>
         </button>
       </div>
+
+      {/* Change Password Modal */}
+      {showPwdModal && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content" style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Đổi mật khẩu</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowPwdModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleChangePassword}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Mật khẩu cũ</label>
+                  <div className="search-wrapper">
+                    <Lock size={16} className="search-icon" />
+                    <input 
+                      type={showOld ? "text" : "password"} 
+                      className="form-input" 
+                      required
+                      value={pwdForm.old}
+                      onChange={e => setPwdForm({...pwdForm, old: e.target.value})}
+                    />
+                    <button type="button" className="search-icon" style={{ right: 8, left: 'auto', pointerEvents: 'auto' }} onClick={() => setShowOld(!showOld)}>
+                      {showOld ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Mật khẩu mới</label>
+                  <div className="search-wrapper">
+                    <Lock size={16} className="search-icon" />
+                    <input 
+                      type={showNew ? "text" : "password"} 
+                      className="form-input" 
+                      required
+                      value={pwdForm.new}
+                      onChange={e => setPwdForm({...pwdForm, new: e.target.value})}
+                    />
+                    <button type="button" className="search-icon" style={{ right: 8, left: 'auto', pointerEvents: 'auto' }} onClick={() => setShowNew(!showNew)}>
+                      {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Xác nhận mật khẩu mới</label>
+                  <div className="search-wrapper">
+                    <Lock size={16} className="search-icon" />
+                    <input 
+                      type="password" 
+                      className="form-input" 
+                      required
+                      value={pwdForm.confirm}
+                      onChange={e => setPwdForm({...pwdForm, confirm: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowPwdModal(false)}>Hủy</button>
+                <button type="submit" className="btn btn-primary" disabled={pwdLoading}>
+                  {pwdLoading ? 'Đang xử lý...' : 'Cập nhật'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
