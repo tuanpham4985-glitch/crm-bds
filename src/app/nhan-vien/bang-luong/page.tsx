@@ -215,11 +215,12 @@ export default function BangLuongPage() {
   };
 
   // ── Xuất báo cáo DOCX ──
-  const handleExport = async () => {
+  const handleExport = async (isYearly = false) => {
     if (exporting) return;
     setExporting(true);
     try {
-      const res = await fetch(`/api/payroll/export?thang=${thang}&nam=${nam}`);
+      const urlParams = isYearly ? `nam=${nam}` : `thang=${thang}&nam=${nam}`;
+      const res = await fetch(`/api/payroll/export?${urlParams}`);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Lỗi xuất file');
@@ -229,12 +230,12 @@ export default function BangLuongPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Bao_cao_luong_${thang}_${nam}.docx`;
+      a.download = isYearly ? `Bao_cao_luong_nam_${nam}.docx` : `Bao_cao_luong_${thang}_${nam}.docx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      showToast('Đã xuất file báo cáo');
+      showToast(isYearly ? `Đã xuất báo cáo năm ${nam}` : 'Đã xuất báo cáo tháng');
     } catch (err: any) {
       showToast(err.message || 'Lỗi khi xuất file', false);
     } finally {
@@ -290,15 +291,26 @@ export default function BangLuongPage() {
         {tab === 'saved' && (
           <div style={{ display: 'flex', gap: 8 }}>
             {isAdmin && displaySaved.length > 0 && (
-              <button 
-                className="btn btn-primary" 
-                onClick={handleExport} 
-                disabled={exporting}
-                style={{ background: 'var(--info-text)', borderColor: 'var(--info-text)' }}
-              >
-                <FileText size={15} />
-                {exporting ? 'Đang xuất...' : 'Xuất báo cáo'}
-              </button>
+              <>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => handleExport(false)} 
+                  disabled={exporting}
+                  style={{ background: 'var(--info-text)', borderColor: 'var(--info-text)' }}
+                >
+                  <FileText size={15} />
+                  {exporting ? '...' : `Xuất tháng ${thang}`}
+                </button>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => handleExport(true)} 
+                  disabled={exporting}
+                  style={{ background: '#6366f1', borderColor: '#6366f1' }}
+                >
+                  <Calculator size={15} />
+                  {exporting ? '...' : `Xuất năm ${nam}`}
+                </button>
+              </>
             )}
             <button className="btn btn-secondary" onClick={loadSaved} disabled={savedLoading}>
               <RefreshCw size={15} />

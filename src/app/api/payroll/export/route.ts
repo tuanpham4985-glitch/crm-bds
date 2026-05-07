@@ -11,9 +11,7 @@ import {
   AlignmentType, 
   TextRun, 
   HeadingLevel,
-  BorderStyle,
-  VerticalAlign,
-  Header
+  VerticalAlign
 } from 'docx';
 
 function fmt(n: number) {
@@ -24,12 +22,14 @@ function fmt(n: number) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const thang = Number(searchParams.get('thang'));
+    const thang = searchParams.get('thang') ? Number(searchParams.get('thang')) : null;
     const nam = Number(searchParams.get('nam'));
 
-    if (!thang || !nam) {
-      return NextResponse.json({ success: false, error: 'Thiếu tháng hoặc năm' }, { status: 400 });
+    if (!nam) {
+      return NextResponse.json({ success: false, error: 'Thiếu năm' }, { status: 400 });
     }
+
+    const isYearly = !thang || thang === 0;
 
     // 1. Fetch data
     const [allPayroll, allEmployees] = await Promise.all([
@@ -37,18 +37,45 @@ export async function GET(request: NextRequest) {
       getNhanVien()
     ]);
 
-    const filtered = allPayroll.filter(bl => bl.thang === thang && bl.nam === nam);
+    let filtered = allPayroll.filter(bl => {
+      if (bl.nam !== nam) return false;
+      if (!isYearly && bl.thang !== thang) return false;
+      return true;
+    });
+
     if (filtered.length === 0) {
       return NextResponse.json({ success: false, error: 'Không có dữ liệu bảng lương cho thời gian này' }, { status: 404 });
     }
 
     const empMap = new Map(allEmployees.map(e => [e.id_nhan_vien, e.ho_ten]));
-    const totalNet = filtered.reduce((sum, item) => sum + item.tong_luong, 0);
 
-    // 2. Generate DOCX
+    // 2. Aggregate data if yearly
+    let displayData = filtered;
+    if (isYearly) {
+      const summaryMap = new Map<string, any>();
+      filtered.forEach(item => {
+        if (!summaryMap.has(item.id_nhan_vien)) {
+          summaryMap.set(item.id_nhan_vien, { ...item });
+        } else {
+          const s = summaryMap.get(item.id_nhan_vien);
+          s.luong_co_ban += item.luong_co_ban;
+          s.hoa_hong += item.hoa_hong;
+          s.thuong += item.thuong;
+          s.phat += item.phat;
+          s.bao_hiem += item.bao_hiem;
+          s.thue += item.thue;
+          s.tong_luong += item.tong_luong;
+        }
+      });
+      displayData = Array.from(summaryMap.values());
+    }
+
+    const totalNet = displayData.reduce((sum, item) => sum + item.tong_luong, 0);
+    const titleText = isYearly ? `BÁO CÁO TỔNG HỢP LƯƠNG CẢ NĂM ${nam}` : `BÁO CÁO TỔNG HỢP LƯƠNG THÁNG ${thang}/${nam}`;
+
+    // 3. Generate DOCX
     const doc = new Document({
       sections: [{
-        properties: {},
         children: [
           new Paragraph({
             children: [new TextRun({ text: "CÔNG TY BẤT ĐỘNG SẢN CRM", bold: true })],
@@ -59,7 +86,7 @@ export async function GET(request: NextRequest) {
           new Paragraph({
             children: [
               new TextRun({
-                text: `BÁO CÁO TỔNG HỢP LƯƠNG THÁNG ${thang}/${nam}`,
+                text: titleText,
                 bold: true,
                 size: 28,
               }),
@@ -68,12 +95,8 @@ export async function GET(request: NextRequest) {
             spacing: { after: 400 }
           }),
           new Table({
-            width: {
-              size: 100,
-              type: WidthType.PERCENTAGE,
-            },
+            width: { size: 100, type: WidthType.PERCENTAGE },
             rows: [
-              // Header Row
               new TableRow({
                 children: [
                   "STT", "Họ tên", "Lương CB", "Hoa hồng", "Thưởng", "Phạt", "Bảo hiểm", "Thuế", "NET Nhận"
@@ -86,8 +109,7 @@ export async function GET(request: NextRequest) {
                   shading: { fill: "F2F2F2" }
                 }))
               }),
-              // Data Rows
-              ...filtered.map((item, index) => new TableRow({
+              ...displayData.map((item, index) => new TableRow({
                 children: [
                   (index + 1).toString(),
                   empMap.get(item.id_nhan_vien) || item.id_nhan_vien,
@@ -107,7 +129,6 @@ export async function GET(request: NextRequest) {
                   margins: { top: 100, bottom: 100, left: 100, right: 100 }
                 }))
               })),
-              // Footer Row (Total)
               new TableRow({
                 children: [
                   new TableCell({
@@ -150,11 +171,12 @@ export async function GET(request: NextRequest) {
     });
 
     const buffer = await Packer.toBuffer(doc);
+    const filename = isYearly ? `Bao_cao_luong_nam_${nam}.docx` : `Bao_cao_luong_${thang}_${nam}.docx`;
 
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename=Bao_cao_luong_${thang}_${nam}.docx`,
+        'Content-Disposition': `attachment; filename=${filename}`,
       },
     });
 
