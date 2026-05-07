@@ -450,7 +450,7 @@ export default function BangLuongPage() {
                   <thead>
                     <tr>
                       <th style={{ width: 30 }}>#</th>
-                      <th style={{ minWidth: 100 }}>Nhân viên</th>
+                      <th style={{ width: 120 }}>Nhân viên</th>
                       <th style={{ textAlign: 'right', width: 70 }}>Lương CB</th>
                       <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
                       <th style={{ textAlign: 'center', width: 70 }}>Nghỉ</th>
@@ -462,7 +462,7 @@ export default function BangLuongPage() {
                       <th style={{ textAlign: 'right', width: 70 }}>BHXH</th>
                       <th style={{ textAlign: 'right', width: 70 }}>Thuế</th>
                       <th style={{ textAlign: 'center', width: 50 }}>P.Thuộc</th>
-                      <th style={{ textAlign: 'right', minWidth: 70, fontWeight: 700 }}>NET</th>
+                      <th style={{ textAlign: 'right', width: 100, fontWeight: 700 }}>NET</th>
                     </tr>
                   </thead>
                   <tbody>
