@@ -4,7 +4,7 @@
 // ============================================================
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong } from './types';
+import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment } from './types';
 
 // ---- Environment Variable Validation ----
 function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
