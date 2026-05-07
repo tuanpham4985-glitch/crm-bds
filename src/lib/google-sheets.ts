@@ -34,8 +34,9 @@ function getJWT(): JWT {
   // Strip surrounding quotes if Vercel stored the value with literal " " wrapping
   // Then convert escaped \n to actual newlines
   const cleanKey = privateKey
-    .replace(/^"([\s\S]*)"$/, '$1')  // strip surrounding quotes "..."
-    .replace(/\\n/g, '\n');           // convert literal \n to newline
+    .trim()
+    .replace(/^"(.*)"$/, '$1')
+    .replace(/\\n/g, '\n');
 
   return new JWT({
     email: clientEmail,
