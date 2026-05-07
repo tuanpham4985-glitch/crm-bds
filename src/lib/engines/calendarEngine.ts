@@ -8,9 +8,13 @@ export class CalendarEngine {
    */
   getStandardWorkdays(startDate: Date, endDate: Date): number {
     let total = 0;
-    const current = new Date(startDate);
+    const current = new Date(startDate.getTime());
+    
     while (current <= endDate) {
-      const dateStr = current.toISOString().split('T')[0];
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
       const dayConfig = this.calendarData.find(c => c.date === dateStr);
       
       if (dayConfig) {

@@ -22,31 +22,41 @@ export class AttendanceEngine {
     const empData = this.rawData.filter(r => r.id_nhan_vien === id_nhan_vien);
 
     while (current <= endDate) {
-      const dateStr = current.toISOString().split('T')[0];
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
       const dayConfig = this.calendar.find(c => c.date === dateStr);
       const isWorkday = dayConfig ? dayConfig.weight > 0 : (current.getDay() !== 0);
       const dayWeight = dayConfig ? dayConfig.weight : (current.getDay() === 6 ? 0.5 : (current.getDay() === 0 ? 0 : 1));
       
       const att = empData.find(a => a.date === dateStr);
-      // Ca mặc định nếu không tìm thấy ca nào trong hệ thống
-      const defaultShift: Shift = {
-        id: 'default',
-        name: 'Hành chính',
-        start_time: '08:00',
-        end_time: '17:00',
-        grace_period: 15
-      };
-      const shift = this.shifts.length > 0 ? this.shifts[0] : defaultShift;
+      
+      // Chọn ca làm việc: Thứ 7 dùng 'SATURDAY', ngày thường dùng 'DEFAULT'
+      const isSat = current.getDay() === 6;
+      const shiftId = isSat ? 'SATURDAY' : 'DEFAULT';
+      let shift = this.shifts.find(s => s.id === shiftId) || this.shifts[0];
+
+      // Ca mặc định dự phòng nếu không tìm thấy ca nào
+      if (!shift) {
+        shift = {
+          id: 'default',
+          name: 'Hành chính',
+          start_time: '08:00',
+          end_time: '17:00',
+          grace_period: 15
+        };
+      }
 
       if (att && shift) {
-        const { late, early, ot } = this.calculateMetrics(att, shift, dayWeight);
+        const metrics = this.calculateMetrics(att, shift, dayWeight, dateStr);
         results.push({
           date: dateStr,
           isWorkday,
-          actualWorkday: dayWeight,
-          lateMinutes: late,
-          earlyMinutes: early,
-          otHours: ot
+          actualWorkday: metrics.actualWorkday * dayWeight,
+          lateMinutes: metrics.lateMinutes,
+          earlyMinutes: metrics.earlyMinutes,
+          otHours: metrics.otHours
         });
       } else {
         results.push({
@@ -63,31 +73,35 @@ export class AttendanceEngine {
     return results;
   }
 
-  private calculateMetrics(att: AttendanceRaw, shift: Shift, weight: number) {
-    if (!att.check_in || !att.check_out) return { late: 0, early: 0, ot: 0 };
+  private parseTime(timeStr: string, dateStr: string): Date {
+    return new Date(`${dateStr}T${timeStr}:00`);
+  }
 
-    const [startH, startM] = shift.start_time.split(':').map(Number);
-    const [endH, endM] = shift.end_time.split(':').map(Number);
-    const [inH, inM] = att.check_in.split(':').map(Number);
-    const [outH, outM] = att.check_out.split(':').map(Number);
+  private calculateMetrics(att: AttendanceRaw, shift: Shift, weight: number, dateStr: string) {
+    if (!att.check_in || !att.check_out) return { actualWorkday: 0, lateMinutes: 0, earlyMinutes: 0, otHours: 0 };
 
-    const shiftStart = startH * 60 + startM;
-    const shiftEnd = endH * 60 + endM;
-    const actualIn = inH * 60 + inM;
-    const actualOut = outH * 60 + outM;
-
-    // Đi trễ (có trừ grace period)
-    const late = Math.max(0, actualIn - shiftStart - shift.grace_period);
+    const inDate = this.parseTime(att.check_in, dateStr);
+    const outDate = this.parseTime(att.check_out, dateStr);
+    const actualDuration = Math.max(0, (outDate.getTime() - inDate.getTime()) / (1000 * 60));
+    const shiftStart = this.parseTime(shift.start_time, dateStr);
+    const shiftEnd = this.parseTime(shift.end_time, dateStr);
+    const shiftDuration = Math.max(1, (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60));
     
-    // Về sớm
-    const early = Math.max(0, shiftEnd - actualOut);
+    const actualWorkday = Math.min(1, actualDuration / shiftDuration);
 
-    // OT (Giao thức đơn giản: sau giờ về 30p mới tính OT)
-    let ot = 0;
-    if (actualOut > shiftEnd + 30) {
-      ot = (actualOut - shiftEnd) / 60;
+    let otHours = 0;
+    if (actualDuration > shiftDuration) {
+      otHours = Number(((actualDuration - shiftDuration) / 60).toFixed(2));
     }
 
-    return { late, early, ot };
+    const lateMinutes = Math.max(0, (inDate.getTime() - shiftStart.getTime()) / (1000 * 60));
+    const earlyMinutes = Math.max(0, (shiftEnd.getTime() - outDate.getTime()) / (1000 * 60));
+
+    return {
+      actualWorkday,
+      otHours,
+      lateMinutes,
+      earlyMinutes,
+    };
   }
 }
