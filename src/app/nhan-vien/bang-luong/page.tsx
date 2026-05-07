@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   BadgeDollarSign, Calculator, Save, RefreshCw,
-  AlertCircle, CheckCircle2, Clock, Banknote, ChevronDown,
+  AlertCircle, CheckCircle2, Clock, Banknote, ChevronDown, FileText
 } from 'lucide-react';
 import type { BangLuong, NhanVien } from '@/lib/types';
 import type { PayrollEntry } from '@/lib/payroll';
@@ -48,6 +48,7 @@ export default function BangLuongPage() {
 
   // Saving
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [toast,  setToast]  = useState<{ msg: string; ok: boolean } | null>(null);
 
   // Employee maps
@@ -213,6 +214,34 @@ export default function BangLuongPage() {
     }
   };
 
+  // ── Xuất báo cáo DOCX ──
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/payroll/export?thang=${thang}&nam=${nam}`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Lỗi xuất file');
+      }
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Bao_cao_luong_${thang}_${nam}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast('Đã xuất file báo cáo');
+    } catch (err: any) {
+      showToast(err.message || 'Lỗi khi xuất file', false);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (authLoading) return <div className="loading-spinner"><div className="spinner" /></div>;
 
   // ── Access Control Filter ──
@@ -259,10 +288,23 @@ export default function BangLuongPage() {
           </button>
         )}
         {tab === 'saved' && (
-          <button className="btn btn-secondary" onClick={loadSaved} disabled={savedLoading}>
-            <RefreshCw size={15} />
-            Làm mới
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {isAdmin && displaySaved.length > 0 && (
+              <button 
+                className="btn btn-primary" 
+                onClick={handleExport} 
+                disabled={exporting}
+                style={{ background: 'var(--info-text)', borderColor: 'var(--info-text)' }}
+              >
+                <FileText size={15} />
+                {exporting ? 'Đang xuất...' : 'Xuất báo cáo'}
+              </button>
+            )}
+            <button className="btn btn-secondary" onClick={loadSaved} disabled={savedLoading}>
+              <RefreshCw size={15} />
+              Làm mới
+            </button>
+          </div>
         )}
       </div>
 
