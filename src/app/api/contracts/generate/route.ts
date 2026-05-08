@@ -119,7 +119,6 @@ export async function POST(req: Request) {
       phong_KD: data.phong_KD || '',
       phong_ban: data.phong_KD || '',
       Phong_Ban: data.phong_KD || '',
-      Email: data.email || '',
     };
 
     try {
