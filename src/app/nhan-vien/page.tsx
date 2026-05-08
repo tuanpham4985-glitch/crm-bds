@@ -383,12 +383,23 @@ export default function NhanVienPage() {
           <h1>Nhân viên</h1>
           <p>Quản lý nhân viên kinh doanh ({employees.length} nhân viên)</p>
         </div>
-        {isAdmin && (
-          <button className="btn btn-primary" onClick={openCreate}>
-            <Plus size={18} />
-            Thêm nhân viên
-          </button>
-        )}
+        <div className="flex gap-2">
+          <a 
+            href="/templates/MAU_VIC_PHIEU_NHAN_SU.docx" 
+            download 
+            className="btn btn-ghost"
+            title="Tải mẫu phiếu nhân sự VIC"
+          >
+            <FileText size={18} />
+            Mẫu phiếu NS
+          </a>
+          {isAdmin && (
+            <button className="btn btn-primary" onClick={openCreate}>
+              <Plus size={18} />
+              Thêm nhân viên
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Employee Table */}
@@ -483,7 +494,11 @@ export default function NhanVienPage() {
                         if (col.id === 'trang_thai') {
                           return (
                             <td key={col.id} style={{ textAlign: col.align as any }}>
-                              <span className={`badge ${nv.trang_thai === 'Đang làm' ? 'badge-success' : 'badge-neutral'}`}>
+                              <span className={`badge ${
+                                nv.trang_thai === 'Đang làm' ? 'badge-success' : 
+                                nv.trang_thai === 'Học viên' ? 'badge-info' : 
+                                'badge-neutral'
+                              }`}>
                                 {nv.trang_thai}
                               </span>
                             </td>
@@ -696,9 +711,11 @@ export default function NhanVienPage() {
                   <select className="form-select" value={form.trang_thai}
                     onChange={(e) => setForm({ ...form, trang_thai: e.target.value })}>
                     <option value="Đang làm">Đang làm</option>
+                    <option value="Học viên">Học viên</option>
+                    <option value="Nghỉ việc">Nghỉ việc</option>
                   </select>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                    💡 Đổi &quot;Nghỉ việc&quot; trực tiếp trong Google Sheet
+                    💡 Cập nhật trạng thái để phân loại nhân sự chính xác
                   </span>
                 </div>
               </div>
