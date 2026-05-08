@@ -39,6 +39,11 @@ export function detectEmployeeClassification(
     department = role?.toLowerCase() === 'admin' ? 'BO' : 'KD';
   }
 
-  const contract_category: ContractCategory = contractTypeLabel?.toLowerCase()?.includes('thử việc') ? 'PROBATION' : 'OFFICIAL';
+  const lowerLabel = contractTypeLabel?.toLowerCase() || '';
+  const contract_category: ContractCategory = 
+    lowerLabel.includes('thử việc') ? 'PROBATION' : 
+    lowerLabel.includes('học viên') ? 'STUDENT' : 
+    'OFFICIAL';
+    
   return { contract_category, department };
 }

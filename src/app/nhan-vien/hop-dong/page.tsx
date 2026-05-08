@@ -184,13 +184,18 @@ function HopDongContent() {
   const openCreate = (employeeId = '') => {
     setEditingItem(null);
     const emp = employees.find(e => e.id_nhan_vien === employeeId);
-    const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', 'Thử việc', emp?.employee_type);
+    
+    // Auto-detect contract type from employee status
+    const initialContractType = emp?.trang_thai === 'Học viên' ? 'Học viên' : 'Thử việc';
+    
+    const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', initialContractType, emp?.employee_type);
     const dept: Department = classification.department;
-    const soHD = generateContractNumber(employeeId, 'Thử việc');
+    const soHD = generateContractNumber(employeeId, initialContractType);
+    
     setForm({
       id_nhan_vien: employeeId || '',
       so_hop_dong: soHD,
-      contract_type: 'Thử việc',
+      contract_type: initialContractType,
       ngay_bat_dau: new Date().toISOString().split('T')[0],
       ngay_ket_thuc: '',
       luong_co_ban: '',
@@ -504,8 +509,10 @@ function HopDongContent() {
                         </div>
                       </td>
                       <td>
-                        <span className={`badge ${hd.contract_type.includes('Chính thức') ? 'badge-info' :
-                            hd.contract_type.includes('Thử việc') ? 'badge-warning' : 'badge-neutral'
+                        <span className={`badge ${
+                            hd.contract_type.includes('Chính thức') ? 'badge-info' :
+                            hd.contract_type.includes('Thử việc') ? 'badge-warning' :
+                            hd.contract_type.includes('Học viên') ? 'badge-success' : 'badge-neutral'
                           }`}>
                           {hd.contract_type}
                         </span>
@@ -643,6 +650,7 @@ function HopDongContent() {
                     }}>
                     <option value="Thử việc">Thử việc</option>
                     <option value="Chính thức">Chính thức</option>
+                    <option value="Học viên">Học viên</option>
                   </select>
                 </div>
               </div>

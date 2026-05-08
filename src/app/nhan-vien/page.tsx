@@ -225,52 +225,6 @@ export default function NhanVienPage() {
     });
   };
 
-  const generatePhieuHocVien = async (nv: NhanVien) => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const response = await fetch('/api/contracts/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          template_file: 'PHIẾU NHÂN SỰ',
-          ho_ten: nv.ho_ten,
-          so_dien_thoai: nv.so_dien_thoai,
-          email: nv.email,
-          ngay_sinh: nv.ngay_sinh,
-          gioi_tinh: nv.gioi_tinh,
-          so_cccd: nv.so_cccd,
-          ngay_cap: nv.ngay_cap,
-          noi_cap: nv.noi_cap,
-          HKTT: nv.HKTT,
-          ma_so_thue: nv.ma_so_thue,
-          so_tk_ngan_hang: nv.so_tk_ngan_hang,
-          ten_ngan_hang_thu_huong: nv.ten_ngan_hang_thu_huong,
-          employee_type: nv.employee_type,
-          phong_KD: nv.phong_KD,
-          so_hop_dong: 'PHIEU_NS',
-          contract_type: 'Học viên'
-        }),
-      });
-
-      if (!response.ok) throw new Error('Không thể tạo file');
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Phieu_Nhan_Su_${nv.ho_ten.replace(/\s+/g, '_')}.docx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Export error:', err);
-      alert('Lỗi khi xuất phiếu học viên');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // Avatar upload handler
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -600,17 +554,6 @@ export default function NhanVienPage() {
                           return (
                             <td key={col.id} style={{ textAlign: col.align as any }}>
                               <div className="flex items-center gap-1" style={{ justifyContent: 'center' }}>
-                                {nv.trang_thai === 'Học viên' && (
-                                  <button 
-                                    className="btn btn-ghost btn-icon btn-sm" 
-                                    onClick={() => generatePhieuHocVien(nv)} 
-                                    title="Tạo phiếu học viên"
-                                    style={{ color: 'var(--info-text)' }}
-                                    disabled={saving}
-                                  >
-                                    {saving ? <Loader2 size={15} className="spinner" /> : <FileUser size={15} />}
-                                  </button>
-                                )}
                                 <Link
                                   href={`/nhan-vien/hop-dong?id_nhan_vien=${nv.id_nhan_vien}&action=create`}
                                   className="btn btn-ghost btn-icon btn-sm"
@@ -814,8 +757,8 @@ export default function NhanVienPage() {
                   <label className="form-label">Giới tính</label>
                   <select className="form-select" value={form.gioi_tinh}
                     onChange={(e) => setForm({ ...form, gioi_tinh: e.target.value })}>
-                    <option value="">— Chọn —</option>
-                    {danhMuc.gioi_tinh.map(gt => <option key={gt} value={gt}>{gt}</option>)}
+                    <option value="">— Chọn giới tính —</option>
+                    {(danhMuc?.gioi_tinh || []).map(gt => <option key={gt} value={gt}>{gt}</option>)}
                   </select>
                 </div>
               </div>
@@ -826,7 +769,7 @@ export default function NhanVienPage() {
                   <select className="form-select" value={form.phong_KD}
                     onChange={(e) => setForm({ ...form, phong_KD: e.target.value })}>
                     <option value="">— Chọn Phòng ban —</option>
-                    {danhMuc.phong_KD.map(pkd => <option key={pkd} value={pkd}>{pkd}</option>)}
+                    {(danhMuc?.phong_KD || []).map(pkd => <option key={pkd} value={pkd}>{pkd}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
@@ -834,7 +777,7 @@ export default function NhanVienPage() {
                   <select className="form-select" value={form.khu_vuc}
                     onChange={(e) => setForm({ ...form, khu_vuc: e.target.value })}>
                     <option value="">— Chọn khu vực —</option>
-                    {danhMuc.khu_vuc.map(kv => <option key={kv} value={kv}>{kv}</option>)}
+                    {(danhMuc?.khu_vuc || []).map(kv => <option key={kv} value={kv}>{kv}</option>)}
                   </select>
                 </div>
               </div>
@@ -842,12 +785,12 @@ export default function NhanVienPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">Số tài khoản ngân hàng</label>
-                  <input className="form-input" value={form.so_tk_ngan_hang}
+                  <input className="form-input" value={form.so_tk_ngan_hang || ''}
                     onChange={(e) => setForm({ ...form, so_tk_ngan_hang: e.target.value })} placeholder="Ví dụ: 1903..." />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Tên ngân hàng thụ hưởng</label>
-                  <input className="form-input" value={form.ten_ngan_hang_thu_huong}
+                  <input className="form-input" value={form.ten_ngan_hang_thu_huong || ''}
                     onChange={(e) => setForm({ ...form, ten_ngan_hang_thu_huong: e.target.value })} placeholder="Ví dụ: Techcombank" />
                 </div>
               </div>
@@ -857,7 +800,7 @@ export default function NhanVienPage() {
                 <select className="form-select" value={form.employee_type}
                   onChange={(e) => setForm({ ...form, employee_type: e.target.value })}>
                   <option value="">— Chọn Chức danh —</option>
-                  {danhMuc.employee_types.map(et => <option key={et} value={et}>{et}</option>)}
+                  {(danhMuc?.employee_types || []).map(et => <option key={et} value={et}>{et}</option>)}
                 </select>
               </div>
             </div>
