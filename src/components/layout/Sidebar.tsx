@@ -11,6 +11,15 @@ import {
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
 
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
+
 const CRM_ITEMS = [
   { href: '/khach-hang', label: 'Khách hàng', icon: Users },
   { href: '/cong-viec', label: 'Công việc', icon: CheckSquare },
