@@ -99,6 +99,8 @@ export async function POST(req: Request) {
       ho_ten: data.ho_ten || data.ten_nhan_vien || '',
       ten_nhan_vien: data.ten_nhan_vien || data.ho_ten || '',
       ten_ctv: data.ten_ctv || data.ho_ten || '',
+      so_dien_thoai: data.so_dien_thoai || '',
+      email: data.email || '',
       ngay_sinh: data.ngay_sinh || '',
       gioi_tinh: data.gioi_tinh || '',
       so_cccd: data.so_cccd || '',

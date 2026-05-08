@@ -240,6 +240,8 @@ export default function NhanVienPage() {
           noi_cap: nv.noi_cap,
           HKTT: nv.HKTT,
           ma_so_thue: nv.ma_so_thue,
+          so_tk_ngan_hang: nv.so_tk_ngan_hang,
+          ten_ngan_hang_thu_huong: nv.ten_ngan_hang_thu_huong,
           employee_type: nv.employee_type,
           phong_KD: nv.phong_KD,
           so_hop_dong: 'PHIEU_NS',
@@ -428,15 +430,6 @@ export default function NhanVienPage() {
           <p>Quản lý nhân viên kinh doanh ({employees.length} nhân viên)</p>
         </div>
         <div className="flex gap-2">
-          <a 
-            href="/templates/MAU_VIC_PHIEU_NHAN_SU.docx" 
-            download 
-            className="btn btn-ghost"
-            title="Tải mẫu phiếu nhân sự VIC"
-          >
-            <FileText size={18} />
-            Mẫu phiếu NS
-          </a>
           {isAdmin && (
             <button className="btn btn-primary" onClick={openCreate}>
               <Plus size={18} />
