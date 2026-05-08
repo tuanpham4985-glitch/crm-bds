@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
-  Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText
+  Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText, FileUser
 } from 'lucide-react';
 import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc } from '@/lib/types';
 import Link from 'next/link';
@@ -219,6 +219,50 @@ export default function NhanVienPage() {
       };
       reader.onerror = () => reject(new Error('File read failed'));
     });
+  };
+
+  const generatePhieuHocVien = async (nv: NhanVien) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const response = await fetch('/api/contracts/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_file: 'PHIẾU NHÂN SỰ',
+          ho_ten: nv.ho_ten,
+          so_dien_thoai: nv.so_dien_thoai,
+          email: nv.email,
+          ngay_sinh: nv.ngay_sinh,
+          gioi_tinh: nv.gioi_tinh,
+          so_cccd: nv.so_cccd,
+          ngay_cap: nv.ngay_cap,
+          noi_cap: nv.noi_cap,
+          HKTT: nv.HKTT,
+          ma_so_thue: nv.ma_so_thue,
+          employee_type: nv.employee_type,
+          phong_KD: nv.phong_KD,
+          so_hop_dong: 'PHIEU_NS',
+          contract_type: 'Học viên'
+        }),
+      });
+
+      if (!response.ok) throw new Error('Không thể tạo file');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Phieu_Nhan_Su_${nv.ho_ten.replace(/\s+/g, '_')}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Lỗi khi xuất phiếu học viên');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Avatar upload handler
@@ -559,6 +603,17 @@ export default function NhanVienPage() {
                           return (
                             <td key={col.id} style={{ textAlign: col.align as any }}>
                               <div className="flex items-center gap-1" style={{ justifyContent: 'center' }}>
+                                {nv.trang_thai === 'Học viên' && (
+                                  <button 
+                                    className="btn btn-ghost btn-icon btn-sm" 
+                                    onClick={() => generatePhieuHocVien(nv)} 
+                                    title="Tạo phiếu học viên"
+                                    style={{ color: 'var(--info-text)' }}
+                                    disabled={saving}
+                                  >
+                                    {saving ? <Loader2 size={15} className="spinner" /> : <FileUser size={15} />}
+                                  </button>
+                                )}
                                 <Link
                                   href={`/nhan-vien/hop-dong?id_nhan_vien=${nv.id_nhan_vien}&action=create`}
                                   className="btn btn-ghost btn-icon btn-sm"

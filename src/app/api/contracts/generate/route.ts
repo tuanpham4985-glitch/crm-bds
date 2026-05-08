@@ -61,6 +61,7 @@ export async function POST(req: Request) {
       'MẪU VIC_HĐTV (KHỐI KD).docx': 'MAU_VIC_HDTV_KD.docx',
       'MẪU VIC_HĐLĐ (KHỐI BO).docx': 'MAU_VIC_HDLD_BO.docx',
       'MẪU VIC_HĐLĐ (KHỐI KD).docx': 'MAU_VIC_HDLD_KD.docx',
+      'PHIẾU NHÂN SỰ': 'MAU_VIC_PHIEU_NHAN_SU.docx',
     };
 
     let templateFileName = data.template_file || "MAU_VIC_HDTV_KD.docx";
