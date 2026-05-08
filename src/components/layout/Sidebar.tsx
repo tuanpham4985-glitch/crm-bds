@@ -5,26 +5,20 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
-  Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X
+  Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
+  ChevronDown, Database, Briefcase
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
 
-interface BeforeInstallPromptEvent extends Event {
-  readonly platforms: string[];
-  readonly userChoice: Promise<{
-    outcome: 'accepted' | 'dismissed';
-    platform: string;
-  }>;
-  prompt(): Promise<void>;
-}
-
-const NAV_ITEMS = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+const CRM_ITEMS = [
   { href: '/khach-hang', label: 'Khách hàng', icon: Users },
-  { href: '/pipeline', label: 'Pipeline', icon: GitBranch },
   { href: '/cong-viec', label: 'Công việc', icon: CheckSquare },
+  { href: '/pipeline', label: 'Pipeline', icon: GitBranch },
   { href: '/du-an', label: 'Dự án', icon: Building2 },
+];
+
+const HRM_ITEMS = [
   { href: '/nhan-vien', label: 'Nhân viên', icon: UserCog },
   { href: '/nhan-vien/hop-dong', label: 'Hợp đồng', icon: FileText },
   { href: '/nhan-vien/bang-luong', label: 'Bảng lương', icon: BadgeDollarSign },
@@ -39,6 +33,16 @@ export default function Sidebar() {
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   
+  // Group states
+  const [crmOpen, setCrmOpen] = useState(true);
+  const [hrmOpen, setHrmOpen] = useState(true);
+
+  // Auto-expand group if current path is inside
+  useEffect(() => {
+    if (CRM_ITEMS.some(item => pathname.startsWith(item.href))) setCrmOpen(true);
+    if (HRM_ITEMS.some(item => pathname.startsWith(item.href))) setHrmOpen(true);
+  }, [pathname]);
+
   // Password Modal State
   const [showPwdModal, setShowPwdModal] = useState(false);
   const [pwdForm, setPwdForm] = useState({ old: '', new: '', confirm: '' });
@@ -222,23 +226,77 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className={styles.nav}>
+        {/* DASHBOARD */}
         <div className={styles.navSection}>
-          <span className={styles.navLabel}>Menu chính</span>
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href ||
-              (item.href !== '/' && item.href !== '/nhan-vien' && pathname.startsWith(item.href));
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`${styles.navItem} ${isActive ? styles.active : ''}`}
-              >
-                <Icon size={20} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+          <Link
+            href="/"
+            className={`${styles.navItem} ${pathname === '/' ? styles.active : ''}`}
+          >
+            <LayoutDashboard size={20} />
+            <span>Dashboard</span>
+          </Link>
+        </div>
+
+        {/* CRM GROUP */}
+        <div className={styles.navSection}>
+          <button 
+            className={styles.groupHeader} 
+            onClick={() => setCrmOpen(!crmOpen)}
+          >
+            <div className="flex items-center gap-3">
+              <Database size={18} />
+              <span>CRM</span>
+            </div>
+            <ChevronDown size={14} className={`${styles.chevron} ${crmOpen ? styles.open : ''}`} />
+          </button>
+          
+          <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
+            {CRM_ITEMS.map((item) => {
+              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* HRM GROUP */}
+        <div className={styles.navSection}>
+          <button 
+            className={styles.groupHeader} 
+            onClick={() => setHrmOpen(!hrmOpen)}
+          >
+            <div className="flex items-center gap-3">
+              <Briefcase size={18} />
+              <span>HRM</span>
+            </div>
+            <ChevronDown size={14} className={`${styles.chevron} ${hrmOpen ? styles.open : ''}`} />
+          </button>
+          
+          <div className={`${styles.groupContent} ${hrmOpen ? styles.open : ''}`}>
+            {HRM_ITEMS.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </nav>
 

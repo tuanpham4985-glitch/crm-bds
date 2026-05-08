@@ -108,6 +108,70 @@
   color: var(--primary);
 }
 
+/* Collapsible Groups */
+.groupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  margin-top: 4px;
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-label);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all var(--transition-fast);
+}
+
+.groupHeader:hover {
+  background: var(--bg-page);
+  color: var(--text-title);
+}
+
+.chevron {
+  transition: transform 0.3s ease;
+  color: var(--text-muted);
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.groupContent {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease, opacity 0.3s ease;
+  opacity: 0;
+  overflow: hidden;
+  padding-left: 8px;
+}
+
+.groupContent.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
+
+.groupContent > div, .groupContent > a {
+  min-height: 0;
+}
+
+.subItem {
+  padding: 8px 14px;
+  margin-bottom: 2px;
+  font-size: 0.8125rem;
+}
+
+.subItem svg {
+  opacity: 0.7;
+}
+
 /* User section */
 .userSection {
   padding: 16px;
