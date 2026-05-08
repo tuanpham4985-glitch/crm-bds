@@ -398,7 +398,7 @@ export default function NhanVienPage() {
       </div>
 
       {/* Employee Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="card" style={{ padding: 0 }}>
         {employees.length === 0 ? (
           <div className="empty-state">
             <UserCog size={40} />
@@ -406,7 +406,7 @@ export default function NhanVienPage() {
             <p>Nhấn &quot;Thêm nhân viên&quot; để tạo mới</p>
           </div>
         ) : (
-          <div className="table-wrapper">
+          <div className="table-wrapper" style={{ borderRadius: 'var(--radius-xl)', overflow: 'visible' }}>
             <table className="data-table">
               <thead>
                 <tr>

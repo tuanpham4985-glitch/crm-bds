@@ -465,7 +465,7 @@ function HopDongContent() {
       </div>
 
       {/* Contract Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="card" style={{ padding: 0 }}>
         {filteredContracts.length === 0 ? (
           <div className="empty-state">
             <FileText size={40} />
@@ -473,7 +473,7 @@ function HopDongContent() {
             <p>{contracts.length > 0 ? 'Không tìm thấy hợp đồng phù hợp bộ lọc' : 'Nhấn "Tạo hợp đồng" để tạo mới'}</p>
           </div>
         ) : (
-          <div className="table-wrapper">
+          <div className="table-wrapper" style={{ overflow: 'visible' }}>
             <table className="data-table">
               <thead>
                 <tr>
