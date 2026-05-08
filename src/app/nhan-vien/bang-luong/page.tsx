@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -432,7 +432,7 @@ export default function BangLuongPage() {
             </div>
           )}
 
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card" style={{ padding: 0 }}>
             {calcLoading ? (
               <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>
                 <div className="spinner" style={{ margin: '0 auto 12px' }} />
@@ -445,7 +445,7 @@ export default function BangLuongPage() {
                 <p>Chọn tháng/năm và nhấn <strong>Tính lương</strong></p>
               </div>
             ) : (
-              <div className="table-wrapper">
+              <div className="table-wrapper" style={{ overflow: 'visible' }}>
                 <table className="data-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
@@ -542,7 +542,7 @@ export default function BangLuongPage() {
 
       {/* ===== TAB: SAVED ===== */}
       {tab === 'saved' && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="card" style={{ padding: 0 }}>
           {savedLoading ? (
             <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>
               <div className="spinner" style={{ margin: '0 auto 12px' }} />
@@ -555,7 +555,7 @@ export default function BangLuongPage() {
               {isAdmin && <p>Chuyển sang tab Preview, tính lương rồi lưu.</p>}
             </div>
           ) : (
-            <div className="table-wrapper">
+            <div className="table-wrapper" style={{ overflow: 'visible' }}>
               <table className="data-table" style={{ fontSize: '0.85rem' }}>
                 <thead>
                   <tr>
