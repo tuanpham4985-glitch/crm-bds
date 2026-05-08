@@ -116,6 +116,9 @@ export async function POST(req: Request) {
       chuc_danh: data.employee_type || '',
       khoi_lam_viec: data.department === 'KD' ? 'Khối Kinh doanh' : 'Khối BO',
       phong_KD: data.phong_KD || '',
+      phong_ban: data.phong_KD || '',
+      Phong_Ban: data.phong_KD || '',
+      Email: data.email || '',
     };
 
     try {

@@ -59,6 +59,7 @@ export default function NhanVienPage() {
     avatar_url: '',
     gioi_tinh: '', khu_vuc: '', phong_KD: '',
     so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
+    so_tk_ngan_hang: '', ten_ngan_hang_thu_huong: '',
   });
 
   // Helper: Safe JSON parser to avoid crash on empty/invalid response
@@ -136,6 +137,7 @@ export default function NhanVienPage() {
       avatar_url: '',
       gioi_tinh: '', khu_vuc: '', phong_KD: '',
       so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
+      so_tk_ngan_hang: '', ten_ngan_hang_thu_huong: '',
     });
     setUploadError('');
     setShowModal(true);
@@ -160,6 +162,8 @@ export default function NhanVienPage() {
       HKTT: nv.HKTT || '',
       ngay_sinh: nv.ngay_sinh || '',
       ma_so_thue: nv.ma_so_thue || '',
+      so_tk_ngan_hang: nv.so_tk_ngan_hang || '',
+      ten_ngan_hang_thu_huong: nv.ten_ngan_hang_thu_huong || '',
     });
     setUploadError('');
     setShowModal(true);
@@ -818,11 +822,11 @@ export default function NhanVienPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
-                  <label className="form-label">Chức danh</label>
-                  <select className="form-select" value={form.employee_type}
-                    onChange={(e) => setForm({ ...form, employee_type: e.target.value })}>
-                    <option value="">— Chọn chức danh —</option>
-                    {danhMuc.employee_types.map(cd => <option key={cd} value={cd}>{cd}</option>)}
+                  <label className="form-label">Phòng ban</label>
+                  <select className="form-select" value={form.phong_KD}
+                    onChange={(e) => setForm({ ...form, phong_KD: e.target.value })}>
+                    <option value="">— Chọn Phòng ban —</option>
+                    {danhMuc.phong_KD.map(pkd => <option key={pkd} value={pkd}>{pkd}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
@@ -835,12 +839,25 @@ export default function NhanVienPage() {
                 </div>
               </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Số tài khoản ngân hàng</label>
+                  <input className="form-input" value={form.so_tk_ngan_hang}
+                    onChange={(e) => setForm({ ...form, so_tk_ngan_hang: e.target.value })} placeholder="Ví dụ: 1903..." />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tên ngân hàng thụ hưởng</label>
+                  <input className="form-input" value={form.ten_ngan_hang_thu_huong}
+                    onChange={(e) => setForm({ ...form, ten_ngan_hang_thu_huong: e.target.value })} placeholder="Ví dụ: Techcombank" />
+                </div>
+              </div>
+
               <div className="form-group">
-                <label className="form-label">Phòng KD</label>
-                <select className="form-select" value={form.phong_KD}
-                  onChange={(e) => setForm({ ...form, phong_KD: e.target.value })}>
-                  <option value="">— Chọn phòng —</option>
-                  {danhMuc.phong_KD.map(p => <option key={p} value={p}>{p}</option>)}
+                <label className="form-label">Chức danh / Vị trí</label>
+                <select className="form-select" value={form.employee_type}
+                  onChange={(e) => setForm({ ...form, employee_type: e.target.value })}>
+                  <option value="">— Chọn Chức danh —</option>
+                  {danhMuc.employee_types.map(et => <option key={et} value={et}>{et}</option>)}
                 </select>
               </div>
             </div>
