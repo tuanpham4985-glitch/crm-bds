@@ -101,6 +101,7 @@ export async function POST(req: Request) {
       ten_ctv: data.ten_ctv || data.ho_ten || '',
       so_dien_thoai: data.so_dien_thoai || '',
       email: data.email || '',
+      Email: data.email || '',
       ngay_sinh: data.ngay_sinh || '',
       gioi_tinh: data.gioi_tinh || '',
       so_cccd: data.so_cccd || '',
