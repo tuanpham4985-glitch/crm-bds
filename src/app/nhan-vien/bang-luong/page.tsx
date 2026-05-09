@@ -656,7 +656,7 @@ export default function BangLuongPage() {
                     {drawerRecord.isProbation ? 'Thử việc' : 'Chính thức'} | Tháng {thang}/{nam}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem', color: 'var(--text-body)', borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
-                    <div>Lương hợp đồng: <strong>{fmt(drawerRecord.luong_co_ban)}</strong></div>
+                    <div>Lương hợp đồng: <strong>{fmt(drawerRecord.luong_co_ban || (drawerRecord as any).luong_dong_bh)}</strong></div>
                     <div>Lương đóng BH: <strong>{fmt((drawerRecord as any).luong_dong_bh || drawerRecord.luong_co_ban)}</strong></div>
                     <div>TN chịu thuế: <strong>{fmt((drawerRecord as any).thu_nhap_chiu_thue || 0)}</strong></div>
                     <div>Tổng chi phí: <strong style={{color: 'var(--primary)'}}>{fmt((drawerRecord as any).tong_chi_phi || (totalGross + totalComp))}</strong></div>
