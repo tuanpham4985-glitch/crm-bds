@@ -147,7 +147,14 @@ export async function fetchPayrollData(
 
   const closedPipelinesForMonth = pipelines.filter((pl) => {
     const giaiDoanNorm = (pl.giai_doan || '').trim().toLowerCase();
-    return pl.thang === monthKey && giaiDoanNorm === 'chốt';
+    if (giaiDoanNorm !== 'chốt') return false;
+
+    // Chấp nhận nhiều format tháng: "05-2026", "5-2026", "05/2026", "5/2026"
+    const plThang = (pl.thang || '').replace(/\//g, '-');
+    const targetThang = `${String(thang).padStart(2, '0')}-${nam}`;
+    const targetThangNoZero = `${thang}-${nam}`;
+
+    return plThang === targetThang || plThang === targetThangNoZero;
   });
 
   // 4. Tập hợp các payroll đã lưu → tránh trùng
@@ -351,10 +358,12 @@ export async function generatePayroll(
     const emp = rawData.activeEmployees.find(e => {
       const id = (e.id_nhan_vien || '').toLowerCase();
       const ho_ten = (e.ho_ten || '').toLowerCase();
-      return id === saleIdOrName || 
-             ho_ten === saleIdOrName || 
-             saleIdOrName.includes(id) || 
-             saleIdOrName.includes(ho_ten);
+      // So khớp linh hoạt:
+      // 1. Trùng ID hoặc trùng họ tên hoàn toàn
+      // 2. ID nằm trong chuỗi tên hoặc ngược lại
+      // 3. Tên pipeline nằm trong họ tên đầy đủ (Ví dụ: "Tài" khớp "Huỳnh Hoàng Tài")
+      return (id && (id === saleIdOrName || saleIdOrName.includes(id) || id.includes(saleIdOrName))) || 
+             (ho_ten && (ho_ten === saleIdOrName || saleIdOrName.includes(ho_ten) || ho_ten.includes(saleIdOrName)));
     });
 
     if (emp) {
