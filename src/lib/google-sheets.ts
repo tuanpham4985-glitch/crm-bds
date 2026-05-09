@@ -1201,7 +1201,12 @@ export async function deleteBangLuong(id: string): Promise<boolean> {
 // --- WORK CALENDAR ---
 export async function getWorkCalendar(): Promise<WorkCalendar[]> {
   const doc = await getDoc();
-  const sheet = await getSheet(doc, SHEETS.WORK_CALENDAR);
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.WORK_CALENDAR);
+  } catch {
+    return [];
+  }
   const rows = await sheet.getRows();
   return rows.map(r => {
     const v = r.toObject();
@@ -1217,7 +1222,12 @@ export async function getWorkCalendar(): Promise<WorkCalendar[]> {
 // --- ATTENDANCE RAW ---
 export async function getAttendanceRaw(thang: number, nam: number): Promise<AttendanceRaw[]> {
   const doc = await getDoc();
-  const sheet = await getSheet(doc, SHEETS.ATTENDANCE_RAW);
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.ATTENDANCE_RAW);
+  } catch {
+    return [];
+  }
   const rows = await sheet.getRows();
   return rows
     .map(r => {
@@ -1239,7 +1249,12 @@ export async function getAttendanceRaw(thang: number, nam: number): Promise<Atte
 // --- SHIFTS ---
 export async function getShifts(): Promise<Shift[]> {
   const doc = await getDoc();
-  const sheet = await getSheet(doc, SHEETS.SHIFTS);
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.SHIFTS);
+  } catch {
+    return [];
+  }
   const rows = await sheet.getRows();
   return rows.map(r => {
     const v = r.toObject();
@@ -1258,7 +1273,12 @@ export async function getShifts(): Promise<Shift[]> {
 // --- PAYROLL ADJUSTMENTS ---
 export async function getPayrollAdjustments(thang: number, nam: number): Promise<PayrollAdjustment[]> {
   const doc = await getDoc();
-  const sheet = await getSheet(doc, SHEETS.PAYROLL_ADJUSTMENTS);
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.PAYROLL_ADJUSTMENTS);
+  } catch {
+    return [];
+  }
   const rows = await sheet.getRows();
   return rows
     .map(r => {

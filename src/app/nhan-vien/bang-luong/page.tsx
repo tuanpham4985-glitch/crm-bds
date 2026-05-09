@@ -228,6 +228,8 @@ export default function BangLuongPage() {
   const handleSave = async () => {
     if (!isAdmin || preview.length === 0) return;
     if (!confirm(`Lưu bảng lương tháng ${thang}/${nam}?\nBản ghi trùng sẽ bị bỏ qua.`)) return;
+    
+    console.log('[Payroll] Saving entries:', preview.length, { thang, nam });
     setSaving(true);
     try {
       const res = await fetch('/api/payroll', {
@@ -236,15 +238,18 @@ export default function BangLuongPage() {
         body: JSON.stringify({ thang, nam, entries: preview }),
       });
       const data = await res.json();
+      console.log('[Payroll] Save response:', data);
+
       if (data.success) {
-        showToast(data.message);
+        showToast(data.message || `Đã lưu thành công ${data.saved} bản ghi!`);
         setPreview([]);
         setTab('saved');
         await loadSaved();
       } else {
-        showToast('Lỗi: ' + data.error, false);
+        showToast('Lỗi: ' + (data.error || data.errors?.join(', ')), false);
       }
-    } catch {
+    } catch (err) {
+      console.error('[Payroll] Save error:', err);
       showToast('Lỗi lưu bảng lương', false);
     } finally {
       setSaving(false);

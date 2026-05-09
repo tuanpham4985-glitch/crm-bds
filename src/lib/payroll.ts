@@ -418,6 +418,7 @@ export async function savePayroll(
 ): Promise<SavePayrollResult> {
   // Fetch existing keys để check duplicate
   const { existingDynamicKeys } = await fetchPayrollData(thang, nam);
+  console.log(`[savePayroll] Month: ${thang}/${nam}, Entries: ${entries.length}, Existing Dynamic Keys: ${existingDynamicKeys.size}`);
 
   let saved = 0;
   let skipped = 0;
@@ -429,11 +430,13 @@ export async function savePayroll(
     const key = `${entry.id_nhan_vien}|${entry.thang}|${entry.nam}`;
 
     if (!forceOverwrite && existingDynamicKeys.has(key)) {
+      console.log(`[savePayroll] Skipping duplicate for: ${entry.id_nhan_vien}`);
       skipped++;
       continue;
     }
 
     try {
+      console.log(`[savePayroll] Saving record for: ${entry.id_nhan_vien}`);
       // Lưu vào mô hình mới (PAYROLL + PAYROLL_ITEMS)
       await addPayroll(
         {
@@ -448,17 +451,20 @@ export async function savePayroll(
         entry.items || []
       );
 
-      // (Tùy chọn) Lưu song song vào BANG_LUONG để tương thích ngược nếu cần
-      // await addBangLuong({...});
-      
       saved++;
-      // Small delay để tránh GSheets rate limit
-      await new Promise((r) => setTimeout(r, 80));
+      await new Promise((r) => setTimeout(r, 100));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[savePayroll] Error saving ${entry.id_nhan_vien}:`, msg);
       errors.push(`${entry.id_nhan_vien}: ${msg}`);
     }
   }
 
-  return { saved, skipped, errors };
+  console.log(`[savePayroll] Finished: Saved ${saved}, Skipped ${skipped}, Errors ${errors.length}`);
+  return {
+    success: errors.length === 0,
+    saved,
+    skipped,
+    errors
+  };
 }
