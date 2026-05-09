@@ -86,9 +86,10 @@ export async function POST(request: NextRequest) {
       message: `Đã lưu ${result.saved} bản ghi. Bỏ qua ${result.skipped} trùng lặp.`,
     });
   } catch (error) {
-    console.error('[API /payroll] POST Error:', error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[API /payroll] POST Error:', msg, error);
     return NextResponse.json(
-      { success: false, error: 'Lỗi lưu bảng lương' },
+      { success: false, error: `Lỗi lưu bảng lương: ${msg}` },
       { status: 500 }
     );
   }

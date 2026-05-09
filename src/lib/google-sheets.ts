@@ -1056,26 +1056,48 @@ export async function addBangLuong(
 async function getOrCreatePayrollSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
   let sheet = doc.sheetsByTitle[SHEETS.PAYROLL];
   if (!sheet) {
+    console.log('[GSheets] PAYROLL sheet not found, creating with headers...');
     sheet = await doc.addSheet({ title: SHEETS.PAYROLL, headerValues: [...PAYROLL_HEADERS] });
-  } else {
-    await sheet.loadHeaderRow().catch(() => {});
-    if (!sheet.headerValues || sheet.headerValues.length === 0) {
-      await sheet.setHeaderRow([...PAYROLL_HEADERS]);
-    }
   }
+  // Always try to load and verify headers
+  try {
+    await sheet.loadHeaderRow();
+  } catch {
+    // Sheet might be completely empty — set headers
+    console.log('[GSheets] PAYROLL: loadHeaderRow failed, setting headers...');
+    await sheet.setHeaderRow([...PAYROLL_HEADERS]);
+    await sheet.loadHeaderRow();
+  }
+  // Verify the expected headers exist
+  if (!sheet.headerValues || sheet.headerValues.length === 0) {
+    console.log('[GSheets] PAYROLL: headers empty after load, setting headers...');
+    await sheet.setHeaderRow([...PAYROLL_HEADERS]);
+    await sheet.loadHeaderRow();
+  }
+  console.log(`[GSheets] PAYROLL sheet ready. Headers: [${sheet.headerValues?.join(', ')}]`);
   return sheet;
 }
 
 async function getOrCreatePayrollItemsSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
   let sheet = doc.sheetsByTitle[SHEETS.PAYROLL_ITEMS];
   if (!sheet) {
+    console.log('[GSheets] PAYROLL_ITEMS sheet not found, creating with headers...');
     sheet = await doc.addSheet({ title: SHEETS.PAYROLL_ITEMS, headerValues: [...PAYROLL_ITEMS_HEADERS] });
-  } else {
-    await sheet.loadHeaderRow().catch(() => {});
-    if (!sheet.headerValues || sheet.headerValues.length === 0) {
-      await sheet.setHeaderRow([...PAYROLL_ITEMS_HEADERS]);
-    }
   }
+  // Always try to load and verify headers
+  try {
+    await sheet.loadHeaderRow();
+  } catch {
+    console.log('[GSheets] PAYROLL_ITEMS: loadHeaderRow failed, setting headers...');
+    await sheet.setHeaderRow([...PAYROLL_ITEMS_HEADERS]);
+    await sheet.loadHeaderRow();
+  }
+  if (!sheet.headerValues || sheet.headerValues.length === 0) {
+    console.log('[GSheets] PAYROLL_ITEMS: headers empty after load, setting headers...');
+    await sheet.setHeaderRow([...PAYROLL_ITEMS_HEADERS]);
+    await sheet.loadHeaderRow();
+  }
+  console.log(`[GSheets] PAYROLL_ITEMS sheet ready. Headers: [${sheet.headerValues?.join(', ')}]`);
   return sheet;
 }
 
@@ -1149,10 +1171,6 @@ export async function savePayrollBatch(
   const doc = await getDoc();
   const pSheet = await getOrCreatePayrollSheet(doc);
   const iSheet = await getOrCreatePayrollItemsSheet(doc);
-
-  // Ensure headers are loaded
-  await pSheet.loadHeaderRow().catch(() => {});
-  await iSheet.loadHeaderRow().catch(() => {});
 
   const createdAt = new Date().toISOString();
   const savedIds: string[] = [];

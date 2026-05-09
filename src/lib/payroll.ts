@@ -405,7 +405,7 @@ export async function generatePayroll(
 
 /**
  * Lưu bảng lương vào PAYROLL + PAYROLL_ITEMS.
- * - Không tạo trùng (check id_nhan_vien + thang + nam)
+ * - Không tạo trùng (check id_nhan_vien + thang + nam qua getPayrollRecords)
  * - Batch: ghi tất cả 1 lần duy nhất qua savePayrollBatch()
  *   để tránh vượt quota Google Sheets API (60 reads/min)
  */
@@ -415,8 +415,17 @@ export async function savePayroll(
   entries: PayrollEntry[],
   forceOverwrite = false
 ): Promise<SavePayrollResult> {
-  // Fetch existing keys để check duplicate
-  const { existingDynamicKeys } = await fetchPayrollData(thang, nam);
+  // Chỉ fetch dữ liệu cần thiết để check duplicate (1 API call)
+  let existingDynamicKeys = new Set<string>();
+  try {
+    const savedDynamic = await getPayrollRecords(thang, nam);
+    savedDynamic.forEach(p => {
+      existingDynamicKeys.add(`${p.id_nhan_vien}|${p.thang}|${p.nam}`);
+    });
+  } catch (err) {
+    console.warn('[savePayroll] Could not fetch existing records, proceeding without duplicate check:', err);
+  }
+
   console.log(`[savePayroll] Month: ${thang}/${nam}, Entries: ${entries.length}, Existing Dynamic Keys: ${existingDynamicKeys.size}`);
 
   let skipped = 0;
