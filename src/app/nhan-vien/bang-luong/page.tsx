@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   BadgeDollarSign, Calculator, Save, RefreshCw,
-  AlertCircle, CheckCircle2, Clock, Banknote, FileText
+  AlertCircle, CheckCircle2, Clock, Banknote, FileText, X, ChevronRight, Eye
 } from 'lucide-react';
 import type { BangLuong, NhanVien } from '@/lib/types';
 import type { PayrollEntry } from '@/lib/payroll';
@@ -49,6 +49,15 @@ export default function BangLuongPage() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [toast,  setToast]  = useState<{ msg: string; ok: boolean } | null>(null);
+
+  // Drawer state
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  
+  const openDrawer = (id: string) => {
+    setSelectedId(id);
+    setIsDrawerOpen(true);
+  };
 
   // Employee maps
   const [empMap, setEmpMap] = useState<Map<string, string>>(new Map());
@@ -450,82 +459,35 @@ export default function BangLuongPage() {
                   <thead>
                     <tr>
                       <th style={{ width: 30 }}>#</th>
-                      <th style={{ width: 120 }}>Nhân viên</th>
-                      <th style={{ textAlign: 'right', width: 70 }}>Lương CB</th>
-                      <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
-                      <th style={{ textAlign: 'center', width: 70 }}>Nghỉ</th>
-                      <th style={{ textAlign: 'center', width: 60 }}>OT (h)</th>
-                      <th style={{ textAlign: 'right', width: 80 }}>Hoa hồng</th>
-                      <th style={{ textAlign: 'right', width: 100 }}>Thưởng</th>
-                      <th style={{ textAlign: 'right', width: 100 }}>Phạt</th>
-                      <th style={{ textAlign: 'right', width: 70 }}>Gross</th>
-                      <th style={{ textAlign: 'right', width: 70 }}>BHXH</th>
-                      <th style={{ textAlign: 'right', width: 70 }}>Thuế</th>
-                      <th style={{ textAlign: 'center', width: 50 }}>P.Thuộc</th>
-                      <th style={{ textAlign: 'right', width: 100, fontWeight: 700 }}>NET</th>
+                      <th>Nhân viên</th>
+                      <th style={{ textAlign: 'right' }}>Tổng thu nhập (Gross)</th>
+                      <th style={{ textAlign: 'right' }}>Khấu trừ (Thuế, BH, Phạt)</th>
+                      <th style={{ textAlign: 'right', fontWeight: 700 }}>Thực nhận (Net)</th>
+                      <th style={{ textAlign: 'center', width: 90 }}>Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.map((row, idx) => (
-                      <tr key={row.id_nhan_vien}>
-                        <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
-                        <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
-                          <div>{empMap.get(row.id_nhan_vien) || row.ho_ten || row.id_nhan_vien}</div>
-                          {row.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4 }}>Thử việc</span>}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>{fmt(row.luong_co_ban)}</td>
-                        <td style={{ textAlign: 'center', fontSize: '0.85rem' }}>{row.so_ngay_cong_chuan}</td>
-                        <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="number" className="form-input" step="0.5"
-                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 55 }}
-                            value={row.so_ngay_nghi_khong_luong || 0}
-                            onChange={e => updateField(idx, 'so_ngay_nghi_khong_luong', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="number" className="form-input"
-                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 45 }}
-                            value={row.so_gio_ot || 0}
-                            onChange={e => updateField(idx, 'so_gio_ot', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'right', color: '#f59e0b', fontWeight: 500 }}>{fmt(row.hoa_hong)}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          <input
-                            type="number" className="form-input"
-                            style={{ padding: '4px 6px', textAlign: 'right', height: 28, fontSize: '0.8rem', width: 85 }}
-                            value={row.thuong || ''}
-                            placeholder="0"
-                            onChange={e => updateField(idx, 'thuong', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <input
-                            type="number" className="form-input"
-                            style={{ padding: '4px 6px', textAlign: 'right', height: 28, fontSize: '0.8rem', width: 85 }}
-                            value={row.phat || ''}
-                            placeholder="0"
-                            onChange={e => updateField(idx, 'phat', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'right' }}>{fmt(row.gross)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(row.bao_hiem)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--warning-text)' }}>-{fmt(row.thue)}</td>
-                        <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="number" className="form-input"
-                            style={{ padding: '2px 4px', textAlign: 'center', height: 28, fontSize: '0.8rem', width: 35 }}
-                            value={row.so_nguoi_phu_thuoc || 0}
-                            onChange={e => updateField(idx, 'so_nguoi_phu_thuoc', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)', whiteSpace: 'nowrap' }}>
-                          {fmt(row.tong_luong)}
-                        </td>
-                      </tr>
-                    ))}
+                    {preview.map((row, idx) => {
+                      const tong_khau_tru = (row.bao_hiem || 0) + (row.thue || 0) + (row.phat || 0);
+                      return (
+                        <tr key={row.id_nhan_vien}>
+                          <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
+                          <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
+                            <div>{empMap.get(row.id_nhan_vien) || row.ho_ten || row.id_nhan_vien}</div>
+                            {row.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4, display: 'inline-block', marginTop: 2 }}>Thử việc</span>}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 500 }}>{fmt(row.gross)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(tong_khau_tru)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)' }}>{fmt(row.tong_luong)}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => openDrawer(row.id_nhan_vien)}>
+                              <Eye size={14} style={{ marginRight: 4 }} />
+                              Chi tiết
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -560,57 +522,49 @@ export default function BangLuongPage() {
                 <thead>
                   <tr>
                     <th style={{ width: 30 }}>#</th>
-                    <th style={{ minWidth: 140 }}>Nhân viên</th>
-                    <th style={{ textAlign: 'right', width: 70 }}>Lương CB</th>
-                    <th style={{ textAlign: 'center', width: 60 }}>Công chuẩn</th>
-                    <th style={{ textAlign: 'center', width: 60 }}>Nghỉ (k.L)</th>
-                    <th style={{ textAlign: 'center', width: 50 }}>OT (h)</th>
-                    <th style={{ textAlign: 'right', width: 80 }}>Hoa hồng</th>
-                    <th style={{ textAlign: 'right', width: 70 }}>Thưởng</th>
-                    <th style={{ textAlign: 'right', width: 70 }}>Phạt</th>
-                    <th style={{ textAlign: 'center', width: 60 }}>P.Thuộc</th>
-                    <th style={{ textAlign: 'right', minWidth: 100, fontWeight: 700 }}>NET</th>
-                    <th style={{ width: 100 }}>Trạng thái</th>
-                    {isAdmin && <th style={{ width: 110 }}>Hành động</th>}
+                    <th>Nhân viên</th>
+                    <th style={{ textAlign: 'right' }}>Tổng thu nhập (Gross)</th>
+                    <th style={{ textAlign: 'right' }}>Khấu trừ (Thuế, BH, Phạt)</th>
+                    <th style={{ textAlign: 'right', fontWeight: 700 }}>Thực nhận (Net)</th>
+                    <th style={{ textAlign: 'center', width: 100 }}>Trạng thái</th>
+                    <th style={{ textAlign: 'center', width: 140 }}>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displaySaved.map((bl, idx) => {
                     const meta = STATUS_META[bl.trang_thai] ?? STATUS_META.draft;
+                    const tong_khau_tru = (bl.bao_hiem || 0) + (bl.thue || 0) + (bl.phat || 0);
                     return (
                       <tr key={bl.id}>
                         <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
-                        <td style={{ fontWeight: 500 }}>{empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}</td>
-                        <td style={{ textAlign: 'right' }}>{fmt(bl.luong_co_ban)}</td>
-                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_ngay_cong_chuan}</td>
-                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_ngay_nghi_khong_luong}</td>
-                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_gio_ot}</td>
-                        <td style={{ textAlign: 'right', color: '#f59e0b' }}>{fmt(bl.hoa_hong)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--success-text)' }}>+{fmt(bl.thuong)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(bl.phat)}</td>
-                        <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{bl.so_nguoi_phu_thuoc ?? depMap.get(bl.id_nhan_vien) ?? 0}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)', whiteSpace: 'nowrap' }}>
-                          {fmt(bl.tong_luong)}
+                        <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
+                          {empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}
                         </td>
-                        <td>
+                        <td style={{ textAlign: 'right', fontWeight: 500 }}>{fmt(bl.gross)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(tong_khau_tru)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)' }}>{fmt(bl.tong_luong)}</td>
+                        <td style={{ textAlign: 'center' }}>
                           <span className={`badge ${meta.cls}`}>{meta.label}</span>
                         </td>
-                        {isAdmin && (
-                          <td>
-                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                            <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => openDrawer(bl.id_nhan_vien)}>
+                              <Eye size={14} /> Chi tiết
+                            </button>
+                            {isAdmin && (
                               <select
                                 className="form-select"
-                                style={{ padding: '4px 28px 4px 8px', fontSize: '0.8rem', height: 30 }}
+                                style={{ padding: '2px 22px 2px 6px', fontSize: '0.75rem', height: 26, width: 'auto' }}
                                 value={bl.trang_thai}
                                 onChange={e => changeStatus(bl.id, e.target.value as 'draft' | 'confirmed' | 'paid')}
                               >
                                 <option value="draft">Nháp</option>
-                                <option value="confirmed">Đã duyệt</option>
+                                <option value="confirmed">Duyệt</option>
                                 <option value="paid">Đã trả</option>
                               </select>
-                            </div>
-                          </td>
-                        )}
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -619,7 +573,174 @@ export default function BangLuongPage() {
             </div>
           )}
         </div>
-      )}
+      {/* ===== DRAWER CHI TIẾT LƯƠNG ===== */}
+      <div className={`drawer-overlay ${isDrawerOpen ? 'open' : ''}`} onClick={() => setIsDrawerOpen(false)} />
+      <div className={`drawer-panel ${isDrawerOpen ? 'open' : ''}`}>
+        <div className="drawer-header">
+          <h3>Chi tiết lương</h3>
+          <button className="btn-icon" onClick={() => setIsDrawerOpen(false)}>
+            <X size={20} />
+          </button>
+        </div>
+        <div className="drawer-body">
+          {(() => {
+            if (!selectedId) return null;
+            let drawerRecord: PayrollEntry | BangLuong | null = null;
+            let isPreviewMode = false;
+            let drawerIdx = -1;
+
+            if (tab === 'preview') {
+              drawerIdx = preview.findIndex(r => r.id_nhan_vien === selectedId);
+              if (drawerIdx !== -1) {
+                drawerRecord = preview[drawerIdx];
+                isPreviewMode = true;
+              }
+            } else {
+              drawerRecord = saved.find(r => r.id_nhan_vien === selectedId) || null;
+            }
+
+            if (!drawerRecord) return <div className="text-muted text-center mt-4">Không tìm thấy dữ liệu</div>;
+
+            const ho_ten = empMap.get(drawerRecord.id_nhan_vien) || (drawerRecord as any).ho_ten || drawerRecord.id_nhan_vien;
+            const tong_khau_tru = (drawerRecord.bao_hiem || 0) + (drawerRecord.thue || 0) + (drawerRecord.phat || 0);
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Header Profile */}
+                <div style={{ background: 'var(--bg-page)', padding: 16, borderRadius: 'var(--radius-lg)' }}>
+                  <div style={{ fontWeight: 600, fontSize: '1.1rem', marginBottom: 4 }}>{ho_ten}</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {drawerRecord.isProbation ? 'Thử việc' : 'Chính thức'} | Tháng {thang}/{nam}
+                  </div>
+                </div>
+
+                {/* Section: Thu nhập */}
+                <div className="form-section">
+                  <div className="form-section-title">1. Tổng thu nhập (Gross)</div>
+                  <div className="form-section-desc">Lương cơ bản, Hoa hồng, Thưởng & OT</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Lương cơ bản</div>
+                      <div style={{ fontWeight: 600 }}>{fmtCurrency(drawerRecord.luong_co_ban)}</div>
+                    </div>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Công chuẩn</div>
+                      <div style={{ fontWeight: 600 }}>{drawerRecord.so_ngay_cong_chuan} ngày</div>
+                    </div>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Nghỉ không lương</div>
+                      {isPreviewMode ? (
+                        <input
+                          type="number" className="form-input" step="0.5"
+                          style={{ padding: '2px 4px', height: 26, fontSize: '0.85rem' }}
+                          value={drawerRecord.so_ngay_nghi_khong_luong || 0}
+                          onChange={e => updateField(drawerIdx, 'so_ngay_nghi_khong_luong', e.target.value)}
+                        />
+                      ) : (
+                        <div style={{ fontWeight: 600 }}>{drawerRecord.so_ngay_nghi_khong_luong} ngày</div>
+                      )}
+                    </div>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Công thực tế</div>
+                      <div style={{ fontWeight: 600 }}>{drawerRecord.so_ngay_cong_chuan - drawerRecord.so_ngay_nghi_khong_luong} ngày</div>
+                    </div>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Giờ OT</div>
+                      {isPreviewMode ? (
+                        <input
+                          type="number" className="form-input"
+                          style={{ padding: '2px 4px', height: 26, fontSize: '0.85rem' }}
+                          value={drawerRecord.so_gio_ot || 0}
+                          onChange={e => updateField(drawerIdx, 'so_gio_ot', e.target.value)}
+                        />
+                      ) : (
+                        <div style={{ fontWeight: 600 }}>{drawerRecord.so_gio_ot} giờ</div>
+                      )}
+                    </div>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Hoa hồng</div>
+                      <div style={{ fontWeight: 600, color: '#f59e0b' }}>{fmtCurrency(drawerRecord.hoa_hong)}</div>
+                    </div>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)', gridColumn: '1 / -1' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Thưởng</div>
+                      {isPreviewMode ? (
+                        <input
+                          type="number" className="form-input"
+                          style={{ padding: '4px 8px', height: 32 }}
+                          value={drawerRecord.thuong || ''}
+                          placeholder="Nhập số tiền thưởng..."
+                          onChange={e => updateField(drawerIdx, 'thuong', e.target.value)}
+                        />
+                      ) : (
+                        <div style={{ fontWeight: 600, color: 'var(--success-text)' }}>+{fmtCurrency(drawerRecord.thuong)}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 12, textAlign: 'right', fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary)' }}>
+                    Tổng Gross: {fmtCurrency(drawerRecord.gross)}
+                  </div>
+                </div>
+
+                {/* Section: Khấu trừ */}
+                <div className="form-section">
+                  <div className="form-section-title">2. Khấu trừ</div>
+                  <div className="form-section-desc">Phạt, Bảo hiểm & Thuế TNCN</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Tiền phạt</div>
+                      {isPreviewMode ? (
+                        <input
+                          type="number" className="form-input"
+                          style={{ padding: '4px 8px', height: 32, width: 120, textAlign: 'right' }}
+                          value={drawerRecord.phat || ''}
+                          placeholder="0"
+                          onChange={e => updateField(drawerIdx, 'phat', e.target.value)}
+                        />
+                      ) : (
+                        <div style={{ fontWeight: 600, color: 'var(--danger-text)' }}>-{fmtCurrency(drawerRecord.phat)}</div>
+                      )}
+                    </div>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Bảo hiểm (10.5%)</div>
+                      <div style={{ fontWeight: 600, color: 'var(--danger-text)' }}>-{fmtCurrency(drawerRecord.bao_hiem)}</div>
+                    </div>
+                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        Thuế TNCN
+                        {isPreviewMode ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                            <span>Số NPT:</span>
+                            <input
+                              type="number" className="form-input"
+                              style={{ padding: '2px 4px', height: 26, width: 60, textAlign: 'center', fontSize: '0.8rem' }}
+                              value={drawerRecord.so_nguoi_phu_thuoc || 0}
+                              onChange={e => updateField(drawerIdx, 'so_nguoi_phu_thuoc', e.target.value)}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 2, fontSize: '0.75rem' }}>Số người phụ thuộc: {drawerRecord.so_nguoi_phu_thuoc || 0}</div>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 600, color: 'var(--warning-text)' }}>-{fmtCurrency(drawerRecord.thue)}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 12, textAlign: 'right', fontSize: '1rem', fontWeight: 600, color: 'var(--danger-text)' }}>
+                    Tổng khấu trừ: -{fmtCurrency(tong_khau_tru)}
+                  </div>
+                </div>
+
+                {/* Section: Thực nhận */}
+                <div style={{ background: 'rgba(16, 185, 129, 0.05)', padding: 20, borderRadius: 'var(--radius-lg)', border: '1px solid rgba(16, 185, 129, 0.2)', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Thực nhận (NET)</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success-text)' }}>
+                    {fmtCurrency(drawerRecord.tong_luong)}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
     </div>
   );
 }
