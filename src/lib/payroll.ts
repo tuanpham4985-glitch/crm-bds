@@ -10,8 +10,7 @@ import {
   getHopDong,
   getBangLuong,
   getPayrollRecords,
-  addBangLuong,
-  addPayroll,
+  savePayrollBatch,
   getWorkCalendar,
   getAttendanceRaw,
   getShifts,
@@ -404,18 +403,11 @@ export async function generatePayroll(
   return results;
 }
 
-// ============================================================
-// PUBLIC API: savePayroll(thang, nam, entries)
-// ============================================================
-
-
-
 /**
- * Lưu bảng lương vào sheet BANG_LUONG.
+ * Lưu bảng lương vào PAYROLL + PAYROLL_ITEMS.
  * - Không tạo trùng (check id_nhan_vien + thang + nam)
- * - Auto generate id: BL_timestamp
- * - Default trang_thai = draft
- * - Batch: lưu tuần tự để tránh rate limit GSheets
+ * - Batch: ghi tất cả 1 lần duy nhất qua savePayrollBatch()
+ *   để tránh vượt quota Google Sheets API (60 reads/min)
  */
 export async function savePayroll(
   thang: number,
@@ -427,9 +419,14 @@ export async function savePayroll(
   const { existingDynamicKeys } = await fetchPayrollData(thang, nam);
   console.log(`[savePayroll] Month: ${thang}/${nam}, Entries: ${entries.length}, Existing Dynamic Keys: ${existingDynamicKeys.size}`);
 
-  let saved = 0;
   let skipped = 0;
   const errors: string[] = [];
+
+  // 1. Lọc ra các entries hợp lệ (không trùng, có id)
+  const validEntries: Array<{
+    payroll: Omit<import('@/lib/types').PayrollRecord, 'id' | 'created_at'>;
+    items: Omit<import('@/lib/types').PayrollItemRecord, 'id' | 'payroll_id'>[];
+  }> = [];
 
   for (const entry of entries) {
     if (!entry.id_nhan_vien) continue;
@@ -442,31 +439,34 @@ export async function savePayroll(
       continue;
     }
 
-    try {
-      console.log(`[savePayroll] Saving record for: ${entry.id_nhan_vien}`);
-      // Lưu vào mô hình mới (PAYROLL + PAYROLL_ITEMS)
-      await addPayroll(
-        {
-          id_nhan_vien: entry.id_nhan_vien,
-          thang: entry.thang,
-          nam: entry.nam,
-          gross: entry.gross || 0,
-          total_deduction: entry.total_deduction || (entry.bao_hiem + entry.thue + (entry.phat || 0)),
-          net: entry.tong_luong,
-          trang_thai: entry.trang_thai || 'draft',
-        },
-        entry.items || []
-      );
-
-      saved++;
-      await new Promise((r) => setTimeout(r, 100));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[savePayroll] Error saving ${entry.id_nhan_vien}:`, msg);
-      errors.push(`${entry.id_nhan_vien}: ${msg}`);
-    }
+    validEntries.push({
+      payroll: {
+        id_nhan_vien: entry.id_nhan_vien,
+        thang: entry.thang,
+        nam: entry.nam,
+        gross: entry.gross || 0,
+        total_deduction: entry.total_deduction || (entry.bao_hiem + entry.thue + (entry.phat || 0)),
+        net: entry.tong_luong,
+        trang_thai: entry.trang_thai || 'draft',
+      },
+      items: entry.items || [],
+    });
   }
 
+  // 2. Ghi hàng loạt 1 lần duy nhất
+  if (validEntries.length === 0) {
+    console.log(`[savePayroll] No valid entries to save (all skipped or empty).`);
+    return { success: true, saved: 0, skipped, errors };
+  }
+
+  console.log(`[savePayroll] Batch saving ${validEntries.length} entries...`);
+  const result = await savePayrollBatch(validEntries);
+
+  if (result.errors.length > 0) {
+    errors.push(...result.errors);
+  }
+
+  const saved = result.savedIds.length;
   console.log(`[savePayroll] Finished: Saved ${saved}, Skipped ${skipped}, Errors ${errors.length}`);
   return {
     success: errors.length === 0,

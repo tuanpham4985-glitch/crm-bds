@@ -1131,22 +1131,42 @@ export async function getPayrollItems(payrollIds: string[]): Promise<PayrollItem
     .filter(item => ids.has(item.payroll_id));
 }
 
-export async function addPayroll(
-  payroll: Omit<PayrollRecord, 'id' | 'created_at'>,
-  items: Omit<PayrollItemRecord, 'id' | 'payroll_id'>[]
-): Promise<string> {
+/**
+ * Lưu hàng loạt bản ghi lương vào PAYROLL + PAYROLL_ITEMS.
+ * Mở kết nối Google Sheets 1 lần duy nhất, load header 1 lần,
+ * và ghi tất cả dòng bằng addRows() để tránh vượt quota API.
+ */
+export async function savePayrollBatch(
+  payrollEntries: Array<{
+    payroll: Omit<PayrollRecord, 'id' | 'created_at'>;
+    items: Omit<PayrollItemRecord, 'id' | 'payroll_id'>[];
+  }>
+): Promise<{ savedIds: string[]; errors: string[] }> {
+  if (payrollEntries.length === 0) {
+    return { savedIds: [], errors: [] };
+  }
+
   const doc = await getDoc();
   const pSheet = await getOrCreatePayrollSheet(doc);
   const iSheet = await getOrCreatePayrollItemsSheet(doc);
 
-  const payrollId = `PR_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  // Ensure headers are loaded
+  await pSheet.loadHeaderRow().catch(() => {});
+  await iSheet.loadHeaderRow().catch(() => {});
+
   const createdAt = new Date().toISOString();
+  const savedIds: string[] = [];
+  const errors: string[] = [];
 
-  console.log(`[GSheets] Adding Payroll Row to ${pSheet.title}...`, { payrollId, id_nhan_vien: payroll.id_nhan_vien });
+  // Build all payroll header rows
+  const payrollRows: Record<string, string | number>[] = [];
+  const itemRows: Record<string, string | number>[] = [];
 
-  // Add Payroll Header
-  try {
-    await pSheet.addRow({
+  for (const { payroll, items } of payrollEntries) {
+    const payrollId = `PR_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    savedIds.push(payrollId);
+
+    payrollRows.push({
       id: payrollId,
       id_nhan_vien: payroll.id_nhan_vien,
       thang: payroll.thang,
@@ -1155,35 +1175,45 @@ export async function addPayroll(
       total_deduction: payroll.total_deduction,
       net: payroll.net,
       trang_thai: payroll.trang_thai,
-      created_at: createdAt
+      created_at: createdAt,
     });
-  } catch (err: any) {
-    console.error(`[GSheets] addRow failed for PAYROLL:`, err.message);
-    throw err;
-  }
 
-  // Add Payroll Items
-  const itemRows = items.map(item => ({
-    id: `PRI_${Math.random().toString(36).substr(2, 9)}`,
-    payroll_id: payrollId,
-    loai_khoan: item.loai_khoan,
-    nhom: item.nhom,
-    so_tien: item.so_tien,
-    ghi_chu: item.ghi_chu || ''
-  }));
-
-  if (itemRows.length > 0) {
-    console.log(`[GSheets] Adding ${itemRows.length} Items to ${iSheet.title}...`);
-    try {
-      await iSheet.addRows(itemRows);
-    } catch (err: any) {
-      console.error(`[GSheets] addRows failed for PAYROLL_ITEMS:`, err.message);
-      throw err;
+    for (const item of items) {
+      itemRows.push({
+        id: `PRI_${Math.random().toString(36).substr(2, 9)}`,
+        payroll_id: payrollId,
+        loai_khoan: item.loai_khoan,
+        nhom: item.nhom,
+        so_tien: item.so_tien,
+        ghi_chu: item.ghi_chu || '',
+      });
     }
   }
 
-  await addLog(doc, 'CREATE_PAYROLL', payrollId, payroll.id_nhan_vien, '');
-  return payrollId;
+  // Batch write all PAYROLL rows
+  console.log(`[GSheets] Batch writing ${payrollRows.length} payroll rows...`);
+  try {
+    await pSheet.addRows(payrollRows);
+  } catch (err: any) {
+    console.error(`[GSheets] Batch addRows failed for PAYROLL:`, err.message);
+    return { savedIds: [], errors: [`PAYROLL batch write failed: ${err.message}`] };
+  }
+
+  // Batch write all PAYROLL_ITEMS rows
+  if (itemRows.length > 0) {
+    console.log(`[GSheets] Batch writing ${itemRows.length} payroll item rows...`);
+    try {
+      await iSheet.addRows(itemRows);
+    } catch (err: any) {
+      console.error(`[GSheets] Batch addRows failed for PAYROLL_ITEMS:`, err.message);
+      errors.push(`PAYROLL_ITEMS batch write failed: ${err.message}`);
+    }
+  }
+
+  // Single log entry for the batch operation
+  await addLog(doc, 'CREATE_PAYROLL_BATCH', `${savedIds.length} records`, '', '');
+
+  return { savedIds, errors };
 }
 
 /**
