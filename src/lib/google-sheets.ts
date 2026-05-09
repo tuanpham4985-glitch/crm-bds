@@ -1187,48 +1187,80 @@ export async function addPayroll(
 }
 
 /**
- * Cập nhật trạng thái hoặc thưởng/phạt của một bản ghi bảng lương.
+ * Cập nhật trạng thái hoặc thông tin bản ghi bảng lương.
+ * Hỗ trợ cả bảng mới (PAYROLL) và bảng cũ (BANG_LUONG).
  */
 export async function updateBangLuong(
   id: string,
   updates: Partial<Pick<BangLuong, 'trang_thai' | 'thuong' | 'phat' | 'tong_luong' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot'>>
 ): Promise<boolean> {
   const doc = await getDoc();
+  const sheetName = id.startsWith('PR_') ? SHEETS.PAYROLL : SHEETS.BANG_LUONG;
+  
   let sheet: GoogleSpreadsheetWorksheet;
   try {
-    sheet = await getSheet(doc, SHEETS.BANG_LUONG);
+    sheet = await getSheet(doc, sheetName);
   } catch {
     return false;
   }
+  
   const rows = await sheet.getRows();
   const row = rows.find(r => str(r.toObject()['id']) === id);
   if (!row) return false;
 
+  // Cập nhật trạng thái
   if (updates.trang_thai !== undefined) row.set('trang_thai', updates.trang_thai);
-  if (updates.thuong     !== undefined) row.set('thuong',     Number(updates.thuong));
-  if (updates.phat       !== undefined) row.set('phat',       Number(updates.phat));
-  if (updates.so_ngay_nghi_khong_luong !== undefined) row.set('so_ngay_nghi_khong_luong', Number(updates.so_ngay_nghi_khong_luong));
-  if (updates.so_gio_ot !== undefined) row.set('so_gio_ot', Number(updates.so_gio_ot));
-  if (updates.tong_luong !== undefined) row.set('tong_luong', Number(updates.tong_luong));
+  
+  // Với bản ghi cũ BANG_LUONG, cho phép cập nhật thêm các field khác nếu cần
+  if (!id.startsWith('PR_')) {
+    if (updates.thuong     !== undefined) row.set('thuong',     Number(updates.thuong));
+    if (updates.phat       !== undefined) row.set('phat',       Number(updates.phat));
+    if (updates.so_ngay_nghi_khong_luong !== undefined) row.set('so_ngay_nghi_khong_luong', Number(updates.so_ngay_nghi_khong_luong));
+    if (updates.so_gio_ot !== undefined) row.set('so_gio_ot', Number(updates.so_gio_ot));
+    if (updates.tong_luong !== undefined) row.set('tong_luong', Number(updates.tong_luong));
+  }
+  
   await row.save();
-
-  await addLog(doc, 'UPDATE_BL', id, '', '');
+  await addLog(doc, 'UPDATE_PAYROLL', id, '', '');
   return true;
 }
 
+/**
+ * Xóa bản ghi bảng lương.
+ */
 export async function deleteBangLuong(id: string): Promise<boolean> {
   const doc = await getDoc();
+  const sheetName = id.startsWith('PR_') ? SHEETS.PAYROLL : SHEETS.BANG_LUONG;
+  
   let sheet: GoogleSpreadsheetWorksheet;
   try {
-    sheet = await getSheet(doc, SHEETS.BANG_LUONG);
+    sheet = await getSheet(doc, sheetName);
   } catch {
     return false;
   }
+  
   const rows = await sheet.getRows();
   const row = rows.find(r => str(r.toObject()['id']) === id);
   if (!row) return false;
   await row.delete();
-  await addLog(doc, 'DELETE_BL', id, '', '');
+
+  // Xóa các items tương ứng trong PAYROLL_ITEMS nếu là bản ghi mới
+  if (id.startsWith('PR_')) {
+    try {
+      const itemsSheet = await getSheet(doc, SHEETS.PAYROLL_ITEMS);
+      const itemRows = await itemsSheet.getRows();
+      // Iterate backwards when deleting multiple rows to avoid index shifting issues
+      for (let i = itemRows.length - 1; i >= 0; i--) {
+        if (str(itemRows[i].toObject()['payroll_id']) === id) {
+          await itemRows[i].delete();
+        }
+      }
+    } catch {
+      // Ignored: If PAYROLL_ITEMS doesn't exist or deletion fails, main record is already gone
+    }
+  }
+
+  await addLog(doc, 'DELETE_PAYROLL', id, '', '');
   return true;
 }
 
