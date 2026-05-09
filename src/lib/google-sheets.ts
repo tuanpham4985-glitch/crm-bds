@@ -185,6 +185,21 @@ function num(val: unknown): number {
 
 function toMonthKey(dateStr: string): string {
   if (!dateStr) return '';
+  
+  // Thử parse định dạng DD/MM/YYYY (Việt Nam) trước
+  const parts = dateStr.split(/[\/\-]/);
+  if (parts.length === 3) {
+    const p1 = parseInt(parts[0]);
+    const p2 = parseInt(parts[1]);
+    const p3 = parseInt(parts[2]);
+    
+    // Nếu p2 (tháng) <= 12 và p3 (năm) > 2000
+    // Ưu tiên p2 là tháng (định dạng DD/MM/YYYY)
+    if (p2 >= 1 && p2 <= 12 && p3 > 2000) {
+      return `${String(p2).padStart(2, '0')}-${p3}`;
+    }
+  }
+
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '';
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;

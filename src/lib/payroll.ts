@@ -147,7 +147,8 @@ export async function fetchPayrollData(
 
   const closedPipelinesForMonth = pipelines.filter((pl) => {
     const giaiDoanNorm = (pl.giai_doan || '').trim().toLowerCase();
-    if (giaiDoanNorm !== 'chốt') return false;
+    // Chấp nhận các trạng thái đã thành công: "Chốt", "Ký HĐ"
+    if (giaiDoanNorm !== 'chốt' && giaiDoanNorm !== 'ký hđ') return false;
 
     // Chấp nhận nhiều format tháng: "05-2026", "5-2026", "05/2026", "5/2026"
     const plThang = (pl.thang || '').replace(/\//g, '-');
