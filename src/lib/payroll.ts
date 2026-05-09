@@ -112,8 +112,8 @@ export async function fetchPayrollData(
   );
 
   // 2. Map hợp đồng đang có hiệu lực → mỗi NV lấy 1 hợp đồng active nhất
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
+  const targetMonthStart = new Date(nam, thang - 1, 1);
+  const targetMonthEnd = new Date(nam, thang, 0); // last day of month
 
   const contractMap = new Map<string, HopDong>();
   for (const hd of contracts) {
@@ -121,13 +121,13 @@ export async function fetchPayrollData(
 
     const start = new Date(hd.ngay_bat_dau);
     start.setHours(0, 0, 0, 0);
-    if (isNaN(start.getTime()) || start > now) continue;
+    if (isNaN(start.getTime()) || start > targetMonthEnd) continue;
 
-    // Kiểm tra hợp đồng chưa hết hạn
+    // Kiểm tra hợp đồng chưa hết hạn trước khi tháng này bắt đầu
     if (hd.ngay_ket_thuc?.trim()) {
       const end = new Date(hd.ngay_ket_thuc);
-      end.setHours(0, 0, 0, 0);
-      if (!isNaN(end.getTime()) && end < now) continue;
+      end.setHours(23, 59, 59, 999);
+      if (!isNaN(end.getTime()) && end < targetMonthStart) continue;
     }
 
     // Nếu đã có entry → giữ hợp đồng mới hơn (ngay_bat_dau lớn hơn)
@@ -345,10 +345,24 @@ export async function generatePayroll(
 
   // Group pipelines theo id_nhan_vien
   const pipelinesByEmployee = new Map<string, Pipeline[]>();
-  for (const pl of closedPipelinesForMonth) {
-    const key = pl.sale_phu_trach;
-    if (!pipelinesByEmployee.has(key)) pipelinesByEmployee.set(key, []);
-    pipelinesByEmployee.get(key)!.push(pl);
+  for (const pl of rawData.closedPipelinesForMonth) {
+    const saleIdOrName = (pl.sale_phu_trach || '').trim().toLowerCase();
+    
+    // Tìm nhân viên tương ứng (trùng ID, hoặc ID nằm trong tên, hoặc tên trùng)
+    const emp = rawData.activeEmployees.find(e => {
+      const id = (e.id_nhan_vien || '').toLowerCase();
+      const ho_ten = (e.ho_ten || '').toLowerCase();
+      return id === saleIdOrName || 
+             ho_ten === saleIdOrName || 
+             saleIdOrName.includes(id) || 
+             saleIdOrName.includes(ho_ten);
+    });
+
+    if (emp) {
+      const list = pipelinesByEmployee.get(emp.id_nhan_vien) || [];
+      list.push(pl);
+      pipelinesByEmployee.set(emp.id_nhan_vien, list);
+    }
   }
 
   const results: PayrollEntry[] = activeEmployees.map((nv) => {
