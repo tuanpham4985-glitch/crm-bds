@@ -368,15 +368,7 @@ export async function generatePayroll(
     const empPipelines = pipelinesByEmployee.get(nv.id_nhan_vien) || [];
     const hopDong = contractMap.get(nv.id_nhan_vien);
     
-    if (!hopDong) {
-      // Nếu không có hợp đồng, dùng logic cũ hoặc bỏ qua
-      return calculateEmployeePayroll(nv, thang, nam, contractMap, empPipelines, config);
-    }
-
-    // Dùng Payroll Engine mới để tính toán
-    const calc = payEngine.calculate(nv, hopDong, thang, nam);
-
-    // Bổ sung hoa hồng từ Pipeline (vì PayrollEngine mặc định chưa tính hoa hồng BĐS)
+    // Tính hoa hồng từ Pipeline TRƯỚC khi gọi Engine để Engine tính thuế chính xác
     let hoa_hong = 0;
     let doanh_thu = 0;
     for (const pl of empPipelines) {
@@ -387,17 +379,14 @@ export async function generatePayroll(
         : (Number(pl.tien_hoa_hong) || 0);
     }
 
-    const entry: PayrollEntry = { ...calc };
-    if (hoa_hong > 0) {
-      entry.hoa_hong = Math.round(hoa_hong);
-      entry.doanh_thu = doanh_thu;
-      entry.items = [...(entry.items || []), { loai_khoan: 'Hoa hồng BĐS', nhom: 'thu_nhap', so_tien: Math.round(hoa_hong), ghi_chu: '', tinh_bhxh: false, tinh_thue: true }];
-      
-      entry.gross = (entry.items || []).filter(i => i.nhom === 'thu_nhap').reduce((s, i) => s + i.so_tien, 0);
-      entry.total_deduction = (entry.items || []).filter(i => i.nhom === 'khau_tru').reduce((s, i) => s + i.so_tien, 0);
-      entry.tong_luong = entry.gross - (entry.total_deduction || 0);
+    if (!hopDong) {
+      // Nếu không có hợp đồng, dùng logic cũ hoặc bỏ qua
+      return calculateEmployeePayroll(nv, thang, nam, contractMap, empPipelines, config);
     }
-    return entry;
+
+    // Dùng Payroll Engine mới để tính toán, truyền kèm hoa hồng
+    const calc = payEngine.calculate(nv, hopDong, thang, nam, Math.round(hoa_hong), doanh_thu);
+    return { ...calc };
   });
 
   return results;

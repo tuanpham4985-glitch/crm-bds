@@ -43,7 +43,7 @@ export class PayrollEngine {
     private adjustments: PayrollAdjustment[]
   ) {}
 
-  calculate(nv: NhanVien, hd: HopDong, thang: number, nam: number) {
+  calculate(nv: NhanVien, hd: HopDong, thang: number, nam: number, hoa_hong: number = 0, doanh_thu: number = 0) {
     const startDate = new Date(nam, thang - 1, 1);
     const endDate   = new Date(nam, thang, 0);
 
@@ -117,10 +117,22 @@ export class PayrollEngine {
       });
     }
 
+    // Hoa hồng BĐS — không tính BH, nhưng tính thuế TNCN
+    if (hoa_hong > 0) {
+      items.push({
+        loai_khoan: 'Hoa hồng BĐS',
+        nhom: 'thu_nhap',
+        so_tien: Math.round(hoa_hong),
+        ghi_chu: `Doanh thu: ${doanh_thu.toLocaleString('vi-VN')} đ`,
+        tinh_bhxh: false,
+        tinh_thue: true,
+      });
+    }
+
     // ── 6. Gross ──────────────────────────────────────────────────
     const gross = items
       .filter(i => i.nhom === 'thu_nhap')
-      .reduce((s, i) => s + i.so_tien, 0) - totalFine;
+      .reduce((s, i) => s + i.so_tien, 0);
 
     // ── 7. Lương đóng BHXH / BHYT / BHTN ─────────────────────────
     // = tổng các khoản có tinh_bhxh: true, capped 20 × lương tối thiểu vùng
@@ -193,8 +205,8 @@ export class PayrollEngine {
       luong_dong_bh,        // Lương làm cơ sở đóng BH
       thu_nhap_chiu_thue,   // Thu nhập chịu thuế TNCN
       // Chi tiết ngày công / OT
-      doanh_thu:                    0,
-      hoa_hong:                     0,
+      doanh_thu,
+      hoa_hong,
       so_ngay_cong_chuan:           standardWorkdays,
       so_ngay_lam_viec_thuc_te:     actualWorkdays,
       so_ngay_nghi_khong_luong:     Math.max(0, standardWorkdays - actualWorkdays),
