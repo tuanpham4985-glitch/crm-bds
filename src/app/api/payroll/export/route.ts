@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
       return item?.so_tien ?? 0;
     };
 
-    const getSumByGroup = (payrollId: string, nhom: 'thu_nhap' | 'khau_tru'): number =>
+    const getSumByGroup = (payrollId: string, nhom: 'thu_nhap' | 'khau_tru' | 'chi_phi_cty'): number =>
       allItems
         .filter(i => i.payroll_id === payrollId && i.nhom === nhom)
         .reduce((s, i) => s + i.so_tien, 0);
@@ -89,8 +89,9 @@ export async function GET(request: NextRequest) {
       thuong: getItemAmount(p.id, 'Thưởng'),
       ot_pay: getItemAmount(p.id, 'Lương OT'),
       phat: getItemAmount(p.id, 'Phạt'),
-      bao_hiem: getItemAmount(p.id, 'BHXH (10.5%)'),
+      bao_hiem_nv: getItemAmount(p.id, 'BHXH (8%)') + getItemAmount(p.id, 'BHYT (1.5%)') + getItemAmount(p.id, 'BHTN (1%)') || getItemAmount(p.id, 'BHXH (10.5%)'),
       thue: getItemAmount(p.id, 'Thuế TNCN'),
+      chi_phi_cty: getSumByGroup(p.id, 'chi_phi_cty'),
       gross: p.gross || getSumByGroup(p.id, 'thu_nhap'),
       tong_luong: p.net,
     }));
@@ -109,8 +110,9 @@ export async function GET(request: NextRequest) {
           s.thuong       += item.thuong;
           s.ot_pay       += item.ot_pay;
           s.phat         += item.phat;
-          s.bao_hiem     += item.bao_hiem;
+          s.bao_hiem_nv  += item.bao_hiem_nv;
           s.thue         += item.thue;
+          s.chi_phi_cty  += item.chi_phi_cty;
           s.gross        += item.gross;
           s.tong_luong   += item.tong_luong;
         }
@@ -148,7 +150,7 @@ export async function GET(request: NextRequest) {
               // Header row
               new TableRow({
                 children: [
-                  'STT', 'Họ tên', 'Lương CB', 'Hoa hồng', 'Thưởng', 'OT', 'Phạt', 'Bảo hiểm', 'Thuế', 'NET Nhận'
+                  'STT', 'Họ tên', 'Lương CB', 'Hoa hồng', 'Thưởng', 'OT', 'Phạt', 'BH (NV)', 'Thuế', 'NET', 'CP Cty'
                 ].map(header => new TableCell({
                   children: [new Paragraph({
                     children: [new TextRun({ text: header, bold: true })],
@@ -169,9 +171,10 @@ export async function GET(request: NextRequest) {
                     fmt(item.thuong),
                     fmt(item.ot_pay),
                     fmt(item.phat),
-                    fmt(item.bao_hiem),
+                    fmt(item.bao_hiem_nv),
                     fmt(item.thue),
                     fmt(item.tong_luong),
+                    fmt(item.chi_phi_cty),
                   ].map(text => new TableCell({
                     children: [new Paragraph({
                       text,
@@ -190,7 +193,7 @@ export async function GET(request: NextRequest) {
                       children: [new TextRun({ text: 'TỔNG CỘNG', bold: true })],
                       alignment: AlignmentType.RIGHT
                     })],
-                    columnSpan: 9,
+                    columnSpan: 10,
                     verticalAlign: VerticalAlign.CENTER,
                     shading: { fill: 'F2F2F2' }
                   }),

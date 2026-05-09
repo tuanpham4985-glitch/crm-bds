@@ -122,11 +122,14 @@ const BANG_LUONG_HEADERS = [
 ] as const;
 
 const PAYROLL_HEADERS = [
-  'id', 'id_nhan_vien', 'thang', 'nam', 'gross', 'total_deduction', 'net', 'trang_thai', 'created_at'
+  'id', 'id_nhan_vien', 'thang', 'nam',
+  'gross', 'total_deduction', 'net',
+  'luong_dong_bh', 'thu_nhap_chiu_thue', 'tong_chi_phi',
+  'trang_thai', 'locked_at', 'created_at'
 ] as const;
 
 const PAYROLL_ITEMS_HEADERS = [
-  'id', 'payroll_id', 'loai_khoan', 'nhom', 'so_tien', 'ghi_chu'
+  'id', 'payroll_id', 'loai_khoan', 'nhom', 'so_tien', 'ghi_chu', 'tinh_bhxh', 'tinh_thue'
 ] as const;
 
 function str(val: unknown): string {
@@ -1053,51 +1056,75 @@ export async function addBangLuong(
 
 // --- PAYROLL (DYNAMIC) ---
 
+/**
+ * Safe migration: tạo mới hoặc thêm cột còn thiếu vào sheet PAYROLL.
+ * KHÔNG xóa cột cũ, KHÔNG ảnh hưởng dữ liệu đã có.
+ */
 async function getOrCreatePayrollSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
   let sheet = doc.sheetsByTitle[SHEETS.PAYROLL];
   if (!sheet) {
-    console.log('[GSheets] PAYROLL sheet not found, creating with headers...');
+    console.log('[GSheets] PAYROLL sheet not found — creating with full headers...');
     sheet = await doc.addSheet({ title: SHEETS.PAYROLL, headerValues: [...PAYROLL_HEADERS] });
+    await sheet.loadHeaderRow();
+    return sheet;
   }
-  // Always try to load and verify headers
+
+  // Load header row (handle empty sheet gracefully)
   try {
     await sheet.loadHeaderRow();
   } catch {
-    // Sheet might be completely empty — set headers
-    console.log('[GSheets] PAYROLL: loadHeaderRow failed, setting headers...');
+    console.log('[GSheets] PAYROLL: empty sheet, setting initial headers...');
     await sheet.setHeaderRow([...PAYROLL_HEADERS]);
     await sheet.loadHeaderRow();
+    return sheet;
   }
-  // Verify the expected headers exist
-  if (!sheet.headerValues || sheet.headerValues.length === 0) {
-    console.log('[GSheets] PAYROLL: headers empty after load, setting headers...');
-    await sheet.setHeaderRow([...PAYROLL_HEADERS]);
+
+  // Safe migration: only APPEND missing columns — never overwrite existing data
+  const existing = new Set(sheet.headerValues || []);
+  const missing  = [...PAYROLL_HEADERS].filter(h => !existing.has(h));
+  if (missing.length > 0) {
+    console.log(`[GSheets] PAYROLL migration: adding missing columns [${missing.join(', ')}]`);
+    const merged = [...(sheet.headerValues || []), ...missing];
+    await sheet.setHeaderRow(merged);
     await sheet.loadHeaderRow();
   }
-  console.log(`[GSheets] PAYROLL sheet ready. Headers: [${sheet.headerValues?.join(', ')}]`);
+
+  console.log(`[GSheets] PAYROLL ready. Headers: [${sheet.headerValues?.join(', ')}]`);
   return sheet;
 }
 
+/**
+ * Safe migration: tạo mới hoặc thêm cột còn thiếu vào sheet PAYROLL_ITEMS.
+ */
 async function getOrCreatePayrollItemsSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
   let sheet = doc.sheetsByTitle[SHEETS.PAYROLL_ITEMS];
   if (!sheet) {
-    console.log('[GSheets] PAYROLL_ITEMS sheet not found, creating with headers...');
+    console.log('[GSheets] PAYROLL_ITEMS sheet not found — creating with full headers...');
     sheet = await doc.addSheet({ title: SHEETS.PAYROLL_ITEMS, headerValues: [...PAYROLL_ITEMS_HEADERS] });
+    await sheet.loadHeaderRow();
+    return sheet;
   }
-  // Always try to load and verify headers
+
   try {
     await sheet.loadHeaderRow();
   } catch {
-    console.log('[GSheets] PAYROLL_ITEMS: loadHeaderRow failed, setting headers...');
+    console.log('[GSheets] PAYROLL_ITEMS: empty sheet, setting initial headers...');
     await sheet.setHeaderRow([...PAYROLL_ITEMS_HEADERS]);
     await sheet.loadHeaderRow();
+    return sheet;
   }
-  if (!sheet.headerValues || sheet.headerValues.length === 0) {
-    console.log('[GSheets] PAYROLL_ITEMS: headers empty after load, setting headers...');
-    await sheet.setHeaderRow([...PAYROLL_ITEMS_HEADERS]);
+
+  // Safe migration
+  const existing = new Set(sheet.headerValues || []);
+  const missing  = [...PAYROLL_ITEMS_HEADERS].filter(h => !existing.has(h));
+  if (missing.length > 0) {
+    console.log(`[GSheets] PAYROLL_ITEMS migration: adding missing columns [${missing.join(', ')}]`);
+    const merged = [...(sheet.headerValues || []), ...missing];
+    await sheet.setHeaderRow(merged);
     await sheet.loadHeaderRow();
   }
-  console.log(`[GSheets] PAYROLL_ITEMS sheet ready. Headers: [${sheet.headerValues?.join(', ')}]`);
+
+  console.log(`[GSheets] PAYROLL_ITEMS ready. Headers: [${sheet.headerValues?.join(', ')}]`);
   return sheet;
 }
 
@@ -1121,7 +1148,11 @@ export async function getPayrollRecords(thang: number, nam: number): Promise<Pay
         gross: num(v.gross),
         total_deduction: num(v.total_deduction),
         net: num(v.net),
+        luong_dong_bh: num(v.luong_dong_bh),
+        thu_nhap_chiu_thue: num(v.thu_nhap_chiu_thue),
+        tong_chi_phi: num(v.tong_chi_phi),
         trang_thai: (str(v.trang_thai) || 'draft') as any,
+        locked_at: str(v.locked_at) || undefined,
         created_at: str(v.created_at),
       };
     })
@@ -1148,6 +1179,8 @@ export async function getPayrollItems(payrollIds: string[]): Promise<PayrollItem
         nhom: str(v.nhom) as any,
         so_tien: num(v.so_tien),
         ghi_chu: str(v.ghi_chu),
+        tinh_bhxh: str(v.tinh_bhxh) === 'TRUE' || str(v.tinh_bhxh) === 'true',
+        tinh_thue: str(v.tinh_thue) === 'TRUE' || str(v.tinh_thue) === 'true',
       };
     })
     .filter(item => ids.has(item.payroll_id));
@@ -1192,7 +1225,11 @@ export async function savePayrollBatch(
       gross: payroll.gross,
       total_deduction: payroll.total_deduction,
       net: payroll.net,
+      luong_dong_bh: payroll.luong_dong_bh,
+      thu_nhap_chiu_thue: payroll.thu_nhap_chiu_thue,
+      tong_chi_phi: payroll.tong_chi_phi,
       trang_thai: payroll.trang_thai,
+      locked_at: payroll.locked_at || '',
       created_at: createdAt,
     });
 
@@ -1204,6 +1241,8 @@ export async function savePayrollBatch(
         nhom: item.nhom,
         so_tien: item.so_tien,
         ghi_chu: item.ghi_chu || '',
+        tinh_bhxh: item.tinh_bhxh ? 'TRUE' : 'FALSE',
+        tinh_thue: item.tinh_thue ? 'TRUE' : 'FALSE',
       });
     }
   }
@@ -1240,7 +1279,7 @@ export async function savePayrollBatch(
  */
 export async function updateBangLuong(
   id: string,
-  updates: Partial<Pick<BangLuong, 'trang_thai' | 'thuong' | 'phat' | 'tong_luong' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot'>>
+  updates: Partial<Pick<BangLuong, 'trang_thai' | 'thuong' | 'phat' | 'tong_luong' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot'>> & { locked_at?: string }
 ): Promise<boolean> {
   const doc = await getDoc();
   const sheetName = id.startsWith('PR_') ? SHEETS.PAYROLL : SHEETS.BANG_LUONG;
@@ -1256,8 +1295,18 @@ export async function updateBangLuong(
   const row = rows.find(r => str(r.toObject()['id']) === id);
   if (!row) return false;
 
+  const currentStatus = str(row.toObject()['trang_thai']);
+  if (currentStatus === 'locked') {
+    throw new Error('Bản ghi đã khóa, không thể cập nhật.');
+  }
+
   // Cập nhật trạng thái
-  if (updates.trang_thai !== undefined) row.set('trang_thai', updates.trang_thai);
+  if (updates.trang_thai !== undefined) {
+    row.set('trang_thai', updates.trang_thai);
+    if (updates.trang_thai === 'locked') {
+      row.set('locked_at', new Date().toISOString());
+    }
+  }
   
   // Với bản ghi cũ BANG_LUONG, cho phép cập nhật thêm các field khác nếu cần
   if (!id.startsWith('PR_')) {
@@ -1290,6 +1339,10 @@ export async function deleteBangLuong(id: string): Promise<boolean> {
   const rows = await sheet.getRows();
   const row = rows.find(r => str(r.toObject()['id']) === id);
   if (!row) return false;
+
+  if (str(row.toObject()['trang_thai']) === 'locked') {
+    throw new Error('Bản ghi đã khóa, không thể xóa.');
+  }
   await row.delete();
 
   // Xóa các items tương ứng trong PAYROLL_ITEMS nếu là bản ghi mới

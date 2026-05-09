@@ -123,10 +123,11 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[API /payroll] PUT Error:', error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[API /payroll] PUT Error:', msg);
     return NextResponse.json(
-      { success: false, error: 'Lỗi cập nhật' },
-      { status: 500 }
+      { success: false, error: msg },
+      { status: msg.includes('khóa') ? 403 : 500 }
     );
   }
 }
@@ -155,10 +156,11 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[API /payroll] DELETE Error:', error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[API /payroll] DELETE Error:', msg);
     return NextResponse.json(
-      { success: false, error: 'Lỗi xóa bản ghi' },
-      { status: 500 }
+      { success: false, error: msg },
+      { status: msg.includes('khóa') ? 403 : 500 }
     );
   }
 }

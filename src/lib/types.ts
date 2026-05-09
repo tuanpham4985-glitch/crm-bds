@@ -234,12 +234,23 @@ export interface BangLuong {
   bh_company: number;
   thue: number;
   tong_luong: number;
+  luong_dong_bh?: number;
+  thu_nhap_chiu_thue?: number;
+  tong_chi_phi?: number;
   gross?: number;
   isProbation?: boolean;
   so_nguoi_phu_thuoc?: number;
-  trang_thai: 'draft' | 'confirmed' | 'paid';
+  trang_thai: 'draft' | 'pending_approval' | 'approved' | 'paid' | 'locked';
   created_at: string;
 }
+
+// Trạng thái bảng lương (5 bước)
+export type PayrollStatus =
+  | 'draft'              // Nháp
+  | 'pending_approval'   // Chờ duyệt
+  | 'approved'           // Đã duyệt
+  | 'paid'               // Đã thanh toán
+  | 'locked';            // Đã khóa (read-only)
 
 // === LƯƠNG ĐỘNG (SALARY COMPONENTS) ===
 export interface PayrollRecord {
@@ -250,17 +261,23 @@ export interface PayrollRecord {
   gross: number;
   total_deduction: number;
   net: number;
-  trang_thai: 'draft' | 'confirmed' | 'paid';
+  luong_dong_bh: number;       // Lương đóng BH (capped)
+  thu_nhap_chiu_thue: number;  // Thu nhập chịu thuế TNCN
+  tong_chi_phi: number;        // Tổng chi phí nhân sự (gross + BH CTY)
+  trang_thai: PayrollStatus;
+  locked_at?: string;          // ISO timestamp khi khóa
   created_at: string;
 }
 
 export interface PayrollItemRecord {
   id: string;
   payroll_id: string;
-  loai_khoan: string; // e.g. "Lương cơ bản", "Hoa hồng", "BHXH", "Thuế TNCN", "OT", "Phạt"
-  nhom: 'thu_nhap' | 'khau_tru';
+  loai_khoan: string;          // e.g. "Lương thực tế", "Hoa hồng BĐS", "Phụ cấp trách nhiệm"
+  nhom: 'thu_nhap' | 'khau_tru' | 'chi_phi_cty';  // chi_phi_cty = BHXH/BHYT/BHTN công ty
   so_tien: number;
   ghi_chu: string;
+  tinh_bhxh: boolean;  // Cộng vào lương đóng BHXH
+  tinh_thue: boolean;  // Tính vào thu nhập chịu thuế TNCN
 }
 // === CHẤM CÔNG VÀ LỊCH LÀM VIỆC (MỚI) ===
 export interface WorkCalendar {

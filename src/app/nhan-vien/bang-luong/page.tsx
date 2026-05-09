@@ -21,9 +21,11 @@ function fmtCurrency(n: number) {
 }
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
-  draft:     { label: 'Nháp',      cls: 'badge-neutral'  },
-  confirmed: { label: 'Đã duyệt',  cls: 'badge-info'     },
-  paid:      { label: 'Đã trả',    cls: 'badge-success'  },
+  draft:            { label: 'Nháp',       cls: 'badge-neutral'  },
+  pending_approval: { label: 'Chờ duyệt',  cls: 'badge-warning'  },
+  approved:         { label: 'Đã duyệt',   cls: 'badge-info'     },
+  paid:             { label: 'Đã trả',     cls: 'badge-success'  },
+  locked:           { label: 'Đã khóa',    cls: 'badge-error'    },
 };
 
 // ================================================================
@@ -257,7 +259,7 @@ export default function BangLuongPage() {
   };
 
   // ── Đổi trạng thái ──
-  const changeStatus = async (id: string, trang_thai: 'draft' | 'confirmed' | 'paid') => {
+  const changeStatus = async (id: string, trang_thai: string) => {
     const res = await fetch('/api/payroll', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -573,11 +575,14 @@ export default function BangLuongPage() {
                                 className="form-select"
                                 style={{ padding: '2px 22px 2px 6px', fontSize: '0.75rem', height: 26, width: 'auto' }}
                                 value={bl.trang_thai}
-                                onChange={e => changeStatus(bl.id, e.target.value as 'draft' | 'confirmed' | 'paid')}
+                                onChange={e => changeStatus(bl.id, e.target.value)}
+                                disabled={bl.trang_thai === 'locked'}
                               >
                                 <option value="draft">Nháp</option>
-                                <option value="confirmed">Duyệt</option>
+                                <option value="pending_approval">Chờ duyệt</option>
+                                <option value="approved">Đã duyệt</option>
                                 <option value="paid">Đã trả</option>
+                                <option value="locked">Đã khóa</option>
                               </select>
                             )}
                           </div>
@@ -634,19 +639,27 @@ export default function BangLuongPage() {
               { loai_khoan: 'Thuế TNCN', nhom: 'khau_tru', so_tien: drawerRecord.thue },
             ].filter(i => i.so_tien !== 0);
 
-            const incomeItems = displayItems.filter((i: any) => i.nhom === 'thu_nhap');
+            const incomeItems    = displayItems.filter((i: any) => i.nhom === 'thu_nhap');
             const deductionItems = displayItems.filter((i: any) => i.nhom === 'khau_tru');
+            const companyItems   = displayItems.filter((i: any) => i.nhom === 'chi_phi_cty');
 
             const totalGross = incomeItems.reduce((s: number, i: any) => s + i.so_tien, 0);
             const totalDed   = deductionItems.reduce((s: number, i: any) => s + i.so_tien, 0);
+            const totalComp  = companyItems.reduce((s: number, i: any) => s + i.so_tien, 0);
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 {/* Header Profile */}
                 <div style={{ background: 'var(--bg-page)', padding: 16, borderRadius: 'var(--radius-lg)' }}>
                   <div style={{ fontWeight: 600, fontSize: '1.1rem', marginBottom: 4 }}>{ho_ten}</div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 8 }}>
                     {drawerRecord.isProbation ? 'Thử việc' : 'Chính thức'} | Tháng {thang}/{nam}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem', color: 'var(--text-body)', borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
+                    <div>Lương hợp đồng: <strong>{fmt(drawerRecord.luong_co_ban)}</strong></div>
+                    <div>Lương đóng BH: <strong>{fmt((drawerRecord as any).luong_dong_bh || drawerRecord.luong_co_ban)}</strong></div>
+                    <div>TN chịu thuế: <strong>{fmt((drawerRecord as any).thu_nhap_chiu_thue || 0)}</strong></div>
+                    <div>Tổng chi phí: <strong style={{color: 'var(--primary)'}}>{fmt((drawerRecord as any).tong_chi_phi || (totalGross + totalComp))}</strong></div>
                   </div>
                 </div>
 
@@ -673,7 +686,7 @@ export default function BangLuongPage() {
 
                 {/* 2. KHẤU TRỪ */}
                 <div className="form-section">
-                  <div className="form-section-title">2. Khấu trừ</div>
+                  <div className="form-section-title">2. Khấu trừ (Trừ vào lương)</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
                     {deductionItems.map((item: any, i: number) => (
                       <div key={i} className="card" style={{ padding: '10px 14px', boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -687,7 +700,25 @@ export default function BangLuongPage() {
                   </div>
                 </div>
 
-                {/* 3. THỰC NHẬN */}
+                {/* 3. CHI PHÍ NHÂN SỰ CÔNG TY */}
+                {companyItems.length > 0 && (
+                  <div className="form-section">
+                    <div className="form-section-title">3. Chi phí nhân sự Công ty trả (Không ảnh hưởng lương)</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                      {companyItems.map((item: any, i: number) => (
+                        <div key={i} className="card" style={{ padding: '10px 14px', boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-body)' }}>{item.loai_khoan}</div>
+                          <div style={{ fontWeight: 600, color: 'var(--info-text)' }}>{fmtCurrency(item.so_tien)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 12, textAlign: 'right', fontSize: '1rem', fontWeight: 600, color: 'var(--info-text)' }}>
+                      Tổng CP Công ty trả: {fmtCurrency(totalComp)}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. THỰC NHẬN */}
                 <div style={{ background: 'rgba(16, 185, 129, 0.05)', padding: 20, borderRadius: 'var(--radius-lg)', border: '1px solid rgba(16, 185, 129, 0.2)', textAlign: 'center' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Thực nhận (NET)</div>
                   <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success-text)' }}>

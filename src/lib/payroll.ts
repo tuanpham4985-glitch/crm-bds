@@ -391,7 +391,7 @@ export async function generatePayroll(
     if (hoa_hong > 0) {
       entry.hoa_hong = Math.round(hoa_hong);
       entry.doanh_thu = doanh_thu;
-      entry.items = [...(entry.items || []), { loai_khoan: 'Hoa hồng BĐS', nhom: 'thu_nhap', so_tien: Math.round(hoa_hong), ghi_chu: '' }];
+      entry.items = [...(entry.items || []), { loai_khoan: 'Hoa hồng BĐS', nhom: 'thu_nhap', so_tien: Math.round(hoa_hong), ghi_chu: '', tinh_bhxh: false, tinh_thue: true }];
       
       entry.gross = (entry.items || []).filter(i => i.nhom === 'thu_nhap').reduce((s, i) => s + i.so_tien, 0);
       entry.total_deduction = (entry.items || []).filter(i => i.nhom === 'khau_tru').reduce((s, i) => s + i.so_tien, 0);
@@ -456,6 +456,9 @@ export async function savePayroll(
         gross: entry.gross || 0,
         total_deduction: entry.total_deduction || (entry.bao_hiem + entry.thue + (entry.phat || 0)),
         net: entry.tong_luong,
+        luong_dong_bh: entry.luong_dong_bh || entry.luong_co_ban,
+        thu_nhap_chiu_thue: entry.thu_nhap_chiu_thue || 0,
+        tong_chi_phi: entry.tong_chi_phi || entry.gross,
         trang_thai: entry.trang_thai || 'draft',
       },
       items: entry.items || [],
