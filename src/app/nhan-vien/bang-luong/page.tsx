@@ -540,7 +540,7 @@ export default function BangLuongPage() {
                         <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
                           {empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 500 }}>{fmt(bl.gross)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 500 }}>{fmt(bl.gross ?? (bl.salary_by_day + bl.hoa_hong + bl.thuong + bl.ot_pay))}</td>
                         <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(tong_khau_tru)}</td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success-text)' }}>{fmt(bl.tong_luong)}</td>
                         <td style={{ textAlign: 'center' }}>
@@ -573,6 +573,8 @@ export default function BangLuongPage() {
             </div>
           )}
         </div>
+      )}
+
       {/* ===== DRAWER CHI TIẾT LƯƠNG ===== */}
       <div className={`drawer-overlay ${isDrawerOpen ? 'open' : ''}`} onClick={() => setIsDrawerOpen(false)} />
       <div className={`drawer-panel ${isDrawerOpen ? 'open' : ''}`}>
@@ -677,7 +679,7 @@ export default function BangLuongPage() {
                     </div>
                   </div>
                   <div style={{ marginTop: 12, textAlign: 'right', fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary)' }}>
-                    Tổng Gross: {fmtCurrency(drawerRecord.gross)}
+                    Tổng Gross: {fmtCurrency(drawerRecord.gross ?? (drawerRecord.salary_by_day + drawerRecord.hoa_hong + drawerRecord.thuong + drawerRecord.ot_pay))}
                   </div>
                 </div>
 

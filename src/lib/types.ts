@@ -234,6 +234,8 @@ export interface BangLuong {
   bh_company: number;
   thue: number;
   tong_luong: number;
+  gross?: number;
+  isProbation?: boolean;
   so_nguoi_phu_thuoc?: number;
   trang_thai: 'draft' | 'confirmed' | 'paid';
   created_at: string;
