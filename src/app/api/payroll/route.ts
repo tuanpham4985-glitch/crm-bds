@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBangLuong, updateBangLuong, deleteBangLuong } from '@/lib/google-sheets';
+import { getBangLuong, updateBangLuong, deleteBangLuong, getPayrollRecords, getPayrollItems } from '@/lib/google-sheets';
 import { savePayroll } from '@/lib/payroll';
 import type { PayrollEntry } from '@/lib/payroll';
 
@@ -13,15 +13,35 @@ export async function GET(request: NextRequest) {
     const thang = searchParams.get('thang') ? Number(searchParams.get('thang')) : null;
     const nam   = searchParams.get('nam')   ? Number(searchParams.get('nam'))   : null;
 
-    const all = await getBangLuong();
+    const [allLegacy, allDynamic] = await Promise.all([
+      getBangLuong(),
+      getPayrollRecords(thang || 0, nam || 0)
+    ]);
 
-    const filtered = all.filter(bl => {
+    // Lọc legacy
+    const filteredLegacy = allLegacy.filter(bl => {
       if (thang && bl.thang !== thang) return false;
       if (nam   && bl.nam   !== nam)   return false;
       return true;
     });
 
-    return NextResponse.json({ success: true, data: filtered, total: filtered.length });
+    // Lấy items cho dynamic records
+    const dynamicIds = allDynamic.map(d => d.id);
+    const allItems = dynamicIds.length > 0 ? await getPayrollItems(dynamicIds) : [];
+
+    // Map dynamic sang format chung (BangLuong-like)
+    const mappedDynamic = allDynamic.map(p => {
+      const items = allItems.filter(i => i.payroll_id === p.id);
+      return {
+        ...p,
+        tong_luong: p.net, // compatibility
+        items
+      };
+    });
+
+    const combined = [...filteredLegacy, ...mappedDynamic];
+
+    return NextResponse.json({ success: true, data: combined, total: combined.length });
   } catch (error) {
     console.error('[API /payroll] GET Error:', error);
     return NextResponse.json(

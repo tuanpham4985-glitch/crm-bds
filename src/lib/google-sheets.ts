@@ -4,7 +4,7 @@
 // ============================================================
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment } from './types';
+import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment, PayrollRecord, PayrollItemRecord } from './types';
 
 // ---- Environment Variable Validation ----
 function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
@@ -108,6 +108,8 @@ const SHEETS = {
   ATTENDANCE_RAW: 'ATTENDANCE_RAW',
   SHIFTS: 'SHIFTS',
   PAYROLL_ADJUSTMENTS: 'PAYROLL_ADJUSTMENTS',
+  PAYROLL: 'PAYROLL',
+  PAYROLL_ITEMS: 'PAYROLL_ITEMS',
 } as const;
 
 // Exact column headers of the BANG_LUONG sheet (must match Google Sheets exactly)
@@ -117,6 +119,14 @@ const BANG_LUONG_HEADERS = [
   'so_ngay_cong_chuan', 'so_ngay_lam_viec_thuc_te', 'so_ngay_nghi_khong_luong', 'so_gio_ot',
   'salary_by_day', 'ot_pay', 'bao_hiem', 'bh_company', 'thue',
   'tong_luong', 'trang_thai', 'created_at',
+] as const;
+
+const PAYROLL_HEADERS = [
+  'id', 'id_nhan_vien', 'thang', 'nam', 'gross', 'total_deduction', 'net', 'trang_thai', 'created_at'
+] as const;
+
+const PAYROLL_ITEMS_HEADERS = [
+  'id', 'payroll_id', 'loai_khoan', 'nhom', 'so_tien', 'ghi_chu'
 ] as const;
 
 function str(val: unknown): string {
@@ -1018,6 +1028,118 @@ export async function addBangLuong(
 
   await addLog(doc, 'CREATE_BL', id, bl.id_nhan_vien, '');
   return id;
+}
+
+// --- PAYROLL (DYNAMIC) ---
+
+async function getOrCreatePayrollSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
+  let sheet = doc.sheetsByTitle[SHEETS.PAYROLL];
+  if (!sheet) {
+    sheet = await doc.addSheet({ title: SHEETS.PAYROLL, headerValues: [...PAYROLL_HEADERS] });
+  }
+  return sheet;
+}
+
+async function getOrCreatePayrollItemsSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
+  let sheet = doc.sheetsByTitle[SHEETS.PAYROLL_ITEMS];
+  if (!sheet) {
+    sheet = await doc.addSheet({ title: SHEETS.PAYROLL_ITEMS, headerValues: [...PAYROLL_ITEMS_HEADERS] });
+  }
+  return sheet;
+}
+
+export async function getPayrollRecords(thang: number, nam: number): Promise<PayrollRecord[]> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.PAYROLL);
+  } catch {
+    return [];
+  }
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id: str(v.id),
+        id_nhan_vien: str(v.id_nhan_vien),
+        thang: num(v.thang),
+        nam: num(v.nam),
+        gross: num(v.gross),
+        total_deduction: num(v.total_deduction),
+        net: num(v.net),
+        trang_thai: (str(v.trang_thai) || 'draft') as any,
+        created_at: str(v.created_at),
+      };
+    })
+    .filter(p => p.thang === thang && p.nam === nam);
+}
+
+export async function getPayrollItems(payrollIds: string[]): Promise<PayrollItemRecord[]> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.PAYROLL_ITEMS);
+  } catch {
+    return [];
+  }
+  const rows = await sheet.getRows();
+  const ids = new Set(payrollIds);
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id: str(v.id),
+        payroll_id: str(v.payroll_id),
+        loai_khoan: str(v.loai_khoan),
+        nhom: str(v.nhom) as any,
+        so_tien: num(v.so_tien),
+        ghi_chu: str(v.ghi_chu),
+      };
+    })
+    .filter(item => ids.has(item.payroll_id));
+}
+
+export async function addPayroll(
+  payroll: Omit<PayrollRecord, 'id' | 'created_at'>,
+  items: Omit<PayrollItemRecord, 'id' | 'payroll_id'>[]
+): Promise<string> {
+  const doc = await getDoc();
+  const pSheet = await getOrCreatePayrollSheet(doc);
+  const iSheet = await getOrCreatePayrollItemsSheet(doc);
+
+  const payrollId = `PR_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const createdAt = new Date().toISOString();
+
+  // Add Payroll Header
+  await pSheet.addRow({
+    id: payrollId,
+    id_nhan_vien: payroll.id_nhan_vien,
+    thang: payroll.thang,
+    nam: payroll.nam,
+    gross: payroll.gross,
+    total_deduction: payroll.total_deduction,
+    net: payroll.net,
+    trang_thai: payroll.trang_thai,
+    created_at: createdAt
+  });
+
+  // Add Payroll Items
+  const itemRows = items.map(item => ({
+    id: `PRI_${Math.random().toString(36).substr(2, 9)}`,
+    payroll_id: payrollId,
+    loai_khoan: item.loai_khoan,
+    nhom: item.nhom,
+    so_tien: item.so_tien,
+    ghi_chu: item.ghi_chu || ''
+  }));
+
+  if (itemRows.length > 0) {
+    await iSheet.addRows(itemRows);
+  }
+
+  await addLog(doc, 'CREATE_PAYROLL', payrollId, payroll.id_nhan_vien, '');
+  return payrollId;
 }
 
 /**

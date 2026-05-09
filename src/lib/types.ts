@@ -240,6 +240,28 @@ export interface BangLuong {
   trang_thai: 'draft' | 'confirmed' | 'paid';
   created_at: string;
 }
+
+// === LƯƠNG ĐỘNG (SALARY COMPONENTS) ===
+export interface PayrollRecord {
+  id: string;
+  id_nhan_vien: string;
+  thang: number;
+  nam: number;
+  gross: number;
+  total_deduction: number;
+  net: number;
+  trang_thai: 'draft' | 'confirmed' | 'paid';
+  created_at: string;
+}
+
+export interface PayrollItemRecord {
+  id: string;
+  payroll_id: string;
+  loai_khoan: string; // e.g. "Lương cơ bản", "Hoa hồng", "BHXH", "Thuế TNCN", "OT", "Phạt"
+  nhom: 'thu_nhap' | 'khau_tru';
+  so_tien: number;
+  ghi_chu: string;
+}
 // === CHẤM CÔNG VÀ LỊCH LÀM VIỆC (MỚI) ===
 export interface WorkCalendar {
   date: string;       // YYYY-MM-DD

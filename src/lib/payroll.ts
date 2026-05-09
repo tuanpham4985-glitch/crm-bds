@@ -9,13 +9,15 @@ import {
   getPipeline,
   getHopDong,
   getBangLuong,
+  getPayrollRecords,
   addBangLuong,
+  addPayroll,
   getWorkCalendar,
   getAttendanceRaw,
   getShifts,
   getPayrollAdjustments
 } from '@/lib/google-sheets';
-import type { NhanVien, HopDong, Pipeline, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment } from '@/lib/types';
+import type { NhanVien, HopDong, Pipeline, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment, PayrollRecord, PayrollItemRecord } from '@/lib/types';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 import { CalendarEngine } from './engines/calendarEngine';
 import { AttendanceEngine } from './engines/attendanceEngine';
@@ -53,6 +55,8 @@ export const DEFAULT_PAYROLL_CONFIG: PayrollConfig = {
 export interface PayrollEntry extends Omit<BangLuong, 'id' | 'created_at'> {
   /** Gross trước khi trừ bảo hiểm và thuế */
   gross: number;
+  /** Tổng khấu trừ */
+  total_deduction?: number;
   /** BHXH/BHYT/BHTN nhân viên đóng */
   bao_hiem: number;
   /** Thuế TNCN */
@@ -63,6 +67,8 @@ export interface PayrollEntry extends Omit<BangLuong, 'id' | 'created_at'> {
   so_nguoi_phu_thuoc?: number;
   /** Thử việc hay chính thức (để tính BHXH) */
   isProbation?: boolean;
+  /** Danh sách các khoản lương động */
+  items?: Omit<PayrollItemRecord, 'id' | 'payroll_id'>[];
 }
 
 // ============================================================
@@ -90,11 +96,12 @@ export async function fetchPayrollData(
   nam: number
 ): Promise<PayrollRawData> {
   // Batch: parallel fetch tất cả sheets cùng lúc
-  const [employees, pipelines, contracts, savedPayrolls, calendar, attendance, shifts, adjustments] = await Promise.all([
+  const [employees, pipelines, contracts, savedLegacy, savedDynamic, calendar, attendance, shifts, adjustments] = await Promise.all([
     getNhanVien(),
     getPipeline(),
     getHopDong(),
     getBangLuong(),
+    getPayrollRecords(thang, nam),
     getWorkCalendar(),
     getAttendanceRaw(thang, nam),
     getShifts(),
@@ -147,9 +154,15 @@ export async function fetchPayrollData(
   });
 
   // 4. Tập hợp các payroll đã lưu → tránh trùng
-  const existingPayrollKeys = new Set<string>(
-    savedPayrolls.map((bl) => `${bl.id_nhan_vien}|${bl.thang}|${bl.nam}`)
-  );
+  const existingPayrollKeys = new Set<string>();
+  savedLegacy.forEach(bl => {
+    if (bl.thang === thang && bl.nam === nam) {
+      existingPayrollKeys.add(`${bl.id_nhan_vien}|${bl.thang}|${bl.nam}`);
+    }
+  });
+  savedDynamic.forEach(p => {
+    existingPayrollKeys.add(`${p.id_nhan_vien}|${p.thang}|${p.nam}`);
+  });
 
   return {
     activeEmployees,
@@ -361,15 +374,17 @@ export async function generatePayroll(
         : (Number(pl.tien_hoa_hong) || 0);
     }
 
-    return {
-      ...calc,
-      doanh_thu,
-      hoa_hong,
-      gross: calc.salary_by_day + calc.ot_pay + calc.thuong + hoa_hong - calc.phat,
-      tong_luong: calc.tong_luong + hoa_hong, // Cộng thêm hoa hồng vào NET
-      trang_thai: 'draft',
-      isProbation: nv.employee_type?.toLowerCase().includes('thử việc')
-    };
+    const entry: PayrollEntry = { ...calc };
+    if (hoa_hong > 0) {
+      entry.hoa_hong = Math.round(hoa_hong);
+      entry.doanh_thu = doanh_thu;
+      entry.items = [...(entry.items || []), { loai_khoan: 'Hoa hồng BĐS', nhom: 'thu_nhap', so_tien: Math.round(hoa_hong), ghi_chu: '' }];
+      
+      entry.gross = (entry.items || []).filter(i => i.nhom === 'thu_nhap').reduce((s, i) => s + i.so_tien, 0);
+      entry.total_deduction = (entry.items || []).filter(i => i.nhom === 'khau_tru').reduce((s, i) => s + i.so_tien, 0);
+      entry.tong_luong = entry.gross - (entry.total_deduction || 0);
+    }
+    return entry;
   });
 
   return results;
@@ -416,27 +431,23 @@ export async function savePayroll(
     }
 
     try {
-      await addBangLuong({
-        id_nhan_vien: entry.id_nhan_vien,
-        thang: entry.thang,
-        nam: entry.nam,
-        luong_co_ban: entry.luong_co_ban,
-        doanh_thu: entry.doanh_thu,
-        hoa_hong: entry.hoa_hong,
-        thuong: entry.thuong,
-        phat: entry.phat,
-        so_ngay_cong_chuan: entry.so_ngay_cong_chuan,
-        so_ngay_lam_viec_thuc_te: entry.so_ngay_lam_viec_thuc_te,
-        so_ngay_nghi_khong_luong: entry.so_ngay_nghi_khong_luong,
-        so_gio_ot: entry.so_gio_ot,
-        salary_by_day: entry.salary_by_day,
-        ot_pay: entry.ot_pay,
-        bao_hiem: entry.bao_hiem,
-        bh_company: entry.bh_company,
-        thue: entry.thue,
-        tong_luong: entry.tong_luong,
-        trang_thai: entry.trang_thai || 'draft',
-      });
+      // Lưu vào mô hình mới (PAYROLL + PAYROLL_ITEMS)
+      await addPayroll(
+        {
+          id_nhan_vien: entry.id_nhan_vien,
+          thang: entry.thang,
+          nam: entry.nam,
+          gross: entry.gross || 0,
+          total_deduction: entry.total_deduction || (entry.bao_hiem + entry.thue + (entry.phat || 0)),
+          net: entry.tong_luong,
+          trang_thai: entry.trang_thai || 'draft',
+        },
+        entry.items || []
+      );
+
+      // (Tùy chọn) Lưu song song vào BANG_LUONG để tương thích ngược nếu cần
+      // await addBangLuong({...});
+      
       saved++;
       // Small delay để tránh GSheets rate limit
       await new Promise((r) => setTimeout(r, 80));

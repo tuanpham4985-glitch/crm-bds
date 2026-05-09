@@ -47,11 +47,27 @@ export class PayrollEngine {
     const isProbation = nv.employee_type?.toLowerCase().includes('thử việc');
     const bao_hiem = isProbation ? 0 : Math.round(baseSalary * 0.105);
     
-    // Thuế TNCN
+    // 7. Thuế TNCN
     const so_phu_thuoc = nv.so_nguoi_phu_thuoc || 0;
     const giam_tru = 11000000 + (4400000 * so_phu_thuoc);
     const thu_nhap_tinh_thue = Math.max(0, gross - bao_hiem - giam_tru);
     const thue = Math.round(calculateTaxMonthly(thu_nhap_tinh_thue));
+
+    // 8. TỔNG HỢP PAYROLL ITEMS (Mô hình Components)
+    const items: any[] = [];
+    
+    // Thu nhập
+    if (salaryByDay > 0) items.push({ loai_khoan: 'Lương thực tế', nhom: 'thu_nhap', so_tien: Math.round(salaryByDay), ghi_chu: '' });
+    if (otPay > 0)       items.push({ loai_khoan: 'Lương OT', nhom: 'thu_nhap', so_tien: Math.round(otPay), ghi_chu: '' });
+    if (totalBonus > 0)  items.push({ loai_khoan: 'Thưởng', nhom: 'thu_nhap', so_tien: totalBonus, ghi_chu: '' });
+    
+    // Khấu trừ
+    if (totalFine > 0)   items.push({ loai_khoan: 'Phạt', nhom: 'khau_tru', so_tien: totalFine, ghi_chu: '' });
+    if (bao_hiem > 0)    items.push({ loai_khoan: 'BHXH (10.5%)', nhom: 'khau_tru', so_tien: bao_hiem, ghi_chu: '' });
+    if (thue > 0)        items.push({ loai_khoan: 'Thuế TNCN', nhom: 'khau_tru', so_tien: thue, ghi_chu: '' });
+
+    const totalIncome = items.filter(i => i.nhom === 'thu_nhap').reduce((s, i) => s + i.so_tien, 0);
+    const totalDeduction = items.filter(i => i.nhom === 'khau_tru').reduce((s, i) => s + i.so_tien, 0);
 
     return {
       id_nhan_vien: nv.id_nhan_vien,
@@ -72,8 +88,11 @@ export class PayrollEngine {
       bao_hiem,
       bh_company: isProbation ? 0 : Math.round(baseSalary * 0.215),
       thue,
-      tong_luong: Math.max(0, gross - bao_hiem - thue),
+      gross: totalIncome,
+      total_deduction: totalDeduction,
+      tong_luong: Math.max(0, totalIncome - totalDeduction),
       trang_thai: 'draft' as const,
+      items
     };
   }
 }

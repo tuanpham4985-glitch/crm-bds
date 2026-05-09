@@ -206,6 +206,18 @@ export default function BangLuongPage() {
       
       row.thue       = thue_;
       row.tong_luong = gross - bao_hiem - thue_;
+
+      // 7. Cập nhật dynamic items để hiển thị Drawer đồng bộ
+      const items: any[] = [];
+      if (row.salary_by_day > 0) items.push({ loai_khoan: 'Lương thực tế', nhom: 'thu_nhap', so_tien: Math.round(row.salary_by_day), ghi_chu: '' });
+      if (row.hoa_hong > 0)      items.push({ loai_khoan: 'Hoa hồng BĐS', nhom: 'thu_nhap', so_tien: Math.round(row.hoa_hong), ghi_chu: '' });
+      if (row.thuong > 0)        items.push({ loai_khoan: 'Thưởng', nhom: 'thu_nhap', so_tien: Math.round(row.thuong), ghi_chu: '' });
+      if (row.ot_pay > 0)        items.push({ loai_khoan: 'Lương OT', nhom: 'thu_nhap', so_tien: Math.round(row.ot_pay), ghi_chu: '' });
+      if (row.phat > 0)          items.push({ loai_khoan: 'Phạt', nhom: 'khau_tru', so_tien: Math.round(row.phat), ghi_chu: '' });
+      if (row.bao_hiem > 0)      items.push({ loai_khoan: 'BHXH (10.5%)', nhom: 'khau_tru', so_tien: Math.round(row.bao_hiem), ghi_chu: '' });
+      if (row.thue > 0)          items.push({ loai_khoan: 'Thuế TNCN', nhom: 'khau_tru', so_tien: Math.round(row.thue), ghi_chu: '' });
+      
+      (row as any).items = items;
       
       next[idx] = row;
       return next;
@@ -604,7 +616,24 @@ export default function BangLuongPage() {
             if (!drawerRecord) return <div className="text-muted text-center mt-4">Không tìm thấy dữ liệu</div>;
 
             const ho_ten = empMap.get(drawerRecord.id_nhan_vien) || (drawerRecord as any).ho_ten || drawerRecord.id_nhan_vien;
-            const tong_khau_tru = (drawerRecord.bao_hiem || 0) + (drawerRecord.thue || 0) + (drawerRecord.phat || 0);
+            const items = (drawerRecord as any).items || [];
+            
+            // Nếu không có items (dữ liệu cũ), tự tạo items ảo để hiển thị đồng nhất
+            const displayItems = items.length > 0 ? items : [
+              { loai_khoan: 'Lương thực tế', nhom: 'thu_nhap', so_tien: drawerRecord.salary_by_day },
+              { loai_khoan: 'Hoa hồng', nhom: 'thu_nhap', so_tien: drawerRecord.hoa_hong },
+              { loai_khoan: 'Thưởng', nhom: 'thu_nhap', so_tien: drawerRecord.thuong },
+              { loai_khoan: 'Lương OT', nhom: 'thu_nhap', so_tien: drawerRecord.ot_pay },
+              { loai_khoan: 'Phạt', nhom: 'khau_tru', so_tien: drawerRecord.phat },
+              { loai_khoan: 'BHXH (10.5%)', nhom: 'khau_tru', so_tien: drawerRecord.bao_hiem },
+              { loai_khoan: 'Thuế TNCN', nhom: 'khau_tru', so_tien: drawerRecord.thue },
+            ].filter(i => i.so_tien !== 0);
+
+            const incomeItems = displayItems.filter((i: any) => i.nhom === 'thu_nhap');
+            const deductionItems = displayItems.filter((i: any) => i.nhom === 'khau_tru');
+
+            const totalGross = incomeItems.reduce((s: number, i: any) => s + i.so_tien, 0);
+            const totalDed   = deductionItems.reduce((s: number, i: any) => s + i.so_tien, 0);
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -616,126 +645,48 @@ export default function BangLuongPage() {
                   </div>
                 </div>
 
-                {/* Section: Thu nhập */}
+                {/* 1. THU NHẬP */}
                 <div className="form-section">
-                  <div className="form-section-title">1. Tổng thu nhập (Gross)</div>
-                  <div className="form-section-desc">Lương cơ bản, Hoa hồng, Thưởng & OT</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Lương cơ bản</div>
-                      <div style={{ fontWeight: 600 }}>{fmtCurrency(drawerRecord.luong_co_ban)}</div>
-                    </div>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Công chuẩn</div>
-                      <div style={{ fontWeight: 600 }}>{drawerRecord.so_ngay_cong_chuan} ngày</div>
-                    </div>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Nghỉ không lương</div>
-                      {isPreviewMode ? (
-                        <input
-                          type="number" className="form-input" step="0.5"
-                          style={{ padding: '2px 4px', height: 26, fontSize: '0.85rem' }}
-                          value={drawerRecord.so_ngay_nghi_khong_luong || 0}
-                          onChange={e => updateField(drawerIdx, 'so_ngay_nghi_khong_luong', e.target.value)}
-                        />
-                      ) : (
-                        <div style={{ fontWeight: 600 }}>{drawerRecord.so_ngay_nghi_khong_luong} ngày</div>
-                      )}
-                    </div>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Công thực tế</div>
-                      <div style={{ fontWeight: 600 }}>{drawerRecord.so_ngay_cong_chuan - drawerRecord.so_ngay_nghi_khong_luong} ngày</div>
-                    </div>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Giờ OT</div>
-                      {isPreviewMode ? (
-                        <input
-                          type="number" className="form-input"
-                          style={{ padding: '2px 4px', height: 26, fontSize: '0.85rem' }}
-                          value={drawerRecord.so_gio_ot || 0}
-                          onChange={e => updateField(drawerIdx, 'so_gio_ot', e.target.value)}
-                        />
-                      ) : (
-                        <div style={{ fontWeight: 600 }}>{drawerRecord.so_gio_ot} giờ</div>
-                      )}
-                    </div>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Hoa hồng</div>
-                      <div style={{ fontWeight: 600, color: '#f59e0b' }}>{fmtCurrency(drawerRecord.hoa_hong)}</div>
-                    </div>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)', gridColumn: '1 / -1' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Thưởng</div>
-                      {isPreviewMode ? (
-                        <input
-                          type="number" className="form-input"
-                          style={{ padding: '4px 8px', height: 32 }}
-                          value={drawerRecord.thuong || ''}
-                          placeholder="Nhập số tiền thưởng..."
-                          onChange={e => updateField(drawerIdx, 'thuong', e.target.value)}
-                        />
-                      ) : (
-                        <div style={{ fontWeight: 600, color: 'var(--success-text)' }}>+{fmtCurrency(drawerRecord.thuong)}</div>
-                      )}
-                    </div>
+                  <div className="form-section-title">1. Thu nhập (Gross)</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                    {incomeItems.map((item: any, i: number) => (
+                      <div key={i} className="card" style={{ padding: '10px 14px', boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-body)' }}>{item.loai_khoan}</div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-title)' }}>{fmtCurrency(item.so_tien)}</div>
+                      </div>
+                    ))}
+                    {isPreviewMode && (
+                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                         * Điều chỉnh Thưởng/OT/Nghỉ ở bảng Preview để cập nhật items
+                       </div>
+                    )}
                   </div>
-                  <div style={{ marginTop: 12, textAlign: 'right', fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary)' }}>
-                    Tổng Gross: {fmtCurrency(drawerRecord.gross ?? (drawerRecord.salary_by_day + drawerRecord.hoa_hong + drawerRecord.thuong + drawerRecord.ot_pay))}
+                  <div style={{ marginTop: 12, textAlign: 'right', fontSize: '1rem', fontWeight: 700, color: 'var(--primary)' }}>
+                    Tổng Gross: {fmtCurrency(totalGross)}
                   </div>
                 </div>
 
-                {/* Section: Khấu trừ */}
+                {/* 2. KHẤU TRỪ */}
                 <div className="form-section">
                   <div className="form-section-title">2. Khấu trừ</div>
-                  <div className="form-section-desc">Phạt, Bảo hiểm & Thuế TNCN</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Tiền phạt</div>
-                      {isPreviewMode ? (
-                        <input
-                          type="number" className="form-input"
-                          style={{ padding: '4px 8px', height: 32, width: 120, textAlign: 'right' }}
-                          value={drawerRecord.phat || ''}
-                          placeholder="0"
-                          onChange={e => updateField(drawerIdx, 'phat', e.target.value)}
-                        />
-                      ) : (
-                        <div style={{ fontWeight: 600, color: 'var(--danger-text)' }}>-{fmtCurrency(drawerRecord.phat)}</div>
-                      )}
-                    </div>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Bảo hiểm (10.5%)</div>
-                      <div style={{ fontWeight: 600, color: 'var(--danger-text)' }}>-{fmtCurrency(drawerRecord.bao_hiem)}</div>
-                    </div>
-                    <div className="card" style={{ padding: 12, boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        Thuế TNCN
-                        {isPreviewMode ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                            <span>Số NPT:</span>
-                            <input
-                              type="number" className="form-input"
-                              style={{ padding: '2px 4px', height: 26, width: 60, textAlign: 'center', fontSize: '0.8rem' }}
-                              value={drawerRecord.so_nguoi_phu_thuoc || 0}
-                              onChange={e => updateField(drawerIdx, 'so_nguoi_phu_thuoc', e.target.value)}
-                            />
-                          </div>
-                        ) : (
-                          <div style={{ marginTop: 2, fontSize: '0.75rem' }}>Số người phụ thuộc: {drawerRecord.so_nguoi_phu_thuoc || 0}</div>
-                        )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                    {deductionItems.map((item: any, i: number) => (
+                      <div key={i} className="card" style={{ padding: '10px 14px', boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-body)' }}>{item.loai_khoan}</div>
+                        <div style={{ fontWeight: 600, color: 'var(--danger-text)' }}>-{fmtCurrency(item.so_tien)}</div>
                       </div>
-                      <div style={{ fontWeight: 600, color: 'var(--warning-text)' }}>-{fmtCurrency(drawerRecord.thue)}</div>
-                    </div>
+                    ))}
                   </div>
                   <div style={{ marginTop: 12, textAlign: 'right', fontSize: '1rem', fontWeight: 600, color: 'var(--danger-text)' }}>
-                    Tổng khấu trừ: -{fmtCurrency(tong_khau_tru)}
+                    Tổng khấu trừ: -{fmtCurrency(totalDed)}
                   </div>
                 </div>
 
-                {/* Section: Thực nhận */}
+                {/* 3. THỰC NHẬN */}
                 <div style={{ background: 'rgba(16, 185, 129, 0.05)', padding: 20, borderRadius: 'var(--radius-lg)', border: '1px solid rgba(16, 185, 129, 0.2)', textAlign: 'center' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Thực nhận (NET)</div>
                   <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success-text)' }}>
-                    {fmtCurrency(drawerRecord.tong_luong)}
+                    {fmtCurrency(totalGross - totalDed)}
                   </div>
                 </div>
               </div>
