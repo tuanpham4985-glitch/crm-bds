@@ -1036,6 +1036,11 @@ async function getOrCreatePayrollSheet(doc: GoogleSpreadsheet): Promise<GoogleSp
   let sheet = doc.sheetsByTitle[SHEETS.PAYROLL];
   if (!sheet) {
     sheet = await doc.addSheet({ title: SHEETS.PAYROLL, headerValues: [...PAYROLL_HEADERS] });
+  } else {
+    await sheet.loadHeaderRow().catch(() => {});
+    if (!sheet.headerValues || sheet.headerValues.length === 0) {
+      await sheet.setHeaderRow([...PAYROLL_HEADERS]);
+    }
   }
   return sheet;
 }
@@ -1044,6 +1049,11 @@ async function getOrCreatePayrollItemsSheet(doc: GoogleSpreadsheet): Promise<Goo
   let sheet = doc.sheetsByTitle[SHEETS.PAYROLL_ITEMS];
   if (!sheet) {
     sheet = await doc.addSheet({ title: SHEETS.PAYROLL_ITEMS, headerValues: [...PAYROLL_ITEMS_HEADERS] });
+  } else {
+    await sheet.loadHeaderRow().catch(() => {});
+    if (!sheet.headerValues || sheet.headerValues.length === 0) {
+      await sheet.setHeaderRow([...PAYROLL_ITEMS_HEADERS]);
+    }
   }
   return sheet;
 }

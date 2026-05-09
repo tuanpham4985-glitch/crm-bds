@@ -80,7 +80,8 @@ interface PayrollRawData {
   activeEmployees: NhanVien[];
   contractMap: Map<string, HopDong>;   // id_nhan_vien → HopDong (active nhất)
   closedPipelinesForMonth: Pipeline[]; // Đã lọc: giai_doan=chốt + đúng tháng
-  existingPayrollKeys: Set<string>;    // "id_nhan_vien|thang|nam" → đã lưu
+  existingLegacyKeys: Set<string>;
+  existingDynamicKeys: Set<string>;
   calendar: WorkCalendar[];
   attendance: AttendanceRaw[];
   shifts: Shift[];
@@ -154,21 +155,23 @@ export async function fetchPayrollData(
   });
 
   // 4. Tập hợp các payroll đã lưu → tránh trùng
-  const existingPayrollKeys = new Set<string>();
+  const existingLegacyKeys = new Set<string>();
   savedLegacy.forEach(bl => {
     if (bl.thang === thang && bl.nam === nam) {
-      existingPayrollKeys.add(`${bl.id_nhan_vien}|${bl.thang}|${bl.nam}`);
+      existingLegacyKeys.add(`${bl.id_nhan_vien}|${bl.thang}|${bl.nam}`);
     }
   });
+  const existingDynamicKeys = new Set<string>();
   savedDynamic.forEach(p => {
-    existingPayrollKeys.add(`${p.id_nhan_vien}|${p.thang}|${p.nam}`);
+    existingDynamicKeys.add(`${p.id_nhan_vien}|${p.thang}|${p.nam}`);
   });
 
   return {
     activeEmployees,
     contractMap,
     closedPipelinesForMonth,
-    existingPayrollKeys,
+    existingLegacyKeys,
+    existingDynamicKeys,
     calendar,
     attendance,
     shifts,
@@ -414,7 +417,7 @@ export async function savePayroll(
   forceOverwrite = false
 ): Promise<SavePayrollResult> {
   // Fetch existing keys để check duplicate
-  const { existingPayrollKeys } = await fetchPayrollData(thang, nam);
+  const { existingDynamicKeys } = await fetchPayrollData(thang, nam);
 
   let saved = 0;
   let skipped = 0;
@@ -425,7 +428,7 @@ export async function savePayroll(
 
     const key = `${entry.id_nhan_vien}|${entry.thang}|${entry.nam}`;
 
-    if (!forceOverwrite && existingPayrollKeys.has(key)) {
+    if (!forceOverwrite && existingDynamicKeys.has(key)) {
       skipped++;
       continue;
     }
