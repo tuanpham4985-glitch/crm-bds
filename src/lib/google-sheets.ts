@@ -142,28 +142,39 @@ function num(val: unknown): number {
     const n = Number(raw);
     return isNaN(n) ? 0 : n;
   }
+  
+  // Remove spaces, currency symbols, and any non-numeric/separator chars
+  let cleaned = raw.replace(/[^\d.,\-]/g, '');
+  if (!cleaned) return 0;
+
   // Detect separator style:
   // "5,000,000,000" (commas as thousands) or "5.000.000.000" (dots as thousands)
   // "1,234.56" (comma=thousands, dot=decimal) or "1.234,56" (dot=thousands, comma=decimal)
-  let cleaned = raw;
+  
   // Count commas and dots
-  const commaCount = (raw.match(/,/g) || []).length;
-  const dotCount = (raw.match(/\./g) || []).length;
+  const commaCount = (cleaned.match(/,/g) || []).length;
+  const dotCount = (cleaned.match(/\./g) || []).length;
+  
   if (commaCount > 1 && dotCount === 0) {
-    cleaned = raw.replace(/,/g, '');
+    cleaned = cleaned.replace(/,/g, '');
   } else if (dotCount > 1 && commaCount === 0) {
-    cleaned = raw.replace(/\./g, '');
+    cleaned = cleaned.replace(/\./g, '');
   } else if (commaCount === 1 && dotCount === 0) {
-    if (/,\d{3}$/.test(raw)) {
-      cleaned = raw.replace(/,/g, '');
+    if (/,\d{3}$/.test(cleaned)) {
+      cleaned = cleaned.replace(/,/g, '');
     } else {
-      cleaned = raw.replace(',', '.');
+      cleaned = cleaned.replace(',', '.');
+    }
+  } else if (dotCount === 1 && commaCount === 0) {
+    if (/\.\d{3}$/.test(cleaned)) {
+      cleaned = cleaned.replace(/\./g, '');
     }
   } else if (dotCount >= 1 && commaCount === 1) {
-    cleaned = raw.replace(/\./g, '').replace(',', '.');
-  } else if (commaCount >= 1 && dotCount === 1) {
-    cleaned = raw.replace(/,/g, '');
+    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (commaCount >= 1 && dotCount >= 1) {
+    cleaned = cleaned.replace(/,/g, '');
   }
+  
   const result = Number(cleaned);
   return isNaN(result) ? 0 : result;
 }
