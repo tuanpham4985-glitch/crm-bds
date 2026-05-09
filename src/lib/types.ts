@@ -297,3 +297,10 @@ export interface PayrollAdjustment {
   amount: number;
   reason: string;
 }
+
+export interface SavePayrollResult {
+  success: boolean;
+  saved: number;
+  skipped: number;
+  errors: string[];
+}

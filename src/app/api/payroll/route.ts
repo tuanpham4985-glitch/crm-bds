@@ -82,9 +82,8 @@ export async function POST(request: NextRequest) {
     const result = await savePayroll(thang, nam, entries, forceOverwrite);
 
     return NextResponse.json({
-      success: true,
-      message: `Đã lưu ${result.saved} bản ghi. Bỏ qua ${result.skipped} trùng lặp.`,
       ...result,
+      message: `Đã lưu ${result.saved} bản ghi. Bỏ qua ${result.skipped} trùng lặp.`,
     });
   } catch (error) {
     console.error('[API /payroll] POST Error:', error);

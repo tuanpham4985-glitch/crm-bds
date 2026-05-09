@@ -17,7 +17,7 @@ import {
   getShifts,
   getPayrollAdjustments
 } from '@/lib/google-sheets';
-import type { NhanVien, HopDong, Pipeline, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment, PayrollRecord, PayrollItemRecord } from '@/lib/types';
+import type { NhanVien, HopDong, Pipeline, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment, PayrollRecord, PayrollItemRecord, SavePayrollResult } from '@/lib/types';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 import { CalendarEngine } from './engines/calendarEngine';
 import { AttendanceEngine } from './engines/attendanceEngine';
@@ -71,10 +71,7 @@ export interface PayrollEntry extends Omit<BangLuong, 'id' | 'created_at'> {
   items?: Omit<PayrollItemRecord, 'id' | 'payroll_id'>[];
 }
 
-// ============================================================
-// LAYER 1: GET DATA
-// Batch fetch tất cả data cần thiết một lần duy nhất
-// ============================================================
+
 
 interface PayrollRawData {
   activeEmployees: NhanVien[];
@@ -397,11 +394,7 @@ export async function generatePayroll(
 // PUBLIC API: savePayroll(thang, nam, entries)
 // ============================================================
 
-export interface SavePayrollResult {
-  saved: number;
-  skipped: number;   // Đã tồn tại (duplicate)
-  errors: string[];
-}
+
 
 /**
  * Lưu bảng lương vào sheet BANG_LUONG.

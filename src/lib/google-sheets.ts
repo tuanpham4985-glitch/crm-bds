@@ -150,32 +150,24 @@ function num(val: unknown): number {
   const commaCount = (raw.match(/,/g) || []).length;
   const dotCount = (raw.match(/\./g) || []).length;
   if (commaCount > 1 && dotCount === 0) {
-    // "5,000,000,000" → commas are thousands separators
     cleaned = raw.replace(/,/g, '');
   } else if (dotCount > 1 && commaCount === 0) {
-    // "5.000.000.000" → dots are thousands separators
     cleaned = raw.replace(/\./g, '');
   } else if (commaCount === 1 && dotCount === 0) {
-    // "5,000" → could be thousands separator
-    // Check if exactly 3 digits after comma
     if (/,\d{3}$/.test(raw)) {
       cleaned = raw.replace(/,/g, '');
     } else {
-      // Decimal comma: "1,5" → "1.5"
       cleaned = raw.replace(',', '.');
     }
   } else if (dotCount >= 1 && commaCount === 1) {
-    // "1.000,50" → dot=thousands, comma=decimal
     cleaned = raw.replace(/\./g, '').replace(',', '.');
   } else if (commaCount >= 1 && dotCount === 1) {
-    // "1,000.50" → comma=thousands, dot=decimal
     cleaned = raw.replace(/,/g, '');
   }
-  // Remove any remaining non-numeric characters except dot and minus
-  cleaned = cleaned.replace(/[^\d.\-]/g, '');
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? 0 : n;
+  const result = Number(cleaned);
+  return isNaN(result) ? 0 : result;
 }
+
 
 function toMonthKey(dateStr: string): string {
   if (!dateStr) return '';
@@ -1121,18 +1113,25 @@ export async function addPayroll(
   const payrollId = `PR_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
   const createdAt = new Date().toISOString();
 
+  console.log(`[GSheets] Adding Payroll Row to ${pSheet.title}...`, { payrollId, id_nhan_vien: payroll.id_nhan_vien });
+
   // Add Payroll Header
-  await pSheet.addRow({
-    id: payrollId,
-    id_nhan_vien: payroll.id_nhan_vien,
-    thang: payroll.thang,
-    nam: payroll.nam,
-    gross: payroll.gross,
-    total_deduction: payroll.total_deduction,
-    net: payroll.net,
-    trang_thai: payroll.trang_thai,
-    created_at: createdAt
-  });
+  try {
+    await pSheet.addRow({
+      id: payrollId,
+      id_nhan_vien: payroll.id_nhan_vien,
+      thang: payroll.thang,
+      nam: payroll.nam,
+      gross: payroll.gross,
+      total_deduction: payroll.total_deduction,
+      net: payroll.net,
+      trang_thai: payroll.trang_thai,
+      created_at: createdAt
+    });
+  } catch (err: any) {
+    console.error(`[GSheets] addRow failed for PAYROLL:`, err.message);
+    throw err;
+  }
 
   // Add Payroll Items
   const itemRows = items.map(item => ({
@@ -1145,7 +1144,13 @@ export async function addPayroll(
   }));
 
   if (itemRows.length > 0) {
-    await iSheet.addRows(itemRows);
+    console.log(`[GSheets] Adding ${itemRows.length} Items to ${iSheet.title}...`);
+    try {
+      await iSheet.addRows(itemRows);
+    } catch (err: any) {
+      console.error(`[GSheets] addRows failed for PAYROLL_ITEMS:`, err.message);
+      throw err;
+    }
   }
 
   await addLog(doc, 'CREATE_PAYROLL', payrollId, payroll.id_nhan_vien, '');
