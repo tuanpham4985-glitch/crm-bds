@@ -543,7 +543,6 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
                 }}>
                   <Cake size={13} />
                   {String(emp.ngay).padStart(2,'0')}/{String(emp.thang).padStart(2,'0')}
-                  &nbsp;·&nbsp;{emp.tuoi} tuổi
                 </div>
 
                 {/* Dept */}
