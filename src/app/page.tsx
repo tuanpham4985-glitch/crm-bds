@@ -315,12 +315,6 @@ export default function DashboardPage() {
                               <div className="leaderboard-stat-value">{formatCurrency(sale.doanh_thu)}</div>
                               <div className="leaderboard-stat-label">Doanh thu</div>
                             </div>
-                            <div className="leaderboard-stat">
-                              <div className="leaderboard-stat-value" style={{ color: 'var(--success-text)' }}>
-                                {formatCurrency(sale.hoa_hong)}
-                              </div>
-                              <div className="leaderboard-stat-label">Hoa hồng</div>
-                            </div>
                           </div>
                         </div>
                       );
@@ -363,12 +357,6 @@ export default function DashboardPage() {
                           <div className="leaderboard-stat">
                             <div className="leaderboard-stat-value">{formatCurrency(sale.doanh_thu)}</div>
                             <div className="leaderboard-stat-label">Doanh thu</div>
-                          </div>
-                          <div className="leaderboard-stat">
-                            <div className="leaderboard-stat-value" style={{ color: 'var(--success-text)' }}>
-                              {formatCurrency(sale.hoa_hong)}
-                            </div>
-                            <div className="leaderboard-stat-label">Hoa hồng</div>
                           </div>
                         </div>
                       </div>
