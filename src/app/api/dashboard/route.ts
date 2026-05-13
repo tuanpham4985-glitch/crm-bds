@@ -3,24 +3,51 @@ import { getPipeline, getKhachHang, getNhanVien } from '@/lib/google-sheets';
 import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien } from '@/lib/types';
 
 /**
- * Parse a date string in DD/MM/YYYY or YYYY-MM-DD format.
- * Returns null if invalid.
+ * Parse a date string in many formats returned by Google Sheets.
+ * Supports: DD/MM/YYYY, YYYY-MM-DD, M/D/YYYY, DD-MM-YYYY, DD.MM.YYYY, ISO timestamps.
+ * FIX: was checking year > 2000, now correctly checks year >= 1900.
  */
 function parseBirthDate(raw: string): { day: number; month: number; year: number } | null {
   if (!raw) return null;
-  const parts = raw.trim().split(/[\/\-]/);
+  const s = raw.trim();
+  if (!s) return null;
+
+  // Handle ISO timestamp: "1990-05-15T00:00:00.000Z" or "1990-05-15T17:00:00Z"
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10);
+    const day = parseInt(isoMatch[3], 10);
+    if (year >= 1900 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { day, month, year };
+    }
+  }
+
+  // Split on / - or . (handle DD/MM/YYYY, YYYY-MM-DD, DD.MM.YYYY)
+  const parts = s.split(/[\/\-\.]/);
   if (parts.length !== 3) return null;
+
   const p1 = parseInt(parts[0], 10);
   const p2 = parseInt(parts[1], 10);
   const p3 = parseInt(parts[2], 10);
-  // DD/MM/YYYY
-  if (p3 > 2000 && p2 >= 1 && p2 <= 12 && p1 >= 1 && p1 <= 31) {
-    return { day: p1, month: p2, year: p3 };
-  }
-  // YYYY-MM-DD
-  if (p1 > 2000 && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31) {
+
+  if (isNaN(p1) || isNaN(p2) || isNaN(p3)) return null;
+
+  // YYYY-MM-DD or YYYY/MM/DD: first part is 4-digit year >= 1900
+  if (p1 >= 1900 && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31) {
     return { day: p3, month: p2, year: p1 };
   }
+
+  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY: last part is 4-digit year >= 1900
+  if (p3 >= 1900 && p2 >= 1 && p2 <= 12 && p1 >= 1 && p1 <= 31) {
+    return { day: p1, month: p2, year: p3 };
+  }
+
+  // M/D/YYYY (US format, e.g. Google Sheets EN locale): last part is year, p2 could be day > 12
+  if (p3 >= 1900 && p1 >= 1 && p1 <= 12 && p2 >= 1 && p2 <= 31) {
+    return { day: p2, month: p1, year: p3 };
+  }
+
   return null;
 }
 
