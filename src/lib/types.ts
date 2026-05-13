@@ -166,12 +166,26 @@ export interface NguonKhachHang {
   so_luong: number;
 }
 
+export interface SinhNhatNhanVien {
+  id_nhan_vien: string;
+  ho_ten: string;
+  ngay_sinh: string;   // raw date string (DD/MM/YYYY)
+  ngay: number;        // day of month
+  thang: number;       // month (1-12)
+  tuoi: number;        // age this year
+  avatar_url?: string;
+  employee_type?: string;
+  phong_KD?: string;
+  la_hom_nay: boolean; // true if birthday is today
+}
+
 export interface DashboardData {
   kpi: DashboardKPI;
   doanh_thu_theo_sale: DoanhThuTheoSale[];
   doanh_thu_theo_du_an: DoanhThuTheoDuAn[];
   doanh_thu_theo_thang: DoanhThuTheoThang[];
   nguon_khach_hang: NguonKhachHang[];
+  sinh_nhat_thang_nay: SinhNhatNhanVien[];
 }
 
 // === FILTERS ===

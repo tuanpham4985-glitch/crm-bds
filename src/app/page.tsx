@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   TrendingUp, TrendingDown, BarChart3, Target, 
-  DollarSign, Handshake, ToggleLeft, ToggleRight 
+  DollarSign, Handshake, ToggleLeft, ToggleRight, Cake 
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import type { DashboardData } from '@/lib/types';
+import type { DashboardData, SinhNhatNhanVien } from '@/lib/types';
 import { formatCurrency, formatChange, calcChange } from '@/lib/utils';
 
 const CHART_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
@@ -385,6 +385,181 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Sinh nhật nhân viên tháng này */}
+      <BirthdayWidget employees={data.sinh_nhat_thang_nay} />
+    </div>
+  );
+}
+
+// ─── Birthday Widget Component ────────────────────────────────────────────────
+const MONTH_NAMES = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6',
+  'Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+
+const BD_COLORS = [
+  'linear-gradient(135deg,#6366f1,#818cf8)',
+  'linear-gradient(135deg,#ec4899,#f472b6)',
+  'linear-gradient(135deg,#f59e0b,#fbbf24)',
+  'linear-gradient(135deg,#10b981,#34d399)',
+  'linear-gradient(135deg,#3b82f6,#60a5fa)',
+  'linear-gradient(135deg,#8b5cf6,#a78bfa)',
+  'linear-gradient(135deg,#ef4444,#f87171)',
+  'linear-gradient(135deg,#14b8a6,#2dd4bf)',
+];
+
+function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const monthLabel = MONTH_NAMES[currentMonth - 1];
+
+  return (
+    <div className="chart-card" style={{ marginTop: 24 }}>
+      <div className="card-header" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12,
+            background: 'linear-gradient(135deg,#ec4899,#f472b6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(236,72,153,0.35)',
+            flexShrink: 0,
+          }}>
+            <Cake size={20} color="#fff" />
+          </div>
+          <div>
+            <div className="card-title">🎂 Sinh nhật nhân viên</div>
+            <div className="card-subtitle">{monthLabel} — {employees.length} nhân viên</div>
+          </div>
+        </div>
+      </div>
+
+      {employees.length === 0 ? (
+        <div className="empty-state" style={{ padding: '32px 0' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🎈</div>
+          <h3 style={{ margin: 0 }}>Không có sinh nhật trong tháng này</h3>
+          <p>Không có nhân viên nào có sinh nhật trong {monthLabel}</p>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: 16,
+        }}>
+          {employees.map((emp, idx) => {
+            const initials = emp.ho_ten.split(' ').map(w => w[0]).slice(-2).join('');
+            const grad = BD_COLORS[idx % BD_COLORS.length];
+            const isToday = emp.la_hom_nay;
+
+            return (
+              <div
+                key={emp.id_nhan_vien}
+                style={{
+                  position: 'relative',
+                  background: isToday
+                    ? 'linear-gradient(135deg,#fef3c7,#fef9ec)'
+                    : 'var(--bg-secondary, #f8fafc)',
+                  border: isToday
+                    ? '2px solid #f59e0b'
+                    : '1.5px solid var(--border, #e2e8f0)',
+                  borderRadius: 16,
+                  padding: '18px 16px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  boxShadow: isToday
+                    ? '0 4px 20px rgba(245,158,11,0.25)'
+                    : '0 2px 8px rgba(0,0,0,0.05)',
+                  transition: 'transform 0.18s, box-shadow 0.18s',
+                  cursor: 'default',
+                  overflow: 'hidden',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-4px)';
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = isToday
+                    ? '0 8px 28px rgba(245,158,11,0.35)'
+                    : '0 8px 24px rgba(0,0,0,0.10)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = isToday
+                    ? '0 4px 20px rgba(245,158,11,0.25)'
+                    : '0 2px 8px rgba(0,0,0,0.05)';
+                }}
+              >
+                {isToday && (
+                  <div style={{
+                    position: 'absolute', top: 10, right: 10,
+                    background: 'linear-gradient(135deg,#f59e0b,#fbbf24)',
+                    color: '#fff', fontSize: 10, fontWeight: 700,
+                    padding: '2px 8px', borderRadius: 20,
+                    letterSpacing: '0.5px', textTransform: 'uppercase',
+                  }}>Hôm nay 🎉</div>
+                )}
+
+                {/* Avatar */}
+                {emp.avatar_url ? (
+                  <img
+                    src={emp.avatar_url}
+                    alt={emp.ho_ten}
+                    style={{
+                      width: 64, height: 64, borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: isToday ? '3px solid #f59e0b' : '3px solid #e2e8f0',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: 64, height: 64, borderRadius: '50%',
+                    background: grad,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 22, fontWeight: 700, color: '#fff',
+                    border: isToday ? '3px solid #f59e0b' : '3px solid transparent',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    flexShrink: 0,
+                  }}>
+                    {initials}
+                  </div>
+                )}
+
+                {/* Name */}
+                <div style={{
+                  fontWeight: 700, fontSize: 14, textAlign: 'center',
+                  color: 'var(--text-primary,#1e293b)', lineHeight: 1.3,
+                  maxWidth: '100%', wordBreak: 'break-word',
+                }}>
+                  {emp.ho_ten}
+                </div>
+
+                {/* Date badge */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: isToday
+                    ? 'linear-gradient(135deg,#f59e0b,#fbbf24)'
+                    : 'var(--primary-light, #ede9fe)',
+                  color: isToday ? '#fff' : 'var(--primary,#6366f1)',
+                  borderRadius: 20, padding: '4px 12px',
+                  fontSize: 13, fontWeight: 600,
+                }}>
+                  <Cake size={13} />
+                  {String(emp.ngay).padStart(2,'0')}/{String(emp.thang).padStart(2,'0')}
+                  &nbsp;·&nbsp;{emp.tuoi} tuổi
+                </div>
+
+                {/* Dept */}
+                {(emp.employee_type || emp.phong_KD) && (
+                  <div style={{
+                    fontSize: 11, color: 'var(--text-secondary,#64748b)',
+                    textAlign: 'center',
+                  }}>
+                    {[emp.employee_type, emp.phong_KD].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPipeline, getKhachHang, getNhanVien } from '@/lib/google-sheets';
-import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang } from '@/lib/types';
+import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien } from '@/lib/types';
+
+/**
+ * Parse a date string in DD/MM/YYYY or YYYY-MM-DD format.
+ * Returns null if invalid.
+ */
+function parseBirthDate(raw: string): { day: number; month: number; year: number } | null {
+  if (!raw) return null;
+  const parts = raw.trim().split(/[\/\-]/);
+  if (parts.length !== 3) return null;
+  const p1 = parseInt(parts[0], 10);
+  const p2 = parseInt(parts[1], 10);
+  const p3 = parseInt(parts[2], 10);
+  // DD/MM/YYYY
+  if (p3 > 2000 && p2 >= 1 && p2 <= 12 && p1 >= 1 && p1 <= 31) {
+    return { day: p1, month: p2, year: p3 };
+  }
+  // YYYY-MM-DD
+  if (p1 > 2000 && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31) {
+    return { day: p3, month: p2, year: p1 };
+  }
+  return null;
+}
 
 function getDateRange(period: string): { from: Date; to: Date; prevFrom: Date; prevTo: Date } {
   const now = new Date();
@@ -65,6 +87,35 @@ export async function GET(request: NextRequest) {
     ]);
     // Ẩn nhân viên "Nghỉ việc" khỏi dashboard
     const allEmployees = allEmployeesRaw.filter(nv => nv.trang_thai !== 'Nghỉ việc');
+
+    // === Sinh nhật nhân viên trong tháng hiện tại ===
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentDay = now.getDate();
+    const currentYear = now.getFullYear();
+
+    const sinhNhatThangNay: SinhNhatNhanVien[] = allEmployees
+      .filter(nv => nv.trang_thai !== 'Nghỉ việc')
+      .reduce<SinhNhatNhanVien[]>((acc, nv) => {
+        const parsed = parseBirthDate(nv.ngay_sinh || '');
+        if (!parsed) return acc;
+        if (parsed.month !== currentMonth) return acc;
+        const tuoi = currentYear - parsed.year;
+        acc.push({
+          id_nhan_vien: nv.id_nhan_vien,
+          ho_ten: nv.ho_ten,
+          ngay_sinh: nv.ngay_sinh || '',
+          ngay: parsed.day,
+          thang: parsed.month,
+          tuoi,
+          avatar_url: nv.avatar_url,
+          employee_type: nv.employee_type,
+          phong_KD: nv.phong_KD,
+          la_hom_nay: parsed.day === currentDay,
+        });
+        return acc;
+      }, [])
+      .sort((a, b) => a.ngay - b.ngay); // Sắp xếp theo ngày tăng dần
 
     let dateRange = getDateRange(period);
     if (fromParam && toParam) {
@@ -188,6 +239,7 @@ export async function GET(request: NextRequest) {
       doanh_thu_theo_du_an: Array.from(duAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu),
       doanh_thu_theo_thang: doanhThuTheoThang,
       nguon_khach_hang: nguonKhachHang,
+      sinh_nhat_thang_nay: sinhNhatThangNay,
     };
 
     return NextResponse.json({ success: true, data });
