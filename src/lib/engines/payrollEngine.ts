@@ -141,15 +141,17 @@ export class PayrollEngine {
       .reduce((s, i) => s + i.so_tien, 0);
     const luong_dong_bh = Math.min(bh_base_raw, INSURANCE_SALARY_CAP);
 
-    // ── 8. Phân biệt Thử việc vs. Chính thức ─────────────────────
-    const isProbation = (hd.contract_type || '').toLowerCase().includes('thử việc')
-                     || (nv.employee_type  || '').toLowerCase().includes('thử việc');
+    // ── 8. Phân loại nhân sự (Chính thức / Thử việc / CTV) ────────
+    const lowerContractType = (hd.contract_type || '').toLowerCase();
+    const lowerEmpType = (nv.employee_type || '').toLowerCase();
+    const isProbation = lowerContractType.includes('thử việc') || lowerEmpType.includes('thử việc');
+    const isCollaborator = lowerContractType.includes('ctv') || lowerEmpType.includes('ctv') || (nv.trang_thai || '').toUpperCase() === 'CTV';
 
     let bhxh_emp = 0, bhyt_emp = 0, bhtn_emp = 0;
     let bhxh_cty = 0, bhyt_cty = 0, bhtn_cty = 0;
 
-    if (isProbation) {
-      // Thử việc: Không bắt buộc đóng bảo hiểm
+    if (isProbation || isCollaborator) {
+      // Thử việc / CTV: Không bắt buộc đóng bảo hiểm
       bhxh_emp = 0; bhyt_emp = 0; bhtn_emp = 0;
       bhxh_cty = 0; bhyt_cty = 0; bhtn_cty = 0;
     } else {
@@ -169,10 +171,28 @@ export class PayrollEngine {
     const thu_nhap_truoc_thue = items
       .filter(i => i.tinh_thue && i.nhom === 'thu_nhap')
       .reduce((s, i) => s + i.so_tien, 0);
+      
     const so_phu_thuoc = nv.so_nguoi_phu_thuoc || 0;
-    const giam_tru     = GIAM_TRU_BAN_THAN + GIAM_TRU_PHU_THUOC * so_phu_thuoc;
-    const thu_nhap_chiu_thue = Math.max(0, thu_nhap_truoc_thue - total_bh_emp - giam_tru);
-    const thue               = Math.round(calculateTaxMonthly(thu_nhap_chiu_thue));
+    let thu_nhap_chiu_thue = 0;
+    let thue = 0;
+
+    if (isProbation || isCollaborator) {
+      // Luật TNCN: NV không có HĐLĐ (CTV) hoặc HĐLĐ dưới 3 tháng (Thử việc)
+      // Khấu trừ 10% tại nguồn nếu tổng thu nhập trả mỗi lần >= 2.000.000 VNĐ
+      // Không áp dụng giảm trừ gia cảnh
+      thu_nhap_chiu_thue = thu_nhap_truoc_thue;
+      if (thu_nhap_chiu_thue >= 2_000_000) {
+        thue = Math.round(thu_nhap_chiu_thue * 0.1);
+      } else {
+        thue = 0;
+      }
+    } else {
+      // Hợp đồng chính thức: Tính theo biểu thuế lũy tiến từng phần
+      // Được áp dụng giảm trừ bản thân, người phụ thuộc, và bảo hiểm
+      const giam_tru = GIAM_TRU_BAN_THAN + GIAM_TRU_PHU_THUOC * so_phu_thuoc;
+      thu_nhap_chiu_thue = Math.max(0, thu_nhap_truoc_thue - total_bh_emp - giam_tru);
+      thue = Math.round(calculateTaxMonthly(thu_nhap_chiu_thue));
+    }
 
     // ── 10. Bổ sung các khoản khấu trừ nhân viên ─────────────────
     if (bhxh_emp > 0) items.push({ loai_khoan: 'BHXH (8%)',  nhom: 'khau_tru', so_tien: bhxh_emp, ghi_chu: '8% lương đóng BH',   tinh_bhxh: false, tinh_thue: false });
