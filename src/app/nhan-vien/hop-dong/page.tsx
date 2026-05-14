@@ -350,16 +350,32 @@ function HopDongContent() {
         throw new Error(errData.message || 'Export failed');
       }
 
+      // Detect response type: ZIP (multiple docs) or single .docx
+      const contentType = res.headers.get('Content-Type') || '';
+      const fileCount = res.headers.get('X-File-Count');
+      const isZip = contentType.includes('application/zip');
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `hop-dong-${exportItem.so_hop_dong}.docx`;
+
+      if (isZip) {
+        a.download = `ho-so-${exportItem.so_hop_dong}.zip`;
+      } else {
+        a.download = `hop-dong-${exportItem.so_hop_dong}.docx`;
+      }
+
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
       setExportItem(null);
+
+      // Show info about what was downloaded
+      if (isZip && fileCount) {
+        alert(`✅ Đã tải xuống ${fileCount} tài liệu trong file ho-so-${exportItem.so_hop_dong}.zip\n\nBao gồm:\n• Hợp đồng chính\n• Cam kết bảo mật thông tin${exportDept === 'KD' ? '\n• Cam kết ứng xử NVKD' : ''}`);
+      }
     } catch (err: any) {
       console.error('Export error:', err);
       alert('Lỗi xuất hợp đồng: ' + (err.message || 'Vui lòng thử lại.'));
@@ -552,7 +568,7 @@ function HopDongContent() {
                               <Eye size={15} />
                             </button>
                             <button className="btn btn-ghost btn-icon btn-sm"
-                              title="Xuất hợp đồng .docx"
+                              title="Xuất hồ sơ (.zip: HĐ + Cam kết bảo mật + Cam kết ứng xử)"
                               onClick={() => {
                                 const emp = employees.find(e => e.id_nhan_vien === hd.id_nhan_vien);
                                 console.log('[Export] Employee data loaded:', emp);

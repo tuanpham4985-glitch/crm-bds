@@ -6,6 +6,8 @@ import Docxtemplater from "docxtemplater";
 
 export const runtime = 'nodejs';
 
+const TEMPLATES_DIR = path.join(process.cwd(), "public", "templates");
+
 /**
  * Helper: Inspect XML for split tags or common Word artifacts
  * that break Docxtemplater tags like {{field_name}}
@@ -16,29 +18,19 @@ function inspectXMLTags(zip: PizZip) {
     if (!docXml) return;
 
     console.log("--- Template Tag Inspection ---");
-    
-    // Find all raw occurrences of {{ and }} to see if they are split
     const openTags = (docXml.match(/{{/g) || []).length;
     const closeTags = (docXml.match(/}}/g) || []).length;
-    
     console.log(`Total {{ found: ${openTags}`);
     console.log(`Total }} found: ${closeTags}`);
-
     if (openTags !== closeTags) {
       console.error("CRITICAL: Mismatch between open and close tags count!");
     }
-
-    // Detect tags split by XML elements (e.g., {{ <w:p> field_name }} )
-    // This is a common issue when Word adds formatting or proofing marks inside a tag
     const splitTagRegex = /{{[^}]*<[^>]+>[^}]*}}/g;
     const splitTags = docXml.match(splitTagRegex);
     if (splitTags) {
       console.error("WARNING: Found tags split by XML elements (broken tags):");
       splitTags.forEach(tag => console.error(` -> "${tag}"`));
-      console.info("TIP: To fix, select the whole tag in Word, Cut (Ctrl+X) and Paste Plain Text (Ctrl+Shift+V).");
     }
-
-    // List all clean tags
     const cleanTagRegex = /{{([^{}]+)}}/g;
     let match;
     const detectedTags = new Set();
@@ -52,10 +44,50 @@ function inspectXMLTags(zip: PizZip) {
   }
 }
 
+/**
+ * Generate a .docx buffer from a template file + data using Docxtemplater.
+ */
+function generateDocx(templateFileName: string, exportData: Record<string, string>): Buffer {
+  const filePath = path.join(TEMPLATES_DIR, templateFileName);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Template not found at: ${filePath}`);
+  }
+  const content = fs.readFileSync(filePath);
+  const zip = new PizZip(content);
+  inspectXMLTags(zip);
+
+  const doc = new Docxtemplater(zip, {
+    paragraphLoop: true,
+    linebreaks: true,
+    delimiters: { start: "{{", end: "}}" },
+  });
+
+  try {
+    doc.setData(exportData);
+    doc.render();
+  } catch (renderError: any) {
+    console.error("--- DOCX RENDER ERROR DETAILS ---");
+    if (renderError.properties?.errors) {
+      renderError.properties.errors.forEach((err: any) => {
+        console.error(`Error ID: ${err.id}`);
+        console.error(`Message: ${err.message}`);
+        if (err.properties?.xtag) {
+          console.error(`Broken Tag: "${err.properties.xtag}"`);
+        }
+      });
+    } else {
+      console.error(renderError);
+    }
+    throw renderError;
+  }
+
+  return doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
 export async function POST(req: Request) {
   try {
     const data = await req.json();
-    
+
     const TEMPLATE_MAP: Record<string, string> = {
       'MẪU VIC_HĐTV (KHỐI BO).docx': 'MAU_VIC_HDTV_BO.docx',
       'MẪU VIC_HĐTV (KHỐI KD).docx': 'MAU_VIC_HDTV_KD.docx',
@@ -69,25 +101,8 @@ export async function POST(req: Request) {
       templateFileName = TEMPLATE_MAP[templateFileName];
     }
 
-    const filePath = path.join(process.cwd(), "public", "templates", templateFileName);
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`Template not found at: ${filePath}`);
-    }
-
-    const content = fs.readFileSync(filePath);
-    const zip = new PizZip(content);
-
-    // DEBUG: Inspect XML structure for broken tags
-    inspectXMLTags(zip);
-
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      // Error handling configuration
-      delimiters: { start: "{{", end: "}}" },
-    });
-
-    const exportData = {
+    // ---- Export data for template variables ----
+    const exportData: Record<string, string> = {
       so_hop_dong: data.so_hop_dong || '',
       loai_hop_dong: data.contract_type || '',
       ngay_bat_dau: data.ngay_bat_dau || '',
@@ -121,55 +136,95 @@ export async function POST(req: Request) {
       Phong_Ban: data.phong_KD || '',
     };
 
-    try {
-      doc.setData(exportData);
-      doc.render();
-    } catch (renderError: any) {
-      // DEEP DEBUG: Log all specific template errors
-      console.error("--- DOCX RENDER ERROR DETAILS ---");
-      if (renderError.properties && renderError.properties.errors) {
-        renderError.properties.errors.forEach((err: any) => {
-          console.error(`Error ID: ${err.id}`);
-          console.error(`Message: ${err.message}`);
-          if (err.properties && err.properties.xtag) {
-            console.error(`Broken Tag: "${err.properties.xtag}"`);
-            console.error(`Context: ${err.properties.context}`);
-          }
-          console.error("---");
-        });
-      } else {
-        console.error(renderError);
-      }
-      throw renderError;
+    // ---- 1. Generate main contract .docx ----
+    const mainDocxBuffer = generateDocx(templateFileName, exportData);
+    const mainFileName = `${data.so_hop_dong || 'hop-dong'}.docx`;
+
+    // ---- 2. Determine additional documents ----
+    // Rule 1: Cam kết bảo mật → ALL standard contracts (Chính thức / Thử việc / Học viên)
+    const contractType = (data.contract_type || '').toLowerCase();
+    const needsBaoMat =
+      contractType.includes('chính thức') ||
+      contractType.includes('thử việc') ||
+      contractType.includes('học viên') ||
+      // fallback: include for any contract that has a main template
+      !!templateFileName;
+
+    // Rule 2: Cam kết ứng xử → only Khối KD
+    const isKD = data.department === 'KD';
+
+    const additionalFiles: Array<{ fileName: string; displayName: string }> = [];
+
+    if (needsBaoMat) {
+      additionalFiles.push({
+        fileName: 'MAU_CAM_KET_BAO_MAT_THONG_TIN.doc',
+        displayName: 'Cam-ket-bao-mat-thong-tin.doc',
+      });
+    }
+    if (isKD) {
+      additionalFiles.push({
+        fileName: 'MAU_CAM_KET_UNG_XU_NVKD.doc',
+        displayName: 'Cam-ket-ung-xu-NVKD.doc',
+      });
     }
 
-    const outputBuffer = doc.getZip().generate({
+    // ---- 3. If no additional files → return single .docx (backward compat) ----
+    if (additionalFiles.length === 0) {
+      const fileName = mainFileName;
+      return new Response(new Uint8Array(mainDocxBuffer), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+        },
+      });
+    }
+
+    // ---- 4. Bundle all files into a ZIP ----
+    const outputZip = new PizZip();
+
+    // Add main contract
+    outputZip.file(mainFileName, mainDocxBuffer);
+
+    // Add additional static .doc files
+    for (const additional of additionalFiles) {
+      const additionalPath = path.join(TEMPLATES_DIR, additional.fileName);
+      if (fs.existsSync(additionalPath)) {
+        const fileContent = fs.readFileSync(additionalPath);
+        outputZip.file(additional.displayName, fileContent);
+        console.log(`[Generate] Added additional file: ${additional.fileName}`);
+      } else {
+        console.warn(`[Generate] Additional template not found (skipped): ${additionalPath}`);
+      }
+    }
+
+    const zipBuffer = outputZip.generate({
       type: "nodebuffer",
       compression: "DEFLATE",
     });
 
-    const fileName = `hop-dong-${data.so_hop_dong || 'draft'}.docx`;
+    const zipFileName = `ho-so-${data.so_hop_dong || 'hop-dong'}.zip`;
 
-    return new Response(new Uint8Array(outputBuffer), {
+    console.log(`[Generate] ZIP created: ${zipFileName} with ${1 + additionalFiles.length} file(s)`);
+
+    return new Response(new Uint8Array(zipBuffer), {
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(zipFileName)}"`,
+        "X-File-Count": String(1 + additionalFiles.length),
       },
     });
+
   } catch (error: any) {
     console.error('[Contract Generate] API Error:', error);
-    
-    // Return specific error message if it's a multi-error
     let detailMessage = error.message;
-    if (error.properties && error.properties.errors) {
+    if (error.properties?.errors) {
       detailMessage = error.properties.errors.map((e: any) => e.message).join(" | ");
     }
-
     return NextResponse.json(
-      { 
-        error: "Template generation failed", 
+      {
+        error: "Template generation failed",
         message: detailMessage,
-        hint: "Check server logs for broken tags list (split by XML elements)."
+        hint: "Check server logs for broken tags list (split by XML elements).",
       },
       { status: 500 }
     );
