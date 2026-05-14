@@ -257,6 +257,12 @@ export async function getDanhMuc(): Promise<DanhMuc> {
     const employeeTypeSet = new Set<string>();
     const trangThaiSet = new Set<string>();
 
+    // Danh sách trạng thái mặc định — luôn hiển thị dù chưa có nhân viên nào dùng
+    const DEFAULT_TRANG_THAI_NV = [
+      'Chính thức', 'CTV', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'
+    ];
+    DEFAULT_TRANG_THAI_NV.forEach(tt => trangThaiSet.add(tt));
+
     for (const row of nvRows) {
       const v = row.toObject();
       // employee_type is column index 4
@@ -273,7 +279,7 @@ export async function getDanhMuc(): Promise<DanhMuc> {
     console.warn('[GSheets] Could not read NHAN_VIEN for dropdown values:', err);
     // Fallback defaults
     result.employee_types = [];
-    result.trang_thai_nhan_vien = ['Chính thức', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'];
+    result.trang_thai_nhan_vien = ['Chính thức', 'CTV', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'];
   }
 
   return result;
