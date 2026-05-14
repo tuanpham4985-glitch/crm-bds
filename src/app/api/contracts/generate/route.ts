@@ -198,31 +198,56 @@ export async function POST(req: Request) {
     const mainFileName = `${data.so_hop_dong || 'hop-dong'}.docx`;
 
     // ---- 2. Determine additional documents ----
-    // Rule 1: Cam kết bảo mật → ALL standard contracts (Chính thức / Thử việc / Học viên)
+    // Rule 1: Cam kết bảo mật → ALL standard contracts
     const contractType = (data.contract_type || '').toLowerCase();
     const needsBaoMat =
       contractType.includes('chính thức') ||
       contractType.includes('thử việc') ||
       contractType.includes('học viên') ||
-      // fallback: include for any contract that has a main template
       !!templateFileName;
 
     // Rule 2: Cam kết ứng xử → only Khối KD
     const isKD = data.department === 'KD';
 
+    /**
+     * Resolve template file: prefer .docx (OOXML) over .doc (OLE2 binary).
+     * OLE2 binary .doc files CANNOT be processed by PizZip/Docxtemplater.
+     * Always save cam kết templates as .docx in Word before deploying.
+     */
+    function resolveTemplateFile(baseName: string): { fileName: string; displayName: string } | null {
+      const docxName = baseName.replace(/\.doc$/, '.docx');
+      const docxPath = path.join(TEMPLATES_DIR, docxName);
+      const docPath  = path.join(TEMPLATES_DIR, baseName);
+
+      if (fs.existsSync(docxPath)) {
+        console.log(`[Generate] Using .docx version: ${docxName}`);
+        return { fileName: docxName, displayName: docxName };
+      }
+      if (fs.existsSync(docPath)) {
+        // Check if it's OLE2 binary (D0 CF 11 E0) — cannot process
+        const header = fs.readFileSync(docPath).slice(0, 4);
+        const isOLE2 = header[0] === 0xD0 && header[1] === 0xCF;
+        if (isOLE2) {
+          console.warn(
+            `[Generate] ⚠️  ${baseName} is OLE2 binary .doc — cannot fill {{tags}}. ` +
+            `Please open in Word and Save As .docx: ${docxName}`
+          );
+        }
+        return { fileName: baseName, displayName: baseName };
+      }
+      console.warn(`[Generate] Template not found: ${baseName} or ${docxName}`);
+      return null;
+    }
+
     const additionalFiles: Array<{ fileName: string; displayName: string }> = [];
 
     if (needsBaoMat) {
-      additionalFiles.push({
-        fileName: 'MAU_CAM_KET_BAO_MAT_THONG_TIN.doc',
-        displayName: 'Cam-ket-bao-mat-thong-tin.doc',
-      });
+      const f = resolveTemplateFile('MAU_CAM_KET_BAO_MAT_THONG_TIN.doc');
+      if (f) additionalFiles.push(f);
     }
     if (isKD) {
-      additionalFiles.push({
-        fileName: 'MAU_CAM_KET_UNG_XU_NVKD.doc',
-        displayName: 'Cam-ket-ung-xu-NVKD.doc',
-      });
+      const f = resolveTemplateFile('MAU_CAM_KET_UNG_XU_NVKD.doc');
+      if (f) additionalFiles.push(f);
     }
 
     // ---- 3. If no additional files → return single .docx (backward compat) ----
