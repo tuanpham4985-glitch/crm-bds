@@ -36,7 +36,8 @@ export default function NhanVienPage() {
   const [contracts, setContracts] = useState<HopDong[]>([]);
   const [danhMuc, setDanhMuc] = useState<DanhMuc>({
     employee_types: [], khu_vuc: [], gioi_tinh: [], phong_KD: [],
-    giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: []
+    giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: [],
+    trang_thai_nhan_vien: []
   });
   const [loading, setLoading] = useState(true);
 
@@ -490,8 +491,9 @@ export default function NhanVienPage() {
                           return (
                             <td key={col.id} style={{ textAlign: col.align as any }}>
                               <span className={`badge ${
-                                nv.trang_thai === 'Đang làm' ? 'badge-success' : 
-                                nv.trang_thai === 'Học viên' ? 'badge-info' : 
+                                (nv.trang_thai === 'Đang làm' || nv.trang_thai === 'Chính thức') ? 'badge-success' :
+                                (nv.trang_thai === 'Học viên' || nv.trang_thai === 'Thử việc') ? 'badge-info' :
+                                nv.trang_thai === 'Nghỉ sinh' ? 'badge-warning' :
                                 'badge-neutral'
                               }`}>
                                 {nv.trang_thai}
@@ -705,9 +707,10 @@ export default function NhanVienPage() {
                   <label className="form-label">Trạng thái</label>
                   <select className="form-select" value={form.trang_thai}
                     onChange={(e) => setForm({ ...form, trang_thai: e.target.value })}>
-                    <option value="Đang làm">Đang làm</option>
-                    <option value="Học viên">Học viên</option>
-                    <option value="Nghỉ việc">Nghỉ việc</option>
+                    {(danhMuc?.trang_thai_nhan_vien?.length
+                      ? danhMuc.trang_thai_nhan_vien
+                      : ['Chính thức', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc']
+                    ).map(tt => <option key={tt} value={tt}>{tt}</option>)}
                   </select>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
                     💡 Cập nhật trạng thái để phân loại nhân sự chính xác

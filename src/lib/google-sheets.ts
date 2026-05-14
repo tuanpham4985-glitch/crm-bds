@@ -221,6 +221,7 @@ export async function getDanhMuc(): Promise<DanhMuc> {
     trang_thai_cong_viec: [], 
     nguon: [],
     employee_types: [],
+    trang_thai_nhan_vien: [],
     khu_vuc: [],
     gioi_tinh: [],
     phong_KD: []
@@ -241,17 +242,40 @@ export async function getDanhMuc(): Promise<DanhMuc> {
     pushIfValid('trang_thai_kh', result.trang_thai_kh);
     pushIfValid('trang_thai_cong_viec', result.trang_thai_cong_viec);
     pushIfValid('nguon', result.nguon);
-    
-    // Column E (index 4) is for Chức danh / employee_type as per user request
-    if (h[4]) {
-      const val = str(v[h[4]]);
-      if (val) result.employee_types.push(val);
-    }
-    
     pushIfValid('khu_vuc', result.khu_vuc);
     pushIfValid('gioi_tinh', result.gioi_tinh);
     pushIfValid('phong_KD', result.phong_KD);
   }
+
+  // Đọc employee_types và trang_thai_nhan_vien trực tiếp từ sheet NHAN_VIEN
+  // để đảm bảo luôn đồng bộ với dữ liệu thực tế
+  try {
+    const nvSheet = await getSheet(doc, SHEETS.NHAN_VIEN);
+    const nvRows = await nvSheet.getRows();
+    const nvH = nvSheet.headerValues;
+
+    const employeeTypeSet = new Set<string>();
+    const trangThaiSet = new Set<string>();
+
+    for (const row of nvRows) {
+      const v = row.toObject();
+      // employee_type is column index 4
+      const empType = nvH[4] ? str(v[nvH[4]]) : '';
+      if (empType) employeeTypeSet.add(empType);
+      // trang_thai is column index 5
+      const trangThai = nvH[5] ? str(v[nvH[5]]) : '';
+      if (trangThai) trangThaiSet.add(trangThai);
+    }
+
+    result.employee_types = Array.from(employeeTypeSet).sort();
+    result.trang_thai_nhan_vien = Array.from(trangThaiSet).sort();
+  } catch (err) {
+    console.warn('[GSheets] Could not read NHAN_VIEN for dropdown values:', err);
+    // Fallback defaults
+    result.employee_types = [];
+    result.trang_thai_nhan_vien = ['Chính thức', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'];
+  }
+
   return result;
 }
 

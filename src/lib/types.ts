@@ -9,6 +9,7 @@ export interface DanhMuc {
   trang_thai_cong_viec: string[];
   nguon: string[];
   employee_types: string[];
+  trang_thai_nhan_vien: string[];
   khu_vuc: string[];
   gioi_tinh: string[];
   phong_KD: string[];
