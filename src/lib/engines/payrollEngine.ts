@@ -149,9 +149,9 @@ export class PayrollEngine {
     let bhxh_cty = 0, bhyt_cty = 0, bhtn_cty = 0;
 
     if (isProbation) {
-      // Thử việc: chỉ BHYT
-      bhyt_emp = Math.round(luong_dong_bh * BHYT_EMP_RATE);
-      bhyt_cty = Math.round(luong_dong_bh * BHYT_CTY_RATE);
+      // Thử việc: Không bắt buộc đóng bảo hiểm
+      bhxh_emp = 0; bhyt_emp = 0; bhtn_emp = 0;
+      bhxh_cty = 0; bhyt_cty = 0; bhtn_cty = 0;
     } else {
       // Chính thức / Học viên có đóng BH
       bhxh_emp = Math.round(luong_dong_bh * BHXH_EMP_RATE);
