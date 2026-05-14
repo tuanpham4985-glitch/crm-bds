@@ -85,9 +85,37 @@ function generateDocx(templateFileName: string, exportData: Record<string, strin
 }
 
 /**
+ * Fix split {{tags}} in OOXML XML caused by Word inserting XML formatting elements
+ * inside what appears to be a single tag (e.g., {{so_cccd}} split across 3 runs).
+ *
+ * Strategy:
+ * 1. Remove <w:proofErr> spell-check markers (most common cause)
+ * 2. Find any {{ ... }} that contains XML elements inside and strip those elements,
+ *    leaving only the clean tag text (e.g., {{so_cccd}})
+ */
+function fixSplitTagsInXml(xml: string): string {
+  // Step 1: Remove proofErr spell-check markers
+  xml = xml.replace(/<w:proofErr[^>]*\/>/g, '');
+  xml = xml.replace(/<w:bookmarkStart[^>]*\/>/g, '');
+  xml = xml.replace(/<w:bookmarkEnd[^>]*\/>/g, '');
+
+  // Step 2: Find {{ ... }} patterns (even spanning XML elements) and remove XML inside
+  // The 's' flag makes '.' match newlines so we can cross XML element boundaries
+  xml = xml.replace(/\{\{([\s\S]*?)\}\}/g, (match) => {
+    const cleaned = match.replace(/<[^>]+>/g, ''); // strip XML tags from inside {{ }}
+    if (cleaned !== match) {
+      const tagName = cleaned.replace(/[{}]/g, '').trim();
+      console.log(`[fixSplitTags] Fixed split tag: {{${tagName}}}`);
+    }
+    return cleaned;
+  });
+
+  return xml;
+}
+
+/**
  * Try to process a file (including .doc) as an OOXML template with Docxtemplater.
- * Many .doc files are actually OOXML zip-based format — Docxtemplater can handle them.
- * Returns processed buffer if successful, null if the file is truly binary .doc.
+ * Returns processed buffer if successful, null if the file cannot be processed.
  */
 function tryProcessTemplate(
   filePath: string,
@@ -97,19 +125,23 @@ function tryProcessTemplate(
     const content = fs.readFileSync(filePath);
     const zip = new PizZip(content);
 
-    // Check if it's a valid OOXML zip (has word/document.xml)
+    // Verify it's a valid OOXML zip (has word/document.xml)
     if (!zip.file("word/document.xml")) {
-      console.log(`[Generate] ${path.basename(filePath)} is binary .doc (no OOXML structure), serving as-is`);
+      console.log(`[Generate] ${path.basename(filePath)} has no OOXML structure, cannot process`);
       return null;
     }
 
-    console.log(`[Generate] ${path.basename(filePath)} is OOXML-compatible, applying template...`);
+    console.log(`[Generate] ${path.basename(filePath)} is OOXML — applying tag fix + template...`);
+
+    // Pre-process XML to fix split {{tags}} before Docxtemplater runs
+    const rawXml = zip.file("word/document.xml")!.asText();
+    const fixedXml = fixSplitTagsInXml(rawXml);
+    zip.file("word/document.xml", fixedXml);
 
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
       delimiters: { start: "{{", end: "}}" },
-      // Use nullGetter to avoid errors for missing tags — leave them blank
       nullGetter(part: any) {
         if (!part.module) return "";
         return "";
@@ -117,26 +149,19 @@ function tryProcessTemplate(
     });
 
     doc.setData(exportData);
-
-    try {
-      doc.render();
-    } catch (renderErr: any) {
-      // Log render errors but don't throw — some tags may be complex
-      console.warn(`[Generate] Template render warning for ${path.basename(filePath)}:`, renderErr.message);
-      if (renderErr.properties?.errors) {
-        renderErr.properties.errors.forEach((e: any) =>
-          console.warn(`  - Tag error: ${e.id} — ${e.message}`)
-        );
-      }
-      // Still try to get output even with partial errors
-    }
+    doc.render();
 
     const outputBuffer = doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
     console.log(`[Generate] ✅ Template processed: ${path.basename(filePath)} → ${outputBuffer.length} bytes`);
     return { buffer: outputBuffer, isDocx: true };
 
   } catch (err: any) {
-    console.warn(`[Generate] Cannot process ${path.basename(filePath)} as template (${err.message}), serving as static file`);
+    console.warn(`[Generate] ❌ Cannot process ${path.basename(filePath)}: ${err.message}`);
+    if (err.properties?.errors) {
+      err.properties.errors.forEach((e: any) =>
+        console.warn(`  Tag error: ${e.id} — ${e.message}`)
+      );
+    }
     return null;
   }
 }
