@@ -103,7 +103,8 @@ function HopDongContent() {
 
   const [danhMuc, setDanhMuc] = useState<DanhMuc>({
     employee_types: [], khu_vuc: [], gioi_tinh: [], phong_KD: [],
-    giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: []
+    giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: [],
+    trang_thai_nhan_vien: []
   });
 
   // Auto-computed contract template based on form selections
