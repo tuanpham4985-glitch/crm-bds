@@ -84,6 +84,63 @@ function generateDocx(templateFileName: string, exportData: Record<string, strin
   return doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
+/**
+ * Try to process a file (including .doc) as an OOXML template with Docxtemplater.
+ * Many .doc files are actually OOXML zip-based format — Docxtemplater can handle them.
+ * Returns processed buffer if successful, null if the file is truly binary .doc.
+ */
+function tryProcessTemplate(
+  filePath: string,
+  exportData: Record<string, string>
+): { buffer: Buffer; isDocx: boolean } | null {
+  try {
+    const content = fs.readFileSync(filePath);
+    const zip = new PizZip(content);
+
+    // Check if it's a valid OOXML zip (has word/document.xml)
+    if (!zip.file("word/document.xml")) {
+      console.log(`[Generate] ${path.basename(filePath)} is binary .doc (no OOXML structure), serving as-is`);
+      return null;
+    }
+
+    console.log(`[Generate] ${path.basename(filePath)} is OOXML-compatible, applying template...`);
+
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      delimiters: { start: "{{", end: "}}" },
+      // Use nullGetter to avoid errors for missing tags — leave them blank
+      nullGetter(part: any) {
+        if (!part.module) return "";
+        return "";
+      },
+    });
+
+    doc.setData(exportData);
+
+    try {
+      doc.render();
+    } catch (renderErr: any) {
+      // Log render errors but don't throw — some tags may be complex
+      console.warn(`[Generate] Template render warning for ${path.basename(filePath)}:`, renderErr.message);
+      if (renderErr.properties?.errors) {
+        renderErr.properties.errors.forEach((e: any) =>
+          console.warn(`  - Tag error: ${e.id} — ${e.message}`)
+        );
+      }
+      // Still try to get output even with partial errors
+    }
+
+    const outputBuffer = doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+    console.log(`[Generate] ✅ Template processed: ${path.basename(filePath)} → ${outputBuffer.length} bytes`);
+    return { buffer: outputBuffer, isDocx: true };
+
+  } catch (err: any) {
+    console.warn(`[Generate] Cannot process ${path.basename(filePath)} as template (${err.message}), serving as static file`);
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const data = await req.json();
@@ -185,15 +242,26 @@ export async function POST(req: Request) {
     // Add main contract
     outputZip.file(mainFileName, mainDocxBuffer);
 
-    // Add additional static .doc files
+    // Add additional files — try template processing first, fallback to static
     for (const additional of additionalFiles) {
       const additionalPath = path.join(TEMPLATES_DIR, additional.fileName);
-      if (fs.existsSync(additionalPath)) {
+      if (!fs.existsSync(additionalPath)) {
+        console.warn(`[Generate] Additional template not found (skipped): ${additionalPath}`);
+        continue;
+      }
+
+      // Try to process as OOXML template (fill {{tags}})
+      const processed = tryProcessTemplate(additionalPath, exportData);
+      if (processed) {
+        // Successfully processed — save as .docx (with filled data)
+        const outName = additional.displayName.replace(/\.doc$/, '.docx');
+        outputZip.file(outName, processed.buffer);
+        console.log(`[Generate] ✅ Added processed template: ${outName}`);
+      } else {
+        // Fallback: serve as static file
         const fileContent = fs.readFileSync(additionalPath);
         outputZip.file(additional.displayName, fileContent);
-        console.log(`[Generate] Added additional file: ${additional.fileName}`);
-      } else {
-        console.warn(`[Generate] Additional template not found (skipped): ${additionalPath}`);
+        console.log(`[Generate] 📄 Added static file: ${additional.displayName}`);
       }
     }
 
