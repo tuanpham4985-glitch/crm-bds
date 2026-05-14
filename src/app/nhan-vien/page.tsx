@@ -494,8 +494,11 @@ export default function NhanVienPage() {
                                 (nv.trang_thai === 'Đang làm' || nv.trang_thai === 'Chính thức') ? 'badge-success' :
                                 (nv.trang_thai === 'Học viên' || nv.trang_thai === 'Thử việc') ? 'badge-info' :
                                 nv.trang_thai === 'Nghỉ sinh' ? 'badge-warning' :
+                                nv.trang_thai === 'CTV' ? '' :
                                 'badge-neutral'
-                              }`}>
+                              }`} style={nv.trang_thai === 'CTV' ? {
+                                background: '#f3e8ff', color: '#7c3aed', fontWeight: 600
+                              } : {}}>
                                 {nv.trang_thai}
                               </span>
                             </td>
