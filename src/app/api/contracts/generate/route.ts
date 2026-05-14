@@ -220,7 +220,10 @@ export async function POST(req: Request) {
 
     // ---- 1. Generate main contract .docx ----
     const mainDocxBuffer = generateDocx(templateFileName, exportData);
-    const mainFileName = `${data.so_hop_dong || 'hop-dong'}.docx`;
+    // Sanitize: replace "/" with "-" so PizZip doesn't create subfolders
+    // e.g. "00001/VIC_HĐTV" → "00001-VIC_HĐTV.docx"
+    const safeHopDong = (data.so_hop_dong || 'hop-dong').replace(/\//g, '-');
+    const mainFileName = `${safeHopDong}.docx`;
 
     // ---- 2. Determine additional documents ----
     // Rule 1: Cam kết bảo mật → ALL standard contracts
