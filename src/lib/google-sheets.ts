@@ -118,14 +118,14 @@ const BANG_LUONG_HEADERS = [
   'luong_co_ban', 'doanh_thu', 'hoa_hong', 'thuong', 'phat',
   'so_ngay_cong_chuan', 'so_ngay_lam_viec_thuc_te', 'so_ngay_nghi_khong_luong', 'so_gio_ot',
   'salary_by_day', 'ot_pay', 'bao_hiem', 'bh_company', 'thue',
-  'tong_luong', 'trang_thai', 'created_at',
+  'tong_luong', 'trang_thai', 'isProbation', 'isCollaborator', 'created_at',
 ] as const;
 
 const PAYROLL_HEADERS = [
   'id', 'id_nhan_vien', 'thang', 'nam',
   'gross', 'total_deduction', 'net',
   'luong_dong_bh', 'thu_nhap_chiu_thue', 'tong_chi_phi',
-  'trang_thai', 'locked_at', 'created_at'
+  'trang_thai', 'isProbation', 'isCollaborator', 'locked_at', 'created_at'
 ] as const;
 
 const PAYROLL_ITEMS_HEADERS = [
@@ -1055,7 +1055,9 @@ export async function getBangLuong(): Promise<BangLuong[]> {
         bh_company:    num(v['bh_company']),
         thue:          num(v['thue']),
         tong_luong:    num(v['tong_luong']),
-        trang_thai:    (str(v['trang_thai']) || 'draft') as 'draft' | 'confirmed' | 'paid',
+        trang_thai:    (str(v['trang_thai']) || 'draft') as any,
+        isProbation:   str(v['isProbation']) === 'TRUE' || str(v['isProbation']) === 'true',
+        isCollaborator: str(v['isCollaborator']) === 'TRUE' || str(v['isCollaborator']) === 'true',
         created_at:    str(v['created_at']),
       } as BangLuong;
     })
@@ -1092,6 +1094,8 @@ export async function addBangLuong(
     thue:          Number(bl.thue),
     tong_luong:    Number(bl.tong_luong),
     trang_thai:    bl.trang_thai || 'draft',
+    isProbation:   bl.isProbation ? 'TRUE' : 'FALSE',
+    isCollaborator: bl.isCollaborator ? 'TRUE' : 'FALSE',
     created_at,
   });
 
@@ -1197,6 +1201,8 @@ export async function getPayrollRecords(thang: number, nam: number): Promise<Pay
         thu_nhap_chiu_thue: num(v.thu_nhap_chiu_thue),
         tong_chi_phi: num(v.tong_chi_phi),
         trang_thai: (str(v.trang_thai) || 'draft') as any,
+        isProbation: str(v.isProbation) === 'TRUE' || str(v.isProbation) === 'true',
+        isCollaborator: str(v.isCollaborator) === 'TRUE' || str(v.isCollaborator) === 'true',
         locked_at: str(v.locked_at) || undefined,
         created_at: str(v.created_at),
       };
@@ -1274,6 +1280,8 @@ export async function savePayrollBatch(
       thu_nhap_chiu_thue: payroll.thu_nhap_chiu_thue,
       tong_chi_phi: payroll.tong_chi_phi,
       trang_thai: payroll.trang_thai,
+      isProbation: (payroll as any).isProbation ? 'TRUE' : 'FALSE',
+      isCollaborator: (payroll as any).isCollaborator ? 'TRUE' : 'FALSE',
       locked_at: payroll.locked_at || '',
       created_at: createdAt,
     });

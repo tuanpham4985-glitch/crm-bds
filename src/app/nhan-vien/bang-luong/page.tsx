@@ -205,8 +205,8 @@ export default function BangLuongPage() {
       let tttt = 0;
       const so_phu_thuoc = row.so_nguoi_phu_thuoc || 0;
 
-      // Note: Here we simply check isProbation. (Collaborator is usually marked as isProbation in payrollEngine).
-      if (row.isProbation) {
+      // Note: Handle both Probation and Collaborator for 10% flat tax
+      if (row.isProbation || row.isCollaborator) {
         tttt = gross;
         if (tttt >= 2000000) {
           thue_ = Math.round(tttt * 0.1);
@@ -505,7 +505,10 @@ export default function BangLuongPage() {
                           <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
                           <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
                             <div>{empMap.get(row.id_nhan_vien) || row.ho_ten || row.id_nhan_vien}</div>
-                            {row.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4, display: 'inline-block', marginTop: 2 }}>Thử việc</span>}
+                            <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                              {row.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4 }}>Thử việc</span>}
+                              {row.isCollaborator && <span style={{ fontSize: '0.65rem', color: '#6366f1', background: '#e0e7ff', padding: '1px 4px', borderRadius: 4 }}>CTV</span>}
+                            </div>
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 500 }}>{fmt(row.gross)}</td>
                           <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(tong_khau_tru)}</td>
@@ -569,7 +572,11 @@ export default function BangLuongPage() {
                       <tr key={bl.id}>
                         <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
-                          {empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}
+                          <div>{empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}</div>
+                          <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                            {bl.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4 }}>Thử việc</span>}
+                            {bl.isCollaborator && <span style={{ fontSize: '0.65rem', color: '#6366f1', background: '#e0e7ff', padding: '1px 4px', borderRadius: 4 }}>CTV</span>}
+                          </div>
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 500 }}>{fmt(bl.gross ?? (bl.salary_by_day + bl.hoa_hong + bl.thuong + bl.ot_pay))}</td>
                         <td style={{ textAlign: 'right', color: 'var(--danger-text)' }}>-{fmt(tong_khau_tru)}</td>
@@ -667,13 +674,13 @@ export default function BangLuongPage() {
                 <div style={{ background: 'var(--bg-page)', padding: 16, borderRadius: 'var(--radius-lg)' }}>
                   <div style={{ fontWeight: 600, fontSize: '1.1rem', marginBottom: 4 }}>{ho_ten}</div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-                    {drawerRecord.isProbation ? 'Thử việc' : 'Chính thức'} | Tháng {thang}/{nam}
+                    {drawerRecord.isCollaborator ? 'Cộng tác viên (CTV)' : drawerRecord.isProbation ? 'Thử việc' : 'Chính thức'} | Tháng {thang}/{nam}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem', color: 'var(--text-body)', borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
                     <div>Lương hợp đồng: <strong>{fmt(drawerRecord.luong_co_ban || (drawerRecord as any).luong_dong_bh)}</strong></div>
                     <div>Lương đóng BH: <strong>{fmt((drawerRecord as any).luong_dong_bh || drawerRecord.luong_co_ban)}</strong></div>
                     
-                    {!drawerRecord.isProbation && (
+                    {(!drawerRecord.isProbation && !drawerRecord.isCollaborator) && (
                       <>
                         <div style={{ color: 'var(--info-text)' }}>Giảm trừ bản thân: <strong>{fmt(11000000)}</strong></div>
                         <div style={{ color: 'var(--info-text)' }}>Giảm trừ NPT ({so_npt}): <strong>{fmt(so_npt * 4400000)}</strong></div>

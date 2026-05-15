@@ -248,6 +248,7 @@ export class PayrollEngine {
       // Meta
       trang_thai: 'draft' as const,
       isProbation,
+      isCollaborator,
       so_nguoi_phu_thuoc: so_phu_thuoc,
       items,
     };

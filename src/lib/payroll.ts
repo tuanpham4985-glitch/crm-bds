@@ -66,6 +66,7 @@ export interface PayrollEntry extends Omit<BangLuong, 'id' | 'created_at'> {
   so_nguoi_phu_thuoc?: number;
   /** Thử việc hay chính thức (để tính BHXH) */
   isProbation?: boolean;
+  isCollaborator?: boolean;
   /** Danh sách các khoản lương động */
   items?: Omit<PayrollItemRecord, 'id' | 'payroll_id'>[];
 }

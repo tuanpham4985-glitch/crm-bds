@@ -254,6 +254,7 @@ export interface BangLuong {
   tong_chi_phi?: number;
   gross?: number;
   isProbation?: boolean;
+  isCollaborator?: boolean;
   so_nguoi_phu_thuoc?: number;
   trang_thai: 'draft' | 'pending_approval' | 'approved' | 'paid' | 'locked';
   created_at: string;
