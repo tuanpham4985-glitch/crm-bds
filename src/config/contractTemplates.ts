@@ -3,7 +3,7 @@
 // CORE LAYER: All keys must be English
 // ============================================================
 
-export type ContractCategory = 'PROBATION' | 'OFFICIAL' | 'STUDENT';
+export type ContractCategory = 'PROBATION' | 'OFFICIAL' | 'STUDENT' | 'COLLABORATOR';
 export type Department = 'BO' | 'KD';
 
 export interface ContractTemplateConfig {
@@ -41,7 +41,13 @@ export const CONTRACT_TEMPLATES: ContractTemplateConfig[] = [
   {
     contract_category: 'STUDENT',
     department: 'KD',
-    template_file: 'MAU_VIC_HOC_VIEN.docx',
+    template_file: 'MAU_VIC_HDTN.docx',
     contract_type: 'Học viên',
+  },
+  {
+    contract_category: 'COLLABORATOR',
+    department: 'KD',
+    template_file: 'MAU_VIC_HDCTV.docx',
+    contract_type: 'Cộng tác viên (CTV)',
   }
 ];

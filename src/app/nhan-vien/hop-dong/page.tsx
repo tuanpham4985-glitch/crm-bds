@@ -42,7 +42,12 @@ function extractEmployeeNumber(idNhanVien: string): string {
 function generateContractNumber(idNhanVien: string, contractType: string): string {
   const empNum = extractEmployeeNumber(idNhanVien);
   if (!empNum) return '';
-  const suffix = contractType?.toLowerCase()?.includes('thử việc') ? 'VIC_HĐTV' : 'VIC_HĐLĐ';
+  const lowerType = contractType?.toLowerCase() || '';
+  let suffix = 'VIC_HĐLĐ';
+  if (lowerType.includes('thử việc')) suffix = 'VIC_HĐTV';
+  else if (lowerType.includes('học viên')) suffix = 'VIC_HĐTN';
+  else if (lowerType.includes('cộng tác viên') || lowerType.includes('ctv')) suffix = 'VIC_HĐCTV';
+  
   return `${empNum}/${suffix}`;
 }
 
@@ -703,6 +708,7 @@ function HopDongContent() {
                     <option value="Thử việc">Thử việc</option>
                     <option value="Chính thức">Chính thức</option>
                     <option value="Học viên">Học viên</option>
+                    <option value="Cộng tác viên (CTV)">Cộng tác viên (CTV)</option>
                   </select>
                 </div>
               </div>

@@ -43,6 +43,7 @@ export function detectEmployeeClassification(
   const contract_category: ContractCategory = 
     lowerLabel.includes('thử việc') ? 'PROBATION' : 
     lowerLabel.includes('học viên') ? 'STUDENT' : 
+    (lowerLabel.includes('cộng tác viên') || lowerLabel.includes('ctv')) ? 'COLLABORATOR' :
     'OFFICIAL';
     
   return { contract_category, department };
