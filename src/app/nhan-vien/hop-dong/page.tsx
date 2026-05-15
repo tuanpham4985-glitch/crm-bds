@@ -368,6 +368,8 @@ function HopDongContent() {
         HKTT: emp?.HKTT || '',
         ma_so_thue: emp?.ma_so_thue || '',
         employee_type: emp?.employee_type || '',
+        email: emp?.email || '',
+        so_dien_thoai: emp?.so_dien_thoai || '',
         // Signing date
         ngay_ky: String(now.getDate()),
         thang_ky: String(now.getMonth() + 1),
