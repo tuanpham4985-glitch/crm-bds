@@ -80,7 +80,7 @@ export default function HopDongPage() {
 }
 
 function HopDongContent() {
-  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { isAdmin, isLoading: authLoading, user } = useAuth();
   const searchParams = useSearchParams();
   const prefilledEmployeeId = searchParams.get('id_nhan_vien') || '';
 
@@ -184,6 +184,11 @@ function HopDongContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employees.length]);
 
+  // Sync URL id_nhan_vien to filter
+  useEffect(() => {
+    setFilterEmployee(prefilledEmployeeId);
+  }, [prefilledEmployeeId]);
+
   const getEmployeeName = (employeeId: string) => {
     const emp = employees.find(e => e.id_nhan_vien === employeeId);
     return emp?.ho_ten || employeeId;
@@ -195,8 +200,13 @@ function HopDongContent() {
     ).length;
   };
 
+  const accessibleContracts = contracts.filter(c => {
+    if (isAdmin) return true;
+    return user && c.id_nhan_vien === user.id_nhan_vien;
+  });
+
   // Filtered contracts
-  const filteredContracts = contracts.filter(hd => {
+  const filteredContracts = accessibleContracts.filter(hd => {
     const empName = getEmployeeName(hd.id_nhan_vien).toLowerCase();
     const matchSearch = !searchQuery ||
       hd.so_hop_dong.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -410,8 +420,8 @@ function HopDongContent() {
   };
 
   // KPI stats
-  const totalContracts = contracts.length;
-  const activeContracts = contracts.filter(c => getContractStatus(c.ngay_ket_thuc) === 'Còn hiệu lực').length;
+  const totalContracts = accessibleContracts.length;
+  const activeContracts = accessibleContracts.filter(c => getContractStatus(c.ngay_ket_thuc) === 'Còn hiệu lực').length;
   const expiredContracts = totalContracts - activeContracts;
 
   if (loading || authLoading) {
@@ -512,7 +522,7 @@ function HopDongContent() {
           <div className="empty-state">
             <FileText size={40} />
             <h3>Chưa có hợp đồng</h3>
-            <p>{contracts.length > 0 ? 'Không tìm thấy hợp đồng phù hợp bộ lọc' : 'Nhấn "Tạo hợp đồng" để tạo mới'}</p>
+            <p>{accessibleContracts.length > 0 ? 'Không tìm thấy hợp đồng phù hợp bộ lọc' : 'Nhấn "Tạo hợp đồng" để tạo mới'}</p>
           </div>
         ) : (
           <div className="table-wrapper" style={{ overflow: 'visible' }}>

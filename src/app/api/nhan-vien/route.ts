@@ -10,7 +10,7 @@ import { generateId } from '@/lib/utils';
 // ==============================
 // Fields không public ra UI
 // ==============================
-const HIDDEN_FIELDS = ['email', 'khach_hang', 'hoa_hong'] as const;
+const HIDDEN_FIELDS = ['khach_hang', 'hoa_hong'] as const;
 
 // Helper: lọc dữ liệu trả về frontend
 function sanitizeNhanVien(data: any[]) {
