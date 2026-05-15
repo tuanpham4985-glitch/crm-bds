@@ -254,7 +254,6 @@ export default function DashboardPage() {
                               src={sale.avatar_url} 
                               alt={sale.nhan_vien}
                               className="podium-avatar-initials"
-                              style={{ objectFit: 'cover', background: '#fff' }}
                             />
                           ) : (
                             <div className="podium-avatar-initials">
@@ -296,7 +295,6 @@ export default function DashboardPage() {
                               src={sale.avatar_url} 
                               alt={sale.nhan_vien}
                               className="leaderboard-avatar-initials"
-                              style={{ objectFit: 'cover', background: '#fff' }}
                             />
                           ) : (
                             <div
@@ -342,7 +340,6 @@ export default function DashboardPage() {
                             src={sale.avatar_url} 
                             alt={sale.nhan_vien}
                             className="leaderboard-avatar-initials"
-                            style={{ objectFit: 'cover', background: '#fff' }}
                           />
                         ) : (
                           <div className="leaderboard-avatar-initials" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>

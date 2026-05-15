@@ -1464,30 +1464,32 @@ h4 { font-size: 1rem; }
   font-weight: 700;
   color: white;
   text-transform: uppercase;
+  object-fit: cover;
+  object-position: center 15%; /* Keep face in view */
 }
 
 .podium-item:nth-child(2) .podium-avatar-initials {
-  width: 80px;
-  height: 80px;
-  font-size: 1.5rem;
+  width: 96px; /* Increased from 80px */
+  height: 96px;
+  font-size: 1.75rem;
   background: linear-gradient(135deg, #f59e0b, #d97706);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2), 0 4px 16px rgba(245, 158, 11, 0.25);
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2), 0 8px 24px rgba(245, 158, 11, 0.3);
 }
 
 .podium-item:nth-child(1) .podium-avatar-initials {
-  width: 64px;
-  height: 64px;
-  font-size: 1.25rem;
+  width: 72px; /* Increased from 64px */
+  height: 72px;
+  font-size: 1.5rem;
   background: linear-gradient(135deg, #94a3b8, #64748b);
-  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.2);
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.2), 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .podium-item:nth-child(3) .podium-avatar-initials {
-  width: 64px;
-  height: 64px;
-  font-size: 1.25rem;
+  width: 72px; /* Increased from 64px */
+  height: 72px;
+  font-size: 1.5rem;
   background: linear-gradient(135deg, #d97706, #b45309);
-  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+  box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .podium-crown {
@@ -1628,6 +1630,8 @@ h4 { font-size: 1rem; }
   color: white;
   flex-shrink: 0;
   text-transform: uppercase;
+  object-fit: cover;
+  object-position: center 15%;
 }
 
 .leaderboard-info {
