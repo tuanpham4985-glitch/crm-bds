@@ -35,7 +35,7 @@ const HRM_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [logo, setLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -211,8 +211,9 @@ export default function Sidebar() {
       <div className={styles.logo}>
         <div
           className={styles.logoIcon}
-          onClick={() => fileInputRef.current?.click()}
-          title="Thay đổi avatar công ty"
+          onClick={() => isAdmin && fileInputRef.current?.click()}
+          title={isAdmin ? "Thay đổi avatar công ty" : "CRM BĐS"}
+          style={{ cursor: isAdmin ? 'pointer' : 'default' }}
         >
           {logo ? (
             <img src={logo} alt="Company Logo" />
