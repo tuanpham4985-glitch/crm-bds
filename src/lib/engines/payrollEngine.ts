@@ -146,11 +146,12 @@ export class PayrollEngine {
     const lowerEmpType = (nv.employee_type || '').toLowerCase();
     const isProbation = lowerContractType.includes('thử việc') || lowerEmpType.includes('thử việc');
     const isCollaborator = lowerContractType.includes('ctv') || lowerEmpType.includes('ctv') || (nv.trang_thai || '').toUpperCase() === 'CTV';
+    const isIntern = lowerContractType.includes('học viên') || lowerEmpType.includes('học viên') || lowerContractType.includes('tập nghề') || lowerEmpType.includes('tập nghề') || (nv.trang_thai || '').toUpperCase() === 'HỌC VIÊN';
 
     let bhxh_emp = 0, bhyt_emp = 0, bhtn_emp = 0;
     let bhxh_cty = 0, bhyt_cty = 0, bhtn_cty = 0;
 
-    if (isProbation || isCollaborator) {
+    if (isProbation || isCollaborator || isIntern) {
       // Thử việc / CTV: Không bắt buộc đóng bảo hiểm
       bhxh_emp = 0; bhyt_emp = 0; bhtn_emp = 0;
       bhxh_cty = 0; bhyt_cty = 0; bhtn_cty = 0;
@@ -176,7 +177,7 @@ export class PayrollEngine {
     let thu_nhap_chiu_thue = 0;
     let thue = 0;
 
-    if (isProbation || isCollaborator) {
+    if (isProbation || isCollaborator || isIntern) {
       // Luật TNCN: NV không có HĐLĐ (CTV) hoặc HĐLĐ dưới 3 tháng (Thử việc)
       // Khấu trừ 10% tại nguồn nếu tổng thu nhập trả mỗi lần >= 2.000.000 VNĐ
       // Không áp dụng giảm trừ gia cảnh
@@ -249,6 +250,7 @@ export class PayrollEngine {
       trang_thai: 'draft' as const,
       isProbation,
       isCollaborator,
+      isIntern,
       so_nguoi_phu_thuoc: so_phu_thuoc,
       items,
     };
