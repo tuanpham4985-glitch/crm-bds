@@ -146,6 +146,25 @@ export default function NhanVienPage() {
     setShowModal(true);
   };
 
+  // Safely parse date string to YYYY-MM-DD format for <input type="date">
+  const parseToISODate = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+      const parts = dateStr.split(/[\/\-]/);
+      if (parts.length === 3) {
+        const p1 = parseInt(parts[0], 10);
+        const p2 = parseInt(parts[1], 10);
+        const p3 = parseInt(parts[2], 10);
+        if (p1 <= 31 && p2 <= 12 && p3 > 1900) {
+          return `${p3}-${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
+        }
+      }
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    } catch (e) {}
+    return '';
+  };
+
   const openEdit = (nv: NhanVien) => {
     setEditingItem(nv);
     setForm({
@@ -160,10 +179,10 @@ export default function NhanVienPage() {
       khu_vuc: nv.khu_vuc || '',
       phong_KD: nv.phong_KD || '',
       so_cccd: nv.so_cccd || '',
-      ngay_cap: nv.ngay_cap || '',
+      ngay_cap: parseToISODate(nv.ngay_cap || ''),
       noi_cap: nv.noi_cap || '',
       HKTT: nv.HKTT || '',
-      ngay_sinh: nv.ngay_sinh || '',
+      ngay_sinh: parseToISODate(nv.ngay_sinh || ''),
       ma_so_thue: nv.ma_so_thue || '',
       so_tk_ngan_hang: nv.so_tk_ngan_hang || '',
       ten_ngan_hang_thu_huong: nv.ten_ngan_hang_thu_huong || '',
