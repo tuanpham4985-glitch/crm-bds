@@ -201,11 +201,23 @@ export default function BangLuongPage() {
       row.bao_hiem = bao_hiem;
 
       // 6. Thuế TNCN
+      let thue_ = 0;
+      let tttt = 0;
       const so_phu_thuoc = row.so_nguoi_phu_thuoc || 0;
-      const giam_tru     = TAX_CONFIG.giam_tru_ban_than + (TAX_CONFIG.giam_tru_phu_thuoc * so_phu_thuoc);
-      const tttt         = gross - bao_hiem - giam_tru;
-      const thue_        = calculateTaxMonthly(tttt);
+
+      // Note: Here we simply check isProbation. (Collaborator is usually marked as isProbation in payrollEngine).
+      if (row.isProbation) {
+        tttt = gross;
+        if (tttt >= 2000000) {
+          thue_ = Math.round(tttt * 0.1);
+        }
+      } else {
+        const giam_tru = TAX_CONFIG.giam_tru_ban_than + (TAX_CONFIG.giam_tru_phu_thuoc * so_phu_thuoc);
+        tttt = Math.max(0, gross - bao_hiem - giam_tru);
+        thue_ = Math.round(calculateTaxMonthly(tttt));
+      }
       
+      row.thu_nhap_chiu_thue = tttt;
       row.thue       = thue_;
       row.tong_luong = gross - bao_hiem - thue_;
 
@@ -647,6 +659,8 @@ export default function BangLuongPage() {
             const totalDed   = deductionItems.reduce((s: number, i: any) => s + i.so_tien, 0);
             const totalComp  = companyItems.reduce((s: number, i: any) => s + i.so_tien, 0);
 
+            const so_npt = (drawerRecord as any).so_nguoi_phu_thuoc ?? depMap.get(drawerRecord.id_nhan_vien) ?? 0;
+
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 {/* Header Profile */}
@@ -658,6 +672,14 @@ export default function BangLuongPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem', color: 'var(--text-body)', borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
                     <div>Lương hợp đồng: <strong>{fmt(drawerRecord.luong_co_ban || (drawerRecord as any).luong_dong_bh)}</strong></div>
                     <div>Lương đóng BH: <strong>{fmt((drawerRecord as any).luong_dong_bh || drawerRecord.luong_co_ban)}</strong></div>
+                    
+                    {!drawerRecord.isProbation && (
+                      <>
+                        <div style={{ color: 'var(--info-text)' }}>Giảm trừ bản thân: <strong>{fmt(11000000)}</strong></div>
+                        <div style={{ color: 'var(--info-text)' }}>Giảm trừ NPT ({so_npt}): <strong>{fmt(so_npt * 4400000)}</strong></div>
+                      </>
+                    )}
+                    
                     <div>TN chịu thuế: <strong>{fmt((drawerRecord as any).thu_nhap_chiu_thue || 0)}</strong></div>
                     <div>Tổng chi phí: <strong style={{color: 'var(--primary)'}}>{fmt((drawerRecord as any).tong_chi_phi || (totalGross + totalComp))}</strong></div>
                   </div>

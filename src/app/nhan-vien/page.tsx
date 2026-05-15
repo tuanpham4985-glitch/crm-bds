@@ -61,6 +61,7 @@ export default function NhanVienPage() {
     gioi_tinh: '', khu_vuc: '', phong_KD: '',
     so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
     so_tk_ngan_hang: '', ten_ngan_hang_thu_huong: '',
+    so_nguoi_phu_thuoc: 0,
   });
 
   // Helper: Safe JSON parser to avoid crash on empty/invalid response
@@ -139,6 +140,7 @@ export default function NhanVienPage() {
       gioi_tinh: '', khu_vuc: '', phong_KD: '',
       so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
       so_tk_ngan_hang: '', ten_ngan_hang_thu_huong: '',
+      so_nguoi_phu_thuoc: 0,
     });
     setUploadError('');
     setShowModal(true);
@@ -165,6 +167,7 @@ export default function NhanVienPage() {
       ma_so_thue: nv.ma_so_thue || '',
       so_tk_ngan_hang: nv.so_tk_ngan_hang || '',
       ten_ngan_hang_thu_huong: nv.ten_ngan_hang_thu_huong || '',
+      so_nguoi_phu_thuoc: nv.so_nguoi_phu_thuoc || 0,
     });
     setUploadError('');
     setShowModal(true);
@@ -801,13 +804,20 @@ export default function NhanVienPage() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Chức danh / Vị trí</label>
-                <select className="form-select" value={form.employee_type}
-                  onChange={(e) => setForm({ ...form, employee_type: e.target.value })}>
-                  <option value="">— Chọn Chức danh —</option>
-                  {(danhMuc?.employee_types || []).map(et => <option key={et} value={et}>{et}</option>)}
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Chức danh / Vị trí</label>
+                  <select className="form-select" value={form.employee_type}
+                    onChange={(e) => setForm({ ...form, employee_type: e.target.value })}>
+                    <option value="">— Chọn Chức danh —</option>
+                    {(danhMuc?.employee_types || []).map(et => <option key={et} value={et}>{et}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Số người phụ thuộc</label>
+                  <input type="number" min="0" className="form-input" value={form.so_nguoi_phu_thuoc}
+                    onChange={(e) => setForm({ ...form, so_nguoi_phu_thuoc: parseInt(e.target.value) || 0 })} placeholder="Nhập số người" />
+                </div>
               </div>
             </div>
 
