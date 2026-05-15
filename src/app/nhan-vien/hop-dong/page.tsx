@@ -46,6 +46,33 @@ function generateContractNumber(idNhanVien: string, contractType: string): strin
   return `${empNum}/${suffix}`;
 }
 
+/**
+ * Safely parse date string to YYYY-MM-DD format for <input type="date">
+ * Handles both ISO strings and DD/MM/YYYY
+ */
+function parseToISODate(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    // Try DD/MM/YYYY first
+    const parts = dateStr.split(/[\/\-]/);
+    if (parts.length === 3) {
+      const p1 = parseInt(parts[0], 10);
+      const p2 = parseInt(parts[1], 10);
+      const p3 = parseInt(parts[2], 10);
+      
+      // If looks like DD/MM/YYYY
+      if (p1 <= 31 && p2 <= 12 && p3 > 1900) {
+        return `${p3}-${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
+      }
+    }
+    
+    // Fallback to standard JS Date
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  } catch (e) {}
+  return '';
+}
+
 export default function HopDongPage() {
   return (
     <Suspense fallback={<div className="loading-spinner"><div className="spinner" /></div>}>
@@ -217,8 +244,8 @@ function HopDongContent() {
       id_nhan_vien: hd.id_nhan_vien,
       so_hop_dong: hd.so_hop_dong,
       contract_type: hd.contract_type || 'Thử việc',
-      ngay_bat_dau: hd.ngay_bat_dau ? new Date(hd.ngay_bat_dau).toISOString().split('T')[0] : '',
-      ngay_ket_thuc: hd.ngay_ket_thuc ? new Date(hd.ngay_ket_thuc).toISOString().split('T')[0] : '',
+      ngay_bat_dau: parseToISODate(hd.ngay_bat_dau),
+      ngay_ket_thuc: parseToISODate(hd.ngay_ket_thuc),
       luong_co_ban: String(hd.luong_co_ban || ''),
       ghi_chu: hd.ghi_chu,
       department: dept,
