@@ -151,13 +151,19 @@ function str(val: unknown): string {
 function num(val: unknown): number {
   const raw = str(val);
   if (!raw) return 0;
+
+  // Handle percentage sign
+  const isPercent = raw.includes('%');
+
   // Handle scientific notation (e.g., "5E+9")
   if (/[eE][+\-]?\d+/.test(raw)) {
-    const n = Number(raw);
-    return isNaN(n) ? 0 : n;
+    const n = Number(raw.replace('%', ''));
+    const result = isNaN(n) ? 0 : n;
+    return isPercent ? result / 100 : result;
   }
   
   // Remove spaces, currency symbols, and any non-numeric/separator chars
+  // Keep dots and commas
   let cleaned = raw.replace(/[^\d.,\-]/g, '');
   if (!cleaned) return 0;
 
@@ -165,32 +171,46 @@ function num(val: unknown): number {
   // "5,000,000,000" (commas as thousands) or "5.000.000.000" (dots as thousands)
   // "1,234.56" (comma=thousands, dot=decimal) or "1.234,56" (dot=thousands, comma=decimal)
   
-  // Count commas and dots
   const commaCount = (cleaned.match(/,/g) || []).length;
   const dotCount = (cleaned.match(/\./g) || []).length;
   
   if (commaCount > 1 && dotCount === 0) {
+    // 5,000,000 -> 5000000
     cleaned = cleaned.replace(/,/g, '');
   } else if (dotCount > 1 && commaCount === 0) {
+    // 5.000.000 -> 5000000
     cleaned = cleaned.replace(/\./g, '');
   } else if (commaCount === 1 && dotCount === 0) {
-    if (/,\d{3}$/.test(cleaned)) {
-      cleaned = cleaned.replace(/,/g, '');
-    } else {
+    // Ambiguous: 2,000 could be 2.0 or 2000
+    // If it's a percentage (2,000%), it's almost certainly a decimal in VN locale
+    if (isPercent || !/,\d{3}$/.test(cleaned)) {
       cleaned = cleaned.replace(',', '.');
+    } else {
+      // Still treat as thousands for large integers like "5,000" VND
+      cleaned = cleaned.replace(/,/g, '');
     }
   } else if (dotCount === 1 && commaCount === 0) {
-    if (/\.\d{3}$/.test(cleaned)) {
+    // Ambiguous: 2.000
+    if (/\.\d{3}$/.test(cleaned) && !isPercent) {
       cleaned = cleaned.replace(/\./g, '');
     }
   } else if (dotCount >= 1 && commaCount === 1) {
-    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-  } else if (commaCount >= 1 && dotCount >= 1) {
-    cleaned = cleaned.replace(/,/g, '');
+    // 1,234.56 or 1.234,56
+    const commaIndex = cleaned.indexOf(',');
+    const dotIndex = cleaned.indexOf('.');
+    if (commaIndex < dotIndex) {
+      // 1,234.56 (US)
+      cleaned = cleaned.replace(/,/g, '');
+    } else {
+      // 1.234,56 (VN)
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    }
   }
   
-  const result = Number(cleaned);
-  return isNaN(result) ? 0 : result;
+  let result = Number(cleaned);
+  if (isNaN(result)) result = 0;
+  
+  return isPercent ? result / 100 : result;
 }
 
 
