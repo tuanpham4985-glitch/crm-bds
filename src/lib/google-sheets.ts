@@ -45,12 +45,23 @@ function getJWT(): JWT {
   });
 }
 
+let cachedDoc: GoogleSpreadsheet | null = null;
+let lastLoadTime = 0;
+const CACHE_DURATION = 60000; // 1 minute cache for sheet metadata
+
 async function getDoc(): Promise<GoogleSpreadsheet> {
   const { sheetId } = validateEnvVars();
+
+  const now = Date.now();
+  if (cachedDoc && (now - lastLoadTime < CACHE_DURATION)) {
+    return cachedDoc;
+  }
 
   try {
     const doc = new GoogleSpreadsheet(sheetId, getJWT());
     await doc.loadInfo();
+    cachedDoc = doc;
+    lastLoadTime = now;
     return doc;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);

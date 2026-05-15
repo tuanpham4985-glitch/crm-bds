@@ -76,8 +76,8 @@ export default function NhanVienPage() {
     }
   };
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  const fetchAll = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     try {
       // Fetch all APIs in parallel
       const responses = await Promise.all([
@@ -93,6 +93,12 @@ export default function NhanVienPage() {
         responses.map(res => safeJson(res))
       );
 
+      // Check for errors
+      const errors = [nvData, plData, khData, hdData, dmData].filter(d => !d.success);
+      if (errors.length > 0 && !isBackground) {
+        console.warn('[API] Some data failed to load:', errors);
+      }
+
       if (nvData.success) setEmployees(nvData.data);
       if (plData.success) setPipelines(plData.data);
       if (khData.success) setCustomers(khData.data);
@@ -101,7 +107,7 @@ export default function NhanVienPage() {
     } catch (err) {
       console.error('Fetch all error:', err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   }, []);
 
@@ -329,7 +335,7 @@ export default function NhanVienPage() {
       const result = await safeJson(res);
       if (result.success) {
         setShowModal(false);
-        fetchAll();
+        fetchAll(true);
       }
     } catch (err) {
       console.error('Save error:', err);
