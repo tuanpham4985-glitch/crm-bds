@@ -854,7 +854,11 @@ export default function NhanVienPage() {
 
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Hủy</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving || uploading || !form.ho_ten.trim() || !form.email.trim()}>
+              <button
+                className="btn btn-primary"
+                onClick={handleSave}
+                disabled={saving || !(form.ho_ten || '').trim() || !(form.email || '').trim()}
+              >
                 {saving ? 'Đang lưu...' : (editingItem ? 'Cập nhật' : 'Thêm mới')}
               </button>
             </div>
