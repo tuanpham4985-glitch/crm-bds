@@ -50,24 +50,22 @@ function generateContractNumber(idNhanVien: string, contractType: string): strin
  * Safely parse date string to YYYY-MM-DD format for <input type="date">
  * Handles both ISO strings and DD/MM/YYYY
  */
-function parseToISODate(dateStr: string): string {
-  if (!dateStr) return '';
+function parseToISODate(dateVal: any): string {
+  if (!dateVal) return '';
   try {
-    // Try DD/MM/YYYY first
-    const parts = dateStr.split(/[\/\-]/);
+    const str = String(dateVal).trim();
+    const parts = str.split(/[\/\-]/);
     if (parts.length === 3) {
       const p1 = parseInt(parts[0], 10);
       const p2 = parseInt(parts[1], 10);
       const p3 = parseInt(parts[2], 10);
       
-      // If looks like DD/MM/YYYY
       if (p1 <= 31 && p2 <= 12 && p3 > 1900) {
         return `${p3}-${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
       }
     }
     
-    // Fallback to standard JS Date
-    const d = new Date(dateStr);
+    const d = new Date(str);
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
   } catch (e) {}
   return '';

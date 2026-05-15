@@ -147,10 +147,11 @@ export default function NhanVienPage() {
   };
 
   // Safely parse date string to YYYY-MM-DD format for <input type="date">
-  const parseToISODate = (dateStr: string): string => {
-    if (!dateStr) return '';
+  const parseToISODate = (dateVal: any): string => {
+    if (!dateVal) return '';
     try {
-      const parts = dateStr.split(/[\/\-]/);
+      const str = String(dateVal).trim();
+      const parts = str.split(/[\/\-]/);
       if (parts.length === 3) {
         const p1 = parseInt(parts[0], 10);
         const p2 = parseInt(parts[1], 10);
@@ -159,7 +160,7 @@ export default function NhanVienPage() {
           return `${p3}-${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
         }
       }
-      const d = new Date(dateStr);
+      const d = new Date(str);
       if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
     } catch (e) {}
     return '';
