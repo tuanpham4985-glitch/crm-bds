@@ -506,6 +506,7 @@ export default function BangLuongPage() {
                           <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
                             <div>{empMap.get(row.id_nhan_vien) || row.ho_ten || row.id_nhan_vien}</div>
                             <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                              {(!row.isProbation && !row.isCollaborator && !row.isIntern) && <span style={{ fontSize: '0.65rem', color: 'var(--primary)', background: 'var(--primary-bg)', padding: '1px 4px', borderRadius: 4 }}>Chính thức</span>}
                               {row.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4 }}>Thử việc</span>}
                               {row.isCollaborator && <span style={{ fontSize: '0.65rem', color: '#6366f1', background: '#e0e7ff', padding: '1px 4px', borderRadius: 4 }}>CTV</span>}
                               {row.isIntern && <span style={{ fontSize: '0.65rem', color: '#10b981', background: '#ecfdf5', padding: '1px 4px', borderRadius: 4 }}>Học viên</span>}
@@ -575,6 +576,7 @@ export default function BangLuongPage() {
                         <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
                           <div>{empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}</div>
                           <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                            {(!bl.isProbation && !bl.isCollaborator && !bl.isIntern) && <span style={{ fontSize: '0.65rem', color: 'var(--primary)', background: 'var(--primary-bg)', padding: '1px 4px', borderRadius: 4 }}>Chính thức</span>}
                             {bl.isProbation && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '1px 4px', borderRadius: 4 }}>Thử việc</span>}
                             {bl.isCollaborator && <span style={{ fontSize: '0.65rem', color: '#6366f1', background: '#e0e7ff', padding: '1px 4px', borderRadius: 4 }}>CTV</span>}
                             {bl.isIntern && <span style={{ fontSize: '0.65rem', color: '#10b981', background: '#ecfdf5', padding: '1px 4px', borderRadius: 4 }}>Học viên</span>}
