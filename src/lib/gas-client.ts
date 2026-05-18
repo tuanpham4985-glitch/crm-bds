@@ -95,6 +95,14 @@ export async function triggerSyncTransactions() {
   return await postToGAS('syncTransactions');
 }
 
+export async function fetchPipeline() {
+  return await getFromGAS('getPipeline');
+}
+
+export async function triggerSyncPipeline() {
+  return await postToGAS('syncPipeline');
+}
+
 export async function fetchEmployees() {
   return await getFromGAS('getEmployees');
 }
