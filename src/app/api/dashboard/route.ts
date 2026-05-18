@@ -209,20 +209,26 @@ export async function GET(request: NextRequest) {
 
     const currentThangKeys = buildThangKeysInRange(dateRange.from, dateRange.to);
 
-    // Filter current period — primary: ngay_cap_nhat; fallback: thang column
+    // Extend "to" by 1 day buffer to absorb UTC+7 timezone offset.
+    // (Deals created at e.g. 11:00 VN time = 04:00 UTC, so server's "now" at 04:50 UTC
+    //  would place a 11:00 VN deal *in the future* if naively compared in UTC)
+    const toWithBuffer = new Date(dateRange.to);
+    toWithBuffer.setDate(toWithBuffer.getDate() + 1);
+
+    // Filter current period — PRIMARY: thang column (timezone-safe); FALLBACK: ngay_cap_nhat
     const currentPipelines = allPipelines.filter(pl => {
-      // Try to parse ngay_cap_nhat
-      if (pl.ngay_cap_nhat) {
-        const d = safeParseDate(pl.ngay_cap_nhat);
-        if (d && !isNaN(d.getTime())) {
-          return d >= dateRange.from && d <= dateRange.to;
-        }
-      }
-      // Fallback: use thang column (format MM-YYYY) if date parse failed or missing
+      // Primary: match by thang (format YYYY-MM or MM-YYYY) — no timezone issues
       if (pl.thang) {
         return currentThangKeys.has(pl.thang);
       }
-      // No date info at all → include (safer than excluding)
+      // Fallback: try to parse ngay_cap_nhat (add 1-day buffer to handle UTC+7 offset)
+      if (pl.ngay_cap_nhat) {
+        const d = safeParseDate(pl.ngay_cap_nhat);
+        if (d && !isNaN(d.getTime())) {
+          return d >= dateRange.from && d <= toWithBuffer;
+        }
+      }
+      // No date info at all → include
       return true;
     });
 
