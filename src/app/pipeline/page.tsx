@@ -12,7 +12,10 @@ import { GIAI_DOAN_PIPELINE, GIAI_DOAN_ACTIVE, GIAI_DOAN_COLORS } from '@/lib/co
 
 export default function PipelinePage() {
   const { user } = useAuth();
-  const canViewProfit = user && ['Admin', 'Chủ tịch', 'TGĐ'].includes(user.employee_type || '');
+  const canViewProfit = user && (
+    user.vai_tro === 'Admin' ||
+    ['Admin', 'Chủ tịch', 'TGĐ'].includes(user.employee_type || '')
+  );
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
   const [projects, setProjects] = useState<DuAn[]>([]);
