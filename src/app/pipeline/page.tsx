@@ -308,9 +308,9 @@ export default function PipelinePage() {
         </div>
       ) : (
         /* Table View */
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div className="table-wrapper">
-            <table className="data-table">
+        <div className="card" style={{ padding: 0, overflow: 'hidden', maxWidth: '100%' }}>
+          <div className="table-wrapper" style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+            <table className="data-table" style={{ minWidth: '850px' }}>
               <thead>
                 <tr>
                   <th>#</th>

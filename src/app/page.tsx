@@ -1046,18 +1046,18 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                       <div style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.5px' }}>DESTINATION:</div>
                       <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{level.title}</div>
                       
-                      <div style={{ display: 'flex', gap: '16px', marginTop: '4px' }}>
-                        <div>
-                          <span style={{ fontSize: '0.55rem', color: '#94a3b8', display: 'block', fontWeight: 600 }}>FLIGHT</span>
-                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1e293b' }}>VIC2026</span>
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'nowrap' }}>
+                        <div style={{ flexShrink: 0 }}>
+                          <span style={{ fontSize: '0.52rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>FLIGHT</span>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap' }}>VIC2026</span>
                         </div>
-                        <div>
-                          <span style={{ fontSize: '0.55rem', color: '#94a3b8', display: 'block', fontWeight: 600 }}>SEAT</span>
-                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1e293b' }}>01A / VIP</span>
+                        <div style={{ flexShrink: 0 }}>
+                          <span style={{ fontSize: '0.52rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>SEAT</span>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap' }}>01A/VIP</span>
                         </div>
-                        <div>
-                          <span style={{ fontSize: '0.55rem', color: '#94a3b8', display: 'block', fontWeight: 600 }}>CLASS</span>
-                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#d4af37' }}>FIRST</span>
+                        <div style={{ flexShrink: 0 }}>
+                          <span style={{ fontSize: '0.52rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>CLASS</span>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4af37', whiteSpace: 'nowrap' }}>FIRST</span>
                         </div>
                       </div>
                     </div>
