@@ -87,13 +87,6 @@ export async function postToGAS<T>(action: string, data: any = {}): Promise<GASR
 // EXAMPLES CÁC HÀM CRUD SỬ DỤNG GAS
 // =====================================
 
-export async function fetchTransactions() {
-  return await getFromGAS('getTransactions');
-}
-
-export async function triggerSyncTransactions() {
-  return await postToGAS('syncTransactions');
-}
 
 export async function fetchPipeline() {
   return await getFromGAS('getPipeline');
