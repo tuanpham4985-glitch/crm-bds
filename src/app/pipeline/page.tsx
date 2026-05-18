@@ -200,10 +200,35 @@ export default function PipelinePage() {
       <div className="page-header">
         <div className="page-header-left">
           <h1>Pipeline</h1>
-          <p>
-            {filteredPipelines.length} deal · Tổng giá trị: {formatCurrency(totalValue)}
-            {canViewProfit && ` · Tổng lợi nhuận: ${formatCurrency(totalProfit)}`}
-          </p>
+          <div style={{ fontSize: '0.9rem', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '12px', fontWeight: 700, fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              📊 {filteredPipelines.length} deal
+            </span>
+            <span style={{ color: '#cbd5e1' }}>·</span>
+            <span style={{ background: 'rgba(99, 102, 241, 0.08)', color: '#4f46e5', padding: '4px 10.5px', borderRadius: '12px', fontWeight: 700, fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              💰 Tổng giá trị: <span style={{ color: '#6366f1', fontWeight: 800 }}>{formatCurrency(totalValue)}</span>
+            </span>
+            {canViewProfit && (
+              <>
+                <span style={{ color: '#cbd5e1' }}>·</span>
+                <span style={{ 
+                  background: 'rgba(212, 175, 55, 0.15)', 
+                  color: '#b45309', 
+                  padding: '4px 12px', 
+                  borderRadius: '12px', 
+                  fontWeight: 800, 
+                  fontSize: '0.78rem',
+                  border: '1.5px solid rgba(212, 175, 55, 0.35)',
+                  boxShadow: '0 2px 5px rgba(212,175,55,0.15)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  💎 Tổng lợi nhuận: <span style={{ color: '#d97706', fontWeight: 900 }}>{formatCurrency(totalProfit)}</span>
+                </span>
+              </>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {/* View toggle */}
