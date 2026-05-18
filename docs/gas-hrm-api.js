@@ -345,8 +345,7 @@ function syncPipeline() {
       "phi_admin":        phiAdmin,
       "loi_nhuan":        loiNhuan,
       "ngay_cap_nhat":    now,
-      "thang":            Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM"),
-      "victory_synced_at": now
+      "thang":            Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM")
     };
 
     const rowValues = targetHeaders.map(h => writeObj[h] !== undefined ? writeObj[h] : "");

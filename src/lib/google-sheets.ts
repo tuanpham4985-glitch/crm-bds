@@ -568,7 +568,6 @@ export async function getPipeline(): Promise<Pipeline[]> {
         phi_tra_mkt: getNum('phi_tra_mkt'),
         phi_admin: getNum('phi_admin'),
         loi_nhuan: getNum('loi_nhuan'),
-        victory_synced_at: getVal('victory_synced_at'),
       } as Pipeline;
     })
     .filter((x): x is Pipeline => x !== null);
@@ -757,7 +756,6 @@ export async function addPipeline(pl: Pipeline): Promise<void> {
     loi_nhuan: pl.loi_nhuan || 0,
     ngay_cap_nhat: pl.ngay_cap_nhat,
     thang: thang,
-    victory_synced_at: pl.victory_synced_at || ''
   };
 
   // Build rowData bằng cách mapping qua header thực tế để an toàn tuyệt đối
@@ -821,7 +819,6 @@ export async function updatePipeline(pl: Pipeline): Promise<boolean> {
     loi_nhuan: pl.loi_nhuan || 0,
     ngay_cap_nhat: now,
     thang: toMonthKey(now),
-    victory_synced_at: pl.victory_synced_at || ''
   };
 
   // Cập nhật giá trị an toàn theo tên cột
