@@ -220,6 +220,27 @@ function syncPipeline() {
     if (maCan) targetMap[maCan] = i + 1;
   }
 
+  // 2b. Lấy map Dự án từ sheet 'DU_AN' để lookup tự động id_du_an theo ten_du_an
+  const duAnSheet = targetSpreadsheet.getSheetByName("DU_AN");
+  const duAnMap = {}; // { "vinhomes cần giờ": "DA-001" }
+  if (duAnSheet) {
+    const duAnData = duAnSheet.getDataRange().getValues();
+    if (duAnData.length > 1) {
+      const daHeaders = duAnData[0].map(h => String(h).trim());
+      const daIdCol = daHeaders.indexOf("id_du_an");
+      const daNameCol = daHeaders.indexOf("ten_du_an");
+      if (daIdCol !== -1 && daNameCol !== -1) {
+        for (let k = 1; k < duAnData.length; k++) {
+          const name = String(duAnData[k][daNameCol] || "").trim().toLowerCase();
+          const id = String(duAnData[k][daIdCol] || "").trim();
+          if (name && id) {
+            duAnMap[name] = id;
+          }
+        }
+      }
+    }
+  }
+
   // Helper lấy giá trị số từ ô sheet (xử lý cả string lẫn number)
   function toNum(val) {
     if (typeof val === "number") return val;
@@ -292,12 +313,15 @@ function syncPipeline() {
       })(maCan + "_" + duAn)
     ).toString(36).toUpperCase();
 
+    // Dò tìm id_du_an tự động dựa trên tên dự án
+    const resolvedDuAnId = duAnMap[duAn.toLowerCase()] || "";
+
     // Build object ghi xuống Pipeline theo đúng thứ tự header
     const writeObj = {
       "id_pipeline":      pipelineId,
       "id_khach_hang":    "",         // Không có trong Victory, giữ nguyên nếu đã có
       "giai_doan":        "",         // Giữ nguyên nếu đã có
-      "id_du_an":         "",         // Giữ nguyên nếu đã có
+      "id_du_an":         resolvedDuAnId,
       "ten_du_an":        duAn,
       "ma_can":           maCan,
       "loai_can":         loaiCan,
