@@ -320,7 +320,7 @@ function syncPipeline() {
     const writeObj = {
       "id_pipeline":      pipelineId,
       "id_khach_hang":    "",         // Không có trong Victory, giữ nguyên nếu đã có
-      "giai_doan":        "",         // Giữ nguyên nếu đã có
+      "giai_doan":        "Ký HĐ",    // Victory là giao dịch thực tế đã ký cọc/thành công
       "id_du_an":         resolvedDuAnId,
       "ten_du_an":        duAn,
       "ma_can":           maCan,
