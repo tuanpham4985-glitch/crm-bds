@@ -330,6 +330,11 @@ export default function DashboardPage() {
                 </div>
               )}
             </>
+          ) : (
+            <div className="empty-state">
+              <h3>Chưa có dữ liệu</h3>
+              <p>Chưa có deal nào được ký trong kỳ này</p>
+            </div>
           )}
         </div>
 
