@@ -147,6 +147,39 @@ function doPost(e) {
 // ==========================================
 
 // -----------------------------------------------
+// Hàm helper tự động phát hiện dòng Header thực tế trong file nguồn Victory
+// (Bỏ qua các dòng trống, dòng tiêu đề to, dòng gộp màu vàng...)
+// -----------------------------------------------
+function findHeaderAndData(sourceData) {
+  let headerRowIndex = 0;
+  
+  // Duyệt qua 10 dòng đầu để tìm dòng chứa tiêu đề
+  for (let i = 0; i < Math.min(sourceData.length, 10); i++) {
+    const rowStr = sourceData[i].map(cell => String(cell).toLowerCase()).join("|");
+    // Nhận diện dòng header dựa trên các cột đặc trưng của file Victory
+    if (rowStr.indexOf("stt") !== -1 || rowStr.indexOf("mã căn") !== -1 || rowStr.indexOf("dự án") !== -1 || rowStr.indexOf("ngày cọc") !== -1) {
+      headerRowIndex = i;
+      break;
+    }
+  }
+  
+  const headers = sourceData[headerRowIndex].map(h => String(h).trim());
+  const dataRows = [];
+  
+  for (let i = headerRowIndex + 1; i < sourceData.length; i++) {
+    // Chỉ lấy những dòng không rỗng hoàn toàn
+    if (sourceData[i].join("").trim() !== "") {
+      dataRows.push(sourceData[i]);
+    }
+  }
+  
+  return {
+    headers: headers,
+    data: dataRows
+  };
+}
+
+// -----------------------------------------------
 // Đồng bộ dữ liệu từ Victory vào sheet PIPELINE
 // -----------------------------------------------
 function syncPipeline() {
@@ -159,10 +192,13 @@ function syncPipeline() {
   const sourceSheet = sourceSpreadsheet.getSheetByName(CONFIG.SOURCE_SHEET_NAME);
   if (!sourceSheet) throw new Error(`Không tìm thấy sheet nguồn '${CONFIG.SOURCE_SHEET_NAME}'`);
 
-  const sourceData = sourceSheet.getDataRange().getValues();
-  if (sourceData.length <= 1) return { message: "Sheet nguồn rỗng hoặc chỉ có dòng tiêu đề." };
+  const sourceRawData = sourceSheet.getDataRange().getValues();
+  if (sourceRawData.length === 0) return { message: "Sheet nguồn rỗng." };
 
-  const sourceHeaders = sourceData[0].map(h => String(h).trim());
+  // Tự động phát hiện Header và tách Data
+  const parsedSource = findHeaderAndData(sourceRawData);
+  const sourceHeaders = parsedSource.headers;
+  const sourceData = parsedSource.data;
 
   // 2. Mở sheet Pipeline trong CRM_BDS
   const targetSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -205,7 +241,7 @@ function syncPipeline() {
   const now = new Date();
 
   // 3. Duyệt từng dòng nguồn, chuẩn hoá và upsert vào Pipeline
-  for (let i = 1; i < sourceData.length; i++) {
+  for (let i = 0; i < sourceData.length; i++) {
     const row = sourceData[i];
     if (row.join("").trim() === "") continue;
 
@@ -328,10 +364,13 @@ function syncSourceToCRM() {
   const sourceSheet = sourceSpreadsheet.getSheetByName(CONFIG.SOURCE_SHEET_NAME);
   if (!sourceSheet) throw new Error(`Không tìm thấy sheet nguồn '${CONFIG.SOURCE_SHEET_NAME}'`);
 
-  const sourceData = sourceSheet.getDataRange().getValues();
-  if (sourceData.length <= 1) return { message: "Sheet nguồn rỗng hoặc chỉ có dòng tiêu đề." };
+  const sourceRawData = sourceSheet.getDataRange().getValues();
+  if (sourceRawData.length === 0) return { message: "Sheet nguồn rỗng." };
 
-  const sourceHeaders = sourceData[0].map(h => String(h).trim());
+  // Tự động phát hiện Header và tách Data
+  const parsedSource = findHeaderAndData(sourceRawData);
+  const sourceHeaders = parsedSource.headers;
+  const sourceData = parsedSource.data;
 
   // 2. Chuẩn bị file đích CRM_BDS database
   const targetSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -372,7 +411,7 @@ function syncSourceToCRM() {
   const now = new Date();
 
   // 3. Tiến hành đồng bộ và chuẩn hoá từng dòng
-  for (let i = 1; i < sourceData.length; i++) {
+  for (let i = 0; i < sourceData.length; i++) {
     const sourceRow = sourceData[i];
 
     // Loại bỏ các dòng hoàn toàn rỗng
