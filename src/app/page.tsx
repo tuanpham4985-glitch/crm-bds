@@ -226,8 +226,8 @@ export default function DashboardPage() {
                   <div className="podium-container" style={{
                     background: 'radial-gradient(circle at center, #0b1329 0%, #030712 100%)',
                     borderRadius: '20px',
-                    padding: '60px 16px 20px',
-                    minHeight: '320px',
+                    padding: '50px 16px 20px',
+                    minHeight: '345px',
                     display: 'flex',
                     justifyContent: 'space-around',
                     alignItems: 'flex-end',
@@ -266,26 +266,44 @@ export default function DashboardPage() {
                         .slice(-2)
                         .join('');
 
-                      // 100% matching config to the provided mockup image
+                      // Premium 2-layer 3D Platform styles
                       const config: any = {
                         1: {
                           glow: 'rgba(251,191,36,0.3)',
-                          platformStyle: {
-                            width: '100px',
-                            height: '52px',
+                          platformTopStyle: {
+                            width: '105px',
+                            height: '24px',
+                            borderRadius: '50%',
                             background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(200,225,255,0.85) 100%)',
                             border: '1.5px solid #ffffff',
-                            clipPath: 'polygon(18% 0%, 82% 0%, 100% 30%, 82% 100%, 18% 100%, 0% 30%)',
-                            boxShadow: '0 0 35px rgba(251,191,36,0.55), inset 0 0 12px rgba(255,255,255,1)',
-                            position: 'relative'
+                            boxShadow: '0 0 15px rgba(255,255,255,0.8), inset 0 0 8px rgba(255,255,255,1)',
+                            zIndex: 3,
+                            transform: 'translateY(12px)'
+                          },
+                          platformFrontStyle: {
+                            width: '105px',
+                            height: '56px',
+                            background: 'linear-gradient(to bottom, rgba(219,234,254,0.8) 0%, rgba(147,197,253,0.5) 100%)',
+                            borderLeft: '1.5px solid #ffffff',
+                            borderRight: '1.5px solid #ffffff',
+                            borderBottom: '3.5px solid #fbbf24',
+                            borderBottomLeftRadius: '14px',
+                            borderBottomRightRadius: '14px',
+                            boxShadow: '0 8px 25px rgba(0,0,0,0.5), 0 0 30px rgba(251,191,36,0.3)',
+                            position: 'relative',
+                            zIndex: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
                           },
                           numberStyle: {
-                            background: 'linear-gradient(to bottom, #fff6cc, #d4af37)',
+                            background: 'linear-gradient(to bottom, #fff6cc, #fbbf24)',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
                             fontSize: '2.5rem',
                             fontWeight: 900,
-                            textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                            textShadow: '0 2px 5px rgba(0,0,0,0.5)',
+                            lineHeight: 1
                           },
                           avatarFrameStyle: {
                             width: '74px',
@@ -299,7 +317,7 @@ export default function DashboardPage() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             position: 'relative',
-                            zIndex: 2
+                            zIndex: 4
                           },
                           textColor: '#fde047',
                           crownEmoji: '👑',
@@ -307,14 +325,32 @@ export default function DashboardPage() {
                         },
                         2: {
                           glow: 'rgba(148,163,184,0.25)',
-                          platformStyle: {
-                            width: '90px',
+                          platformTopStyle: {
+                            width: '95px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%)',
+                            border: '1.5px solid rgba(255,255,255,0.4)',
+                            boxShadow: '0 0 10px rgba(255,255,255,0.3)',
+                            zIndex: 3,
+                            transform: 'translateY(10px)'
+                          },
+                          platformFrontStyle: {
+                            width: '95px',
                             height: '46px',
-                            background: 'linear-gradient(135deg, #475569 0%, #1e293b 100%)',
-                            border: '1.5px solid #94a3b8',
-                            clipPath: 'polygon(14% 0%, 86% 0%, 100% 35%, 82% 100%, 18% 100%, 0% 35%)',
-                            boxShadow: '0 0 25px rgba(148,163,184,0.35), inset 0 2px 5px rgba(255,255,255,0.25)',
-                            position: 'relative'
+                            background: 'linear-gradient(to bottom, #475569 0%, #1e293b 100%)',
+                            borderLeft: '1.5px solid #94a3b8',
+                            borderRight: '1.5px solid #94a3b8',
+                            borderBottom: '3px solid #cbd5e1',
+                            borderTop: '2px solid #38bdf8', // Khe LED xanh dương
+                            borderBottomLeftRadius: '12px',
+                            borderBottomRightRadius: '12px',
+                            boxShadow: '0 6px 20px rgba(0,0,0,0.5), 0 0 15px rgba(148,163,184,0.2)',
+                            position: 'relative',
+                            zIndex: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
                           },
                           numberStyle: {
                             background: 'linear-gradient(to bottom, #ffffff, #cbd5e1)',
@@ -323,6 +359,7 @@ export default function DashboardPage() {
                             fontSize: '2.0rem',
                             fontWeight: 900,
                             textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                            lineHeight: 1
                           },
                           avatarFrameStyle: {
                             width: '64px',
@@ -336,7 +373,7 @@ export default function DashboardPage() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             position: 'relative',
-                            zIndex: 2
+                            zIndex: 4
                           },
                           textColor: '#94a3b8',
                           crownEmoji: null,
@@ -344,14 +381,32 @@ export default function DashboardPage() {
                         },
                         3: {
                           glow: 'rgba(234,88,12,0.2)',
-                          platformStyle: {
-                            width: '86px',
-                            height: '42px',
-                            background: 'linear-gradient(135deg, #7c2d12 0%, #431407 100%)',
-                            border: '1.5px solid #ea580c',
-                            clipPath: 'polygon(14% 0%, 86% 0%, 100% 35%, 82% 100%, 18% 100%, 0% 35%)',
-                            boxShadow: '0 0 20px rgba(234,88,12,0.3), inset 0 2px 4px rgba(251,146,60,0.2)',
-                            position: 'relative'
+                          platformTopStyle: {
+                            width: '90px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #ea580c 0%, #9a3412 100%)',
+                            border: '1.5px solid rgba(251,146,60,0.3)',
+                            boxShadow: '0 0 8px rgba(234,88,12,0.2)',
+                            zIndex: 3,
+                            transform: 'translateY(9px)'
+                          },
+                          platformFrontStyle: {
+                            width: '90px',
+                            height: '40px',
+                            background: 'linear-gradient(to bottom, #7c2d12 0%, #431407 100%)',
+                            borderLeft: '1.5px solid #ea580c',
+                            borderRight: '1.5px solid #ea580c',
+                            borderBottom: '3px solid #b45309',
+                            borderTop: '2px solid #f97316', // Khe LED màu cam đồng
+                            borderBottomLeftRadius: '12px',
+                            borderBottomRightRadius: '12px',
+                            boxShadow: '0 6px 15px rgba(0,0,0,0.5), 0 0 10px rgba(234,88,12,0.15)',
+                            position: 'relative',
+                            zIndex: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
                           },
                           numberStyle: {
                             background: 'linear-gradient(to bottom, #ffedd5, #ea580c)',
@@ -360,6 +415,7 @@ export default function DashboardPage() {
                             fontSize: '1.8rem',
                             fontWeight: 900,
                             textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                            lineHeight: 1
                           },
                           avatarFrameStyle: {
                             width: '60px',
@@ -371,7 +427,7 @@ export default function DashboardPage() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             position: 'relative',
-                            zIndex: 2,
+                            zIndex: 4,
                             // Metallic bronze coin finish
                             background: 'radial-gradient(circle, #a16207 0%, #78350f 60%, #451a03 100%)'
                           },
@@ -400,7 +456,7 @@ export default function DashboardPage() {
                           {rank === 1 && (
                             <span 
                               style={{ 
-                                position: 'absolute', top: '-34px', zIndex: 10, fontSize: '1.9rem',
+                                position: 'absolute', top: '-26px', zIndex: 10, fontSize: '1.9rem',
                                 filter: 'drop-shadow(0 2px 8px rgba(251,191,36,0.8))'
                               }}
                             >
@@ -410,15 +466,16 @@ export default function DashboardPage() {
 
                           {/* Futuristic Upward Light Beam */}
                           <div style={{
-                            position: 'absolute', bottom: '25px', width: rank === 1 ? '90px' : '75px', height: '180px',
+                            position: 'absolute', bottom: '65px', width: rank === 1 ? '90px' : '75px', height: '160px',
                             background: config.beamBg,
-                            clipPath: 'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)',
+                            clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
                             pointerEvents: 'none',
-                            zIndex: 1
+                            zIndex: 1,
+                            opacity: 0.8
                           }} />
 
                           {/* Avatar Frame Container */}
-                          <div style={config.avatarFrameStyle}>
+                          <div style={{ ...config.avatarFrameStyle, marginBottom: '8px' }}>
                             <div style={{
                               width: '100%',
                               height: '100%',
@@ -469,7 +526,7 @@ export default function DashboardPage() {
                             fontWeight: 800,
                             color: '#e2b857',
                             textAlign: 'center',
-                            marginTop: '12px',
+                            marginTop: '4px',
                             width: '100%',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -491,7 +548,8 @@ export default function DashboardPage() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             zIndex: 3,
-                            boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                            marginBottom: '12px'
                           }}>
                             <span style={{
                               fontSize: rank === 1 ? '0.75rem' : '0.7rem',
@@ -505,11 +563,23 @@ export default function DashboardPage() {
                             </span>
                           </div>
 
-                          {/* 3D Isometric Platform */}
-                          <div style={{ ...config.platformStyle, marginTop: '12px', zIndex: 2 }}>
-                            {/* Sparkling 3D Rank Number centered on the platform front */}
-                            <div style={config.numberStyle}>
-                              {rank}
+                          {/* 3D Platform Container (2 Layers: Platform Top + Platform Front) */}
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            width: '100%',
+                            position: 'relative',
+                            zIndex: 2
+                          }}>
+                            {/* Platform Top (Ellipse) */}
+                            <div style={config.platformTopStyle} />
+                            
+                            {/* Platform Front (Rectangle containing Rank Number centered) */}
+                            <div style={config.platformFrontStyle}>
+                              <div style={config.numberStyle}>
+                                {rank}
+                              </div>
                             </div>
                           </div>
                         </div>
