@@ -186,40 +186,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Bottom Row */}
+      {/* Middle Row: BXH Sale & Vinh Danh Champion */}
       <div className="charts-grid">
-        {/* Nguồn khách hàng */}
-        <div className="chart-card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">Nguồn khách hàng</div>
-              <div className="card-subtitle">Phân bổ theo nguồn</div>
-            </div>
-          </div>
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={data.nguon_khach_hang}
-                  dataKey="so_luong"
-                  nameKey="nguon"
-                  cx="50%" cy="50%"
-                  outerRadius={100}
-                  innerRadius={50}
-                  strokeWidth={2}
-                  stroke="#fff"
-                >
-                  {data.nguon_khach_hang.map((_, index) => (
-                    <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
         {/* BXH Sale - Podium + List */}
         <div className="chart-card">
           <div className="card-header">
@@ -362,17 +330,50 @@ export default function DashboardPage() {
                 </div>
               )}
             </>
-          ) : (
-            <div className="empty-state">
-              <h3>Chưa có dữ liệu</h3>
-              <p>Chưa có deal nào được ký trong kỳ này</p>
-            </div>
           )}
         </div>
+
+        {/* Vinh danh Global Champion */}
+        <GlobalChampionWidget data={data.doanh_thu_theo_sale} />
       </div>
 
-      {/* Sinh nhật nhân viên tháng này */}
-      <BirthdayWidget employees={data.sinh_nhat_thang_nay} />
+      {/* Bottom Row: Nguồn khách hàng & Sinh nhật */}
+      <div className="charts-grid" style={{ marginTop: 24 }}>
+        {/* Nguồn khách hàng */}
+        <div className="chart-card">
+          <div className="card-header">
+            <div>
+              <div className="card-title">Nguồn khách hàng</div>
+              <div className="card-subtitle">Phân bổ theo nguồn</div>
+            </div>
+          </div>
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie
+                  data={data.nguon_khach_hang}
+                  dataKey="so_luong"
+                  nameKey="nguon"
+                  cx="50%" cy="50%"
+                  outerRadius={100}
+                  innerRadius={50}
+                  strokeWidth={2}
+                  stroke="#fff"
+                >
+                  {data.nguon_khach_hang.map((_, index) => (
+                    <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Sinh nhật nhân viên tháng này */}
+        <BirthdayWidget employees={data.sinh_nhat_thang_nay} />
+      </div>
     </div>
   );
 }
@@ -544,6 +545,162 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Global Champion Widget Component ───────────────────────────────────────
+function GlobalChampionWidget({ data }: { data: any[] }) {
+  // Mốc doanh thu
+  const LEVELS = [
+    {
+      id: 'europe',
+      target: 168000000000, // 168 tỷ
+      title: 'EUROPE TOUR',
+      condition: '168 TỶ',
+      bgImg: 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?q=80&w=800&auto=format&fit=crop',
+      color: '#fbbf24',
+      badge: '👑 Đẳng Cấp Châu Âu'
+    },
+    {
+      id: 'japan',
+      target: 80000000000, // 80 tỷ
+      title: 'JAPAN',
+      condition: '80 TỶ',
+      bgImg: 'https://images.unsplash.com/photo-1490806843957-31f4c9a91c65?q=80&w=800&auto=format&fit=crop',
+      color: '#38bdf8',
+      badge: '🌸 Chuyến Đi Nhật Bản'
+    },
+    {
+      id: 'singapore',
+      target: 36000000000, // 36 tỷ
+      title: 'SINGAPORE - MALAYSIA',
+      condition: '36 TỶ',
+      bgImg: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?q=80&w=800&auto=format&fit=crop',
+      color: '#f472b6',
+      badge: '✈️ Hành Trình Sing-Mã'
+    }
+  ];
+
+  // Phân loại sale theo mốc đạt được
+  const achievers = {
+    europe: [] as any[],
+    japan: [] as any[],
+    singapore: [] as any[]
+  };
+
+  data.forEach(sale => {
+    if (sale.doanh_thu >= LEVELS[0].target) achievers.europe.push(sale);
+    else if (sale.doanh_thu >= LEVELS[1].target) achievers.japan.push(sale);
+    else if (sale.doanh_thu >= LEVELS[2].target) achievers.singapore.push(sale);
+  });
+
+  return (
+    <div className="chart-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{
+        padding: '24px 24px 20px',
+        background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+        color: '#fff',
+        borderBottom: '4px solid #fbbf24'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ color: '#fbbf24', fontSize: '0.85rem', fontWeight: 700, letterSpacing: 2, marginBottom: 4 }}>
+              CỰC CHIẾN 2026
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>
+              Global Champion ✈️
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>VICTORY AIRLINES</div>
+            <div style={{ fontSize: '1.5rem' }}>🎫</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: '#f8fafc', overflowY: 'auto' }}>
+        {LEVELS.map(level => {
+          const list = achievers[level.id as keyof typeof achievers];
+          
+          return (
+            <div key={level.id} style={{
+              borderRadius: '16px',
+              overflow: 'hidden',
+              boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+              background: '#fff',
+              position: 'relative'
+            }}>
+              {/* Boarding Pass Ticket Header */}
+              <div style={{
+                height: '110px',
+                backgroundImage: `url(${level.bgImg})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'flex-end',
+                padding: '16px'
+              }}>
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.1) 100%)'
+                }} />
+                
+                <div style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <div>
+                    <div style={{ color: level.color, fontSize: '0.75rem', fontWeight: 700, marginBottom: 2 }}>{level.badge}</div>
+                    <div style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 800, letterSpacing: 1 }}>{level.title}</div>
+                  </div>
+                  <div style={{ 
+                    background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(4px)',
+                    padding: '4px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.4)',
+                    color: '#fff', fontWeight: 800, fontSize: '1.1rem'
+                  }}>
+                    {level.condition}
+                  </div>
+                </div>
+              </div>
+
+              {/* Achievers List */}
+              <div style={{ padding: '16px' }}>
+                {list.length === 0 ? (
+                  <div style={{ fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center', padding: '12px 0', fontStyle: 'italic' }}>
+                    Chưa có chiến binh đạt mốc này
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                    {list.map(emp => {
+                      const initials = emp.nhan_vien.split(' ').map((w: string) => w[0]).slice(-2).join('');
+                      return (
+                        <div key={emp.nhan_vien} style={{
+                          display: 'flex', alignItems: 'center', gap: '8px',
+                          background: '#f1f5f9', padding: '6px 12px 6px 6px', borderRadius: '30px',
+                          border: `1px solid ${level.color}40`
+                        }}>
+                          {emp.avatar_url ? (
+                            <img src={emp.avatar_url} alt={emp.nhan_vien} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ 
+                              width: 28, height: 28, borderRadius: '50%', background: level.color, 
+                              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 
+                            }}>
+                              {initials}
+                            </div>
+                          )}
+                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>
+                            {emp.nhan_vien}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
