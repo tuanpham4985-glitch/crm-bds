@@ -179,29 +179,75 @@ export async function GET(request: NextRequest) {
       dateRange.to = new Date(toParam + 'T23:59:59');
     }
 
-    // Filter current period
+    // Debug: log first 3 pipelines to trace what data arrives from Sheets
+    if (allPipelines.length > 0) {
+      console.log('[Dashboard] Sample pipeline rows:',
+        allPipelines.slice(0, 3).map(p => ({
+          id: p.id_pipeline,
+          giai_doan: p.giai_doan,
+          ngay_cap_nhat: p.ngay_cap_nhat,
+          thang: p.thang,
+          sale: p.sale_phu_trach,
+          gia_tri: p.gia_tri_thuc_te,
+        }))
+      );
+    }
+
+    // Build current-period thang keys — both formats: MM-YYYY (CRM) and YYYY-MM (Victory/Apps Script)
+    function buildThangKeysInRange(from: Date, to: Date): Set<string> {
+      const keys = new Set<string>();
+      const cur = new Date(from.getFullYear(), from.getMonth(), 1);
+      while (cur <= to) {
+        const mm = String(cur.getMonth() + 1).padStart(2, '0');
+        const yyyy = String(cur.getFullYear());
+        keys.add(`${mm}-${yyyy}`);   // format: 05-2026
+        keys.add(`${yyyy}-${mm}`);   // format: 2026-05
+        cur.setMonth(cur.getMonth() + 1);
+      }
+      return keys;
+    }
+
+    const currentThangKeys = buildThangKeysInRange(dateRange.from, dateRange.to);
+
+    // Filter current period — primary: ngay_cap_nhat; fallback: thang column
     const currentPipelines = allPipelines.filter(pl => {
-      if (!pl.ngay_cap_nhat) return true; // include if no date
-      const d = safeParseDate(pl.ngay_cap_nhat);
-      if (!d) return false;
-      return d >= dateRange.from && d <= dateRange.to;
+      // Try to parse ngay_cap_nhat
+      if (pl.ngay_cap_nhat) {
+        const d = safeParseDate(pl.ngay_cap_nhat);
+        if (d && !isNaN(d.getTime())) {
+          return d >= dateRange.from && d <= dateRange.to;
+        }
+      }
+      // Fallback: use thang column (format MM-YYYY) if date parse failed or missing
+      if (pl.thang) {
+        return currentThangKeys.has(pl.thang);
+      }
+      // No date info at all → include (safer than excluding)
+      return true;
     });
 
     // Filter previous period for comparison
+    const prevThangKeys = compare ? buildThangKeysInRange(dateRange.prevFrom, dateRange.prevTo) : new Set<string>();
     const prevPipelines = compare ? allPipelines.filter(pl => {
-      if (!pl.ngay_cap_nhat) return false;
-      const d = safeParseDate(pl.ngay_cap_nhat);
-      if (!d) return false;
-      if (compare === 'yoy') {
-        // Same period, previous year
-        const yoyFrom = new Date(dateRange.from);
-        yoyFrom.setFullYear(yoyFrom.getFullYear() - 1);
-        const yoyTo = new Date(dateRange.to);
-        yoyTo.setFullYear(yoyTo.getFullYear() - 1);
-        return d >= yoyFrom && d <= yoyTo;
+      if (pl.ngay_cap_nhat) {
+        const d = safeParseDate(pl.ngay_cap_nhat);
+        if (d && !isNaN(d.getTime())) {
+          if (compare === 'yoy') {
+            const yoyFrom = new Date(dateRange.from);
+            yoyFrom.setFullYear(yoyFrom.getFullYear() - 1);
+            const yoyTo = new Date(dateRange.to);
+            yoyTo.setFullYear(yoyTo.getFullYear() - 1);
+            return d >= yoyFrom && d <= yoyTo;
+          }
+          return d >= dateRange.prevFrom && d <= dateRange.prevTo;
+        }
       }
-      return d >= dateRange.prevFrom && d <= dateRange.prevTo;
+      if (pl.thang) return prevThangKeys.has(pl.thang);
+      return false;
     }) : [];
+
+    console.log(`[Dashboard] Period: ${period}, current: ${currentPipelines.length} pipelines, prevPipelines: ${prevPipelines.length}`);
+    console.log(`[Dashboard] currentThangKeys: ${[...currentThangKeys].join(', ')}`);
 
     // KPI calculations
     const daKy = currentPipelines.filter(pl => pl.giai_doan === 'Ký HĐ');
