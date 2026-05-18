@@ -502,25 +502,73 @@ export async function getPipeline(): Promise<Pipeline[]> {
   return rows
     .map(row => {
       const v = row.toObject();
-      const id = str(v[h[0]]);
+      
+      // Helper đọc cột theo tên chữ một cách an toàn và bền vững
+      const getVal = (colName: string) => {
+        // Tìm cột có tên khớp hoặc fallback theo index cũ nếu không tìm thấy
+        if (h.includes(colName)) return str(v[colName]);
+        // Fallback backward-compatibility
+        const idx = [
+          'id_pipeline', 'id_khach_hang', 'giai_doan', 'gia_tri_thuc_te',
+          'sale_phu_trach', 'id_du_an', 'ten_du_an', 'hoa_hong', 'tien_hoa_hong',
+          'ngay_cap_nhat', 'thang'
+        ].indexOf(colName);
+        if (idx !== -1 && h[idx]) return str(v[h[idx]]);
+        return '';
+      };
+
+      const getNum = (colName: string) => {
+        if (h.includes(colName)) return num(v[colName]);
+        const idx = [
+          'id_pipeline', 'id_khach_hang', 'giai_doan', 'gia_tri_thuc_te',
+          'sale_phu_trach', 'id_du_an', 'ten_du_an', 'hoa_hong', 'tien_hoa_hong',
+          'ngay_cap_nhat', 'thang'
+        ].indexOf(colName);
+        if (idx !== -1 && h[idx]) return num(v[h[idx]]);
+        return 0;
+      };
+
+      const id = getVal('id_pipeline');
       if (!id) return null;
-      const ngayCapNhat = str(v[h[9]]);
-      let thang = str(v[h[10]]);
+
+      const ngayCapNhat = getVal('ngay_cap_nhat');
+      let thang = getVal('thang');
       if (!thang || thang === 'Invalid Date' || thang === '[object Object]') {
         thang = toMonthKey(ngayCapNhat);
       }
+
       return {
         id_pipeline: id,
-        id_khach_hang: str(v[h[1]]),
-        giai_doan: str(v[h[2]]),
-        gia_tri_thuc_te: num(v[h[3]]),
-        sale_phu_trach: str(v[h[4]]),
-        id_du_an: str(v[h[5]]),
-        ten_du_an: str(v[h[6]]),
-        hoa_hong: num(v[h[7]]),
-        tien_hoa_hong: num(v[h[8]]),
+        id_khach_hang: getVal('id_khach_hang'),
+        giai_doan: getVal('giai_doan'),
+        gia_tri_thuc_te: getNum('gia_tri_thuc_te'),
+        sale_phu_trach: getVal('sale_phu_trach'),
+        id_du_an: getVal('id_du_an'),
+        ten_du_an: getVal('ten_du_an'),
+        hoa_hong: getNum('hoa_hong'),
+        tien_hoa_hong: getNum('tien_hoa_hong'),
         ngay_cap_nhat: ngayCapNhat,
         thang,
+
+        // Các cột mới đồng bộ từ Victory
+        ma_can: getVal('ma_can'),
+        loai_can: getVal('loai_can'),
+        gdda: getVal('gdda'),
+        gdkd: getVal('gdkd'),
+        phong_kd: getVal('phong_kd'),
+        ty_le_tra_sale: getNum('ty_le_tra_sale'),
+        ty_le_kh: getNum('ty_le_kh'),
+        ty_le_gdda: getNum('ty_le_gdda'),
+        ty_le_gdkd: getNum('ty_le_gdkd'),
+        ty_le_mkt: getNum('ty_le_mkt'),
+        phi_tra_sale: getNum('phi_tra_sale'),
+        phi_tra_kh: getNum('phi_tra_kh'),
+        phi_tra_gdda: getNum('phi_tra_gdda'),
+        phi_tra_gdkd: getNum('phi_tra_gdkd'),
+        phi_tra_mkt: getNum('phi_tra_mkt'),
+        phi_admin: getNum('phi_admin'),
+        loi_nhuan: getNum('loi_nhuan'),
+        victory_synced_at: getVal('victory_synced_at'),
       } as Pipeline;
     })
     .filter((x): x is Pipeline => x !== null);
@@ -677,13 +725,59 @@ export async function addPipeline(pl: Pipeline): Promise<void> {
   const sheet = await getSheet(doc, SHEETS.PIPELINE);
   const h = sheet.headerValues;
   const thang = pl.thang || toMonthKey(pl.ngay_cap_nhat);
-  await sheet.addRow({
-    [h[0]]: pl.id_pipeline, [h[1]]: pl.id_khach_hang, [h[2]]: pl.giai_doan,
-    [h[3]]: pl.gia_tri_thuc_te, [h[4]]: pl.sale_phu_trach, [h[5]]: pl.id_du_an,
-    [h[6]]: pl.ten_du_an, [h[7]]: pl.hoa_hong,
-    [h[8]]: pl.gia_tri_thuc_te * pl.hoa_hong,
-    [h[9]]: pl.ngay_cap_nhat, [h[10]]: thang,
-  });
+
+  // Chuẩn bị dòng ghi động theo tên cột chữ (hoặc fallback nếu cột chưa có)
+  const rowData: Record<string, any> = {};
+  const schema = {
+    id_pipeline: pl.id_pipeline,
+    id_khach_hang: pl.id_khach_hang,
+    giai_doan: pl.giai_doan,
+    id_du_an: pl.id_du_an,
+    ten_du_an: pl.ten_du_an,
+    ma_can: pl.ma_can || '',
+    loai_can: pl.loai_can || '',
+    gia_tri_thuc_te: pl.gia_tri_thuc_te,
+    hoa_hong: pl.hoa_hong,
+    tien_hoa_hong: pl.tien_hoa_hong || (pl.gia_tri_thuc_te * pl.hoa_hong),
+    sale_phu_trach: pl.sale_phu_trach,
+    gdda: pl.gdda || '',
+    gdkd: pl.gdkd || '',
+    phong_kd: pl.phong_kd || '',
+    ty_le_tra_sale: pl.ty_le_tra_sale || 0,
+    ty_le_kh: pl.ty_le_kh || 0,
+    ty_le_gdda: pl.ty_le_gdda || 0,
+    ty_le_gdkd: pl.ty_le_gdkd || 0,
+    ty_le_mkt: pl.ty_le_mkt || 0,
+    phi_tra_sale: pl.phi_tra_sale || 0,
+    phi_tra_kh: pl.phi_tra_kh || 0,
+    phi_tra_gdda: pl.phi_tra_gdda || 0,
+    phi_tra_gdkd: pl.phi_tra_gdkd || 0,
+    phi_tra_mkt: pl.phi_tra_mkt || 0,
+    phi_admin: pl.phi_admin || 0,
+    loi_nhuan: pl.loi_nhuan || 0,
+    ngay_cap_nhat: pl.ngay_cap_nhat,
+    thang: thang,
+    victory_synced_at: pl.victory_synced_at || ''
+  };
+
+  // Build rowData bằng cách mapping qua header thực tế để an toàn tuyệt đối
+  for (const colName of Object.keys(schema)) {
+    if (h.includes(colName)) {
+      rowData[colName] = (schema as any)[colName];
+    } else {
+      // Fallback theo vị trí cũ của 11 cột nguyên bản
+      const oldIdx = [
+        'id_pipeline', 'id_khach_hang', 'giai_doan', 'gia_tri_thuc_te',
+        'sale_phu_trach', 'id_du_an', 'ten_du_an', 'hoa_hong', 'tien_hoa_hong',
+        'ngay_cap_nhat', 'thang'
+      ].indexOf(colName);
+      if (oldIdx !== -1 && h[oldIdx]) {
+        rowData[h[oldIdx]] = (schema as any)[colName];
+      }
+    }
+  }
+
+  await sheet.addRow(rowData);
   await addLog(doc, 'CREATE_PIPELINE', pl.id_pipeline, pl.id_khach_hang, '');
 }
 
@@ -693,16 +787,60 @@ export async function updatePipeline(pl: Pipeline): Promise<boolean> {
   const rows = await sheet.getRows();
   const h = sheet.headerValues;
 
-  const row = rows.find(r => str(r.toObject()[h[0]]) === pl.id_pipeline);
+  // Xác định cột ID
+  const idCol = h.includes('id_pipeline') ? 'id_pipeline' : h[0];
+  const row = rows.find(r => str(r.toObject()[idCol]) === pl.id_pipeline);
   if (!row) return false;
 
   const now = new Date().toISOString();
-  row.set(h[1], pl.id_khach_hang); row.set(h[2], pl.giai_doan);
-  row.set(h[3], pl.gia_tri_thuc_te); row.set(h[4], pl.sale_phu_trach);
-  row.set(h[5], pl.id_du_an); row.set(h[6], pl.ten_du_an);
-  row.set(h[7], pl.hoa_hong);
-  row.set(h[8], pl.gia_tri_thuc_te * pl.hoa_hong);
-  row.set(h[9], now); row.set(h[10], toMonthKey(now));
+  const schema = {
+    id_khach_hang: pl.id_khach_hang,
+    giai_doan: pl.giai_doan,
+    id_du_an: pl.id_du_an,
+    ten_du_an: pl.ten_du_an,
+    ma_can: pl.ma_can || '',
+    loai_can: pl.loai_can || '',
+    gia_tri_thuc_te: pl.gia_tri_thuc_te,
+    hoa_hong: pl.hoa_hong,
+    tien_hoa_hong: pl.tien_hoa_hong || (pl.gia_tri_thuc_te * pl.hoa_hong),
+    sale_phu_trach: pl.sale_phu_trach,
+    gdda: pl.gdda || '',
+    gdkd: pl.gdkd || '',
+    phong_kd: pl.phong_kd || '',
+    ty_le_tra_sale: pl.ty_le_tra_sale || 0,
+    ty_le_kh: pl.ty_le_kh || 0,
+    ty_le_gdda: pl.ty_le_gdda || 0,
+    ty_le_gdkd: pl.ty_le_gdkd || 0,
+    ty_le_mkt: pl.ty_le_mkt || 0,
+    phi_tra_sale: pl.phi_tra_sale || 0,
+    phi_tra_kh: pl.phi_tra_kh || 0,
+    phi_tra_gdda: pl.phi_tra_gdda || 0,
+    phi_tra_gdkd: pl.phi_tra_gdkd || 0,
+    phi_tra_mkt: pl.phi_tra_mkt || 0,
+    phi_admin: pl.phi_admin || 0,
+    loi_nhuan: pl.loi_nhuan || 0,
+    ngay_cap_nhat: now,
+    thang: toMonthKey(now),
+    victory_synced_at: pl.victory_synced_at || ''
+  };
+
+  // Cập nhật giá trị an toàn theo tên cột
+  for (const colName of Object.keys(schema)) {
+    if (h.includes(colName)) {
+      row.set(colName, (schema as any)[colName]);
+    } else {
+      // Fallback theo vị trí cũ của 11 cột nguyên bản
+      const oldIdx = [
+        'id_pipeline', 'id_khach_hang', 'giai_doan', 'gia_tri_thuc_te',
+        'sale_phu_trach', 'id_du_an', 'ten_du_an', 'hoa_hong', 'tien_hoa_hong',
+        'ngay_cap_nhat', 'thang'
+      ].indexOf(colName);
+      if (oldIdx !== -1 && h[oldIdx]) {
+        row.set(h[oldIdx], (schema as any)[colName]);
+      }
+    }
+  }
+
   await row.save();
   await addLog(doc, 'UPDATE_PIPELINE', pl.id_pipeline, '', '');
   return true;
@@ -714,7 +852,8 @@ export async function deletePipeline(id: string): Promise<boolean> {
   const rows = await sheet.getRows();
   const h = sheet.headerValues;
 
-  const row = rows.find(r => str(r.toObject()[h[0]]) === id);
+  const idCol = h.includes('id_pipeline') ? 'id_pipeline' : h[0];
+  const row = rows.find(r => str(r.toObject()[idCol]) === id);
   if (!row) return false;
   await row.delete();
   await addLog(doc, 'DELETE_PIPELINE', id, '', '');

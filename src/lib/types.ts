@@ -102,6 +102,26 @@ export interface Pipeline {
   tien_hoa_hong: number;
   ngay_cap_nhat: string;
   thang: string;
+
+  // Các trường bổ sung đồng bộ từ Victory
+  ma_can?: string;
+  loai_can?: string;
+  gdda?: string;
+  gdkd?: string;
+  phong_kd?: string;
+  ty_le_tra_sale?: number;
+  ty_le_kh?: number;
+  ty_le_gdda?: number;
+  ty_le_gdkd?: number;
+  ty_le_mkt?: number;
+  phi_tra_sale?: number;
+  phi_tra_kh?: number;
+  phi_tra_gdda?: number;
+  phi_tra_gdkd?: number;
+  phi_tra_mkt?: number;
+  phi_admin?: number;
+  loi_nhuan?: number;
+  victory_synced_at?: string;
 }
 
 // === CÔNG VIỆC ===
