@@ -51,6 +51,35 @@ function parseBirthDate(raw: string): { day: number; month: number; year: number
   return null;
 }
 
+/**
+ * Parse date safely supporting ISO, US and Vietnamese DD/MM/YYYY formats.
+ */
+function safeParseDate(s: string): Date | null {
+  if (!s) return null;
+  const strVal = s.trim();
+  if (!strVal) return null;
+
+  // 1. Try native Date parsing (ISO, etc.)
+  let d = new Date(strVal);
+  if (!isNaN(d.getTime())) return d;
+
+  // 2. Try DD/MM/YYYY HH:mm:ss format
+  const match = strVal.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})(?:\s+(\d{1,2}):(\d{1,2}):?(\d{1,2})?)?/);
+  if (match) {
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1; // 0-based
+    const year = parseInt(match[3], 10);
+    const hour = match[4] ? parseInt(match[4], 10) : 0;
+    const min = match[5] ? parseInt(match[5], 10) : 0;
+    const sec = match[6] ? parseInt(match[6], 10) : 0;
+    
+    d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  return null;
+}
+
 function getDateRange(period: string): { from: Date; to: Date; prevFrom: Date; prevTo: Date } {
   const now = new Date();
   const to = new Date(now);
@@ -153,14 +182,16 @@ export async function GET(request: NextRequest) {
     // Filter current period
     const currentPipelines = allPipelines.filter(pl => {
       if (!pl.ngay_cap_nhat) return true; // include if no date
-      const d = new Date(pl.ngay_cap_nhat);
+      const d = safeParseDate(pl.ngay_cap_nhat);
+      if (!d) return false;
       return d >= dateRange.from && d <= dateRange.to;
     });
 
     // Filter previous period for comparison
     const prevPipelines = compare ? allPipelines.filter(pl => {
       if (!pl.ngay_cap_nhat) return false;
-      const d = new Date(pl.ngay_cap_nhat);
+      const d = safeParseDate(pl.ngay_cap_nhat);
+      if (!d) return false;
       if (compare === 'yoy') {
         // Same period, previous year
         const yoyFrom = new Date(dateRange.from);
