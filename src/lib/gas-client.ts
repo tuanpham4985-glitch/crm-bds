@@ -91,6 +91,10 @@ export async function fetchTransactions() {
   return await getFromGAS('getTransactions');
 }
 
+export async function triggerSyncTransactions() {
+  return await postToGAS('syncTransactions');
+}
+
 export async function fetchEmployees() {
   return await getFromGAS('getEmployees');
 }
