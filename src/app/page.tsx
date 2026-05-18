@@ -245,7 +245,7 @@ export default function DashboardPage() {
                 <>
                   <div className="leaderboard-divider" />
                   <div className="leaderboard-list">
-                    {data.doanh_thu_theo_sale.slice(3).map((sale, i) => {
+                    {data.doanh_thu_theo_sale.slice(3, 10).map((sale, i) => {
                       const rank = i + 4;
                       const AVATAR_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#14b8a6'];
                       const color = AVATAR_COLORS[(rank - 1) % AVATAR_COLORS.length];
