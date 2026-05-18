@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import {
   Plus, Edit3, Trash2, X, LayoutGrid, List, GripVertical,
   Users, Calendar, DollarSign, SlidersHorizontal
@@ -10,6 +11,8 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { GIAI_DOAN_PIPELINE, GIAI_DOAN_ACTIVE, GIAI_DOAN_COLORS } from '@/lib/constants';
 
 export default function PipelinePage() {
+  const { user } = useAuth();
+  const canViewProfit = user && ['Admin', 'Chủ tịch', 'TGĐ'].includes(user.employee_type || '');
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
   const [projects, setProjects] = useState<DuAn[]>([]);
@@ -186,6 +189,7 @@ export default function PipelinePage() {
   // Summary stats for active stages
   const activeDeals = filteredPipelines.filter(pl => GIAI_DOAN_ACTIVE.includes(pl.giai_doan as typeof GIAI_DOAN_ACTIVE[number]));
   const totalValue = activeDeals.reduce((s, pl) => s + pl.gia_tri_thuc_te, 0);
+  const totalProfit = activeDeals.reduce((s, pl) => s + (pl.loi_nhuan || 0), 0);
 
   return (
     <div>
@@ -193,7 +197,10 @@ export default function PipelinePage() {
       <div className="page-header">
         <div className="page-header-left">
           <h1>Pipeline</h1>
-          <p>{filteredPipelines.length} deal · Tổng giá trị: {formatCurrency(totalValue)}</p>
+          <p>
+            {filteredPipelines.length} deal · Tổng giá trị: {formatCurrency(totalValue)}
+            {canViewProfit && ` · Tổng lợi nhuận: ${formatCurrency(totalProfit)}`}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {/* View toggle */}
@@ -270,7 +277,14 @@ export default function PipelinePage() {
                         <GripVertical size={14} style={{ color: 'var(--text-label)', opacity: 0.5 }} />
                       </div>
                       <div className="kanban-card-project">{pl.ten_du_an || '—'}</div>
-                      <div className="kanban-card-value">{formatCurrency(pl.gia_tri_thuc_te)}</div>
+                      <div className="kanban-card-value" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>DT: {formatCurrency(pl.gia_tri_thuc_te)}</span>
+                        {canViewProfit && (
+                          <span style={{ color: 'var(--success-text)', fontSize: '0.72rem', fontWeight: 600 }}>
+                            LN: {formatCurrency(pl.loi_nhuan || 0)}
+                          </span>
+                        )}
+                      </div>
                       <div className="kanban-card-footer">
                         <span className="flex items-center gap-2">
                           <Users size={11} />{pl.sale_phu_trach || '—'}
