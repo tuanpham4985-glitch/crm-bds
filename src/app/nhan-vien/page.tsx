@@ -365,24 +365,38 @@ export default function NhanVienPage() {
   const renderAvatar = (nv: NhanVien, size = 36) => {
     if (nv.avatar_url) {
       return (
-        <img
-          src={nv.avatar_url}
-          alt={nv.ho_ten}
-          style={{
-            width: size,
-            height: size,
-            borderRadius: '50%',
-            objectFit: 'cover',
-            flexShrink: 0,
-          }}
-          // If Google Drive image fails, fallback to initials
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.style.display = 'none';
-            const fallback = target.nextElementSibling as HTMLElement;
-            if (fallback) fallback.style.display = 'flex';
-          }}
-        />
+        <div style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          border: '1.5px solid var(--border-light, #e2e8f0)',
+          background: '#f8fafc'
+        }}>
+          <img
+            src={nv.avatar_url}
+            alt={nv.ho_ten}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+            // If Google Drive image fails, fallback to initials
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              const container = target.parentElement as HTMLElement;
+              if (container) {
+                container.style.display = 'none';
+                const fallback = container.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
+              }
+            }}
+          />
+        </div>
       );
     }
     return null;
@@ -627,19 +641,27 @@ export default function NhanVienPage() {
               <div className="form-group" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
                 <div style={{ position: 'relative', marginBottom: 12 }}>
                   {/* Avatar preview */}
-                  {form.avatar_url ? (
-                    <img
-                      src={form.avatar_url}
-                      alt="Avatar preview"
-                      style={{
-                        width: 80, height: 80, borderRadius: '50%',
-                        objectFit: 'cover', border: '3px solid var(--border)',
-                      }}
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                      }}
-                    />
+                   {form.avatar_url ? (
+                    <div style={{
+                      width: 80, height: 80, borderRadius: '50%',
+                      overflow: 'hidden', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      border: '3px solid var(--border)',
+                    }}>
+                      <img
+                        src={form.avatar_url}
+                        alt="Avatar preview"
+                        style={{
+                          width: '100%', height: '100%',
+                          objectFit: 'cover',
+                        }}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          const container = target.parentElement as HTMLElement;
+                          if (container) container.style.display = 'none';
+                        }}
+                      />
+                    </div>
                   ) : (
                     <div style={{
                       width: 80, height: 80, borderRadius: '50%',
