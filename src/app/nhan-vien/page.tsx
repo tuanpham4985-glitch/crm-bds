@@ -364,6 +364,21 @@ export default function NhanVienPage() {
   // Render avatar from URL or fallback to initials
   const renderAvatar = (nv: NhanVien, size = 36) => {
     if (nv.avatar_url) {
+      // Determine metallic border and shadow based on role, perfectly matching leaderboard design
+      let borderStyle = '2.5px solid #cbd5e1'; // Silver for Sales
+      let glowStyle = '0 2px 6px rgba(148,163,184,0.35)';
+
+      if (nv.vai_tro === 'Admin') {
+        borderStyle = '2.5px solid #d4af37'; // Gold for Admin
+        glowStyle = '0 2px 8px rgba(212,175,55,0.45)';
+      } else if (nv.vai_tro === 'Manager' || nv.employee_type?.includes('Trưởng')) {
+        borderStyle = '2.5px solid #d4af37'; // Gold for Managers
+        glowStyle = '0 2px 8px rgba(212,175,55,0.45)';
+      } else if (nv.employee_type?.includes('Học viên') || nv.employee_type?.includes('Cộng tác')) {
+        borderStyle = '2.5px solid #b45309'; // Bronze for Interns
+        glowStyle = '0 2px 6px rgba(180,83,9,0.25)';
+      }
+
       return (
         <div style={{
           width: size,
@@ -374,34 +389,51 @@ export default function NhanVienPage() {
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
-          border: '1.5px solid var(--border-light, #e2e8f0)',
-          background: '#f8fafc'
+          border: borderStyle,
+          boxShadow: glowStyle,
+          background: '#ffffff',
+          padding: '1.5px', // Circular white separation ring
+          position: 'relative'
         }}>
-          <img
-            src={nv.avatar_url}
-            alt={nv.ho_ten}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
-            // If Google Drive image fails, fallback to initials
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              const container = target.parentElement as HTMLElement;
-              if (container) {
-                container.style.display = 'none';
-                const fallback = container.nextElementSibling as HTMLElement;
-                if (fallback) fallback.style.display = 'flex';
-              }
-            }}
-          />
+          <div style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: '50%',
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#fff'
+          }}>
+            <img
+              src={nv.avatar_url}
+              alt={nv.ho_ten}
+              style={{
+                width: '100%',
+                height: '100%',
+                minHeight: '100%',
+                minWidth: '100%',
+                objectFit: 'cover',
+                display: 'block'
+              }}
+              // If Google Drive image fails, fallback to initials
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                const innerContainer = target.parentElement as HTMLElement;
+                const outerContainer = innerContainer?.parentElement as HTMLElement;
+                if (outerContainer) {
+                  outerContainer.style.display = 'none';
+                  const fallback = outerContainer.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
+                }
+              }}
+            />
+          </div>
         </div>
       );
     }
     return null;
   };
-
   const renderAvatarFallback = (nv: NhanVien, size = 36) => {
     return (
       <div style={{
