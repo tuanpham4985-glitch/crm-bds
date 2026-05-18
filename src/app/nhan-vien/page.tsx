@@ -414,6 +414,7 @@ export default function NhanVienPage() {
                 minHeight: '100%',
                 minWidth: '100%',
                 objectFit: 'cover',
+                objectPosition: 'center 15%',
                 display: 'block'
               }}
               // If Google Drive image fails, fallback to initials
