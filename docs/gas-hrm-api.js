@@ -11,7 +11,7 @@ const CONFIG = {
 
   // ID file Google Sheet nguồn "VIC_DATA NHÂN SỰ VICTORY HOLDINGS"
   // Vui lòng điền ID thực tế của file nhân sự Victory vào đây
-  SOURCE_EMPLOYEE_SPREADSHEET_ID: "YOUR_VIC_DATA_NHAN_SU_SPREADSHEET_ID_HERE",
+  SOURCE_EMPLOYEE_SPREADSHEET_ID: "1jbrf9uC6K_k-VRQyFwMzFk8qiU845wsqSszNXdnyJZw",
   SOURCE_EMPLOYEE_SHEET_NAME: "DATA NHÂN SỰ"
 };
 
@@ -151,7 +151,7 @@ function doPost(e) {
 // -----------------------------------------------
 function findHeaderAndData(sourceData, sourceDisplayData) {
   let headerRowIndex = 0;
-  
+
   // Duyệt qua 10 dòng đầu để tìm dòng chứa tiêu đề
   for (let i = 0; i < Math.min(sourceData.length, 10); i++) {
     const rowStr = sourceData[i].map(cell => String(cell).toLowerCase()).join("|");
@@ -161,11 +161,11 @@ function findHeaderAndData(sourceData, sourceDisplayData) {
       break;
     }
   }
-  
+
   const headers = sourceData[headerRowIndex].map(h => String(h).replace(/\s+/g, " ").trim());
   const dataRows = [];
   const displayRows = [];
-  
+
   for (let i = headerRowIndex + 1; i < sourceData.length; i++) {
     // Chỉ lấy những dòng không rỗng hoàn toàn
     if (sourceData[i].join("").trim() !== "") {
@@ -175,7 +175,7 @@ function findHeaderAndData(sourceData, sourceDisplayData) {
       }
     }
   }
-  
+
   return {
     headers: headers,
     data: dataRows,
@@ -306,12 +306,12 @@ function syncPipeline() {
     }
 
     // --- Trích xuất & chuẩn hoá ---
-    const maCan   = String(src["Mã Căn"] || src["Mã căn"] || "").trim();
+    const maCan = String(src["Mã Căn"] || src["Mã căn"] || "").trim();
     const loaiCan = String(src["Loại căn"] || src["Loại Căn"] || "").trim();
-    const duAn    = String(src["Dự Án"] || src["Dự án"] || "").trim();
+    const duAn = String(src["Dự Án"] || src["Dự án"] || "").trim();
     const saleBan = String(src["Sale bán"] || src["Sale Bán"] || "").trim();
-    const gdda    = String(src["GDDA"] || "").trim();
-    const gdkd    = String(src["GĐKD"] || src["GDKD"] || "").trim();
+    const gdda = String(src["GDDA"] || "").trim();
+    const gdkd = String(src["GĐKD"] || src["GDKD"] || "").trim();
     const phongKd = String(src["Phòng KD"] || "").trim();
 
     // Trích xuất Ngày ký bằng Display Value để giữ nguyên định dạng chuỗi do người dùng nhập (tránh lỗi locale ngược ngày/tháng)
@@ -322,7 +322,7 @@ function syncPipeline() {
 
     let ngayKyDate = null;
     const dateStr = String(ngayKyRaw).trim();
-    
+
     // Ưu tiên parse thủ công chuỗi định dạng DD/MM/YYYY
     const parts = dateStr.split("/");
     if (parts.length === 3) {
@@ -351,23 +351,23 @@ function syncPipeline() {
 
     if (!maCan || !duAn) continue; // Bỏ qua dòng thiếu định danh
 
-    const giaTinhHH     = toNum(src["Giá tính HH (Chưa gồm VAT & KPBT)"] || src["Giá tính HH"]);
-    const tyLeHH        = toPct(src["% Tỷ lệ HH"]);
-    const tongPhiHHMG   = toNum(src["Tổng Phí HHMG (Chưa VAT)"] || src["Tổng Phí HHMG"]);
+    const giaTinhHH = toNum(src["Giá tính HH (Chưa gồm VAT & KPBT)"] || src["Giá tính HH"]);
+    const tyLeHH = toPct(src["% Tỷ lệ HH"]);
+    const tongPhiHHMG = toNum(src["Tổng Phí HHMG (Chưa VAT)"] || src["Tổng Phí HHMG"]);
 
-    const tyLeTraSale   = toPct(src["% Trả sale"]);
-    const tyLeKH        = toPct(src["% KH (nếu có)"] || src["% KH"]);
-    const tyLeGDDA      = toPct(src["% GDDA"]);
-    const tyLeGDKD      = toPct(src["%GDKD"] || src["% GDKD"]);
-    const tyLeMKT       = toPct(src["%MKT"] || src["% MKT"]);
+    const tyLeTraSale = toPct(src["% Trả sale"]);
+    const tyLeKH = toPct(src["% KH (nếu có)"] || src["% KH"]);
+    const tyLeGDDA = toPct(src["% GDDA"]);
+    const tyLeGDKD = toPct(src["%GDKD"] || src["% GDKD"]);
+    const tyLeMKT = toPct(src["%MKT"] || src["% MKT"]);
 
-    const phiTraSale    = toNum(src["Tổng Phí HHMG trả sale"] || src["Tổng phí trả sale"]);
-    const phiTraKH      = toNum(src["Tổng phí trả KH"]);
-    const phiTraGDDA    = toNum(src["Tổng phí trả GDDA"]);
-    const phiTraGDKD    = toNum(src["Tổng phí trả GĐKD"] || src["Tổng phí trả GDKD"]);
-    const phiTraMKT     = toNum(src["Tổng phí trả MKT"]);
-    const phiAdmin      = toNum(src["Phí admin"]);
-    const loiNhuan      = toNum(src["Lợi nhuận"]);
+    const phiTraSale = toNum(src["Tổng Phí HHMG trả sale"] || src["Tổng phí trả sale"]);
+    const phiTraKH = toNum(src["Tổng phí trả KH"]);
+    const phiTraGDDA = toNum(src["Tổng phí trả GDDA"]);
+    const phiTraGDKD = toNum(src["Tổng phí trả GĐKD"] || src["Tổng phí trả GDKD"]);
+    const phiTraMKT = toNum(src["Tổng phí trả MKT"]);
+    const phiAdmin = toNum(src["Phí admin"]);
+    const loiNhuan = toNum(src["Lợi nhuận"]);
     const thuongNongRaw = src["Thưởng nóng (Gồm VAT)"] || src["Thưởng nóng"] || src["thuong_nong"] || "";
     let thuongNong = 0;
     if (thuongNongRaw) {
@@ -381,11 +381,11 @@ function syncPipeline() {
       thuongNong = 0;
     }
 
-    const tkkd          = String(src["TKKD"] || "").trim();
-    const phiTkkd       = toNum(src["Phí TKKD"] || src["phí TKKD"] || 0);
+    const tkkd = String(src["TKKD"] || "").trim();
+    const phiTkkd = toNum(src["Phí TKKD"] || src["phí TKKD"] || 0);
     // Tạo id_pipeline ổn định từ Mã Căn
     const pipelineId = "PL-" + Math.abs(
-      (function(str) {
+      (function (str) {
         let hash = 0;
         for (let k = 0; k < str.length; k++) {
           hash = ((hash << 5) - hash) + str.charCodeAt(k);
@@ -400,37 +400,37 @@ function syncPipeline() {
 
     // Build object ghi xuống Pipeline theo đúng thứ tự header
     const writeObj = {
-      "id_pipeline":      pipelineId,
-      "id_khach_hang":    "",         // Không có trong Victory, giữ nguyên nếu đã có
-      "giai_doan":        "Ký HĐ",    // Victory là giao dịch thực tế đã ký cọc/thành công
-      "id_du_an":         resolvedDuAnId,
-      "ten_du_an":        duAn,
-      "ma_can":           maCan,
-      "loai_can":         loaiCan,
-      "gia_tri_thuc_te":  giaTinhHH,
-      "hoa_hong":         tyLeHH,
-      "tien_hoa_hong":    tongPhiHHMG,
-      "sale_phu_trach":   saleBan,
-      "gdda":             gdda,
-      "gdkd":             gdkd,
-      "phong_kd":         phongKd,
-      "ty_le_tra_sale":   tyLeTraSale,
-      "ty_le_kh":         tyLeKH,
-      "ty_le_gdda":       tyLeGDDA,
-      "ty_le_gdkd":       tyLeGDKD,
-      "ty_le_mkt":        tyLeMKT,
-      "phi_tra_sale":     phiTraSale,
-      "phi_tra_kh":       phiTraKH,
-      "phi_tra_gdda":     phiTraGDDA,
-      "phi_tra_gdkd":     phiTraGDKD,
-      "phi_tra_mkt":      phiTraMKT,
-      "phi_admin":        phiAdmin,
-      "loi_nhuan":        loiNhuan,
-      "thuong_nong":      thuongNong,
-      "tkkd":             tkkd,
-      "phi_tkkd":         phiTkkd,
-      "ngay_cap_nhat":    ngayKyDate,
-      "thang":            Utilities.formatDate(ngayKyDate, Session.getScriptTimeZone(), "yyyy-MM")
+      "id_pipeline": pipelineId,
+      "id_khach_hang": "",         // Không có trong Victory, giữ nguyên nếu đã có
+      "giai_doan": "Ký HĐ",    // Victory là giao dịch thực tế đã ký cọc/thành công
+      "id_du_an": resolvedDuAnId,
+      "ten_du_an": duAn,
+      "ma_can": maCan,
+      "loai_can": loaiCan,
+      "gia_tri_thuc_te": giaTinhHH,
+      "hoa_hong": tyLeHH,
+      "tien_hoa_hong": tongPhiHHMG,
+      "sale_phu_trach": saleBan,
+      "gdda": gdda,
+      "gdkd": gdkd,
+      "phong_kd": phongKd,
+      "ty_le_tra_sale": tyLeTraSale,
+      "ty_le_kh": tyLeKH,
+      "ty_le_gdda": tyLeGDDA,
+      "ty_le_gdkd": tyLeGDKD,
+      "ty_le_mkt": tyLeMKT,
+      "phi_tra_sale": phiTraSale,
+      "phi_tra_kh": phiTraKH,
+      "phi_tra_gdda": phiTraGDDA,
+      "phi_tra_gdkd": phiTraGDKD,
+      "phi_tra_mkt": phiTraMKT,
+      "phi_admin": phiAdmin,
+      "loi_nhuan": loiNhuan,
+      "thuong_nong": thuongNong,
+      "tkkd": tkkd,
+      "phi_tkkd": phiTkkd,
+      "ngay_cap_nhat": ngayKyDate,
+      "thang": Utilities.formatDate(ngayKyDate, Session.getScriptTimeZone(), "yyyy-MM")
     };
 
     const rowValues = targetHeaders.map(h => writeObj[h] !== undefined ? writeObj[h] : "");
@@ -515,7 +515,7 @@ function syncEmployees() {
   }
 
   // Tạo lookup map theo id_nhan_vien (key duy nhất)
-  const targetMap = {}; 
+  const targetMap = {};
   for (let i = 1; i < targetData.length; i++) {
     const id = String(targetData[i][idColIndex] || "").trim();
     if (id) targetMap[id] = i + 1;
@@ -524,7 +524,7 @@ function syncEmployees() {
   // Helper hàm tìm index của cột nguồn khớp với header đích bằng bí danh (aliases)
   function findSourceColIndex(targetHeaderName) {
     const cleanTarget = targetHeaderName.replace(/\s+/g, "").toLowerCase();
-    
+
     const aliases = {
       id_nhan_vien: ["mãnhânsự", "mãnhânviên", "mãnv", "idnhânviên", "idnhansu", "id", "id_nhan_vien"],
       ho_ten: ["họtên", "họvàtên", "hoten", "ho_ten", "tênnhânviên", "nhânviên"],
@@ -549,7 +549,7 @@ function syncEmployees() {
     };
 
     const targetAliases = aliases[targetHeaderName] || [cleanTarget];
-    
+
     for (let colIdx = 0; colIdx < sourceHeaders.length; colIdx++) {
       const cleanSrc = sourceHeaders[colIdx].replace(/\s+/g, "").toLowerCase();
       if (targetAliases.some(alias => cleanSrc === alias || cleanSrc.includes(alias))) {
@@ -560,7 +560,7 @@ function syncEmployees() {
   }
 
   // Khởi tạo bản đồ index cột
-  const colMappings = {}; 
+  const colMappings = {};
   targetHeaders.forEach(th => {
     colMappings[th] = findSourceColIndex(th);
   });
@@ -575,28 +575,28 @@ function syncEmployees() {
     const displayRow = sourceDisplayRows[i];
 
     const idSrcIndex = colMappings["id_nhan_vien"];
-    if (idSrcIndex === -1) continue; 
+    if (idSrcIndex === -1) continue;
     const idNhanVien = String(row[idSrcIndex] || "").trim();
-    if (!idNhanVien) continue; 
+    if (!idNhanVien) continue;
 
     const nameSrcIndex = colMappings["ho_ten"];
     const hoTen = nameSrcIndex !== -1 ? String(row[nameSrcIndex] || "").trim() : "";
-    if (!hoTen) continue; 
+    if (!hoTen) continue;
 
     const writeObj = {};
-    
+
     // Thiết lập giá trị mặc định cho cột CRM
     writeObj["ngay_tao"] = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
     writeObj["trang_thai"] = "Đang làm";
     writeObj["vai_tro"] = "Sale";
-    writeObj["mat_khau"] = "123456"; 
+    writeObj["mat_khau"] = "123456";
 
     targetHeaders.forEach(th => {
       const srcColIdx = colMappings[th];
       if (srcColIdx !== -1) {
         let val = row[srcColIdx];
         let displayVal = displayRow ? displayRow[srcColIdx] : "";
-        
+
         if (th === "ngay_sinh" || th === "ngay_cap") {
           let dateObj = null;
           const dateStr = String(displayVal || val).trim();
@@ -636,23 +636,36 @@ function syncEmployees() {
     writeObj["ho_ten"] = hoTen;
 
     const targetRowIndex = targetMap[idNhanVien];
-    const rowValues = targetHeaders.map(h => writeObj[h] !== undefined ? writeObj[h] : "");
 
     if (targetRowIndex) {
-      // Cập nhật, giữ lại mật khẩu hiện tại nếu không đồng bộ mật khẩu mới
+      // Cập nhật dòng hiện tại: Đọc giá trị cũ để tránh đè trống các trường CRM-only (như avatar_url, vai_tro, mat_khau...)
+      const existingRow = targetData[targetRowIndex - 1];
+      const updatedRowValues = [...existingRow];
+
+      targetHeaders.forEach((th, thIdx) => {
+        if (writeObj[th] !== undefined) {
+          updatedRowValues[thIdx] = writeObj[th];
+        }
+      });
+
+      // Bảo lưu mật khẩu đã có trên hệ thống nếu không được định nghĩa mới từ file nguồn
       const currentPasswordColIdx = targetHeaders.indexOf("mat_khau");
-      if (currentPasswordColIdx !== -1 && targetData[targetRowIndex - 1]) {
-        const curPass = String(targetData[targetRowIndex - 1][currentPasswordColIdx] || "").trim();
-        if (curPass && (!writeObj["mat_khau"] || writeObj["mat_khau"] === "123456")) {
-          rowValues[currentPasswordColIdx] = curPass;
+      if (currentPasswordColIdx !== -1) {
+        const curPass = String(existingRow[currentPasswordColIdx] || "").trim();
+        const newPass = String(writeObj["mat_khau"] || "").trim();
+        if (curPass && (!newPass || newPass === "123456")) {
+          updatedRowValues[currentPasswordColIdx] = curPass;
         }
       }
-      employeeSheet.getRange(targetRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+
+      employeeSheet.getRange(targetRowIndex, 1, 1, updatedRowValues.length).setValues([updatedRowValues]);
       updateCount++;
     } else {
+      // Thêm mới: Điền giá trị mới hoặc rỗng nếu không được map
+      const rowValues = targetHeaders.map(h => writeObj[h] !== undefined ? writeObj[h] : "");
       employeeSheet.appendRow(rowValues);
       insertCount++;
-      // Cập nhật targetData để cập nhật password của lần sau nếu trùng
+      // Cập nhật targetData và map để phục vụ các dòng tiếp theo
       targetData = employeeSheet.getDataRange().getValues();
       targetMap[idNhanVien] = targetData.length;
     }
