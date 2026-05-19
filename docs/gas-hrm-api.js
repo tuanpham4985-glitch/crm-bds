@@ -139,7 +139,7 @@ function doPost(e) {
 // Hàm helper tự động phát hiện dòng Header thực tế trong file nguồn Victory
 // (Bỏ qua các dòng trống, dòng tiêu đề to, dòng gộp màu vàng...)
 // -----------------------------------------------
-function findHeaderAndData(sourceData) {
+function findHeaderAndData(sourceData, sourceDisplayData) {
   let headerRowIndex = 0;
   
   // Duyệt qua 10 dòng đầu để tìm dòng chứa tiêu đề
@@ -154,17 +154,22 @@ function findHeaderAndData(sourceData) {
   
   const headers = sourceData[headerRowIndex].map(h => String(h).replace(/\s+/g, " ").trim());
   const dataRows = [];
+  const displayRows = [];
   
   for (let i = headerRowIndex + 1; i < sourceData.length; i++) {
     // Chỉ lấy những dòng không rỗng hoàn toàn
     if (sourceData[i].join("").trim() !== "") {
       dataRows.push(sourceData[i]);
+      if (sourceDisplayData && sourceDisplayData[i]) {
+        displayRows.push(sourceDisplayData[i]);
+      }
     }
   }
   
   return {
     headers: headers,
-    data: dataRows
+    data: dataRows,
+    displayData: displayRows
   };
 }
 
@@ -182,12 +187,14 @@ function syncPipeline() {
   if (!sourceSheet) throw new Error(`Không tìm thấy sheet nguồn '${CONFIG.SOURCE_SHEET_NAME}'`);
 
   const sourceRawData = sourceSheet.getDataRange().getValues();
+  const sourceDisplayData = sourceSheet.getDataRange().getDisplayValues();
   if (sourceRawData.length === 0) return { message: "Sheet nguồn rỗng." };
 
   // Tự động phát hiện Header và tách Data
-  const parsedSource = findHeaderAndData(sourceRawData);
+  const parsedSource = findHeaderAndData(sourceRawData, sourceDisplayData);
   const sourceHeaders = parsedSource.headers;
   const sourceData = parsedSource.data;
+  const sourceDisplayRows = parsedSource.displayData;
 
   // 2. Mở sheet Pipeline trong CRM_BDS
   const targetSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -273,12 +280,19 @@ function syncPipeline() {
   // 3. Duyệt từng dòng nguồn, chuẩn hoá và upsert vào Pipeline
   for (let i = 0; i < sourceData.length; i++) {
     const row = sourceData[i];
+    const displayRow = sourceDisplayRows[i];
     if (row.join("").trim() === "") continue;
 
     // Map dòng thành Object theo header nguồn
     const src = {};
+    const srcDisplay = {};
     for (let j = 0; j < sourceHeaders.length; j++) {
-      if (sourceHeaders[j]) src[sourceHeaders[j]] = row[j];
+      if (sourceHeaders[j]) {
+        src[sourceHeaders[j]] = row[j];
+        if (displayRow) {
+          srcDisplay[sourceHeaders[j]] = displayRow[j];
+        }
+      }
     }
 
     // --- Trích xuất & chuẩn hoá ---
@@ -290,24 +304,33 @@ function syncPipeline() {
     const gdkd    = String(src["GĐKD"] || src["GDKD"] || "").trim();
     const phongKd = String(src["Phòng KD"] || "").trim();
 
-    // Trích xuất Ngày ký TTĐC/VBTT (không lấy lộn sang Ngày cọc)
-    const ngayKyRaw = src["Ngày ký TTĐC/VBTT"] || src["Ngày ký TTĐC/ VBTT"] || src["Ngày ký VBTT"] || src["Ngày ký TTĐC"] || "";
+    // Trích xuất Ngày ký bằng Display Value để giữ nguyên định dạng chuỗi do người dùng nhập (tránh lỗi locale ngược ngày/tháng)
+    const ngayKyRaw = srcDisplay["Ngày ký TTĐC/VBTT"] || srcDisplay["Ngày ký TTĐC/ VBTT"] || srcDisplay["Ngày ký VBTT"] || srcDisplay["Ngày ký TTĐC"] || src["Ngày ký TTĐC/VBTT"] || "";
     if (!ngayKyRaw || String(ngayKyRaw).trim() === "") {
       continue; // Bỏ qua vì chưa ký hợp đồng (chưa được tính doanh số)
     }
 
     let ngayKyDate = null;
-    if (ngayKyRaw instanceof Date) {
-      ngayKyDate = ngayKyRaw;
-    } else {
-      const parts = String(ngayKyRaw).split("/");
-      if (parts.length === 3) {
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1;
-        const year = parseInt(parts[2], 10);
+    const dateStr = String(ngayKyRaw).trim();
+    
+    // Ưu tiên parse thủ công chuỗi định dạng DD/MM/YYYY
+    const parts = dateStr.split("/");
+    if (parts.length === 3) {
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const yearPart = parts[2].trim().split(/\s+/)[0];
+      const year = parseInt(yearPart, 10);
+      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
         ngayKyDate = new Date(year, month, day);
+      }
+    }
+
+    // Nếu không parse được theo cấu trúc DD/MM/YYYY, thử dùng fallback Date.parse
+    if (!ngayKyDate || isNaN(ngayKyDate.getTime())) {
+      if (ngayKyRaw instanceof Date) {
+        ngayKyDate = ngayKyRaw;
       } else {
-        const parsed = Date.parse(ngayKyRaw);
+        const parsed = Date.parse(dateStr);
         if (!isNaN(parsed)) ngayKyDate = new Date(parsed);
       }
     }
