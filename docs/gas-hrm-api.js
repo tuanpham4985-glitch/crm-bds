@@ -522,40 +522,106 @@ function syncEmployees() {
   }
 
   // Helper hàm tìm index của cột nguồn khớp với header đích bằng bí danh (aliases)
+  // Chiến lược: exact-match trước, rồi mới includes (chỉ với alias dài >= 4 ký tự)
+  // để tránh alias ngắn như "id" khớp nhầm vào "diđộng" hoặc các cột không liên quan
   function findSourceColIndex(targetHeaderName) {
-    const cleanTarget = targetHeaderName.replace(/\s+/g, "").toLowerCase();
-
     const aliases = {
-      id_nhan_vien: ["mãnhânsự", "mãnhânviên", "mãnv", "idnhânviên", "idnhansu", "id", "id_nhan_vien"],
-      ho_ten: ["họtên", "họvàtên", "hoten", "ho_ten", "tênnhânviên", "nhânviên"],
-      so_dien_thoai: ["sốđiệnthoại", "sđt", "sdt", "sodienthoai", "so_dien_thoai", "phone", "diđộng"],
-      email: ["email", "mail", "thưđiệntử"],
-      employee_type: ["chứcdanh", "vịtrí", "chucdanh", "employee_type", "loạinhânviên", "loạinhựcsự"],
+      // Mã nhân viên - KHÔNG dùng alias "id" vì quá chung chung
+      id_nhan_vien: [
+        "mãnv", "mãnhânsự", "mãnhânviên", "manhanvien", "manv",
+        "idnhânviên", "idnhansu", "id_nhan_vien", "manhansự"
+      ],
+      ho_ten: [
+        "họtên", "họvàtên", "hoten", "ho_ten", "tênnhânviên",
+        "hovaten", "hten"
+      ],
+      so_dien_thoai: [
+        "sốđiệnthoại", "sđt", "sdt", "sodienthoai", "so_dien_thoai",
+        "phone", "diđộng", "điệnthoạidiđộng", "đtdiđộng", "đtdđ"
+      ],
+      email: ["email", "mail", "thưđiệntử", "emailcánhân"],
+      employee_type: [
+        "chứcdanh", "vịtrí", "chucdanh", "employee_type",
+        "loạinhânviên", "chucvu", "chứcvụ"
+      ],
       trang_thai: ["trạngthái", "trang_thai", "tìnhtrạng", "trangthai"],
-      so_cccd: ["sốcccd", "cccd", "cmnd", "sốcmnd", "socccd", "socmnd"],
-      ngay_cap: ["ngàycấp", "ngay_cap", "ngaycap"],
-      noi_cap: ["nơicấp", "noi_cap", "noicap"],
-      HKTT: ["hktt", "hộkhẩuthườngtrú", "địachỉthườngtrú", "địachỉ", "hộkhẩu"],
-      ngay_sinh: ["ngàysinh", "ngay_sinh", "sinhnhật", "ngaysinh"],
-      gioi_tinh: ["giớitính", "gioi_tinh", "nam/nữ", "gioitinh"],
-      ma_so_thue: ["mãsốthuế", "mst", "ma_so_thue", "masothue"],
-      so_tk_ngan_hang: ["sốtàikhoản", "stk", "sốtk", "so_tk", "so_tk_ngan_hang", "sotk"],
-      ten_ngan_hang_thu_huong: ["ngânhàng", "tênngânhàng", "ten_ngan_hang", "ten_ngan_hang_thu_huong", "tennganhang"],
+      // Cột P "Số CMTND" / "CCCD" trong DATA NHÂN SỰ
+      so_cccd: [
+        "sốcmtnd", "cmtnd", "socmtnd", "số cmtnd",
+        "sốcmnd", "cmnd", "socmnd",
+        "sốcccd", "cccd", "socccd",
+        "cmnd/cccd", "sốcmnd/cccd", "cccd/cmnd"
+      ],
+      // Cột Q "Ngày cấp" trong DATA NHÂN SỰ
+      ngay_cap: [
+        "ngàycấp", "ngay_cap", "ngaycap",
+        "ngàycấpcmt", "ngàycấpcccd", "ngaycapcmt",
+        "ngàycấpthẻ", "ngaycapthe"
+      ],
+      // Cột R "Nơi cấp" trong DATA NHÂN SỰ
+      noi_cap: [
+        "nơicấp", "noi_cap", "noicap",
+        "nơicấpcmt", "nơicấpcccd", "noicapcmt",
+        "nơicấpthẻ", "noicapthe"
+      ],
+      // Cột S "Địa chỉ thường trú / HKTT" trong DATA NHÂN SỰ
+      HKTT: [
+        "hktt", "hộkhẩuthườngtrú", "địachỉthườngtrú",
+        "hokhauthruongtru", "diachihuongtru", "thườngtrú",
+        "thuongtru", "địachỉhktt", "hộkhẩu"
+      ],
+      ngay_sinh: [
+        "ngàysinh", "ngay_sinh", "sinhnhật", "ngaysinh",
+        "ngàythángnămsinh", "ngaythangnamsinh"
+      ],
+      gioi_tinh: [
+        "giớitính", "gioi_tinh", "gioitinh", "nam/nữ",
+        "phai", "phái"
+      ],
+      ma_so_thue: [
+        "mãsốthuế", "masothue", "ma_so_thue", "mst",
+        "mãsốthuếcánhân", "taxcode"
+      ],
+      so_tk_ngan_hang: [
+        "sốtàikhoản", "stk", "sốtk", "so_tk", "so_tk_ngan_hang", "sotk"
+      ],
+      ten_ngan_hang_thu_huong: [
+        "ngânhàng", "tênngânhàng", "ten_ngan_hang", "ten_ngan_hang_thu_huong",
+        "tennganhang", "ngânhàngthụhưởng"
+      ],
       vai_tro: ["vaitrò", "vai_tro", "quyền", "vaitro"],
-      khu_vuc: ["khuvực", "khu_vuc", "chinánh", "khuvuc"],
-      phong_KD: ["phòngkd", "phong_kd", "phòngban", "bộphận", "phongkd"],
-      so_nguoi_phu_thuoc: ["sốngườiphụthuộc", "sốnpt", "npt", "so_nguoi_phu_thuoc", "songuoiphuthuoc"],
+      khu_vuc: ["khuvực", "khu_vuc", "khuvuc", "chinánh", "vùng"],
+      phong_KD: [
+        "phòngkd", "phong_kd", "phongkd", "phòngban",
+        "bộphận", "bophan", "nhóm", "team"
+      ],
+      so_nguoi_phu_thuoc: [
+        "sốngườiphụthuộc", "songuoiphuthuoc", "so_nguoi_phu_thuoc",
+        "sốnpt", "npt"
+      ],
       mat_khau: ["mậtkhẩu", "mat_khau", "password", "matkhau"]
     };
 
-    const targetAliases = aliases[targetHeaderName] || [cleanTarget];
+    const targetAliases = aliases[targetHeaderName] || [
+      targetHeaderName.replace(/\s+/g, "").toLowerCase()
+    ];
 
+    // Bước 1: Tìm exact-match trước (an toàn nhất)
     for (let colIdx = 0; colIdx < sourceHeaders.length; colIdx++) {
       const cleanSrc = sourceHeaders[colIdx].replace(/\s+/g, "").toLowerCase();
-      if (targetAliases.some(alias => cleanSrc === alias || cleanSrc.includes(alias))) {
+      if (targetAliases.some(alias => cleanSrc === alias)) {
         return colIdx;
       }
     }
+
+    // Bước 2: Tìm includes, nhưng chỉ với alias đủ dài (>= 4 ký tự)
+    for (let colIdx = 0; colIdx < sourceHeaders.length; colIdx++) {
+      const cleanSrc = sourceHeaders[colIdx].replace(/\s+/g, "").toLowerCase();
+      if (targetAliases.some(alias => alias.length >= 4 && cleanSrc.includes(alias))) {
+        return colIdx;
+      }
+    }
+
     return -1;
   }
 
@@ -574,9 +640,14 @@ function syncEmployees() {
     const row = sourceData[i];
     const displayRow = sourceDisplayRows[i];
 
+    // Lấy mã nhân viên từ cột nguồn (nếu tìm thấy)
     const idSrcIndex = colMappings["id_nhan_vien"];
-    if (idSrcIndex === -1) continue;
-    const idNhanVien = String(row[idSrcIndex] || "").trim();
+    let idNhanVien = "";
+    if (idSrcIndex !== -1) {
+      idNhanVien = String(row[idSrcIndex] || "").trim();
+    }
+    // Nếu không tìm được mã NV từ cột nguồn hoặc cột trống, bỏ qua dòng này
+    // (không tự sinh ID vì sẽ tạo bản sao mỗi lần sync)
     if (!idNhanVien) continue;
 
     const nameSrcIndex = colMappings["ho_ten"];
