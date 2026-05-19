@@ -152,7 +152,7 @@ function findHeaderAndData(sourceData) {
     }
   }
   
-  const headers = sourceData[headerRowIndex].map(h => String(h).trim());
+  const headers = sourceData[headerRowIndex].map(h => String(h).replace(/\s+/g, " ").trim());
   const dataRows = [];
   
   for (let i = headerRowIndex + 1; i < sourceData.length; i++) {
@@ -194,8 +194,17 @@ function syncPipeline() {
   const pipelineSheet = targetSpreadsheet.getSheetByName("Pipeline");
   if (!pipelineSheet) throw new Error("Không tìm thấy sheet 'Pipeline' trong CRM_BDS.");
 
-  const targetData = pipelineSheet.getDataRange().getValues();
-  const targetHeaders = targetData[0].map(h => String(h).trim());
+  let targetData = pipelineSheet.getDataRange().getValues();
+  let targetHeaders = targetData[0].map(h => String(h).trim());
+
+  // Tự động kiểm tra và thêm cột "thuong_nong" nếu chưa có
+  if (targetHeaders.indexOf("thuong_nong") === -1) {
+    const lastCol = pipelineSheet.getLastColumn();
+    pipelineSheet.getRange(1, lastCol + 1).setValue("thuong_nong");
+    // Reload lại headers
+    targetData = pipelineSheet.getDataRange().getValues();
+    targetHeaders = targetData[0].map(h => String(h).trim());
+  }
 
   // Cột ID dùng để Upsert: ma_can + ten_du_an tạo thành khóa duy nhất
   const idColName = "id_pipeline";
@@ -270,6 +279,32 @@ function syncPipeline() {
     const gdkd    = String(src["GĐKD"] || src["GDKD"] || "").trim();
     const phongKd = String(src["Phòng KD"] || "").trim();
 
+    // Trích xuất Ngày ký TTĐC/VBTT (không lấy lộn sang Ngày cọc)
+    const ngayKyRaw = src["Ngày ký TTĐC/VBTT"] || src["Ngày ký TTĐC/ VBTT"] || src["Ngày ký VBTT"] || src["Ngày ký TTĐC"] || "";
+    if (!ngayKyRaw || String(ngayKyRaw).trim() === "") {
+      continue; // Bỏ qua vì chưa ký hợp đồng (chưa được tính doanh số)
+    }
+
+    let ngayKyDate = null;
+    if (ngayKyRaw instanceof Date) {
+      ngayKyDate = ngayKyRaw;
+    } else {
+      const parts = String(ngayKyRaw).split("/");
+      if (parts.length === 3) {
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        ngayKyDate = new Date(year, month, day);
+      } else {
+        const parsed = Date.parse(ngayKyRaw);
+        if (!isNaN(parsed)) ngayKyDate = new Date(parsed);
+      }
+    }
+
+    if (!ngayKyDate || isNaN(ngayKyDate.getTime())) {
+      ngayKyDate = now;
+    }
+
     if (!maCan || !duAn) continue; // Bỏ qua dòng thiếu định danh
 
     const giaTinhHH     = toNum(src["Giá tính HH (Chưa gồm VAT & KPBT)"] || src["Giá tính HH"]);
@@ -289,7 +324,18 @@ function syncPipeline() {
     const phiTraMKT     = toNum(src["Tổng phí trả MKT"]);
     const phiAdmin      = toNum(src["Phí admin"]);
     const loiNhuan      = toNum(src["Lợi nhuận"]);
-
+    const thuongNongRaw = src["Thưởng nóng (Gồm VAT)"] || src["Thưởng nóng"] || src["thuong_nong"] || "";
+    let thuongNong = 0;
+    if (thuongNongRaw) {
+      const rawStr = String(thuongNongRaw).trim();
+      // Nếu không chứa ký tự % và bắt đầu bằng số (sau khi lọc dấu cách/dấu chấm/phẩy)
+      if (rawStr.indexOf("%") === -1 && /^\d+/.test(rawStr.replace(/[.,\s]/g, ""))) {
+        thuongNong = toNum(rawStr);
+      }
+    }
+    if (thuongNong < 10000) {
+      thuongNong = 0;
+    }
     // Tạo id_pipeline ổn định từ Mã Căn
     const pipelineId = "PL-" + Math.abs(
       (function(str) {
@@ -333,8 +379,9 @@ function syncPipeline() {
       "phi_tra_mkt":      phiTraMKT,
       "phi_admin":        phiAdmin,
       "loi_nhuan":        loiNhuan,
-      "ngay_cap_nhat":    now,
-      "thang":            Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM")
+      "thuong_nong":      thuongNong,
+      "ngay_cap_nhat":    ngayKyDate,
+      "thang":            Utilities.formatDate(ngayKyDate, Session.getScriptTimeZone(), "yyyy-MM")
     };
 
     const rowValues = targetHeaders.map(h => writeObj[h] !== undefined ? writeObj[h] : "");

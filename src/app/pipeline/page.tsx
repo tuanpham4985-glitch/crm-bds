@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  Plus, Edit3, Trash2, X, LayoutGrid, List, GripVertical,
-  Users, Calendar, DollarSign, SlidersHorizontal
+  Plus, Edit3, Trash2, X,
+  SlidersHorizontal
 } from 'lucide-react';
 import type { Pipeline, KhachHang, DuAn, NhanVien } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -12,16 +12,23 @@ import { GIAI_DOAN_PIPELINE, GIAI_DOAN_ACTIVE, GIAI_DOAN_COLORS } from '@/lib/co
 
 export default function PipelinePage() {
   const { user } = useAuth();
-  const canViewProfit = user && (
+  const isAllVisible = user && (
     user.vai_tro === 'Admin' ||
     ['Admin', 'Chủ tịch', 'TGĐ'].includes(user.employee_type || '')
   );
+
+  const canViewProfit = isAllVisible;
+
+  const showPhiTraSale = isAllVisible || (user?.employee_type === 'NVKD');
+  const showPhiTraGDDA = isAllVisible || (user?.employee_type === 'GDDA');
+  const showPhiTraGDKD = isAllVisible || (user?.employee_type === 'GĐKD');
+  const showThuongNong = isAllVisible || (user?.employee_type === 'NVKD');
+
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
 
   // Filters
   const [filterSale, setFilterSale] = useState('');
@@ -38,6 +45,7 @@ export default function PipelinePage() {
   const [form, setForm] = useState({
     id_khach_hang: '', giai_doan: 'Mới', gia_tri_thuc_te: 0,
     sale_phu_trach: '', id_du_an: '', ten_du_an: '', hoa_hong: 0, thang: '',
+    thuong_nong: 0, ngay_cap_nhat: '',
   });
 
   const fetchAll = useCallback(async () => {
@@ -76,17 +84,13 @@ export default function PipelinePage() {
     return true;
   });
 
-  // Group by giai_doan for kanban
-  const groupedByStage = GIAI_DOAN_PIPELINE.reduce((acc, stage) => {
-    acc[stage] = filteredPipelines.filter(pl => pl.giai_doan === stage);
-    return acc;
-  }, {} as Record<string, Pipeline[]>);
-
   const openCreate = () => {
     setEditingItem(null);
     setForm({
       id_khach_hang: '', giai_doan: 'Mới', gia_tri_thuc_te: 0,
       sale_phu_trach: '', id_du_an: '', ten_du_an: '', hoa_hong: 0, thang: '',
+      thuong_nong: 0,
+      ngay_cap_nhat: new Date().toISOString().split('T')[0],
     });
     setShowModal(true);
   };
@@ -103,6 +107,8 @@ export default function PipelinePage() {
       ten_du_an: pl.ten_du_an,
       hoa_hong: pl.hoa_hong,
       thang: pl.thang,
+      thuong_nong: Number(pl.thuong_nong) || 0,
+      ngay_cap_nhat: pl.ngay_cap_nhat ? new Date(pl.ngay_cap_nhat).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
     });
 
     setShowModal(true);
@@ -157,34 +163,6 @@ export default function PipelinePage() {
     }
   };
 
-  const handleDragStart = (e: React.DragEvent, plId: string) => {
-    e.dataTransfer.setData('text/plain', plId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDrop = async (e: React.DragEvent, newStage: string) => {
-    e.preventDefault();
-    const plId = e.dataTransfer.getData('text/plain');
-    const pl = pipelines.find(p => p.id_pipeline === plId);
-    if (!pl || pl.giai_doan === newStage) return;
-
-    try {
-      await fetch('/api/pipeline', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...pl, giai_doan: newStage }),
-      });
-      fetchAll();
-    } catch (err) {
-      console.error('Drag update error:', err);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
   if (loading) {
     return <div className="loading-spinner"><div className="spinner" /></div>;
   }
@@ -193,6 +171,27 @@ export default function PipelinePage() {
   const activeDeals = filteredPipelines.filter(pl => GIAI_DOAN_ACTIVE.includes(pl.giai_doan as typeof GIAI_DOAN_ACTIVE[number]));
   const totalValue = activeDeals.reduce((s, pl) => s + pl.gia_tri_thuc_te, 0);
   const totalProfit = activeDeals.reduce((s, pl) => s + (pl.loi_nhuan || 0), 0);
+
+  // Sum of personal stats for specific roles
+  const personalCommission = activeDeals.reduce((s, pl) => {
+    if (isAllVisible) return s + (pl.phi_tra_sale || 0);
+    if (user?.employee_type === 'NVKD' && pl.sale_phu_trach === user.ho_ten) return s + (pl.phi_tra_sale || 0);
+    if (user?.employee_type === 'GDDA' && pl.gdda === user.ho_ten) return s + (pl.phi_tra_gdda || 0);
+    if (user?.employee_type === 'GĐKD' && pl.gdkd === user.ho_ten) return s + (pl.phi_tra_gdkd || 0);
+    return s;
+  }, 0);
+
+  const personalHotBonus = activeDeals.reduce((s, pl) => {
+    if (isAllVisible) return s + (pl.thuong_nong || 0);
+    if (user?.employee_type === 'NVKD' && pl.sale_phu_trach === user.ho_ten) return s + (pl.thuong_nong || 0);
+    return s;
+  }, 0);
+
+  let colSpan = 8;
+  if (showPhiTraSale) colSpan++;
+  if (showPhiTraGDDA) colSpan++;
+  if (showPhiTraGDKD) colSpan++;
+  if (showThuongNong) colSpan++;
 
   return (
     <div>
@@ -228,8 +227,47 @@ export default function PipelinePage() {
               border: '1px solid rgba(99, 102, 241, 0.15)',
               boxShadow: '0 1px 2px rgba(99, 102, 241, 0.05)'
             }}>
-              <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💰</span> Tổng giá trị: <span style={{ color: '#4f46e5', fontWeight: 850 }}>{formatCurrency(totalValue)}</span>
+              <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💰</span> Tổng giá trị: <span style={{ color: '#4f46e5', fontWeight: 850 }}>{formatCurrency(totalValue, false)}</span>
             </span>
+
+            {/* Personal or administrative Commission stats */}
+            {(showPhiTraSale || showPhiTraGDDA || showPhiTraGDKD) && (
+              <span style={{ 
+                background: 'rgba(16, 185, 129, 0.08)', 
+                color: '#059669', 
+                padding: '6px 15px', 
+                borderRadius: '14px', 
+                fontWeight: 700, 
+                fontSize: '0.88rem', 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '6px',
+                border: '1px solid rgba(16, 185, 129, 0.15)',
+                boxShadow: '0 1px 2px rgba(16, 185, 129, 0.05)'
+              }}>
+                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💵</span> {isAllVisible ? 'Tổng hoa hồng' : 'Hoa hồng cá nhân'}: <span style={{ color: '#059669', fontWeight: 850 }}>{formatCurrency(personalCommission, false)}</span>
+              </span>
+            )}
+
+            {/* Personal or administrative Hot Bonus stats */}
+            {showThuongNong && (
+              <span style={{ 
+                background: 'rgba(239, 68, 68, 0.08)', 
+                color: '#dc2626', 
+                padding: '6px 15px', 
+                borderRadius: '14px', 
+                fontWeight: 700, 
+                fontSize: '0.88rem', 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '6px',
+                border: '1px solid rgba(239, 68, 68, 0.15)',
+                boxShadow: '0 1px 2px rgba(239, 68, 68, 0.05)'
+              }}>
+                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>🔥</span> {isAllVisible ? 'Tổng thưởng nóng' : 'Thưởng nóng cá nhân'}: <span style={{ color: '#dc2626', fontWeight: 850 }}>{formatCurrency(personalHotBonus, false)}</span>
+              </span>
+            )}
+
             {canViewProfit && (
               <span style={{ 
                 background: 'rgba(212, 175, 55, 0.15)', 
@@ -244,23 +282,12 @@ export default function PipelinePage() {
                 alignItems: 'center',
                 gap: '6px'
               }}>
-                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💎</span> Tổng lợi nhuận: <span style={{ color: '#d97706', fontWeight: 950 }}>{formatCurrency(totalProfit)}</span>
+                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💎</span> Tổng lợi nhuận: <span style={{ color: '#d97706', fontWeight: 950 }}>{formatCurrency(totalProfit, false)}</span>
               </span>
             )}
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* View toggle */}
-          <div className="toggle-group">
-            <button className={`toggle-btn ${viewMode === 'kanban' ? 'active' : ''}`}
-              onClick={() => setViewMode('kanban')}>
-              <LayoutGrid size={14} style={{ marginRight: 4, verticalAlign: -2 }} />Kanban
-            </button>
-            <button className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-              onClick={() => setViewMode('table')}>
-              <List size={14} style={{ marginRight: 4, verticalAlign: -2 }} />Bảng
-            </button>
-          </div>
           <button className="btn btn-primary" onClick={openCreate}>
             <Plus size={18} />
             Thêm deal
@@ -289,146 +316,98 @@ export default function PipelinePage() {
         )}
       </div>
 
-      {/* Kanban View */}
-      {viewMode === 'kanban' ? (
-        <div className="kanban-board">
-          {GIAI_DOAN_PIPELINE.map(stage => {
-            const deals = groupedByStage[stage] || [];
-            const stageValue = deals.reduce((s, pl) => s + pl.gia_tri_thuc_te, 0);
-            const colors = GIAI_DOAN_COLORS[stage] || { bg: '#f1f5f9', text: '#475569', border: '#94a3b8' };
+      {/* Table View */}
+      <div className="card" style={{ padding: 0 }}>
+        <div className="table-wrapper" style={{ borderRadius: 'var(--radius-xl)', overflow: 'visible' }}>
+          <table className="data-table" style={{ minWidth: '850px' }}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Khách hàng</th>
+                <th>Giai đoạn</th>
+                <th>Dự án</th>
+                <th style={{ textAlign: 'right' }}>Giá trị</th>
+                {showPhiTraSale && <th style={{ textAlign: 'right' }}>Phí trả sale</th>}
+                {showPhiTraGDDA && <th style={{ textAlign: 'right' }}>Phí trả GDDA</th>}
+                {showPhiTraGDKD && <th style={{ textAlign: 'right' }}>Phí trả GĐKD</th>}
+                {showThuongNong && <th style={{ textAlign: 'right' }}>Thưởng nóng</th>}
+                <th>Sale</th>
+                <th>Ngày ký TTĐC/VBTT</th>
+                <th style={{ width: 90, textAlign: 'center' }}>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPipelines.map((pl, idx) => {
+                const colors = GIAI_DOAN_COLORS[pl.giai_doan] || { bg: '#f1f5f9', text: '#475569' };
+                return (
+                  <tr key={pl.id_pipeline}>
+                    <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
+                    <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>{getCustomerName(pl.id_khach_hang)}</td>
+                    <td>
+                      <span className="badge" style={{ background: colors.bg, color: colors.text }}>
+                        {pl.giai_doan}
+                      </span>
+                    </td>
+                    <td>{pl.ten_du_an || '—'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                      {formatCurrency(pl.gia_tri_thuc_te)}
+                    </td>
 
-            return (
-              <div key={stage} className="kanban-column"
-                onDrop={(e) => handleDrop(e, stage)}
-                onDragOver={handleDragOver}>
-                <div className="kanban-column-header">
-                  <div className="flex items-center gap-2">
-                    <div style={{
-                      width: 8, height: 8, borderRadius: '50%',
-                      background: colors.border,
-                    }} />
-                    <span className="kanban-column-title">{stage}</span>
-                    <span className="kanban-column-count">{deals.length}</span>
-                  </div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: colors.text }}>
-                    {formatCurrency(stageValue)}
-                  </span>
-                </div>
-                <div className="kanban-cards">
-                  {deals.map(pl => (
-                    <div key={pl.id_pipeline} className="kanban-card"
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, pl.id_pipeline)}>
-                      <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-                        <span className="kanban-card-name">{getCustomerName(pl.id_khach_hang)}</span>
-                        <GripVertical size={14} style={{ color: 'var(--text-label)', opacity: 0.5 }} />
-                      </div>
-                      <div className="kanban-card-project">{pl.ten_du_an || '—'}</div>
-                      <div className="kanban-card-value" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>DT: {formatCurrency(pl.gia_tri_thuc_te)}</span>
-                        {canViewProfit && (
-                          <span style={{ color: 'var(--success-text)', fontSize: '0.72rem', fontWeight: 600 }}>
-                            LN: {formatCurrency(pl.loi_nhuan || 0)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="kanban-card-footer">
-                        <span className="flex items-center gap-2">
-                          <Users size={11} />{pl.sale_phu_trach || '—'}
-                        </span>
-                        <span className="flex items-center gap-2">
-                          <Calendar size={11} />{formatDate(pl.ngay_cap_nhat)}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 4, marginTop: 8, justifyContent: 'flex-end' }}>
-                        <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(pl)}>
-                          <Edit3 size={13} />
-                        </button>
-                        <button className="btn btn-ghost btn-icon btn-sm"
-                          style={{ color: 'var(--danger-text)' }}
-                          onClick={() => { setDeletingId(pl.id_pipeline); setShowConfirm(true); }}>
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  {deals.length === 0 && (
-                    <div style={{
-                      padding: '24px 16px', textAlign: 'center',
-                      color: 'var(--text-label)', fontSize: '0.8125rem',
-                      border: '2px dashed var(--border-light)',
-                      borderRadius: 'var(--radius-lg)',
-                    }}>
-                      Kéo thả deal vào đây
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* Table View */
-        <div className="card" style={{ padding: 0, overflow: 'hidden', maxWidth: '100%' }}>
-          <div className="table-wrapper" style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-            <table className="data-table" style={{ minWidth: '850px' }}>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Khách hàng</th>
-                  <th>Giai đoạn</th>
-                  <th>Dự án</th>
-                  <th style={{ textAlign: 'right' }}>Giá trị</th>
-                  <th style={{ textAlign: 'right' }}>Hoa hồng</th>
-                  <th>Sale</th>
-                  <th>Cập nhật</th>
-                  <th style={{ width: 90, textAlign: 'center' }}>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPipelines.map((pl, idx) => {
-                  const colors = GIAI_DOAN_COLORS[pl.giai_doan] || { bg: '#f1f5f9', text: '#475569' };
-                  return (
-                    <tr key={pl.id_pipeline}>
-                      <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
-                      <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>{getCustomerName(pl.id_khach_hang)}</td>
-                      <td>
-                        <span className="badge" style={{ background: colors.bg, color: colors.text }}>
-                          {pl.giai_doan}
-                        </span>
+                    {showPhiTraSale && (
+                      <td style={{ textAlign: 'right', color: 'var(--success-text)', fontWeight: 600 }}>
+                        {isAllVisible || pl.sale_phu_trach === user?.ho_ten 
+                          ? formatCurrency(pl.phi_tra_sale || 0) 
+                          : '—'}
                       </td>
-                      <td>{pl.ten_du_an || '—'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        <span className="flex items-center gap-2" style={{ justifyContent: 'flex-end' }}>
-                          <DollarSign size={13} style={{ color: 'var(--text-label)' }} />
-                          {formatCurrency(pl.gia_tri_thuc_te)}
-                        </span>
+                    )}
+
+                    {showPhiTraGDDA && (
+                      <td style={{ textAlign: 'right', color: 'var(--primary-text)', fontWeight: 600 }}>
+                        {isAllVisible || pl.gdda === user?.ho_ten 
+                          ? formatCurrency(pl.phi_tra_gdda || 0) 
+                          : '—'}
                       </td>
-                      <td style={{ textAlign: 'right', color: 'var(--success-text)' }}>{formatCurrency(pl.tien_hoa_hong)}</td>
-                      <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.sale_phu_trach || '—'}</td>
-                      <td>{formatDate(pl.ngay_cap_nhat)}</td>
-                      <td>
-                        <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
-                          <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(pl)}><Edit3 size={15} /></button>
-                          <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
-                            onClick={() => { setDeletingId(pl.id_pipeline); setShowConfirm(true); }}><Trash2 size={15} /></button>
-                        </div>
+                    )}
+
+                    {showPhiTraGDKD && (
+                      <td style={{ textAlign: 'right', color: '#b45309', fontWeight: 600 }}>
+                        {isAllVisible || pl.gdkd === user?.ho_ten 
+                          ? formatCurrency(pl.phi_tra_gdkd || 0) 
+                          : '—'}
                       </td>
-                    </tr>
-                  );
-                })}
-                {filteredPipelines.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="empty-state">
-                      <h3>Chưa có deal nào</h3>
+                    )}
+
+                    {showThuongNong && (
+                      <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>
+                        {isAllVisible || pl.sale_phu_trach === user?.ho_ten 
+                          ? formatCurrency(pl.thuong_nong || 0) 
+                          : '—'}
+                      </td>
+                    )}
+
+                    <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.sale_phu_trach || '—'}</td>
+                    <td>{formatDate(pl.ngay_cap_nhat)}</td>
+                    <td>
+                      <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
+                        <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(pl)}><Edit3 size={15} /></button>
+                        <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
+                          onClick={() => { setDeletingId(pl.id_pipeline); setShowConfirm(true); }}><Trash2 size={15} /></button>
+                      </div>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+              {filteredPipelines.length === 0 && (
+                <tr>
+                  <td colSpan={colSpan} className="empty-state">
+                    <h3>Chưa có deal nào</h3>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
       {/* Create/Edit Modal */}
       {showModal && (
@@ -480,15 +459,29 @@ export default function PipelinePage() {
                     onChange={(e) => setForm({ ...form, hoa_hong: parseFloat(e.target.value) || 0 })} />
                 </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Sale phụ trách</label>
-                <select className="form-select" value={form.sale_phu_trach}
-                  onChange={(e) => setForm({ ...form, sale_phu_trach: e.target.value })}>
-                  <option value="">Chọn sale</option>
-                  {employees.map(nv => (
-                    <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>
-                  ))}
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Thưởng nóng (Gồm VAT)</label>
+                  <input className="form-input" type="number" value={form.thuong_nong}
+                    onChange={(e) => setForm({ ...form, thuong_nong: parseFloat(e.target.value) || 0 })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Sale phụ trách</label>
+                  <select className="form-select" value={form.sale_phu_trach}
+                    onChange={(e) => setForm({ ...form, sale_phu_trach: e.target.value })}>
+                    <option value="">Chọn sale</option>
+                    {employees.map(nv => (
+                      <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Ngày ký TTĐC/VBTT</label>
+                  <input className="form-input" type="date" value={form.ngay_cap_nhat}
+                    onChange={(e) => setForm({ ...form, ngay_cap_nhat: e.target.value })} />
+                </div>
               </div>
             </div>
             <div className="modal-footer">

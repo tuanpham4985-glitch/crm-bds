@@ -86,6 +86,26 @@ interface PayrollRawData {
   adjustments: PayrollAdjustment[];
 }
 
+function parseMonthYear(str: string): { month: number; year: number } | null {
+  if (!str) return null;
+  const cleaned = str.trim().replace(/[\/\-]/g, '-');
+  const parts = cleaned.split('-');
+  if (parts.length < 2) return null;
+  
+  const num1 = parseInt(parts[0], 10);
+  const num2 = parseInt(parts[1], 10);
+  
+  if (isNaN(num1) || isNaN(num2)) return null;
+  
+  if (num1 > 2000 && num2 >= 1 && num2 <= 12) {
+    return { month: num2, year: num1 };
+  }
+  if (num2 > 2000 && num1 >= 1 && num1 <= 12) {
+    return { month: num1, year: num2 };
+  }
+  return null;
+}
+
 /**
  * Fetch và pre-process tất cả data cần thiết.
  * Gọi 1 lần, dùng cho cả generate và save.
@@ -152,12 +172,14 @@ export async function fetchPayrollData(
     // Chấp nhận các trạng thái đã thành công: "Chốt", "Ký HĐ"
     if (giaiDoanNorm !== 'chốt' && giaiDoanNorm !== 'ký hđ') return false;
 
-    // Chấp nhận nhiều format tháng: "05-2026", "5-2026", "05/2026", "5/2026"
-    const plThang = (pl.thang || '').replace(/\//g, '-');
-    const targetThang = `${String(thang).padStart(2, '0')}-${nam}`;
-    const targetThangNoZero = `${thang}-${nam}`;
-
-    return plThang === targetThang || plThang === targetThangNoZero;
+    // Chấp nhận mọi định dạng tháng từ pl.thang hoặc pl.ngay_cap_nhat (MM-YYYY, YYYY-MM, vv...)
+    const parsed = parseMonthYear(pl.thang);
+    if (!parsed) {
+      const fallbackParsed = parseMonthYear(pl.ngay_cap_nhat);
+      if (!fallbackParsed) return false;
+      return fallbackParsed.month === thang && fallbackParsed.year === nam;
+    }
+    return parsed.month === thang && parsed.year === nam;
   });
 
   // 4. Tập hợp các payroll đã lưu → tránh trùng
@@ -254,6 +276,7 @@ export function calculateEmployeePayroll(
   // B. Doanh thu + Hoa hồng từ PIPELINE đã chốt
   let doanh_thu = 0;
   let hoa_hong = 0;
+  let thuong_nong = 0;
 
   for (const pl of pipelinesForEmployee) {
     doanh_thu += Number(pl.gia_tri_thuc_te) || 0;
@@ -263,13 +286,15 @@ export function calculateEmployeePayroll(
     if (overrideRate !== undefined) {
       hoa_hong += (Number(pl.gia_tri_thuc_te) || 0) * overrideRate;
     } else {
-      // Dùng tien_hoa_hong trực tiếp từ Pipeline
-      hoa_hong += Number(pl.tien_hoa_hong) || 0;
+      // Dùng phi_tra_sale trực tiếp từ Pipeline
+      hoa_hong += Number(pl.phi_tra_sale) || 0;
     }
+
+    thuong_nong += Number(pl.thuong_nong) || 0;
   }
 
   // C. Thưởng / Phạt (mặc định 0, có thể điều chỉnh trên UI)
-  const thuong = 0;
+  const thuong = thuong_nong;
   const phat = 0;
 
   // D. Gross & Chi tiết công
@@ -380,15 +405,18 @@ export async function generatePayroll(
     const empPipelines = pipelinesByEmployee.get(nv.id_nhan_vien) || [];
     const hopDong = contractMap.get(nv.id_nhan_vien);
     
-    // Tính hoa hồng từ Pipeline TRƯỚC khi gọi Engine để Engine tính thuế chính xác
+    // Tính hoa hồng và thưởng nóng từ Pipeline TRƯỚC khi gọi Engine để Engine tính thuế chính xác
     let hoa_hong = 0;
     let doanh_thu = 0;
+    let thuong_nong = 0;
     for (const pl of empPipelines) {
       doanh_thu += Number(pl.gia_tri_thuc_te) || 0;
       const overrideRate = config.hoa_hong_theo_du_an?.[pl.id_du_an];
       hoa_hong += overrideRate !== undefined 
         ? (Number(pl.gia_tri_thuc_te) || 0) * overrideRate 
-        : (Number(pl.tien_hoa_hong) || 0);
+        : (Number(pl.phi_tra_sale) || 0);
+
+      thuong_nong += Number(pl.thuong_nong) || 0;
     }
 
     if (!hopDong) {
@@ -396,8 +424,8 @@ export async function generatePayroll(
       return calculateEmployeePayroll(nv, thang, nam, contractMap, empPipelines, config);
     }
 
-    // Dùng Payroll Engine mới để tính toán, truyền kèm hoa hồng
-    const calc = payEngine.calculate(nv, hopDong, thang, nam, Math.round(hoa_hong), doanh_thu);
+    // Dùng Payroll Engine mới để tính toán, truyền kèm hoa hồng và thưởng nóng
+    const calc = payEngine.calculate(nv, hopDong, thang, nam, Math.round(hoa_hong), doanh_thu, Math.round(thuong_nong));
     return { ...calc };
   });
 

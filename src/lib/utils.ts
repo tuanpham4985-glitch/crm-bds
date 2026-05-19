@@ -6,9 +6,9 @@
 /**
  * Format số tiền VNĐ (chỉ dùng để hiển thị)
  */
-export function formatCurrency(value: number): string {
-  // 🔥 FIX: đảm bảo luôn là number chuẩn
+export function formatCurrency(value: number, allowHyphen = true): string {
   const num = Number(value) || 0;
+  if (num === 0) return allowHyphen ? '-' : '0 đ';
 
   if (num >= 1_000_000_000) {
     const ty = num / 1_000_000_000;
@@ -27,11 +27,13 @@ export function formatCurrency(value: number): string {
  * Format số tiền đầy đủ
  */
 export function formatFullCurrency(value: number): string {
+  const num = Number(value) || 0;
+  if (num === 0) return '-';
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND',
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(num);
 }
 
 /**
@@ -39,8 +41,26 @@ export function formatFullCurrency(value: number): string {
  */
 export function formatDate(dateStr: string): string {
   if (!dateStr) return '';
+  
+  // Nếu đã chứa dạng dd/MM/yyyy (và có thể đi kèm giờ phút giây)
+  if (dateStr.includes('/')) {
+    const [datePart] = dateStr.trim().split(/\s+/);
+    const parts = datePart.split('/');
+    if (parts.length === 3) {
+      const day = parts[0].padStart(2, '0');
+      const month = parts[1].padStart(2, '0');
+      const year = parts[2];
+      return `${day}/${month}/${year}`;
+    }
+  }
+
   const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
+  if (isNaN(date.getTime())) {
+    // Trích xuất ngày từ chuỗi bất kỳ nếu có dạng yyyy-MM-dd
+    const matches = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (matches) return `${matches[3]}/${matches[2]}/${matches[1]}`;
+    return dateStr;
+  }
   return date.toLocaleDateString('vi-VN', {
     day: '2-digit',
     month: '2-digit',

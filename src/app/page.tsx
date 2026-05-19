@@ -484,21 +484,10 @@ export default function DashboardPage() {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              background: rank === 3 ? 'none' : '#0f172a',
-                              border: rank === 3 ? 'none' : '1.5px solid rgba(255,255,255,0.1)'
+                              background: (rank === 3 && !sale.avatar_url) ? 'none' : '#0f172a',
+                              border: (rank === 3 && !sale.avatar_url) ? 'none' : '1.5px solid rgba(255,255,255,0.1)'
                             }}>
-                              {/* If Rank 3 (Bronze Medallion) as per mockup, render the elegant HT medallion */}
-                              {rank === 3 ? (
-                                <div style={{
-                                  fontSize: '1.3rem',
-                                  fontWeight: 900,
-                                  color: '#ffedd5',
-                                  textShadow: '1px 2px 4px rgba(0,0,0,0.6)',
-                                  letterSpacing: '0.5px'
-                                }}>
-                                  HT
-                                </div>
-                              ) : sale.avatar_url ? (
+                              {sale.avatar_url ? (
                                 <img 
                                   src={sale.avatar_url} 
                                   alt={sale.nhan_vien}
@@ -510,9 +499,11 @@ export default function DashboardPage() {
                                 />
                               ) : (
                                 <div style={{
-                                  fontSize: rank === 1 ? '1.25rem' : '1.05rem',
-                                  fontWeight: 800,
-                                  color: '#fff'
+                                  fontSize: rank === 1 ? '1.25rem' : rank === 3 ? '1.3rem' : '1.05rem',
+                                  fontWeight: rank === 3 ? 900 : 800,
+                                  color: rank === 3 ? '#ffedd5' : '#fff',
+                                  textShadow: rank === 3 ? '1px 2px 4px rgba(0,0,0,0.6)' : 'none',
+                                  letterSpacing: rank === 3 ? '0.5px' : 'normal'
                                 }}>
                                   {initials}
                                 </div>

@@ -43,7 +43,7 @@ export class PayrollEngine {
     private adjustments: PayrollAdjustment[]
   ) {}
 
-  calculate(nv: NhanVien, hd: HopDong, thang: number, nam: number, hoa_hong: number = 0, doanh_thu: number = 0) {
+  calculate(nv: NhanVien, hd: HopDong, thang: number, nam: number, hoa_hong: number = 0, doanh_thu: number = 0, thuong_nong: number = 0) {
     const startDate = new Date(nam, thang - 1, 1);
     const endDate   = new Date(nam, thang, 0);
 
@@ -66,7 +66,7 @@ export class PayrollEngine {
 
     // ── 4. Adjustments (thưởng / phạt) ───────────────────────────
     const empAdj     = this.adjustments.filter(a => a.id_nhan_vien === nv.id_nhan_vien);
-    const totalBonus = empAdj.filter(a => a.type === 'bonus').reduce((s, a) => s + a.amount, 0);
+    const totalBonus = empAdj.filter(a => a.type === 'bonus').reduce((s, a) => s + a.amount, 0) + thuong_nong;
     const totalFine  = empAdj.filter(a => a.type === 'fine').reduce((s, a) => s + a.amount, 0);
 
     // ── 5. Xây dựng danh sách income items ───────────────────────

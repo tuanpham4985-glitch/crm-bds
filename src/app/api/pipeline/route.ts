@@ -46,14 +46,16 @@ export async function POST(request: NextRequest) {
 
     const tien_hoa_hong = gia_tri * hoa_hong;
 
+    const plDate = body.ngay_cap_nhat ? new Date(body.ngay_cap_nhat).toISOString() : new Date().toISOString();
+
     const pl = {
       ...body,
       id_pipeline: generateId('PL'),
       gia_tri_thuc_te: gia_tri,
       hoa_hong: hoa_hong,
       tien_hoa_hong: tien_hoa_hong,
-      ngay_cap_nhat: now,
-      thang: getMonthKey(now),
+      ngay_cap_nhat: plDate,
+      thang: getMonthKey(plDate),
     };
 
     await addPipeline(pl);
@@ -77,9 +79,13 @@ export async function PUT(request: NextRequest) {
       hoa_hong = hoa_hong / 100;
     }
 
+    const plDate = body.ngay_cap_nhat ? new Date(body.ngay_cap_nhat).toISOString() : new Date().toISOString();
+
     body.gia_tri_thuc_te = gia_tri;
     body.hoa_hong = hoa_hong;
     body.tien_hoa_hong = gia_tri * hoa_hong;
+    body.ngay_cap_nhat = plDate;
+    body.thang = getMonthKey(plDate);
 
     const updated = await updatePipeline(body);
 

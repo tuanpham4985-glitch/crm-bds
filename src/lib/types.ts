@@ -121,7 +121,7 @@ export interface Pipeline {
   phi_tra_mkt?: number;
   phi_admin?: number;
   loi_nhuan?: number;
-
+  thuong_nong?: number;
 }
 
 // === CÔNG VIỆC ===
