@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       ho_ten: nv.ho_ten,
       email: nv.email,
       vai_tro: nv.vai_tro,
+      employee_type: nv.employee_type,
     });
 
     // Use btoa for Edge compatibility (Note: handle UTF-8 if needed)
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
         ho_ten: nv.ho_ten,
         email: nv.email,
         vai_tro: nv.vai_tro,
+        employee_type: nv.employee_type,
       },
     });
   } catch (error: any) {

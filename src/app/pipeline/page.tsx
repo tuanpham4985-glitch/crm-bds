@@ -23,6 +23,7 @@ export default function PipelinePage() {
   const showPhiTraGDDA = isAllVisible || (user?.employee_type === 'GDDA');
   const showPhiTraGDKD = isAllVisible || (user?.employee_type === 'GĐKD');
   const showThuongNong = isAllVisible || (user?.employee_type === 'NVKD');
+  const showPhiTKKD = isAllVisible || (user?.employee_type === 'TKKD');
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
@@ -45,7 +46,7 @@ export default function PipelinePage() {
   const [form, setForm] = useState({
     id_khach_hang: '', giai_doan: 'Mới', gia_tri_thuc_te: 0,
     sale_phu_trach: '', id_du_an: '', ten_du_an: '', hoa_hong: 0, thang: '',
-    thuong_nong: 0, ngay_cap_nhat: '',
+    thuong_nong: 0, tkkd: '', phi_tkkd: 0, ngay_cap_nhat: '',
   });
 
   const fetchAll = useCallback(async () => {
@@ -90,6 +91,8 @@ export default function PipelinePage() {
       id_khach_hang: '', giai_doan: 'Mới', gia_tri_thuc_te: 0,
       sale_phu_trach: '', id_du_an: '', ten_du_an: '', hoa_hong: 0, thang: '',
       thuong_nong: 0,
+      tkkd: '',
+      phi_tkkd: 0,
       ngay_cap_nhat: new Date().toISOString().split('T')[0],
     });
     setShowModal(true);
@@ -108,6 +111,8 @@ export default function PipelinePage() {
       hoa_hong: pl.hoa_hong,
       thang: pl.thang,
       thuong_nong: Number(pl.thuong_nong) || 0,
+      tkkd: pl.tkkd || '',
+      phi_tkkd: Number(pl.phi_tkkd) || 0,
       ngay_cap_nhat: pl.ngay_cap_nhat ? new Date(pl.ngay_cap_nhat).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
     });
 
@@ -187,11 +192,12 @@ export default function PipelinePage() {
     return s;
   }, 0);
 
-  let colSpan = 8;
+  let colSpan = 9;
   if (showPhiTraSale) colSpan++;
   if (showPhiTraGDDA) colSpan++;
   if (showPhiTraGDKD) colSpan++;
   if (showThuongNong) colSpan++;
+  if (showPhiTKKD) colSpan++;
 
   return (
     <div>
@@ -331,6 +337,8 @@ export default function PipelinePage() {
                 {showPhiTraGDDA && <th style={{ textAlign: 'right' }}>Phí trả GDDA</th>}
                 {showPhiTraGDKD && <th style={{ textAlign: 'right' }}>Phí trả GĐKD</th>}
                 {showThuongNong && <th style={{ textAlign: 'right' }}>Thưởng nóng</th>}
+                <th>TKKD</th>
+                {showPhiTKKD && <th style={{ textAlign: 'right' }}>Phí TKKD</th>}
                 <th>Sale</th>
                 <th>Ngày ký TTĐC/VBTT</th>
                 <th style={{ width: 90, textAlign: 'center' }}>Thao tác</th>
@@ -381,6 +389,15 @@ export default function PipelinePage() {
                       <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>
                         {isAllVisible || pl.sale_phu_trach === user?.ho_ten 
                           ? formatCurrency(pl.thuong_nong || 0) 
+                          : '—'}
+                      </td>
+                    )}
+
+                    <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.tkkd || '—'}</td>
+                    {showPhiTKKD && (
+                      <td style={{ textAlign: 'right', color: '#8b5cf6', fontWeight: 600 }}>
+                        {isAllVisible || pl.tkkd === user?.ho_ten 
+                          ? formatCurrency(pl.phi_tkkd || 0) 
                           : '—'}
                       </td>
                     )}
@@ -475,6 +492,25 @@ export default function PipelinePage() {
                     ))}
                   </select>
                 </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Thư ký kinh doanh (TKKD)</label>
+                  <select className="form-select" value={form.tkkd}
+                    onChange={(e) => setForm({ ...form, tkkd: e.target.value })}>
+                    <option value="">Chọn TKKD</option>
+                    {employees.map(nv => (
+                      <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>
+                    ))}
+                  </select>
+                </div>
+                {showPhiTKKD && (
+                  <div className="form-group">
+                    <label className="form-label">Phí TKKD (VNĐ)</label>
+                    <input className="form-input" type="number" value={form.phi_tkkd}
+                      onChange={(e) => setForm({ ...form, phi_tkkd: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">

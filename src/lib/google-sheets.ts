@@ -510,6 +510,14 @@ export async function getPipeline(): Promise<Pipeline[]> {
         const actualKey = Object.keys(v).find(k => k.replace(/\s+/g, '').toLowerCase() === cleanCol);
         if (actualKey) return str(v[actualKey]);
 
+        if (colName === 'tkkd') {
+          const aliasKey = Object.keys(v).find(k => {
+            const ck = k.replace(/\s+/g, '').toLowerCase();
+            return ck === 'tkkd' || ck.includes('thưkýkinhdoanh') || ck.includes('thukykinhdoanh');
+          });
+          if (aliasKey) return str(v[aliasKey]);
+        }
+
         // Fallback backward-compatibility
         const idx = [
           'id_pipeline', 'id_khach_hang', 'giai_doan', 'gia_tri_thuc_te',
@@ -537,6 +545,14 @@ export async function getPipeline(): Promise<Pipeline[]> {
             }
             return num(rawVal);
           }
+        }
+
+        if (colName === 'phi_tkkd') {
+          const aliasKey = Object.keys(v).find(k => {
+            const ck = k.replace(/\s+/g, '').toLowerCase();
+            return ck === 'phitkkd' || ck.includes('phítkkd') || ck.includes('phi_tkkd');
+          });
+          if (aliasKey) return num(v[aliasKey]);
         }
 
         const idx = [
@@ -592,6 +608,8 @@ export async function getPipeline(): Promise<Pipeline[]> {
           const val = getNum('thuong_nong');
           return val < 10000 ? 0 : val;
         })(),
+        tkkd: getVal('tkkd'),
+        phi_tkkd: getNum('phi_tkkd'),
       } as Pipeline;
     })
     .filter((x): x is Pipeline => x !== null);
@@ -779,6 +797,8 @@ export async function addPipeline(pl: Pipeline): Promise<void> {
     phi_admin: pl.phi_admin || 0,
     loi_nhuan: pl.loi_nhuan || 0,
     thuong_nong: pl.thuong_nong || 0,
+    tkkd: pl.tkkd || '',
+    phi_tkkd: pl.phi_tkkd || 0,
     ngay_cap_nhat: pl.ngay_cap_nhat,
     thang: thang,
   };
@@ -790,6 +810,12 @@ export async function addPipeline(pl: Pipeline): Promise<void> {
     } else if (colName === 'thuong_nong') {
       if (h.includes('Thưởng nóng (Gồm VAT)')) rowData['Thưởng nóng (Gồm VAT)'] = pl.thuong_nong || 0;
       else if (h.includes('Thưởng nóng')) rowData['Thưởng nóng'] = pl.thuong_nong || 0;
+    } else if (colName === 'tkkd') {
+      const actualKey = h.find(k => k.toLowerCase() === 'tkkd' || k.includes('Thư ký kinh doanh'));
+      if (actualKey) rowData[actualKey] = pl.tkkd || '';
+    } else if (colName === 'phi_tkkd') {
+      const actualKey = h.find(k => k.toLowerCase() === 'phi_tkkd' || k.toLowerCase() === 'phitkkd' || k.includes('Phí TKKD'));
+      if (actualKey) rowData[actualKey] = pl.phi_tkkd || 0;
     } else {
       // Fallback theo vị trí cũ của 11 cột nguyên bản
       const oldIdx = [
@@ -846,6 +872,8 @@ export async function updatePipeline(pl: Pipeline): Promise<boolean> {
     phi_admin: pl.phi_admin || 0,
     loi_nhuan: pl.loi_nhuan || 0,
     thuong_nong: pl.thuong_nong || 0,
+    tkkd: pl.tkkd || '',
+    phi_tkkd: pl.phi_tkkd || 0,
     ngay_cap_nhat: now,
     thang: toMonthKey(now),
   };
@@ -857,6 +885,12 @@ export async function updatePipeline(pl: Pipeline): Promise<boolean> {
     } else if (colName === 'thuong_nong') {
       if (h.includes('Thưởng nóng (Gồm VAT)')) row.set('Thưởng nóng (Gồm VAT)', pl.thuong_nong || 0);
       else if (h.includes('Thưởng nóng')) row.set('Thưởng nóng', pl.thuong_nong || 0);
+    } else if (colName === 'tkkd') {
+      const actualKey = h.find(k => k.toLowerCase() === 'tkkd' || k.includes('Thư ký kinh doanh'));
+      if (actualKey) row.set(actualKey, pl.tkkd || '');
+    } else if (colName === 'phi_tkkd') {
+      const actualKey = h.find(k => k.toLowerCase() === 'phi_tkkd' || k.toLowerCase() === 'phitkkd' || k.includes('Phí TKKD'));
+      if (actualKey) row.set(actualKey, pl.phi_tkkd || 0);
     } else {
       // Fallback theo vị trí cũ của 11 cột nguyên bản
       const oldIdx = [

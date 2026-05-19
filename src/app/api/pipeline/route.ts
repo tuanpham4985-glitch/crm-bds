@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
       gia_tri_thuc_te: gia_tri,
       hoa_hong: hoa_hong,
       tien_hoa_hong: tien_hoa_hong,
+      phi_tkkd: Number(body.phi_tkkd) || 0,
       ngay_cap_nhat: plDate,
       thang: getMonthKey(plDate),
     };
@@ -84,6 +85,7 @@ export async function PUT(request: NextRequest) {
     body.gia_tri_thuc_te = gia_tri;
     body.hoa_hong = hoa_hong;
     body.tien_hoa_hong = gia_tri * hoa_hong;
+    body.phi_tkkd = Number(body.phi_tkkd) || 0;
     body.ngay_cap_nhat = plDate;
     body.thang = getMonthKey(plDate);
 

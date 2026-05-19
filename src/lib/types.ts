@@ -122,6 +122,8 @@ export interface Pipeline {
   phi_admin?: number;
   loi_nhuan?: number;
   thuong_nong?: number;
+  tkkd?: string;
+  phi_tkkd?: number;
 }
 
 // === CÔNG VIỆC ===
@@ -231,6 +233,7 @@ export interface User {
   ho_ten: string;
   email: string;
   vai_tro: string;
+  employee_type?: string;
 }
 
 export interface LoginCredentials {
