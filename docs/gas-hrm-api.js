@@ -201,10 +201,21 @@ function syncPipeline() {
   if (targetHeaders.indexOf("thuong_nong") === -1) {
     const lastCol = pipelineSheet.getLastColumn();
     pipelineSheet.getRange(1, lastCol + 1).setValue("thuong_nong");
-    // Reload lại headers
-    targetData = pipelineSheet.getDataRange().getValues();
-    targetHeaders = targetData[0].map(h => String(h).trim());
   }
+
+  // Tự động kiểm tra và thêm cột "tkkd" và "phi_tkkd" nếu chưa có
+  if (targetHeaders.indexOf("tkkd") === -1) {
+    const lastCol = pipelineSheet.getLastColumn();
+    pipelineSheet.getRange(1, lastCol + 1).setValue("tkkd");
+  }
+  if (targetHeaders.indexOf("phi_tkkd") === -1) {
+    const lastCol = pipelineSheet.getLastColumn();
+    pipelineSheet.getRange(1, lastCol + 1).setValue("phi_tkkd");
+  }
+
+  // Reload lại headers sau khi thêm cột
+  targetData = pipelineSheet.getDataRange().getValues();
+  targetHeaders = targetData[0].map(h => String(h).trim());
 
   // Cột ID dùng để Upsert: ma_can + ten_du_an tạo thành khóa duy nhất
   const idColName = "id_pipeline";
@@ -336,6 +347,9 @@ function syncPipeline() {
     if (thuongNong < 10000) {
       thuongNong = 0;
     }
+
+    const tkkd          = String(src["TKKD"] || "").trim();
+    const phiTkkd       = toNum(src["Phí TKKD"] || src["phí TKKD"] || 0);
     // Tạo id_pipeline ổn định từ Mã Căn
     const pipelineId = "PL-" + Math.abs(
       (function(str) {
@@ -380,6 +394,8 @@ function syncPipeline() {
       "phi_admin":        phiAdmin,
       "loi_nhuan":        loiNhuan,
       "thuong_nong":      thuongNong,
+      "tkkd":             tkkd,
+      "phi_tkkd":         phiTkkd,
       "ngay_cap_nhat":    ngayKyDate,
       "thang":            Utilities.formatDate(ngayKyDate, Session.getScriptTimeZone(), "yyyy-MM")
     };
