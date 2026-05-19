@@ -80,7 +80,14 @@ export default function PipelinePage() {
 
   // Filter pipelines
   const filteredPipelines = pipelines.filter(pl => {
-    if (filterSale && pl.sale_phu_trach !== filterSale) return false;
+    if (filterSale) {
+      const selectedEmp = employees.find(e => e.ho_ten === filterSale);
+      if (selectedEmp?.employee_type === 'TKKD') {
+        if (pl.tkkd !== filterSale) return false;
+      } else {
+        if (pl.sale_phu_trach !== filterSale) return false;
+      }
+    }
     if (filterDuAn && pl.id_du_an !== filterDuAn) return false;
     return true;
   });
@@ -192,6 +199,12 @@ export default function PipelinePage() {
     return s;
   }, 0);
 
+  const personalPhiTKKD = activeDeals.reduce((s, pl) => {
+    if (isAllVisible) return s + (pl.phi_tkkd || 0);
+    if (user?.employee_type === 'TKKD' && pl.tkkd === user.ho_ten) return s + (pl.phi_tkkd || 0);
+    return s;
+  }, 0);
+
   let colSpan = 9;
   if (showPhiTraSale) colSpan++;
   if (showPhiTraGDDA) colSpan++;
@@ -274,6 +287,25 @@ export default function PipelinePage() {
               </span>
             )}
 
+            {/* Phí TKKD stats */}
+            {showPhiTKKD && (
+              <span style={{ 
+                background: 'rgba(139, 92, 246, 0.08)', 
+                color: '#7c3aed', 
+                padding: '6px 15px', 
+                borderRadius: '14px', 
+                fontWeight: 700, 
+                fontSize: '0.88rem', 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '6px',
+                border: '1px solid rgba(139, 92, 246, 0.15)',
+                boxShadow: '0 1px 2px rgba(139, 92, 246, 0.05)'
+              }}>
+                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💜</span> {isAllVisible ? 'Tổng phí TKKD' : 'Phí TKKD cá nhân'}: <span style={{ color: '#7c3aed', fontWeight: 850 }}>{formatCurrency(personalPhiTKKD, false)}</span>
+              </span>
+            )}
+
             {canViewProfit && (
               <span style={{ 
                 background: 'rgba(212, 175, 55, 0.15)', 
@@ -308,7 +340,7 @@ export default function PipelinePage() {
           <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', fontWeight: 500 }}>Lọc:</span>
         </div>
         <select className="form-select" value={filterSale} onChange={(e) => setFilterSale(e.target.value)}>
-          <option value="">Tất cả sale</option>
+          <option value="">Tất cả nhân sự</option>
           {employees.map(nv => <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>)}
         </select>
         <select className="form-select" value={filterDuAn} onChange={(e) => setFilterDuAn(e.target.value)}>
