@@ -96,6 +96,10 @@ export async function triggerSyncPipeline() {
   return await postToGAS('syncPipeline');
 }
 
+export async function triggerSyncEmployees() {
+  return await postToGAS('syncEmployees');
+}
+
 export async function fetchEmployees() {
   return await getFromGAS('getEmployees');
 }

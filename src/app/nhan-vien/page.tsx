@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
-  Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText, FileUser
+  Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText, FileUser, RefreshCw
 } from 'lucide-react';
 import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc } from '@/lib/types';
 import Link from 'next/link';
@@ -73,6 +73,27 @@ export default function NhanVienPage() {
     } catch (err) {
       console.error(`[API Error] Failed to parse JSON from ${res.url}. Status: ${res.status}. Body preview:`, text.slice(0, 200));
       return { success: false, error: 'Invalid JSON response' };
+    }
+  };
+
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!confirm('Bạn có chắc chắn muốn đồng bộ danh sách nhân viên từ file nguồn VIC_DATA NHÂN SỰ VICTORY HOLDINGS? Dữ liệu nhân sự trên CRM sẽ được cập nhật.')) return;
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/nhan-vien/sync', { method: 'POST' });
+      const result = await safeJson(res);
+      if (result.success) {
+        alert(`Đồng bộ thành công!\n- Thêm mới: ${result.data?.inserted || 0} nhân viên\n- Cập nhật: ${result.data?.updated || 0} nhân viên`);
+        fetchAll(true);
+      } else {
+        alert('Đồng bộ thất bại: ' + (result.error || 'Lỗi không xác định'));
+      }
+    } catch (err: any) {
+      alert('Đồng bộ thất bại: ' + err.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -466,10 +487,30 @@ export default function NhanVienPage() {
         </div>
         <div className="flex gap-2">
           {isAdmin && (
-            <button className="btn btn-primary" onClick={openCreate}>
-              <Plus size={18} />
-              Thêm nhân viên
-            </button>
+            <>
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleSync} 
+                disabled={syncing}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                {syncing ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Đang đồng bộ...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={18} />
+                    Đồng bộ nhân sự
+                  </>
+                )}
+              </button>
+              <button className="btn btn-primary" onClick={openCreate}>
+                <Plus size={18} />
+                Thêm nhân viên
+              </button>
+            </>
           )}
         </div>
       </div>

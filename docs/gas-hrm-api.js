@@ -7,7 +7,12 @@ const CONFIG = {
   // ID file Google Sheet nguồn "TỔNG HỢP BÁO CÁO BÁN HÀNG - VICTORY"
   // Vui lòng điền ID thực tế của file Victory vào đây
   SOURCE_SPREADSHEET_ID: "1I9eSfdDddketrRlbrkhN2UIvHHwvaFgs9a8pWUuZfDU",
-  SOURCE_SHEET_NAME: "Tổng hợp giao dịch chi tiết"
+  SOURCE_SHEET_NAME: "Tổng hợp giao dịch chi tiết",
+
+  // ID file Google Sheet nguồn "VIC_DATA NHÂN SỰ VICTORY HOLDINGS"
+  // Vui lòng điền ID thực tế của file nhân sự Victory vào đây
+  SOURCE_EMPLOYEE_SPREADSHEET_ID: "YOUR_VIC_DATA_NHAN_SU_SPREADSHEET_ID_HERE",
+  SOURCE_EMPLOYEE_SHEET_NAME: "DATA NHÂN SỰ"
 };
 
 // Hàm kiểm tra xác thực token
@@ -92,6 +97,11 @@ function doPost(e) {
       // TRIGGER ĐỒNG BỘ DỮ LIỆU VICTORY VÀO PIPELINE
       case 'syncPipeline':
         result = syncPipeline();
+        break;
+
+      // TRIGGER ĐỒNG BỘ DANH SÁCH NHÂN SỰ TỪ VICTORY
+      case 'syncEmployees':
+        result = syncEmployees();
         break;
 
       // EMPLOYEES CRUD
@@ -446,6 +456,210 @@ function syncPipeline() {
 
   return {
     message: "Đồng bộ Pipeline thành công!",
+    inserted: insertCount,
+    updated: updateCount,
+    timestamp: now.toISOString()
+  };
+}
+
+// -----------------------------------------------
+// Đồng bộ danh sách nhân sự từ file Nhân sự Victory vào sheet NHAN_VIEN
+// -----------------------------------------------
+function syncEmployees() {
+  if (!CONFIG.SOURCE_EMPLOYEE_SPREADSHEET_ID || CONFIG.SOURCE_EMPLOYEE_SPREADSHEET_ID === "YOUR_VIC_DATA_NHAN_SU_SPREADSHEET_ID_HERE") {
+    throw new Error("Vui lòng cấu hình SOURCE_EMPLOYEE_SPREADSHEET_ID của file VIC_DATA NHÂN SỰ VICTORY HOLDINGS.");
+  }
+
+  // 1. Đọc dữ liệu từ file nguồn
+  const sourceSpreadsheet = SpreadsheetApp.openById(CONFIG.SOURCE_EMPLOYEE_SPREADSHEET_ID);
+  const sourceSheet = sourceSpreadsheet.getSheetByName(CONFIG.SOURCE_EMPLOYEE_SHEET_NAME || "DATA NHÂN SỰ");
+  if (!sourceSheet) throw new Error(`Không tìm thấy sheet nguồn '${CONFIG.SOURCE_EMPLOYEE_SHEET_NAME || "DATA NHÂN SỰ"}'`);
+
+  const sourceRawData = sourceSheet.getDataRange().getValues();
+  const sourceDisplayData = sourceSheet.getDataRange().getDisplayValues();
+  if (sourceRawData.length === 0) return { message: "Sheet nguồn rỗng." };
+
+  // Tìm dòng tiêu đề chứa các từ khóa đặc trưng nhân sự
+  let headerRowIndex = 0;
+  for (let i = 0; i < Math.min(sourceRawData.length, 15); i++) {
+    const rowStr = sourceRawData[i].map(cell => String(cell).toLowerCase()).join("|");
+    if (rowStr.indexOf("mã nv") !== -1 || rowStr.indexOf("họ tên") !== -1 || rowStr.indexOf("họ và tên") !== -1 || rowStr.indexOf("sđt") !== -1) {
+      headerRowIndex = i;
+      break;
+    }
+  }
+
+  const sourceHeaders = sourceRawData[headerRowIndex].map(h => String(h).replace(/\s+/g, " ").trim());
+  const sourceData = [];
+  const sourceDisplayRows = [];
+
+  for (let i = headerRowIndex + 1; i < sourceRawData.length; i++) {
+    if (sourceRawData[i].join("").trim() !== "") {
+      sourceData.push(sourceRawData[i]);
+      sourceDisplayRows.push(sourceDisplayData[i]);
+    }
+  }
+
+  // 2. Mở sheet NHAN_VIEN trong CRM_BDS
+  const targetSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const employeeSheet = targetSpreadsheet.getSheetByName("NHAN_VIEN");
+  if (!employeeSheet) throw new Error("Không tìm thấy sheet 'NHAN_VIEN' trong CRM_BDS.");
+
+  let targetData = employeeSheet.getDataRange().getValues();
+  let targetHeaders = targetData[0].map(h => String(h).trim());
+
+  // Đảm bảo có cột mã nhân viên
+  const idColIndex = targetHeaders.indexOf("id_nhan_vien");
+  if (idColIndex === -1) {
+    throw new Error("Không tìm thấy cột 'id_nhan_vien' trong sheet NHAN_VIEN của CRM.");
+  }
+
+  // Tạo lookup map theo id_nhan_vien (key duy nhất)
+  const targetMap = {}; 
+  for (let i = 1; i < targetData.length; i++) {
+    const id = String(targetData[i][idColIndex] || "").trim();
+    if (id) targetMap[id] = i + 1;
+  }
+
+  // Helper hàm tìm index của cột nguồn khớp với header đích bằng bí danh (aliases)
+  function findSourceColIndex(targetHeaderName) {
+    const cleanTarget = targetHeaderName.replace(/\s+/g, "").toLowerCase();
+    
+    const aliases = {
+      id_nhan_vien: ["mãnhânsự", "mãnhânviên", "mãnv", "idnhânviên", "idnhansu", "id", "id_nhan_vien"],
+      ho_ten: ["họtên", "họvàtên", "hoten", "ho_ten", "tênnhânviên", "nhânviên"],
+      so_dien_thoai: ["sốđiệnthoại", "sđt", "sdt", "sodienthoai", "so_dien_thoai", "phone", "diđộng"],
+      email: ["email", "mail", "thưđiệntử"],
+      employee_type: ["chứcdanh", "vịtrí", "chucdanh", "employee_type", "loạinhânviên", "loạinhựcsự"],
+      trang_thai: ["trạngthái", "trang_thai", "tìnhtrạng", "trangthai"],
+      so_cccd: ["sốcccd", "cccd", "cmnd", "sốcmnd", "socccd", "socmnd"],
+      ngay_cap: ["ngàycấp", "ngay_cap", "ngaycap"],
+      noi_cap: ["nơicấp", "noi_cap", "noicap"],
+      HKTT: ["hktt", "hộkhẩuthườngtrú", "địachỉthườngtrú", "địachỉ", "hộkhẩu"],
+      ngay_sinh: ["ngàysinh", "ngay_sinh", "sinhnhật", "ngaysinh"],
+      gioi_tinh: ["giớitính", "gioi_tinh", "nam/nữ", "gioitinh"],
+      ma_so_thue: ["mãsốthuế", "mst", "ma_so_thue", "masothue"],
+      so_tk_ngan_hang: ["sốtàikhoản", "stk", "sốtk", "so_tk", "so_tk_ngan_hang", "sotk"],
+      ten_ngan_hang_thu_huong: ["ngânhàng", "tênngânhàng", "ten_ngan_hang", "ten_ngan_hang_thu_huong", "tennganhang"],
+      vai_tro: ["vaitrò", "vai_tro", "quyền", "vaitro"],
+      khu_vuc: ["khuvực", "khu_vuc", "chinánh", "khuvuc"],
+      phong_KD: ["phòngkd", "phong_kd", "phòngban", "bộphận", "phongkd"],
+      so_nguoi_phu_thuoc: ["sốngườiphụthuộc", "sốnpt", "npt", "so_nguoi_phu_thuoc", "songuoiphuthuoc"],
+      mat_khau: ["mậtkhẩu", "mat_khau", "password", "matkhau"]
+    };
+
+    const targetAliases = aliases[targetHeaderName] || [cleanTarget];
+    
+    for (let colIdx = 0; colIdx < sourceHeaders.length; colIdx++) {
+      const cleanSrc = sourceHeaders[colIdx].replace(/\s+/g, "").toLowerCase();
+      if (targetAliases.some(alias => cleanSrc === alias || cleanSrc.includes(alias))) {
+        return colIdx;
+      }
+    }
+    return -1;
+  }
+
+  // Khởi tạo bản đồ index cột
+  const colMappings = {}; 
+  targetHeaders.forEach(th => {
+    colMappings[th] = findSourceColIndex(th);
+  });
+
+  let insertCount = 0;
+  let updateCount = 0;
+  const now = new Date();
+
+  // 3. Duyệt từng dòng nguồn để upsert
+  for (let i = 0; i < sourceData.length; i++) {
+    const row = sourceData[i];
+    const displayRow = sourceDisplayRows[i];
+
+    const idSrcIndex = colMappings["id_nhan_vien"];
+    if (idSrcIndex === -1) continue; 
+    const idNhanVien = String(row[idSrcIndex] || "").trim();
+    if (!idNhanVien) continue; 
+
+    const nameSrcIndex = colMappings["ho_ten"];
+    const hoTen = nameSrcIndex !== -1 ? String(row[nameSrcIndex] || "").trim() : "";
+    if (!hoTen) continue; 
+
+    const writeObj = {};
+    
+    // Thiết lập giá trị mặc định cho cột CRM
+    writeObj["ngay_tao"] = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+    writeObj["trang_thai"] = "Đang làm";
+    writeObj["vai_tro"] = "Sale";
+    writeObj["mat_khau"] = "123456"; 
+
+    targetHeaders.forEach(th => {
+      const srcColIdx = colMappings[th];
+      if (srcColIdx !== -1) {
+        let val = row[srcColIdx];
+        let displayVal = displayRow ? displayRow[srcColIdx] : "";
+        
+        if (th === "ngay_sinh" || th === "ngay_cap") {
+          let dateObj = null;
+          const dateStr = String(displayVal || val).trim();
+          if (dateStr) {
+            const parts = dateStr.split("/");
+            if (parts.length === 3) {
+              const day = parseInt(parts[0], 10);
+              const month = parseInt(parts[1], 10) - 1;
+              const yearPart = parts[2].trim().split(/\s+/)[0];
+              const year = parseInt(yearPart, 10);
+              if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                dateObj = new Date(year, month, day);
+              }
+            }
+            if (!dateObj && val instanceof Date) {
+              dateObj = val;
+            }
+            if (dateObj && !isNaN(dateObj.getTime())) {
+              writeObj[th] = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+            } else {
+              writeObj[th] = dateStr;
+            }
+          } else {
+            writeObj[th] = "";
+          }
+        } else if (th === "so_nguoi_phu_thuoc") {
+          writeObj[th] = parseInt(String(val).replace(/[^0-9]/g, ""), 10) || 0;
+        } else if (th === "so_dien_thoai" || th === "so_cccd" || th === "so_tk_ngan_hang") {
+          writeObj[th] = String(displayVal || val || "").trim();
+        } else {
+          writeObj[th] = String(val === null || val === undefined ? "" : val).trim();
+        }
+      }
+    });
+
+    writeObj["id_nhan_vien"] = idNhanVien;
+    writeObj["ho_ten"] = hoTen;
+
+    const targetRowIndex = targetMap[idNhanVien];
+    const rowValues = targetHeaders.map(h => writeObj[h] !== undefined ? writeObj[h] : "");
+
+    if (targetRowIndex) {
+      // Cập nhật, giữ lại mật khẩu hiện tại nếu không đồng bộ mật khẩu mới
+      const currentPasswordColIdx = targetHeaders.indexOf("mat_khau");
+      if (currentPasswordColIdx !== -1 && targetData[targetRowIndex - 1]) {
+        const curPass = String(targetData[targetRowIndex - 1][currentPasswordColIdx] || "").trim();
+        if (curPass && (!writeObj["mat_khau"] || writeObj["mat_khau"] === "123456")) {
+          rowValues[currentPasswordColIdx] = curPass;
+        }
+      }
+      employeeSheet.getRange(targetRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+      updateCount++;
+    } else {
+      employeeSheet.appendRow(rowValues);
+      insertCount++;
+      // Cập nhật targetData để cập nhật password của lần sau nếu trùng
+      targetData = employeeSheet.getDataRange().getValues();
+      targetMap[idNhanVien] = targetData.length;
+    }
+  }
+
+  return {
+    message: "Đồng bộ danh sách nhân sự thành công!",
     inserted: insertCount,
     updated: updateCount,
     timestamp: now.toISOString()
