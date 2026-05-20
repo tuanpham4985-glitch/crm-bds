@@ -489,7 +489,14 @@ function syncEmployees() {
     }
   }
 
-  const sourceHeaders = sourceRawData[headerRowIndex].map(h => String(h).replace(/\s+/g, " ").trim());
+  const sourceHeaders = sourceRawData[headerRowIndex].map((h, colIdx) => {
+    let headerStr = String(h).replace(/\s+/g, " ").trim();
+    // Xử lý Merge Cells: Nếu ô tiêu đề bị rỗng (do merge với dòng trên), lấy giá trị của dòng trên (row 3)
+    if (!headerStr && headerRowIndex > 0) {
+      headerStr = String(sourceRawData[headerRowIndex - 1][colIdx] || "").replace(/\s+/g, " ").trim();
+    }
+    return headerStr;
+  });
   const sourceData = [];
   const sourceDisplayRows = [];
 
