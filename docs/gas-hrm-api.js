@@ -611,7 +611,7 @@ function syncEmployees() {
       khu_vuc: ["khuvực", "khu_vuc", "khuvuc", "chinánh", "vùng"],
       phong_KD: [
         "phòngkd", "phong_kd", "phongkd", "phòngban",
-        "bộphận", "bophan", "nhóm", "team"
+        "bộphận", "bophan", "nhóm", "team", "phong/donvi", "phongdonvi", "phòng/đơnvị"
       ],
       so_nguoi_phu_thuoc: [
         "sốngườiphụthuộc", "songuoiphuthuoc", "so_nguoi_phu_thuoc",
