@@ -521,10 +521,17 @@ function syncEmployees() {
     throw new Error("Không tìm thấy cột 'id_nhan_vien' trong sheet NHAN_VIEN của CRM.");
   }
 
-  // Tạo lookup map theo id_nhan_vien (key duy nhất)
-  const targetMap = {};
+  // Helper đồng nhất ID: nếu là chuỗi toàn số, đưa về số nguyên (xóa số 0 ở đầu) để tránh lỗi '0001' khác '1'
+  function normalizeId(idStr) {
+    const str = String(idStr).trim();
+    if (/^\d+$/.test(str)) return String(parseInt(str, 10));
+    return str;
+  }
+
+  // Tạo lookup map
+  let targetMap = {};
   for (let i = 1; i < targetData.length; i++) {
-    const id = String(targetData[i][idColIndex] || "").trim();
+    const id = normalizeId(targetData[i][idColIndex]);
     if (id) targetMap[id] = i + 1;
   }
 
@@ -675,7 +682,7 @@ function syncEmployees() {
     const idSrcIndex = colMappings["id_nhan_vien"];
     let idNhanVien = "";
     if (idSrcIndex !== -1) {
-      idNhanVien = String(displayRow[idSrcIndex] || row[idSrcIndex] || "").trim();
+      idNhanVien = normalizeId(displayRow[idSrcIndex] || row[idSrcIndex] || "");
     }
     // Nếu không tìm được mã NV từ cột nguồn hoặc cột trống, bỏ qua dòng này
     // (không tự sinh ID vì sẽ tạo bản sao mỗi lần sync)
