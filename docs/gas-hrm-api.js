@@ -757,7 +757,12 @@ function syncEmployees() {
 
       targetHeaders.forEach((th, thIdx) => {
         if (writeObj[th] !== undefined) {
-          updatedRowValues[thIdx] = writeObj[th];
+          let val = writeObj[th];
+          // Ép kiểu chuỗi cho các trường bắt đầu bằng 0 (SĐT, ID, CCCD) bằng dấu '
+          if (typeof val === "string" && /^0\d+$/.test(val)) {
+            val = "'" + val;
+          }
+          updatedRowValues[thIdx] = val;
         }
       });
 
@@ -775,7 +780,13 @@ function syncEmployees() {
       updateCount++;
     } else {
       // Thêm mới: Điền giá trị mới hoặc rỗng nếu không được map
-      const rowValues = targetHeaders.map(h => writeObj[h] !== undefined ? writeObj[h] : "");
+      const rowValues = targetHeaders.map(h => {
+        let val = writeObj[h] !== undefined ? writeObj[h] : "";
+        if (typeof val === "string" && /^0\d+$/.test(val)) {
+          val = "'" + val;
+        }
+        return val;
+      });
       employeeSheet.appendRow(rowValues);
       insertCount++;
       // Cập nhật targetData và map để phục vụ các dòng tiếp theo
