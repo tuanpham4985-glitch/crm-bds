@@ -528,6 +528,17 @@ function syncEmployees() {
     if (id) targetMap[id] = i + 1;
   }
 
+  // Hàm chuẩn hóa chuỗi: xóa khoảng trắng, đưa về chữ thường, và xóa dấu tiếng Việt
+  function normalizeStr(str) {
+    if (!str) return "";
+    return String(str)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Xóa dấu
+      .replace(/đ/g, "d").replace(/Đ/g, "d")
+      .replace(/\s+/g, "") // Xóa khoảng trắng
+      .toLowerCase();
+  }
+
   // Helper hàm tìm index của cột nguồn khớp với header đích bằng bí danh (aliases)
   // Chiến lược: exact-match trước, rồi mới includes (chỉ với alias dài >= 4 ký tự)
   // để tránh alias ngắn như "id" khớp nhầm vào "diđộng" hoặc các cột không liên quan
@@ -609,14 +620,14 @@ function syncEmployees() {
       mat_khau: ["mậtkhẩu", "mat_khau", "password", "matkhau"]
     };
 
-    const targetAliases = aliases[targetHeaderName] || [
-      targetHeaderName.replace(/\s+/g, "").toLowerCase()
-    ];
+    // Chuẩn hóa toàn bộ alias về dạng không dấu
+    const normalizedAliases = (aliases[targetHeaderName] || [targetHeaderName])
+      .map(alias => normalizeStr(alias));
 
     // Bước 1: Tìm exact-match trước (an toàn nhất)
     for (let colIdx = 0; colIdx < sourceHeaders.length; colIdx++) {
-      const cleanSrc = sourceHeaders[colIdx].replace(/\s+/g, "").toLowerCase();
-      if (targetAliases.some(alias => cleanSrc === alias)) {
+      const cleanSrc = normalizeStr(sourceHeaders[colIdx]);
+      if (normalizedAliases.some(alias => cleanSrc === alias)) {
         // Tránh nhầm cột Số CCCD với cột Checkbox CCCD (TT HỒ SƠ) ở tận cột AK
         if (targetHeaderName === "so_cccd" && colIdx > 25) continue;
         return colIdx;
@@ -625,8 +636,8 @@ function syncEmployees() {
 
     // Bước 2: Tìm includes, nhưng chỉ với alias đủ dài (>= 4 ký tự)
     for (let colIdx = 0; colIdx < sourceHeaders.length; colIdx++) {
-      const cleanSrc = sourceHeaders[colIdx].replace(/\s+/g, "").toLowerCase();
-      if (targetAliases.some(alias => alias.length >= 4 && cleanSrc.includes(alias))) {
+      const cleanSrc = normalizeStr(sourceHeaders[colIdx]);
+      if (normalizedAliases.some(alias => alias.length >= 4 && cleanSrc.includes(alias))) {
         // Tránh nhầm cột Số CCCD với cột Checkbox CCCD (TT HỒ SƠ) ở tận cột AK
         if (targetHeaderName === "so_cccd" && colIdx > 25) continue;
         return colIdx;
