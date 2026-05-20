@@ -483,7 +483,7 @@ function syncEmployees() {
   let headerRowIndex = 0;
   for (let i = 0; i < Math.min(sourceRawData.length, 15); i++) {
     const rowStr = sourceRawData[i].map(cell => String(cell).toLowerCase()).join("|");
-    if (rowStr.indexOf("mã nv") !== -1 || rowStr.indexOf("họ tên") !== -1 || rowStr.indexOf("họ và tên") !== -1 || rowStr.indexOf("sđt") !== -1) {
+    if (rowStr.indexOf("mnv") !== -1 || rowStr.indexOf("mã nv") !== -1 || rowStr.indexOf("họ tên") !== -1 || rowStr.indexOf("họ và tên") !== -1 || rowStr.indexOf("sđt") !== -1) {
       headerRowIndex = i;
       break;
     }
@@ -528,7 +528,7 @@ function syncEmployees() {
     const aliases = {
       // Mã nhân viên - KHÔNG dùng alias "id" vì quá chung chung
       id_nhan_vien: [
-        "mãnv", "mãnhânsự", "mãnhânviên", "manhanvien", "manv",
+        "mnv", "mãnv", "mãnhânsự", "mãnhânviên", "manhanvien", "manv",
         "idnhânviên", "idnhansu", "id_nhan_vien", "manhansự"
       ],
       ho_ten: [
@@ -644,11 +644,11 @@ function syncEmployees() {
     const idSrcIndex = colMappings["id_nhan_vien"];
     let idNhanVien = "";
     if (idSrcIndex !== -1) {
-      idNhanVien = String(row[idSrcIndex] || "").trim();
+      idNhanVien = String(displayRow[idSrcIndex] || row[idSrcIndex] || "").trim();
     }
     // Nếu không tìm được mã NV từ cột nguồn hoặc cột trống, bỏ qua dòng này
     // (không tự sinh ID vì sẽ tạo bản sao mỗi lần sync)
-    if (!idNhanVien) continue;
+    if (!idNhanVien || idNhanVien === "0") continue;
 
     const nameSrcIndex = colMappings["ho_ten"];
     const hoTen = nameSrcIndex !== -1 ? String(row[nameSrcIndex] || "").trim() : "";
