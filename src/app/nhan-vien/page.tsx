@@ -17,6 +17,7 @@ const NHAN_VIEN_FIELDS = [
   { id: 'so_dien_thoai', label: 'SĐT', public: true },
   { id: 'email', label: 'Email', public: false },
   { id: 'employee_type', label: 'Chức danh', public: true },
+  { id: 'phong_KD', label: 'Phòng KD', public: true },
   { id: 'trang_thai', label: 'Trạng thái', public: true },
   { id: 'khach_hang', label: 'KH', align: 'right', public: false },
   { id: 'deal', label: 'Deal', align: 'right', public: true },
@@ -604,6 +605,14 @@ export default function NhanVienPage() {
                             </td>
                           );
                         }
+                        if (col.id === 'phong_KD') {
+                          return (
+                            <td key={col.id} className="text-center align-middle">
+                              <span className="badge badge-outline">{nv.phong_KD || '-'}</span>
+                            </td>
+                          );
+                        }
+
                         if (col.id === 'trang_thai') {
                           return (
                             <td key={col.id} style={{ textAlign: col.align as any }}>

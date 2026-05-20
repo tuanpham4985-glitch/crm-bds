@@ -389,32 +389,29 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       }
     }
 
-    // Column order: id, ho_ten, sdt, email, employee_type, trang_thai,
-    // so_cccd, ngay_cap, noi_cap, HKTT, ngay_sinh, gioi_tinh, ma_so_thue,
-    // so_tk_ngan_hang[13], ten_ngan_hang_thu_huong[14], ngay_tao[15], avatar_url[16]
     const baseNhanVien = {
       id_nhan_vien: id,
       ho_ten: hoTen,
-      so_dien_thoai: str(v[h[2]]),
-      email: str(v[h[3]]),
-      employee_type: str(v[h[4]]),
-      trang_thai: str(v[h[5]]),
-      so_cccd: h[6] ? str(v[h[6]]) : '',
-      ngay_cap: h[7] ? str(v[h[7]]) : '',
-      noi_cap: h[8] ? str(v[h[8]]) : '',
-      HKTT: h[9] ? str(v[h[9]]) : '',
-      ngay_sinh: h[10] ? str(v[h[10]]) : '',
-      gioi_tinh: h[11] ? str(v[h[11]]) : '',
-      ma_so_thue: h[12] ? str(v[h[12]]) : '',
-      so_tk_ngan_hang: h[13] ? str(v[h[13]]) : '',
-      ten_ngan_hang_thu_huong: h[14] ? str(v[h[14]]) : '',
-      avatar_url: h[16] ? str(v[h[16]]) : '',
+      so_dien_thoai: str(v['so_dien_thoai']),
+      email: str(v['email']),
+      employee_type: str(v['employee_type']),
+      trang_thai: str(v['trang_thai']),
+      so_cccd: str(v['so_cccd']),
+      ngay_cap: str(v['ngay_cap']),
+      noi_cap: str(v['noi_cap']),
+      HKTT: str(v['HKTT']),
+      ngay_sinh: str(v['ngay_sinh']),
+      gioi_tinh: str(v['gioi_tinh']),
+      ma_so_thue: str(v['ma_so_thue']),
+      so_tk_ngan_hang: str(v['so_tk_ngan_hang']),
+      ten_ngan_hang_thu_huong: str(v['ten_ngan_hang_thu_huong']),
+      avatar_url: str(v['avatar_url']),
       so_nguoi_phu_thuoc: num(v['so_nguoi_phu_thuoc'] || v['nguoi_phu_thuoc']),
       mat_khau: str(v['mat_khau']),
     };
 
     // Backward compatibility: previous bug saved vai_tro into ngay_tao column (h[15])
-    const rawNgayTao = h[15] ? str(v[h[15]]) : '';
+    const rawNgayTao = str(v['ngay_tao']);
     const isVaiTroInNgayTao = rawNgayTao === 'Admin' || rawNgayTao === 'Sale';
 
     const finalVaiTro = v['vai_tro'] ? str(v['vai_tro']) : (isVaiTroInNgayTao ? rawNgayTao : 'Sale');
