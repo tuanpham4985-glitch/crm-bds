@@ -521,11 +521,15 @@ function syncEmployees() {
     throw new Error("Không tìm thấy cột 'id_nhan_vien' trong sheet NHAN_VIEN của CRM.");
   }
 
-  // Helper đồng nhất ID: nếu là chuỗi toàn số, đưa về số nguyên (xóa số 0 ở đầu) để tránh lỗi '0001' khác '1'
+  // Ép định dạng toàn bộ cột id_nhan_vien thành văn bản (Plain Text) để không mất số 0 ở đầu (0001)
+  employeeSheet.getRange(2, idColIndex + 1, employeeSheet.getMaxRows(), 1).setNumberFormat("@");
+
+  // Đọc lại data sau khi ép định dạng để đảm bảo lấy ra chuỗi "0001" thay vì số 1
+  targetData = employeeSheet.getDataRange().getDisplayValues();
+
+  // Helper đồng nhất ID: giữ nguyên gốc chuỗi "0001", "0002"
   function normalizeId(idStr) {
-    const str = String(idStr).trim();
-    if (/^\d+$/.test(str)) return String(parseInt(str, 10));
-    return str;
+    return String(idStr).trim();
   }
 
   // Tạo lookup map
