@@ -494,7 +494,8 @@ export default function DashboardPage() {
                                   style={{
                                     width: '100%',
                                     height: '100%',
-                                    objectFit: 'cover'
+                                    objectFit: 'cover',
+                                    objectPosition: 'top center'
                                   }}
                                 />
                               ) : (
