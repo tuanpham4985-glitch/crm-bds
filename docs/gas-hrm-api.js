@@ -642,6 +642,15 @@ function syncEmployees() {
     colMappings[th] = findSourceColIndex(th);
   });
 
+  // --- DEBUG MAPPING ---
+  targetHeaders.forEach(th => {
+    if (["ngay_cap", "noi_cap", "HKTT", "ngay_sinh", "gioi_tinh", "so_dien_thoai"].includes(th)) {
+      Logger.log(`Mapping cho '${th}': ${colMappings[th] !== -1 ? 'TÌM THẤY ở cột ' + colMappings[th] + ' (' + sourceHeaders[colMappings[th]] + ')' : 'THẤT BẠI (-1)'}`);
+    }
+  });
+  Logger.log("Tất cả sourceHeaders: " + JSON.stringify(sourceHeaders));
+  // ---------------------
+
   let insertCount = 0;
   let updateCount = 0;
   const now = new Date();
