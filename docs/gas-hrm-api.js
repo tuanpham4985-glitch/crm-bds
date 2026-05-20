@@ -610,6 +610,8 @@ function syncEmployees() {
     for (let colIdx = 0; colIdx < sourceHeaders.length; colIdx++) {
       const cleanSrc = sourceHeaders[colIdx].replace(/\s+/g, "").toLowerCase();
       if (targetAliases.some(alias => cleanSrc === alias)) {
+        // Tránh nhầm cột Số CCCD với cột Checkbox CCCD (TT HỒ SƠ) ở tận cột AK
+        if (targetHeaderName === "so_cccd" && colIdx > 25) continue;
         return colIdx;
       }
     }
@@ -618,6 +620,8 @@ function syncEmployees() {
     for (let colIdx = 0; colIdx < sourceHeaders.length; colIdx++) {
       const cleanSrc = sourceHeaders[colIdx].replace(/\s+/g, "").toLowerCase();
       if (targetAliases.some(alias => alias.length >= 4 && cleanSrc.includes(alias))) {
+        // Tránh nhầm cột Số CCCD với cột Checkbox CCCD (TT HỒ SƠ) ở tận cột AK
+        if (targetHeaderName === "so_cccd" && colIdx > 25) continue;
         return colIdx;
       }
     }
