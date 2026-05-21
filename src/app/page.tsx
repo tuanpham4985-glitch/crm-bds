@@ -226,8 +226,8 @@ export default function DashboardPage() {
                   <div className="podium-container" style={{
                     background: 'radial-gradient(circle at center, #0b1329 0%, #030712 100%)',
                     borderRadius: '20px',
-                    padding: '50px 16px 20px',
-                    minHeight: '345px',
+                    padding: '90px 16px 24px',
+                    minHeight: '500px',
                     display: 'flex',
                     justifyContent: 'space-around',
                     alignItems: 'flex-end',
@@ -306,13 +306,13 @@ export default function DashboardPage() {
                             lineHeight: 1
                           },
                           avatarFrameStyle: {
-                            width: '74px',
-                            height: '74px',
+                            width: '148px',
+                            height: '148px',
                             borderRadius: '50%',
                             border: '3.5px solid #d4af37',
                             padding: '3px',
                             background: 'radial-gradient(circle, #fef08a 0%, #ca8a04 100%)',
-                            boxShadow: '0 0 25px rgba(251,191,36,0.6)',
+                            boxShadow: '0 0 40px rgba(251,191,36,0.7)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -362,13 +362,13 @@ export default function DashboardPage() {
                             lineHeight: 1
                           },
                           avatarFrameStyle: {
-                            width: '64px',
-                            height: '64px',
+                            width: '128px',
+                            height: '128px',
                             borderRadius: '50%',
                             border: '3.5px solid #cbd5e1',
                             padding: '2.5px',
                             background: 'linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%)',
-                            boxShadow: '0 0 20px rgba(203,213,225,0.45)',
+                            boxShadow: '0 0 32px rgba(203,213,225,0.55)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -418,11 +418,11 @@ export default function DashboardPage() {
                             lineHeight: 1
                           },
                           avatarFrameStyle: {
-                            width: '60px',
-                            height: '60px',
+                            width: '120px',
+                            height: '120px',
                             borderRadius: '50%',
                             border: '3px solid #b45309',
-                            boxShadow: '0 0 15px rgba(180,83,9,0.4)',
+                            boxShadow: '0 0 24px rgba(180,83,9,0.5)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -443,7 +443,7 @@ export default function DashboardPage() {
                           className={`floating-platform-${rank}`}
                           style={{
                             flex: 1,
-                            maxWidth: rank === 1 ? '130px' : '110px',
+                            maxWidth: rank === 1 ? '180px' : '160px',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
@@ -456,7 +456,7 @@ export default function DashboardPage() {
                           {rank === 1 && (
                             <span 
                               style={{ 
-                                position: 'absolute', top: '-26px', zIndex: 10, fontSize: '1.9rem',
+                                position: 'absolute', top: '-40px', zIndex: 10, fontSize: '2.4rem',
                                 filter: 'drop-shadow(0 2px 8px rgba(251,191,36,0.8))'
                               }}
                             >
@@ -466,7 +466,7 @@ export default function DashboardPage() {
 
                           {/* Futuristic Upward Light Beam */}
                           <div style={{
-                            position: 'absolute', bottom: '65px', width: rank === 1 ? '90px' : '75px', height: '160px',
+                            position: 'absolute', bottom: '85px', width: rank === 1 ? '140px' : '120px', height: '220px',
                             background: config.beamBg,
                             clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
                             pointerEvents: 'none',
@@ -475,7 +475,7 @@ export default function DashboardPage() {
                           }} />
 
                           {/* Avatar Frame Container */}
-                          <div style={{ ...config.avatarFrameStyle, marginBottom: '8px' }}>
+                          <div style={{ ...config.avatarFrameStyle, marginBottom: '12px' }}>
                             <div style={{
                               width: '100%',
                               height: '100%',
@@ -500,7 +500,7 @@ export default function DashboardPage() {
                                 />
                               ) : (
                                 <div style={{
-                                  fontSize: rank === 1 ? '1.25rem' : rank === 3 ? '1.3rem' : '1.05rem',
+                                  fontSize: rank === 1 ? '2.5rem' : rank === 3 ? '2.6rem' : '2.1rem',
                                   fontWeight: rank === 3 ? 900 : 800,
                                   color: rank === 3 ? '#ffedd5' : '#fff',
                                   textShadow: rank === 3 ? '1px 2px 4px rgba(0,0,0,0.6)' : 'none',
