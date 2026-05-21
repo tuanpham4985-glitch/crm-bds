@@ -124,6 +124,7 @@ export interface Pipeline {
   thuong_nong?: number;
   tkkd?: string;
   phi_tkkd?: number;
+  ho_ten_kh?: string;
 }
 
 // === CÔNG VIỆC ===

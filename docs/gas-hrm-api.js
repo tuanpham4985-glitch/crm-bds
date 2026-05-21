@@ -214,6 +214,12 @@ function syncPipeline() {
   let targetData = pipelineSheet.getDataRange().getValues();
   let targetHeaders = targetData[0].map(h => String(h).trim());
 
+  // Tự động kiểm tra và thêm cột "ho_ten_kh" nếu chưa có
+  if (targetHeaders.indexOf("ho_ten_kh") === -1) {
+    const lastCol = pipelineSheet.getLastColumn();
+    pipelineSheet.getRange(1, lastCol + 1).setValue("ho_ten_kh");
+  }
+
   // Tự động kiểm tra và thêm cột "thuong_nong" nếu chưa có
   if (targetHeaders.indexOf("thuong_nong") === -1) {
     const lastCol = pipelineSheet.getLastColumn();
@@ -383,6 +389,7 @@ function syncPipeline() {
 
     const tkkd = String(src["TKKD"] || "").trim();
     const phiTkkd = toNum(src["Phí TKKD"] || src["phí TKKD"] || 0);
+    const hoTenKH = String(src["Họ tên KH"] || src["Họ Tên KH"] || src["HỌ TÊN KH"] || src["ho ten kh"] || "").trim();
     // Tạo id_pipeline ổn định từ Mã Căn
     const pipelineId = "PL-" + Math.abs(
       (function (str) {
@@ -429,6 +436,7 @@ function syncPipeline() {
       "thuong_nong": thuongNong,
       "tkkd": tkkd,
       "phi_tkkd": phiTkkd,
+      "ho_ten_kh": hoTenKH,
       "ngay_cap_nhat": ngayKyDate,
       "thang": Utilities.formatDate(ngayKyDate, Session.getScriptTimeZone(), "yyyy-MM")
     };

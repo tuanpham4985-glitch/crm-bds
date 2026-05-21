@@ -18,6 +18,7 @@ export default function PipelinePage() {
   );
 
   const canViewProfit = isAllVisible;
+  const showKhachHang = isAllVisible;
 
   const showPhiTraSale = isAllVisible || (user?.employee_type === 'NVKD');
   const showPhiTraGDDA = isAllVisible || (user?.employee_type === 'GDDA');
@@ -205,7 +206,8 @@ export default function PipelinePage() {
     return s;
   }, 0);
 
-  let colSpan = 9;
+  let colSpan = 8;
+  if (showKhachHang) colSpan++;
   if (showPhiTraSale) colSpan++;
   if (showPhiTraGDDA) colSpan++;
   if (showPhiTraGDKD) colSpan++;
@@ -361,7 +363,7 @@ export default function PipelinePage() {
             <thead>
               <tr>
                 <th>#</th>
-                <th>Khách hàng</th>
+                {showKhachHang && <th>Khách hàng</th>}
                 <th>Giai đoạn</th>
                 <th>Dự án</th>
                 <th style={{ textAlign: 'right' }}>Giá trị</th>
@@ -382,7 +384,11 @@ export default function PipelinePage() {
                 return (
                   <tr key={pl.id_pipeline}>
                     <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
-                    <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>{getCustomerName(pl.id_khach_hang)}</td>
+                    {showKhachHang && (
+                      <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
+                        {pl.ho_ten_kh || getCustomerName(pl.id_khach_hang) || '—'}
+                      </td>
+                    )}
                     <td>
                       <span className="badge" style={{ background: colors.bg, color: colors.text }}>
                         {pl.giai_doan}

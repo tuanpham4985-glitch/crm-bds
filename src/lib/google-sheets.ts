@@ -607,6 +607,7 @@ export async function getPipeline(): Promise<Pipeline[]> {
         })(),
         tkkd: getVal('tkkd'),
         phi_tkkd: getNum('phi_tkkd'),
+        ho_ten_kh: getVal('ho_ten_kh'),
       } as Pipeline;
     })
     .filter((x): x is Pipeline => x !== null);
