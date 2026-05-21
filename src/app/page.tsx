@@ -14,134 +14,212 @@ import { formatCurrency, formatChange, calcChange } from '@/lib/utils';
 
 const CHART_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
-// ─── Laurel Wreath Medal Frame ───────────────────────────────────────────────
-const WREATH_COLORS = {
-  1: { leafHigh:'#FFF08A', leafMid:'#C9960C', leafShd:'#7A5200', ringHigh:'#FFF5A0', ringMid:'#D4AF37', ringDark:'#8B6000', ribTop:'#E8B820', ribBot:'#8B6000', numFill:'#3D1E00' },
-  2: { leafHigh:'#F0F0F0', leafMid:'#A8A8A8', leafShd:'#505050', ringHigh:'#FFFFFF',  ringMid:'#C0C0C0', ringDark:'#606060', ribTop:'#D0D0D0', ribBot:'#686868', numFill:'#1a1a1a' },
-  3: { leafHigh:'#FFD09A', leafMid:'#A0622A', leafShd:'#5A2800', ringHigh:'#FFD0A0', ringMid:'#B86830', ringDark:'#6B3000', ribTop:'#C87030', ribBot:'#6B3000', numFill:'#2a0e00' },
+// ─── Premium Award Medal ─────────────────────────────────────────────────────
+// Each tier: gC=glow, rO/rM1/rSp/rM2/rI/rB = ring layers, lS/lM/lH = leaf, ri* = ribbon
+const MEDAL = {
+  1: { // Gold
+    gC:'#E8C820',
+    rO:'#3a2200', rM1:'#906010', rSp:'#fff8a8', rM2:'#c8a020', rI:'#5a3800', rB:'#ffe060',
+    lS:'#5a3200', lM:'#b88010', lH:'#ffe060',
+    riD:'#5a3800', riM:'#d0a010', riH:'#fff5a0', riN:'#2a1000',
+  },
+  2: { // Silver
+    gC:'#A8C0D8',
+    rO:'#18202a', rM1:'#485870', rSp:'#ecf2ff', rM2:'#7890b0', rI:'#283848', rB:'#c0d8f0',
+    lS:'#283848', lM:'#6878a0', lH:'#d8eaff',
+    riD:'#283848', riM:'#6878a0', riH:'#d0e0f0', riN:'#060e18',
+  },
+  3: { // Bronze
+    gC:'#C87828',
+    rO:'#381800', rM1:'#783818', rSp:'#ffd090', rM2:'#a85c28', rI:'#582800', rB:'#e8a050',
+    lS:'#481e08', lM:'#985828', lH:'#ffc860',
+    riD:'#481e08', riM:'#985828', riH:'#ffc878', riN:'#1e0800',
+  },
 } as const;
 
 function LaurelWreathMedal({ rank, avatarSize, children }: { rank:1|2|3; avatarSize:number; children:React.ReactNode }) {
-  const c   = WREATH_COLORS[rank];
-  const aR  = avatarSize / 2;
+  const m  = MEDAL[rank];
+  const aR = avatarSize / 2;
 
-  // ── Leaf geometry ──────────────────────────────────────────────────────────
-  // Orbit tight against the ring so leaves visually grow FROM the medal edge
-  const lR  = aR + 10;
-  const lHalf = rank === 1 ? 18 : 15;   // half-length of leaf (long axis)
-  const lWid  = rank === 1 ? 7  : 6;    // half-width of leaf (short axis)
-  const N   = 13;                        // leaves per branch (denser = fuller wreath)
+  // ── Leaf geometry ────────────────────────────────────────────────────────
+  // Orbit radius: leaves centered just outside the metallic ring so their
+  // outer half emerges visually from behind the ring (natural layering)
+  const lLen = rank === 1 ? 21 : 18;   // leaf half-length (tangential)
+  const lWid = rank === 1 ? 7.5 : 6.5; // leaf half-width (radial)
+  const lOrb = aR + 11;                 // orbit radius (center of each leaf)
+  const N    = 13;                      // leaves per branch
 
-  const pad  = 10;
+  const pad  = 12;
   const ctr  = aR + pad;
   const svgW = avatarSize + pad * 2;
 
-  // Pointed-oval leaf path (eye/lens shape — sharper than plain ellipse)
-  // In local space: extends −lHalf → +lHalf along x, ±lWid along y
-  const lPath = `M ${-lHalf},0 C ${-lHalf*0.5},${-lWid} ${lHalf*0.4},${-lWid} ${lHalf},0 C ${lHalf*0.4},${lWid} ${-lHalf*0.5},${lWid} ${-lHalf},0 Z`;
+  // Quadratic-bezier leaf — smooth taper to a point at both ends,
+  // natural curved silhouette unlike a plain ellipse
+  const lBody = `M ${-lLen},0 Q 0,${-lWid} ${lLen},0 Q 0,${lWid} ${-lLen},0 Z`;
+  // Highlight streak along the "lit" face of each leaf (gives embossed depth)
+  const lGlow = `M ${-lLen*0.55},${-lWid*0.22} Q ${lLen*0.18},${-lWid*0.72} ${lLen*0.86},${-lWid*0.1}`;
 
-  // Generate leaf positions. rot = d+90 → long axis tangential (wraps the ring).
-  // Opacity tapers at the branch ends for a natural fade.
   const mkLeaves = (a0: number, a1: number) =>
     Array.from({ length: N }, (_, i) => {
       const t = i / (N - 1);
       const d = a0 + (a1 - a0) * t;
       const r = d * Math.PI / 180;
-      const op = 0.65 + 0.32 * Math.sin(t * Math.PI);   // fade at both ends
-      const sc = 0.80 + 0.20 * Math.sin(t * Math.PI);   // smaller at ends
-      return { x: ctr + Math.cos(r) * lR, y: ctr + Math.sin(r) * lR, rot: d + 90, op, sc };
+      // Opacity & scale: full mid-branch, tapered at both ends
+      const op = 0.56 + 0.42 * Math.sin(t * Math.PI);
+      const sc = 0.74 + 0.26 * Math.sin(t * Math.PI);
+      return { x: ctr + Math.cos(r) * lOrb, y: ctr + Math.sin(r) * lOrb, rot: d + 90, op, sc };
     });
 
-  // Left branch  : ~105° (lower-right end) CCW to ~255° (upper-left end)
-  // Right branch : mirror — ~75° (lower-left end) CW  to ~−75° (upper-right end)
-  // Gap at top (~75°–105° and ~255°–285°) keeps the wreath open at 12 o'clock
-  const LL = mkLeaves(105, 255);
-  const RL = mkLeaves(75, -75);
-  const g  = { lf: `wlf${rank}`, rg: `wrg${rank}`, rb: `wrb${rank}` };
+  // Left branch : 108° → 252° (lower-right corner CCW to upper-left)
+  // Right branch: 72°  → −72° (lower-left corner CW  to upper-right)
+  // ~36° gap at 12 o'clock keeps the wreath naturally open at the top
+  const LL = mkLeaves(108, 252);
+  const RL = mkLeaves(72, -72);
+  const p  = `pm${rank}`; // unique gradient-ID prefix per rank
 
-  // Ribbon dimensions
-  const ribW = Math.round(avatarSize * 0.72);
-  const ribH = 26;
-  const tail = 13;
-  const ribY = ctr + aR + 12;
-  const svgH = ribY + ribH + 12;
+  // Ribbon
+  const ribW = Math.round(avatarSize * 0.68);
+  const ribH = 29;
+  const tail = 14;
+  const ribY = ctr + aR + 14;
+  const svgH = ribY + ribH + 13;
 
   return (
     <div style={{ position:'relative', width:svgW, height:svgH, flexShrink:0 }}>
       <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`}
         style={{ position:'absolute', top:0, left:0 }} overflow="visible">
         <defs>
-          {/* Leaf gradient: dark stem → bright mid → darker tip */}
-          <linearGradient id={g.lf} x1="0%" y1="0%" x2="100%" y2="0%"
-            gradientUnits="objectBoundingBox">
-            <stop offset="0%"   stopColor={c.leafShd}  stopOpacity="0.8" />
-            <stop offset="35%"  stopColor={c.leafMid} />
-            <stop offset="65%"  stopColor={c.leafHigh} />
-            <stop offset="100%" stopColor={c.leafShd}  stopOpacity="0.7" />
+          {/* ── Radial glow behind the entire medal ── */}
+          <radialGradient id={`${p}gl`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stopColor={m.gC} stopOpacity="0.60" />
+            <stop offset="50%"  stopColor={m.gC} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={m.gC} stopOpacity="0"    />
+          </radialGradient>
+
+          {/* ── Leaf body gradient: dark stem → mid → bright highlight → dark tip ── */}
+          <linearGradient id={`${p}lb`} x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+            <stop offset="0%"   stopColor={m.lS} />
+            <stop offset="32%"  stopColor={m.lM} />
+            <stop offset="64%"  stopColor={m.lH} stopOpacity="0.90" />
+            <stop offset="100%" stopColor={m.lS} stopOpacity="0.85" />
           </linearGradient>
-          {/* Metallic ring gradient */}
-          <linearGradient id={g.rg} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   stopColor={c.ringHigh} />
-            <stop offset="40%"  stopColor={c.ringMid} />
-            <stop offset="100%" stopColor={c.ringDark} />
+
+          {/* ── Leaf highlight streak (semi-transparent bright line) ── */}
+          <linearGradient id={`${p}lh`} x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+            <stop offset="0%"   stopColor={m.lH} stopOpacity="0"    />
+            <stop offset="42%"  stopColor={m.lH} stopOpacity="0.95" />
+            <stop offset="100%" stopColor={m.lH} stopOpacity="0"    />
           </linearGradient>
-          {/* Ribbon gradient */}
-          <linearGradient id={g.rb} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%"   stopColor={c.ribTop} />
-            <stop offset="100%" stopColor={c.ribBot} />
+
+          {/* ── Main ring gradient: top-left specular → upper-dark → lower-metallic → bottom-dark ── */}
+          {/* Creates "light hitting from top-left" metallic illusion */}
+          <linearGradient id={`${p}rg`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%"   stopColor={m.rSp}  />
+            <stop offset="20%"  stopColor={m.rM1}  />
+            <stop offset="58%"  stopColor={m.rM2}  />
+            <stop offset="100%" stopColor={m.rO}   />
+          </linearGradient>
+
+          {/* ── Second ring gradient (cross-axis) for lateral metallic band ── */}
+          <linearGradient id={`${p}r2`} x1="1" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={m.rB}  stopOpacity="0.40" />
+            <stop offset="50%"  stopColor={m.rSp} stopOpacity="0.15" />
+            <stop offset="100%" stopColor={m.rB}  stopOpacity="0"    />
+          </linearGradient>
+
+          {/* ── Ribbon gradient ── */}
+          <linearGradient id={`${p}rb`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={m.riM} />
+            <stop offset="100%" stopColor={m.riD} />
           </linearGradient>
         </defs>
 
-        {/* Left laurel branch */}
+        {/* ══ 0. Glow halo disc (largest, deepest layer) ══ */}
+        <circle cx={ctr} cy={ctr} r={aR * 1.65} fill={`url(#${p}gl)`} />
+
+        {/* ══ 1. Outer engraved border ring ══ */}
+        <circle cx={ctr} cy={ctr} r={aR + 14}
+          fill="none" stroke={m.rO} strokeWidth="2.5" opacity={0.80} />
+
+        {/* ══ 2. Laurel branches — drawn BEFORE main ring so bases hide under it ══ */}
         {LL.map((l, i) => (
-          <path key={`ll${i}`} d={lPath}
-            fill={`url(#${g.lf})`} opacity={l.op}
-            transform={`translate(${l.x},${l.y}) rotate(${l.rot}) scale(${l.sc})`} />
+          <g key={`ll${i}`}
+            transform={`translate(${l.x},${l.y}) rotate(${l.rot}) scale(${l.sc})`}>
+            {/* Leaf body (shadow-side gradient) */}
+            <path d={lBody} fill={`url(#${p}lb)`} opacity={l.op} />
+            {/* Highlight streak (lit-face specular) */}
+            <path d={lGlow} fill="none"
+              stroke={`url(#${p}lh)`} strokeWidth="1.3"
+              strokeLinecap="round" opacity={l.op * 0.88} />
+          </g>
         ))}
-
-        {/* Right laurel branch */}
         {RL.map((l, i) => (
-          <path key={`rl${i}`} d={lPath}
-            fill={`url(#${g.lf})`} opacity={l.op}
-            transform={`translate(${l.x},${l.y}) rotate(${l.rot}) scale(${l.sc})`} />
+          <g key={`rl${i}`}
+            transform={`translate(${l.x},${l.y}) rotate(${l.rot}) scale(${l.sc})`}>
+            <path d={lBody} fill={`url(#${p}lb)`} opacity={l.op} />
+            <path d={lGlow} fill="none"
+              stroke={`url(#${p}lh)`} strokeWidth="1.3"
+              strokeLinecap="round" opacity={l.op * 0.88} />
+          </g>
         ))}
 
-        {/* Metallic ring (renders ON TOP of leaf bases for clean separation) */}
-        <circle cx={ctr} cy={ctr} r={aR + 4}
-          fill="none" stroke={`url(#${g.rg})`} strokeWidth={rank === 1 ? 5 : 4} />
-        {/* Inner shadow ring */}
-        <circle cx={ctr} cy={ctr} r={aR + 1}
-          fill="none" stroke={c.ringDark} strokeWidth="1.5" opacity="0.35" />
+        {/* ══ 3. Four-layer metallic ring stack (creates depth & reflections) ══ */}
 
-        {/* Ribbon tails */}
+        {/* 3a. Outer dark edge — defines the ring's outer boundary */}
+        <circle cx={ctr} cy={ctr} r={aR + 11}
+          fill="none" stroke={m.rO} strokeWidth="3" opacity={0.78} />
+
+        {/* 3b. Main gradient band — primary metallic surface */}
+        <circle cx={ctr} cy={ctr} r={aR + 7}
+          fill="none" stroke={`url(#${p}rg)`}
+          strokeWidth={rank === 1 ? 10 : 8.5} />
+
+        {/* 3c. Cross-axis shimmer (second gradient overlaid, ~45° offset) */}
+        <circle cx={ctr} cy={ctr} r={aR + 7}
+          fill="none" stroke={`url(#${p}r2)`}
+          strokeWidth={rank === 1 ? 10 : 8.5} />
+
+        {/* 3d. Inner specular line — bright edge where ring meets dark interior */}
+        <circle cx={ctr} cy={ctr} r={aR + 2}
+          fill="none" stroke={m.rB} strokeWidth="1.5" opacity={0.52} />
+
+        {/* 3e. Inner dark shadow ring — crisp boundary before avatar */}
+        <circle cx={ctr} cy={ctr} r={aR + 0.6}
+          fill="none" stroke={m.rI} strokeWidth="2.5" opacity={0.55} />
+
+        {/* ══ 4. Ribbon tails ══ */}
         <polygon
           points={`${ctr-ribW/2},${ribY} ${ctr-ribW/2-tail},${ribY+ribH/2} ${ctr-ribW/2},${ribY+ribH}`}
-          fill={c.ribBot} opacity={0.9} />
+          fill={m.riD} opacity={0.94} />
         <polygon
           points={`${ctr+ribW/2},${ribY} ${ctr+ribW/2+tail},${ribY+ribH/2} ${ctr+ribW/2},${ribY+ribH}`}
-          fill={c.ribBot} opacity={0.9} />
+          fill={m.riD} opacity={0.94} />
 
-        {/* Ribbon body */}
+        {/* ══ 5. Ribbon body with 3D detail ══ */}
         <rect x={ctr-ribW/2} y={ribY} width={ribW} height={ribH} rx={5}
-          fill={`url(#${g.rb})`} />
-        {/* Sheen highlight */}
-        <rect x={ctr-ribW/2+6} y={ribY+5} width={ribW-12} height={1.5} rx={1}
-          fill={c.ribTop} opacity={0.50} />
+          fill={`url(#${p}rb)`} />
+        {/* Top sheen line */}
+        <rect x={ctr-ribW/2+7} y={ribY+5} width={ribW-14} height={2} rx={1}
+          fill={m.riH} opacity={0.52} />
+        {/* Bottom shadow edge */}
+        <rect x={ctr-ribW/2+3} y={ribY+ribH-4} width={ribW-6} height={3} rx={2}
+          fill={m.riD} opacity={0.45} />
 
-        {/* Rank number */}
-        <text x={ctr} y={ribY+ribH-7} textAnchor="middle"
-          fontSize={rank===1 ? 17 : 15} fontWeight="900"
-          fill={c.numFill} fontFamily="Inter, system-ui, sans-serif">
+        {/* ══ 6. Rank number ══ */}
+        <text x={ctr} y={ribY+ribH-8} textAnchor="middle"
+          fontSize={rank===1 ? 18 : 15} fontWeight="900" letterSpacing={1}
+          fill={m.riN} fontFamily="Inter, system-ui, sans-serif">
           {rank}
         </text>
       </svg>
 
-      {/* Avatar circle — floats above the SVG */}
+      {/* ══ Avatar (sits above SVG, visible through transparent medal center) ══ */}
       <div style={{
         position:'absolute', top:pad, left:pad,
         width:avatarSize, height:avatarSize,
         borderRadius:'50%', overflow:'hidden', zIndex:2,
-        boxShadow:`0 0 0 3px ${c.ringMid}, 0 0 0 5.5px ${c.ringDark}55, 0 8px 28px ${c.ringDark}80`,
+        // Triple-ring shadow: dark edge + metallic halo + soft glow
+        boxShadow:`0 0 0 2px ${m.rI}, 0 0 0 4.5px ${m.rM2}60, 0 12px 40px ${m.gC}90`,
       }}>
         {children}
       </div>
@@ -347,54 +425,67 @@ export default function DashboardPage() {
                 <>
                   <style>{`
                     @keyframes float-rank-1 {
-                      0% { transform: translateY(-16px); }
-                      50% { transform: translateY(-24px); }
-                      100% { transform: translateY(-16px); }
+                      0%   { transform: translateY(-22px); }
+                      50%  { transform: translateY(-30px); }
+                      100% { transform: translateY(-22px); }
                     }
                     @keyframes float-rank-2 {
-                      0% { transform: translateY(0px); }
-                      50% { transform: translateY(-6px); }
-                      100% { transform: translateY(0px); }
+                      0%   { transform: translateY(4px); }
+                      50%  { transform: translateY(-2px); }
+                      100% { transform: translateY(4px); }
                     }
                     @keyframes float-rank-3 {
-                      0% { transform: translateY(12px); }
-                      50% { transform: translateY(6px); }
-                      100% { transform: translateY(12px); }
+                      0%   { transform: translateY(18px); }
+                      50%  { transform: translateY(12px); }
+                      100% { transform: translateY(18px); }
                     }
-                    .floating-platform-1 { animation: float-rank-1 4s ease-in-out infinite; }
-                    .floating-platform-2 { animation: float-rank-2 4.3s ease-in-out infinite; }
-                    .floating-platform-3 { animation: float-rank-3 4.6s ease-in-out infinite; }
+                    .floating-platform-1 { animation: float-rank-1 4s   ease-in-out infinite; }
+                    .floating-platform-2 { animation: float-rank-2 4.4s ease-in-out infinite; }
+                    .floating-platform-3 { animation: float-rank-3 4.8s ease-in-out infinite; }
                   `}</style>
                   
                   <div className="podium-container" style={{
-                    background: 'radial-gradient(circle at center, #0b1329 0%, #030712 100%)',
+                    background: 'radial-gradient(ellipse at 50% 30%, #0d1a3a 0%, #050c1c 55%, #020609 100%)',
                     borderRadius: '20px',
-                    padding: isMobile ? '36px 6px 16px' : '72px 16px 20px',
-                    minHeight: isMobile ? 'unset' : '440px',
+                    padding: isMobile ? '40px 4px 20px' : '80px 20px 28px',
+                    minHeight: isMobile ? 'unset' : '460px',
                     display: 'flex',
-                    justifyContent: 'space-around',
+                    justifyContent: 'center',
                     alignItems: 'flex-end',
                     position: 'relative',
                     overflow: 'hidden',
-                    border: '1.5px solid rgba(255,255,255,0.03)',
-                    boxShadow: 'inset 0 0 60px rgba(0,0,0,0.9), 0 15px 35px rgba(0,0,0,0.5)',
-                    gap: '12px'
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    boxShadow: 'inset 0 0 80px rgba(0,0,0,0.95), 0 20px 50px rgba(0,0,0,0.7)',
+                    gap: isMobile ? '6px' : '16px',
                   }}>
-                    {/* Futuristic mesh background decoration */}
+                    {/* Stage floor spotlight — gold halo at center bottom */}
+                    <div style={{
+                      position: 'absolute', bottom: '-20px', left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: '60%', height: '120px',
+                      background: 'radial-gradient(ellipse at 50% 100%, rgba(212,175,55,0.18) 0%, transparent 70%)',
+                      pointerEvents: 'none',
+                    }} />
+                    {/* Left spot (silver) */}
+                    <div style={{
+                      position: 'absolute', bottom: '-10px', left: '12%',
+                      width: '30%', height: '90px',
+                      background: 'radial-gradient(ellipse at 50% 100%, rgba(168,192,216,0.10) 0%, transparent 70%)',
+                      pointerEvents: 'none',
+                    }} />
+                    {/* Right spot (bronze) */}
+                    <div style={{
+                      position: 'absolute', bottom: '-10px', right: '12%',
+                      width: '30%', height: '90px',
+                      background: 'radial-gradient(ellipse at 50% 100%, rgba(200,120,40,0.10) 0%, transparent 70%)',
+                      pointerEvents: 'none',
+                    }} />
+                    {/* Faint star-field dots */}
                     <div style={{
                       position: 'absolute', inset: 0,
-                      backgroundImage: 'linear-gradient(rgba(99,102,241,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.015) 1px, transparent 1px)',
-                      backgroundSize: '30px 30px',
-                      pointerEvents: 'none',
-                      opacity: 0.9
-                    }} />
-
-                    {/* Geometric mesh grid (Top right circle glow) */}
-                    <div style={{
-                      position: 'absolute', top: '-50px', right: '-50px', width: '250px', height: '250px',
-                      borderRadius: '50%',
-                      background: 'radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%)',
-                      pointerEvents: 'none'
+                      backgroundImage: 'radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)',
+                      backgroundSize: '28px 28px',
+                      pointerEvents: 'none', opacity: 0.6,
                     }} />
 
                     {/* Sắp xếp: Hạng 2 - Hạng 1 - Hạng 3 */}
@@ -480,29 +571,38 @@ export default function DashboardPage() {
                             </div>
                           </LaurelWreathMedal>
 
-                          {/* Name */}
+                          {/* Name — tier-colored metallic text */}
                           <div style={{
-                            fontSize: rank === 1 ? '0.82rem' : '0.75rem',
+                            fontSize: rank === 1 ? (isMobile ? '0.72rem' : '0.84rem') : (isMobile ? '0.66rem' : '0.76rem'),
                             fontWeight: 800,
-                            color: '#e2b857',
+                            color: rank === 1 ? '#FFD75A' : rank === 2 ? '#BDD4EE' : '#E8A868',
                             textAlign: 'center',
                             marginTop: '6px',
                             width: '100%',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            textShadow: '0 2px 4px rgba(0,0,0,0.9)',
+                            textShadow: rank === 1
+                              ? '0 0 12px rgba(232,184,32,0.6), 0 2px 4px rgba(0,0,0,0.9)'
+                              : rank === 2
+                              ? '0 0 10px rgba(168,192,216,0.4), 0 2px 4px rgba(0,0,0,0.9)'
+                              : '0 0 10px rgba(200,120,40,0.4), 0 2px 4px rgba(0,0,0,0.9)',
                             zIndex: 3,
                             paddingLeft: '4px',
                             paddingRight: '4px',
+                            letterSpacing: rank === 1 ? '0.01em' : '0',
                           }}>
                             {sale.nhan_vien}
                           </div>
 
-                          {/* Score Pill */}
+                          {/* Score Pill — metallic trim matching tier */}
                           <div style={{
-                            background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.08)',
+                            background: rank === 1
+                              ? 'rgba(232,184,32,0.10)'
+                              : rank === 2
+                              ? 'rgba(168,192,216,0.08)'
+                              : 'rgba(200,120,40,0.09)',
+                            border: `1px solid ${rank === 1 ? 'rgba(232,184,32,0.25)' : rank === 2 ? 'rgba(168,192,216,0.20)' : 'rgba(200,120,40,0.22)'}`,
                             borderRadius: '20px',
                             padding: '3px 10px',
                             marginTop: '4px',
@@ -510,17 +610,17 @@ export default function DashboardPage() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             zIndex: 3,
-                            boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
                           }}>
                             <span style={{
-                              fontSize: rank === 1 ? '0.75rem' : '0.7rem',
+                              fontSize: rank === 1 ? (isMobile ? '0.64rem' : '0.74rem') : (isMobile ? '0.6rem' : '0.70rem'),
                               fontWeight: 700,
-                              color: '#cbd5e1',
+                              color: rank === 1 ? '#FFD75A' : rank === 2 ? '#BDD4EE' : '#E8A868',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '3px',
                             }}>
-                              {formatCurrency(sale.doanh_thu)} <span style={{ color: '#fbbf24' }}>⭐</span>
+                              {formatCurrency(sale.doanh_thu)} <span style={{ opacity: 0.85 }}>⭐</span>
                             </span>
                           </div>
                         </div>
