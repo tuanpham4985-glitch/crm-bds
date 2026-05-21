@@ -48,11 +48,18 @@ export async function POST(request: NextRequest) {
 
     const plDate = body.ngay_cap_nhat ? new Date(body.ngay_cap_nhat).toISOString() : new Date().toISOString();
 
-    // Tính phi hoa hồng từ tỷ lệ (nếu truyền lên)
-    const ty_le_tra_sale = Number(body.ty_le_tra_sale) || 0;
-    const ty_le_gdda     = Number(body.ty_le_gdda)     || 0;
-    const ty_le_gdkd     = Number(body.ty_le_gdkd)     || 0;
+    // Helper: chuẩn hoá tỷ lệ — nếu người dùng nhập 60 (%) thì hiểu là 0.60
+    const norm = (v: number) => (v > 1 ? v / 100 : v);
 
+    const ty_le_tra_sale = norm(Number(body.ty_le_tra_sale) || 0);
+    const ty_le_kh       = norm(Number(body.ty_le_kh)       || 0);
+    const ty_le_gdda     = norm(Number(body.ty_le_gdda)     || 0);
+    const ty_le_gdkd     = norm(Number(body.ty_le_gdkd)     || 0);
+    const ty_le_mkt      = norm(Number(body.ty_le_mkt)      || 0);
+
+    // Công thức hoa hồng chính xác
+    // phi_tra_sale / kh / mkt  = ty_le × gia_tri_thuc_te
+    // phi_tra_gdda / gdkd      = ty_le × tien_hoa_hong
     const pl = {
       ...body,
       id_pipeline: generateId('PL'),
@@ -60,11 +67,15 @@ export async function POST(request: NextRequest) {
       hoa_hong: hoa_hong,
       tien_hoa_hong: tien_hoa_hong,
       ty_le_tra_sale,
+      ty_le_kh,
       ty_le_gdda,
       ty_le_gdkd,
-      phi_tra_sale: body.phi_tra_sale !== undefined ? Number(body.phi_tra_sale) : tien_hoa_hong * (ty_le_tra_sale / 100),
-      phi_tra_gdda: body.phi_tra_gdda !== undefined ? Number(body.phi_tra_gdda) : tien_hoa_hong * (ty_le_gdda / 100),
-      phi_tra_gdkd: body.phi_tra_gdkd !== undefined ? Number(body.phi_tra_gdkd) : tien_hoa_hong * (ty_le_gdkd / 100),
+      ty_le_mkt,
+      phi_tra_sale: ty_le_tra_sale * gia_tri,
+      phi_tra_kh:   ty_le_kh       * gia_tri,
+      phi_tra_gdda: ty_le_gdda     * tien_hoa_hong,
+      phi_tra_gdkd: ty_le_gdkd     * tien_hoa_hong,
+      phi_tra_mkt:  ty_le_mkt      * gia_tri,
       phi_tkkd: Number(body.phi_tkkd) || 0,
       ngay_cap_nhat: plDate,
       thang: getMonthKey(plDate),
@@ -93,26 +104,30 @@ export async function PUT(request: NextRequest) {
 
     const plDate = body.ngay_cap_nhat ? new Date(body.ngay_cap_nhat).toISOString() : new Date().toISOString();
 
-    const tien_hoa_hong_put = gia_tri * hoa_hong;
-    const ty_le_tra_sale_put = Number(body.ty_le_tra_sale) || 0;
-    const ty_le_gdda_put     = Number(body.ty_le_gdda)     || 0;
-    const ty_le_gdkd_put     = Number(body.ty_le_gdkd)     || 0;
+    const tien_hh = gia_tri * hoa_hong;
+    const normPut = (v: number) => (v > 1 ? v / 100 : v);
+
+    const tls  = normPut(Number(body.ty_le_tra_sale) || 0);
+    const tlkh = normPut(Number(body.ty_le_kh)       || 0);
+    const tlgd = normPut(Number(body.ty_le_gdda)     || 0);
+    const tlgk = normPut(Number(body.ty_le_gdkd)     || 0);
+    const tlmk = normPut(Number(body.ty_le_mkt)      || 0);
 
     body.gia_tri_thuc_te = gia_tri;
     body.hoa_hong        = hoa_hong;
-    body.tien_hoa_hong   = tien_hoa_hong_put;
-    body.ty_le_tra_sale  = ty_le_tra_sale_put;
-    body.ty_le_gdda      = ty_le_gdda_put;
-    body.ty_le_gdkd      = ty_le_gdkd_put;
-    body.phi_tra_sale    = body.phi_tra_sale !== undefined
-      ? Number(body.phi_tra_sale)
-      : tien_hoa_hong_put * (ty_le_tra_sale_put / 100);
-    body.phi_tra_gdda    = body.phi_tra_gdda !== undefined
-      ? Number(body.phi_tra_gdda)
-      : tien_hoa_hong_put * (ty_le_gdda_put / 100);
-    body.phi_tra_gdkd    = body.phi_tra_gdkd !== undefined
-      ? Number(body.phi_tra_gdkd)
-      : tien_hoa_hong_put * (ty_le_gdkd_put / 100);
+    body.tien_hoa_hong   = tien_hh;
+    body.ty_le_tra_sale  = tls;
+    body.ty_le_kh        = tlkh;
+    body.ty_le_gdda      = tlgd;
+    body.ty_le_gdkd      = tlgk;
+    body.ty_le_mkt       = tlmk;
+    // phi_tra_sale / kh / mkt = ty_le × gia_tri_thuc_te
+    // phi_tra_gdda / gdkd     = ty_le × tien_hoa_hong
+    body.phi_tra_sale    = tls  * gia_tri;
+    body.phi_tra_kh      = tlkh * gia_tri;
+    body.phi_tra_gdda    = tlgd * tien_hh;
+    body.phi_tra_gdkd    = tlgk * tien_hh;
+    body.phi_tra_mkt     = tlmk * gia_tri;
     body.phi_tkkd        = Number(body.phi_tkkd) || 0;
     body.ngay_cap_nhat   = plDate;
     body.thang           = getMonthKey(plDate);
