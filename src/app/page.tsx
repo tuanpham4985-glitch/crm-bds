@@ -24,102 +24,124 @@ const WREATH_COLORS = {
 function LaurelWreathMedal({ rank, avatarSize, children }: { rank:1|2|3; avatarSize:number; children:React.ReactNode }) {
   const c   = WREATH_COLORS[rank];
   const aR  = avatarSize / 2;
-  const lR  = aR + (rank === 1 ? 20 : 17);   // leaf orbit radius from avatar center
-  const lRx = rank === 1 ? 13 : 11;           // leaf semi-major
-  const lRy = rank === 1 ? 6  : 5;            // leaf semi-minor
-  const N   = 9;                              // leaves per side
-  const pad = 6;                              // padding so avatar doesn't clip SVG edge
-  const ctr = aR + pad;                       // SVG center
-  const svgW = avatarSize + pad * 2;
-  const ribW = Math.round(avatarSize * 0.76);
-  const ribH = 28;
-  const tail = 14;
-  const ribY = ctr + aR + 14;                 // ribbon top: just below bottom leaf tips
-  const svgH = ribY + ribH + 10;
 
-  // Generate leaf positions along an arc
+  // ── Leaf geometry ──────────────────────────────────────────────────────────
+  // Orbit tight against the ring so leaves visually grow FROM the medal edge
+  const lR  = aR + 10;
+  const lHalf = rank === 1 ? 18 : 15;   // half-length of leaf (long axis)
+  const lWid  = rank === 1 ? 7  : 6;    // half-width of leaf (short axis)
+  const N   = 13;                        // leaves per branch (denser = fuller wreath)
+
+  const pad  = 10;
+  const ctr  = aR + pad;
+  const svgW = avatarSize + pad * 2;
+
+  // Pointed-oval leaf path (eye/lens shape — sharper than plain ellipse)
+  // In local space: extends −lHalf → +lHalf along x, ±lWid along y
+  const lPath = `M ${-lHalf},0 C ${-lHalf*0.5},${-lWid} ${lHalf*0.4},${-lWid} ${lHalf},0 C ${lHalf*0.4},${lWid} ${-lHalf*0.5},${lWid} ${-lHalf},0 Z`;
+
+  // Generate leaf positions. rot = d+90 → long axis tangential (wraps the ring).
+  // Opacity tapers at the branch ends for a natural fade.
   const mkLeaves = (a0: number, a1: number) =>
     Array.from({ length: N }, (_, i) => {
-      const d = a0 + (a1 - a0) * (i / (N - 1));
+      const t = i / (N - 1);
+      const d = a0 + (a1 - a0) * t;
       const r = d * Math.PI / 180;
-      return { x: ctr + Math.cos(r) * lR, y: ctr + Math.sin(r) * lR, rot: d + 90 };
+      const op = 0.65 + 0.32 * Math.sin(t * Math.PI);   // fade at both ends
+      const sc = 0.80 + 0.20 * Math.sin(t * Math.PI);   // smaller at ends
+      return { x: ctr + Math.cos(r) * lR, y: ctr + Math.sin(r) * lR, rot: d + 90, op, sc };
     });
 
-  // Left branch: arc from ~bottom (97°) counterclockwise to upper-left (254°)
-  // Right branch: mirror arc from ~bottom (83°) to upper-right (−74°)
-  const LL = mkLeaves(97, 254);
-  const RL = mkLeaves(83, -74);
+  // Left branch  : ~105° (lower-right end) CCW to ~255° (upper-left end)
+  // Right branch : mirror — ~75° (lower-left end) CW  to ~−75° (upper-right end)
+  // Gap at top (~75°–105° and ~255°–285°) keeps the wreath open at 12 o'clock
+  const LL = mkLeaves(105, 255);
+  const RL = mkLeaves(75, -75);
   const g  = { lf: `wlf${rank}`, rg: `wrg${rank}`, rb: `wrb${rank}` };
+
+  // Ribbon dimensions
+  const ribW = Math.round(avatarSize * 0.72);
+  const ribH = 26;
+  const tail = 13;
+  const ribY = ctr + aR + 12;
+  const svgH = ribY + ribH + 12;
 
   return (
     <div style={{ position:'relative', width:svgW, height:svgH, flexShrink:0 }}>
-      {/* SVG wreath — overflow:visible lets leaves extend beyond stated bounds */}
       <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`}
         style={{ position:'absolute', top:0, left:0 }} overflow="visible">
         <defs>
-          <linearGradient id={g.lf} x1="0%" y1="0%" x2="85%" y2="100%">
-            <stop offset="0%"   stopColor={c.leafHigh} stopOpacity="0.95" />
-            <stop offset="45%"  stopColor={c.leafMid} />
-            <stop offset="100%" stopColor={c.leafShd} />
+          {/* Leaf gradient: dark stem → bright mid → darker tip */}
+          <linearGradient id={g.lf} x1="0%" y1="0%" x2="100%" y2="0%"
+            gradientUnits="objectBoundingBox">
+            <stop offset="0%"   stopColor={c.leafShd}  stopOpacity="0.8" />
+            <stop offset="35%"  stopColor={c.leafMid} />
+            <stop offset="65%"  stopColor={c.leafHigh} />
+            <stop offset="100%" stopColor={c.leafShd}  stopOpacity="0.7" />
           </linearGradient>
+          {/* Metallic ring gradient */}
           <linearGradient id={g.rg} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%"   stopColor={c.ringHigh} />
             <stop offset="40%"  stopColor={c.ringMid} />
             <stop offset="100%" stopColor={c.ringDark} />
           </linearGradient>
+          {/* Ribbon gradient */}
           <linearGradient id={g.rb} x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%"   stopColor={c.ribTop} />
             <stop offset="100%" stopColor={c.ribBot} />
           </linearGradient>
         </defs>
 
-        {/* Subtle outer glow circle */}
-        <circle cx={ctr} cy={ctr} r={aR + 23} fill="none" stroke={c.ringMid} strokeWidth="1" opacity="0.2" />
-
         {/* Left laurel branch */}
         {LL.map((l, i) => (
-          <ellipse key={`ll${i}`} cx={l.x} cy={l.y} rx={lRx} ry={lRy}
-            fill={`url(#${g.lf})`} transform={`rotate(${l.rot},${l.x},${l.y})`}
-            opacity={0.80 + (i % 2 === 0 ? 0.14 : 0)} />
+          <path key={`ll${i}`} d={lPath}
+            fill={`url(#${g.lf})`} opacity={l.op}
+            transform={`translate(${l.x},${l.y}) rotate(${l.rot}) scale(${l.sc})`} />
         ))}
 
         {/* Right laurel branch */}
         {RL.map((l, i) => (
-          <ellipse key={`rl${i}`} cx={l.x} cy={l.y} rx={lRx} ry={lRy}
-            fill={`url(#${g.lf})`} transform={`rotate(${l.rot},${l.x},${l.y})`}
-            opacity={0.80 + (i % 2 === 0 ? 0.14 : 0)} />
+          <path key={`rl${i}`} d={lPath}
+            fill={`url(#${g.lf})`} opacity={l.op}
+            transform={`translate(${l.x},${l.y}) rotate(${l.rot}) scale(${l.sc})`} />
         ))}
 
-        {/* Metallic ring around the avatar circle */}
-        <circle cx={ctr} cy={ctr} r={aR + 5} fill="none"
-          stroke={`url(#${g.rg})`} strokeWidth={rank === 1 ? 4.5 : 3.5} />
+        {/* Metallic ring (renders ON TOP of leaf bases for clean separation) */}
+        <circle cx={ctr} cy={ctr} r={aR + 4}
+          fill="none" stroke={`url(#${g.rg})`} strokeWidth={rank === 1 ? 5 : 4} />
+        {/* Inner shadow ring */}
+        <circle cx={ctr} cy={ctr} r={aR + 1}
+          fill="none" stroke={c.ringDark} strokeWidth="1.5" opacity="0.35" />
 
-        {/* Ribbon left/right tails */}
-        <polygon points={`${ctr - ribW/2},${ribY} ${ctr - ribW/2 - tail},${ribY + ribH/2} ${ctr - ribW/2},${ribY + ribH}`}
-          fill={c.ribBot} opacity={0.88} />
-        <polygon points={`${ctr + ribW/2},${ribY} ${ctr + ribW/2 + tail},${ribY + ribH/2} ${ctr + ribW/2},${ribY + ribH}`}
-          fill={c.ribBot} opacity={0.88} />
+        {/* Ribbon tails */}
+        <polygon
+          points={`${ctr-ribW/2},${ribY} ${ctr-ribW/2-tail},${ribY+ribH/2} ${ctr-ribW/2},${ribY+ribH}`}
+          fill={c.ribBot} opacity={0.9} />
+        <polygon
+          points={`${ctr+ribW/2},${ribY} ${ctr+ribW/2+tail},${ribY+ribH/2} ${ctr+ribW/2},${ribY+ribH}`}
+          fill={c.ribBot} opacity={0.9} />
 
         {/* Ribbon body */}
-        <rect x={ctr - ribW/2} y={ribY} width={ribW} height={ribH} rx={4}
+        <rect x={ctr-ribW/2} y={ribY} width={ribW} height={ribH} rx={5}
           fill={`url(#${g.rb})`} />
-        {/* Sheen highlight on ribbon */}
-        <rect x={ctr - ribW/2 + 5} y={ribY + 4} width={ribW - 10} height={2} rx={1}
-          fill={c.ribTop} opacity={0.45} />
-        {/* Rank number on ribbon */}
-        <text x={ctr} y={ribY + ribH - 7} textAnchor="middle"
-          fontSize={rank === 1 ? 16 : 14} fontWeight="900"
+        {/* Sheen highlight */}
+        <rect x={ctr-ribW/2+6} y={ribY+5} width={ribW-12} height={1.5} rx={1}
+          fill={c.ribTop} opacity={0.50} />
+
+        {/* Rank number */}
+        <text x={ctr} y={ribY+ribH-7} textAnchor="middle"
+          fontSize={rank===1 ? 17 : 15} fontWeight="900"
           fill={c.numFill} fontFamily="Inter, system-ui, sans-serif">
           {rank}
         </text>
       </svg>
 
-      {/* Avatar circle — sits above the SVG wreath */}
+      {/* Avatar circle — floats above the SVG */}
       <div style={{
         position:'absolute', top:pad, left:pad,
         width:avatarSize, height:avatarSize,
         borderRadius:'50%', overflow:'hidden', zIndex:2,
-        boxShadow:`0 0 0 2.5px ${c.ringMid}, 0 6px 24px ${c.ringDark}90`,
+        boxShadow:`0 0 0 3px ${c.ringMid}, 0 0 0 5.5px ${c.ringDark}55, 0 8px 28px ${c.ringDark}80`,
       }}>
         {children}
       </div>
@@ -132,6 +154,14 @@ export default function DashboardPage() {
   const [period, setPeriod] = useState('month');
   const [compare, setCompare] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -339,8 +369,8 @@ export default function DashboardPage() {
                   <div className="podium-container" style={{
                     background: 'radial-gradient(circle at center, #0b1329 0%, #030712 100%)',
                     borderRadius: '20px',
-                    padding: '72px 16px 20px',
-                    minHeight: '440px',
+                    padding: isMobile ? '36px 6px 16px' : '72px 16px 20px',
+                    minHeight: isMobile ? 'unset' : '440px',
                     display: 'flex',
                     justifyContent: 'space-around',
                     alignItems: 'flex-end',
@@ -380,7 +410,9 @@ export default function DashboardPage() {
                         .join('');
 
                       const typedRank = rank as 1 | 2 | 3;
-                      const aSize = rank === 1 ? 148 : rank === 2 ? 128 : 120;
+                      const aSize = isMobile
+                        ? (rank === 1 ? 78 : rank === 2 ? 68 : 64)
+                        : (rank === 1 ? 148 : rank === 2 ? 128 : 120);
                       const beamBg =
                         rank === 1 ? 'linear-gradient(to top, rgba(251,191,36,0.22) 0%, transparent 80%)' :
                         rank === 2 ? 'linear-gradient(to top, rgba(148,163,184,0.14) 0%, transparent 80%)' :
@@ -392,7 +424,7 @@ export default function DashboardPage() {
                           className={`floating-platform-${rank}`}
                           style={{
                             flex: 1,
-                            maxWidth: rank === 1 ? '210px' : '190px',
+                            maxWidth: isMobile ? (rank === 1 ? '110px' : '98px') : (rank === 1 ? '210px' : '190px'),
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
@@ -405,8 +437,8 @@ export default function DashboardPage() {
                           <div style={{
                             position: 'absolute',
                             bottom: '50px',
-                            width: rank === 1 ? '140px' : '120px',
-                            height: '220px',
+                            width: isMobile ? (rank === 1 ? '80px' : '70px') : (rank === 1 ? '140px' : '120px'),
+                            height: isMobile ? '140px' : '220px',
                             background: beamBg,
                             clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
                             pointerEvents: 'none',
