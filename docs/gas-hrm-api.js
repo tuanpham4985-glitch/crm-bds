@@ -236,6 +236,9 @@ function syncPipeline() {
     pipelineSheet.getRange(1, lastCol + 1).setValue("phi_tkkd");
   }
 
+  // Flush để đảm bảo các setValue() ở trên đã được commit trước khi đọc lại
+  SpreadsheetApp.flush();
+
   // Reload lại headers sau khi thêm cột
   targetData = pipelineSheet.getDataRange().getValues();
   targetHeaders = targetData[0].map(h => String(h).trim());

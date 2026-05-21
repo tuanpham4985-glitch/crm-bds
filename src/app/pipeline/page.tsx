@@ -4,11 +4,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Plus, Edit3, Trash2, X,
-  SlidersHorizontal
+  SlidersHorizontal, ClipboardList,
+  CheckCircle2, Circle, Clock, XCircle,
 } from 'lucide-react';
-import type { Pipeline, KhachHang, DuAn, NhanVien } from '@/lib/types';
+import type { Pipeline, KhachHang, DuAn, NhanVien, CongViec } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { GIAI_DOAN_PIPELINE, GIAI_DOAN_ACTIVE, GIAI_DOAN_COLORS } from '@/lib/constants';
+
+const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> = {
+  'Chưa xử lý': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+  'Đang xử lý':  { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+  'Hoàn thành':  { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+  'Huỷ':         { bg: '#f1f5f9', text: '#64748b', border: '#cbd5e1' },
+};
 
 export default function PipelinePage() {
   const { user } = useAuth();
@@ -42,6 +50,16 @@ export default function PipelinePage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Task drawer
+  const [selectedDeal, setSelectedDeal] = useState<Pipeline | null>(null);
+  const [tasks, setTasks] = useState<CongViec[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [taskForm, setTaskForm] = useState({ ghi_chu: '', ngay_hen: '', trang_thai: 'Chưa xử lý' });
+  const [savingTask, setSavingTask] = useState(false);
+  const [editingTask, setEditingTask] = useState<CongViec | null>(null);
+  const [editTaskForm, setEditTaskForm] = useState({ ghi_chu: '', ngay_hen: '', trang_thai: '', ket_qua: '' });
 
   // Form
   const [form, setForm] = useState({
@@ -175,6 +193,82 @@ export default function PipelinePage() {
       console.error('Delete error:', err);
     }
   };
+
+  // ── Task drawer handlers ──────────────────────────────────────
+  const fetchTasks = async (id_pipeline: string) => {
+    setLoadingTasks(true);
+    try {
+      const res = await fetch(`/api/cong-viec?pipeline=${id_pipeline}`);
+      const data = await res.json();
+      if (data.success) setTasks(data.data);
+    } catch (err) { console.error('fetchTasks error:', err); }
+    finally { setLoadingTasks(false); }
+  };
+
+  const openTaskPanel = (pl: Pipeline) => {
+    setSelectedDeal(pl);
+    setShowTaskForm(false);
+    setEditingTask(null);
+    setTaskForm({ ghi_chu: '', ngay_hen: '', trang_thai: 'Chưa xử lý' });
+    fetchTasks(pl.id_pipeline);
+  };
+
+  const closeTaskPanel = () => {
+    setSelectedDeal(null);
+    setShowTaskForm(false);
+    setEditingTask(null);
+    setTasks([]);
+  };
+
+  const handleAddTask = async () => {
+    if (!selectedDeal || !taskForm.ghi_chu.trim()) return;
+    setSavingTask(true);
+    try {
+      await fetch('/api/cong-viec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...taskForm,
+          id_pipeline: selectedDeal.id_pipeline,
+          sale_phu_trach: selectedDeal.sale_phu_trach,
+          ket_qua: '',
+        }),
+      });
+      setTaskForm({ ghi_chu: '', ngay_hen: '', trang_thai: 'Chưa xử lý' });
+      setShowTaskForm(false);
+      fetchTasks(selectedDeal.id_pipeline);
+    } catch (err) { console.error('addTask error:', err); }
+    finally { setSavingTask(false); }
+  };
+
+  const handleQuickStatus = async (cv: CongViec, newStatus: string) => {
+    await fetch('/api/cong-viec', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...cv, trang_thai: newStatus }),
+    });
+    if (selectedDeal) fetchTasks(selectedDeal.id_pipeline);
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    await fetch('/api/cong-viec', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (selectedDeal) fetchTasks(selectedDeal.id_pipeline);
+  };
+
+  const handleSaveEditTask = async (cv: CongViec) => {
+    await fetch('/api/cong-viec', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...cv, ...editTaskForm }),
+    });
+    setEditingTask(null);
+    if (selectedDeal) fetchTasks(selectedDeal.id_pipeline);
+  };
+  // ──────────────────────────────────────────────────────────────
 
   if (loading) {
     return <div className="loading-spinner"><div className="spinner" /></div>;
@@ -444,6 +538,14 @@ export default function PipelinePage() {
                     <td>{formatDate(pl.ngay_cap_nhat)}</td>
                     <td>
                       <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
+                        <button
+                          className="btn btn-ghost btn-icon btn-sm"
+                          title="Công việc"
+                          style={{ color: selectedDeal?.id_pipeline === pl.id_pipeline ? 'var(--primary)' : undefined }}
+                          onClick={() => selectedDeal?.id_pipeline === pl.id_pipeline ? closeTaskPanel() : openTaskPanel(pl)}
+                        >
+                          <ClipboardList size={15} />
+                        </button>
                         <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(pl)}><Edit3 size={15} /></button>
                         <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
                           onClick={() => { setDeletingId(pl.id_pipeline); setShowConfirm(true); }}><Trash2 size={15} /></button>
@@ -567,6 +669,292 @@ export default function PipelinePage() {
           </div>
         </div>
       )}
+
+      {/* ── Task Drawer ─────────────────────────────────────────────── */}
+      {selectedDeal && (
+        <>
+          {/* Backdrop */}
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 200, backdropFilter: 'blur(2px)' }}
+            onClick={closeTaskPanel}
+          />
+
+          {/* Panel */}
+          <div style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0,
+            width: 440, maxWidth: '100vw',
+            background: 'var(--bg-card)',
+            borderLeft: '1px solid var(--border-color)',
+            boxShadow: '-8px 0 32px rgba(15,23,42,0.14)',
+            zIndex: 201,
+            display: 'flex', flexDirection: 'column',
+          }}>
+
+            {/* Header – deal info */}
+            <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-main)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <ClipboardList size={14} color="var(--primary)" />
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Công việc theo dõi deal</span>
+                  </div>
+
+                  {/* Customer / project title */}
+                  <div style={{ fontWeight: 700, fontSize: '0.975rem', color: 'var(--text-title)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {showKhachHang
+                      ? (selectedDeal.ho_ten_kh || getCustomerName(selectedDeal.id_khach_hang) || '—')
+                      : (selectedDeal.ten_du_an || selectedDeal.ma_can || selectedDeal.id_pipeline)}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="badge" style={{
+                      background: GIAI_DOAN_COLORS[selectedDeal.giai_doan]?.bg || '#f1f5f9',
+                      color: GIAI_DOAN_COLORS[selectedDeal.giai_doan]?.text || '#475569',
+                      fontSize: '0.72rem',
+                    }}>
+                      {selectedDeal.giai_doan}
+                    </span>
+                    {selectedDeal.ten_du_an && (
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>📍 {selectedDeal.ten_du_an}</span>
+                    )}
+                    {selectedDeal.ma_can && (
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>🏠 {selectedDeal.ma_can}</span>
+                    )}
+                    {selectedDeal.sale_phu_trach && (
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>👤 {selectedDeal.sale_phu_trach}</span>
+                    )}
+                  </div>
+                </div>
+                <button className="btn btn-ghost btn-icon btn-sm" onClick={closeTaskPanel} style={{ flexShrink: 0 }}>
+                  <X size={17} />
+                </button>
+              </div>
+            </div>
+
+            {/* Body – task list + form */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
+
+              {/* Add task toggle */}
+              <div style={{ marginBottom: 14 }}>
+                {!showTaskForm ? (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ width: '100%', justifyContent: 'center', gap: 6 }}
+                    onClick={() => setShowTaskForm(true)}
+                  >
+                    <Plus size={14} /> Thêm công việc
+                  </button>
+                ) : (
+                  <div style={{ background: 'var(--bg-main)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: 14 }}>
+                    <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-title)', margin: '0 0 10px' }}>Công việc mới</p>
+                    <input
+                      className="form-input"
+                      style={{ marginBottom: 8 }}
+                      placeholder="Mô tả công việc *"
+                      value={taskForm.ghi_chu}
+                      autoFocus
+                      onChange={e => setTaskForm({ ...taskForm, ghi_chu: e.target.value })}
+                      onKeyDown={e => e.key === 'Enter' && handleAddTask()}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-label)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Ngày hẹn</label>
+                        <input className="form-input" type="date" value={taskForm.ngay_hen}
+                          onChange={e => setTaskForm({ ...taskForm, ngay_hen: e.target.value })} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-label)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Trạng thái</label>
+                        <select className="form-select" value={taskForm.trang_thai}
+                          onChange={e => setTaskForm({ ...taskForm, trang_thai: e.target.value })}>
+                          <option>Chưa xử lý</option>
+                          <option>Đang xử lý</option>
+                          <option>Hoàn thành</option>
+                          <option>Huỷ</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => { setShowTaskForm(false); setTaskForm({ ghi_chu: '', ngay_hen: '', trang_thai: 'Chưa xử lý' }); }}>
+                        Hủy
+                      </button>
+                      <button className="btn btn-primary btn-sm" onClick={handleAddTask} disabled={savingTask || !taskForm.ghi_chu.trim()}>
+                        {savingTask ? 'Đang lưu...' : 'Thêm'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Task list */}
+              {loadingTasks ? (
+                <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-muted)' }}>
+                  <div className="spinner" style={{ margin: '0 auto 8px' }} />
+                  <span style={{ fontSize: '0.85rem' }}>Đang tải công việc...</span>
+                </div>
+              ) : tasks.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '44px 0', color: 'var(--text-muted)' }}>
+                  <ClipboardList size={38} style={{ margin: '0 auto 10px', opacity: 0.25, display: 'block' }} />
+                  <p style={{ fontWeight: 600, margin: '0 0 4px', fontSize: '0.875rem' }}>Chưa có công việc</p>
+                  <p style={{ fontSize: '0.8rem', margin: 0 }}>Thêm task để theo dõi tiến độ deal này</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[...tasks]
+                    .sort((a, b) => {
+                      const order = ['Chưa xử lý', 'Đang xử lý', 'Hoàn thành', 'Huỷ'];
+                      return (order.indexOf(a.trang_thai) ?? 99) - (order.indexOf(b.trang_thai) ?? 99);
+                    })
+                    .map(cv => {
+                      const sc = TASK_STATUS[cv.trang_thai] || TASK_STATUS['Chưa xử lý'];
+                      const isDone = cv.trang_thai === 'Hoàn thành' || cv.trang_thai === 'Huỷ';
+                      const isEditing = editingTask?.id_cong_viec === cv.id_cong_viec;
+
+                      return (
+                        <div key={cv.id_cong_viec} style={{
+                          background: isDone ? 'var(--bg-main)' : 'var(--bg-card)',
+                          border: `1px solid ${isDone ? 'var(--border-color)' : sc.border}`,
+                          borderRadius: 'var(--radius-lg)',
+                          padding: '12px 13px',
+                          opacity: cv.trang_thai === 'Huỷ' ? 0.58 : 1,
+                          transition: 'opacity 0.15s',
+                        }}>
+                          {isEditing ? (
+                            /* ── Inline edit form ─────────────────────── */
+                            <div>
+                              <input className="form-input" style={{ marginBottom: 8, fontSize: '0.875rem' }}
+                                value={editTaskForm.ghi_chu}
+                                onChange={e => setEditTaskForm({ ...editTaskForm, ghi_chu: e.target.value })}
+                                placeholder="Mô tả công việc" />
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                                <input className="form-input" type="date"
+                                  value={editTaskForm.ngay_hen}
+                                  onChange={e => setEditTaskForm({ ...editTaskForm, ngay_hen: e.target.value })} />
+                                <select className="form-select"
+                                  value={editTaskForm.trang_thai}
+                                  onChange={e => setEditTaskForm({ ...editTaskForm, trang_thai: e.target.value })}>
+                                  <option>Chưa xử lý</option>
+                                  <option>Đang xử lý</option>
+                                  <option>Hoàn thành</option>
+                                  <option>Huỷ</option>
+                                </select>
+                              </div>
+                              <input className="form-input" style={{ marginBottom: 8, fontSize: '0.875rem' }}
+                                value={editTaskForm.ket_qua}
+                                onChange={e => setEditTaskForm({ ...editTaskForm, ket_qua: e.target.value })}
+                                placeholder="Kết quả (tuỳ chọn)" />
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setEditingTask(null)}>Hủy</button>
+                                <button className="btn btn-primary btn-sm" onClick={() => handleSaveEditTask(cv)}>Lưu</button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* ── View mode ───────────────────────────────── */
+                            <div>
+                              {/* Row 1: icon + title + actions */}
+                              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 7 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, minWidth: 0 }}>
+                                  {cv.trang_thai === 'Hoàn thành' && <CheckCircle2 size={15} color="#059669" style={{ flexShrink: 0 }} />}
+                                  {cv.trang_thai === 'Đang xử lý' && <Clock size={15} color="#2563eb" style={{ flexShrink: 0 }} />}
+                                  {cv.trang_thai === 'Huỷ'        && <XCircle   size={15} color="#94a3b8" style={{ flexShrink: 0 }} />}
+                                  {cv.trang_thai === 'Chưa xử lý' && <Circle    size={15} color="#d97706" style={{ flexShrink: 0 }} />}
+                                  <span style={{
+                                    fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-title)',
+                                    textDecoration: cv.trang_thai === 'Huỷ' ? 'line-through' : 'none',
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  }}>
+                                    {cv.ghi_chu}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                                  <button className="btn btn-ghost btn-icon btn-sm" title="Chỉnh sửa"
+                                    onClick={() => {
+                                      setEditingTask(cv);
+                                      setEditTaskForm({
+                                        ghi_chu: cv.ghi_chu,
+                                        ngay_hen: cv.ngay_hen ? cv.ngay_hen.split('T')[0] : '',
+                                        trang_thai: cv.trang_thai,
+                                        ket_qua: cv.ket_qua || '',
+                                      });
+                                    }}>
+                                    <Edit3 size={13} />
+                                  </button>
+                                  <button className="btn btn-ghost btn-icon btn-sm" title="Xóa"
+                                    style={{ color: 'var(--danger-text)' }}
+                                    onClick={() => handleDeleteTask(cv.id_cong_viec)}>
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Row 2: date + status badge */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: cv.ket_qua || (!isDone) ? 8 : 0 }}>
+                                {cv.ngay_hen && (
+                                  <span style={{ fontSize: '0.775rem', color: 'var(--text-label)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                    📅 {formatDate(cv.ngay_hen)}
+                                  </span>
+                                )}
+                                <span className="badge" style={{ background: sc.bg, color: sc.text, fontSize: '0.7rem', padding: '2px 8px' }}>
+                                  {cv.trang_thai}
+                                </span>
+                              </div>
+
+                              {/* Row 3: result note */}
+                              {cv.ket_qua && (
+                                <div style={{
+                                  fontSize: '0.8rem', color: 'var(--text-muted)',
+                                  background: 'var(--bg-main)', borderRadius: 6,
+                                  padding: '5px 9px', borderLeft: '3px solid var(--border-color)',
+                                  marginBottom: isDone ? 0 : 8,
+                                }}>
+                                  💬 {cv.ket_qua}
+                                </div>
+                              )}
+
+                              {/* Row 4: quick actions */}
+                              {cv.trang_thai === 'Chưa xử lý' && (
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <button style={{ fontSize: '0.735rem', padding: '3px 10px', borderRadius: 6, background: '#dbeafe', color: '#1e40af', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                                    onClick={() => handleQuickStatus(cv, 'Đang xử lý')}>
+                                    → Đang xử lý
+                                  </button>
+                                  <button style={{ fontSize: '0.735rem', padding: '3px 10px', borderRadius: 6, background: '#d1fae5', color: '#065f46', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                                    onClick={() => handleQuickStatus(cv, 'Hoàn thành')}>
+                                    ✓ Hoàn thành
+                                  </button>
+                                </div>
+                              )}
+                              {cv.trang_thai === 'Đang xử lý' && (
+                                <button style={{ fontSize: '0.735rem', padding: '3px 10px', borderRadius: 6, background: '#d1fae5', color: '#065f46', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                                  onClick={() => handleQuickStatus(cv, 'Hoàn thành')}>
+                                  ✓ Hoàn thành
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer – task count summary */}
+            {tasks.length > 0 && (
+              <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-main)', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: 14, fontSize: '0.775rem', color: 'var(--text-label)' }}>
+                  <span>📋 {tasks.length} task</span>
+                  <span style={{ color: '#059669' }}>✓ {tasks.filter(t => t.trang_thai === 'Hoàn thành').length} xong</span>
+                  <span style={{ color: '#d97706' }}>⏳ {tasks.filter(t => t.trang_thai === 'Chưa xử lý').length} chờ</span>
+                  {tasks.filter(t => t.trang_thai === 'Đang xử lý').length > 0 && (
+                    <span style={{ color: '#2563eb' }}>🔄 {tasks.filter(t => t.trang_thai === 'Đang xử lý').length} đang xử lý</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      {/* ────────────────────────────────────────────────────────────── */}
 
       {/* Confirm Delete */}
       {showConfirm && (
