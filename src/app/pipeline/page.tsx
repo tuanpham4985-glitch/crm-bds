@@ -71,6 +71,7 @@ function PipelineContent() {
     id_khach_hang: '', giai_doan: 'Mới', gia_tri_thuc_te: 0,
     sale_phu_trach: '', id_du_an: '', ten_du_an: '', hoa_hong: 0, thang: '',
     thuong_nong: 0, tkkd: '', phi_tkkd: 0, ngay_cap_nhat: '',
+    ty_le_tra_sale: 0, ty_le_gdda: 0, ty_le_gdkd: 0,
   });
 
   const fetchAll = useCallback(async () => {
@@ -131,6 +132,7 @@ function PipelineContent() {
       tkkd: '',
       phi_tkkd: 0,
       ngay_cap_nhat: new Date().toISOString().split('T')[0],
+      ty_le_tra_sale: 0, ty_le_gdda: 0, ty_le_gdkd: 0,
     });
     setShowModal(true);
   };
@@ -151,6 +153,9 @@ function PipelineContent() {
       tkkd: pl.tkkd || '',
       phi_tkkd: Number(pl.phi_tkkd) || 0,
       ngay_cap_nhat: pl.ngay_cap_nhat ? new Date(pl.ngay_cap_nhat).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      ty_le_tra_sale: Number(pl.ty_le_tra_sale) || 0,
+      ty_le_gdda: Number(pl.ty_le_gdda) || 0,
+      ty_le_gdkd: Number(pl.ty_le_gdkd) || 0,
     });
 
     setShowModal(true);
@@ -170,7 +175,17 @@ function PipelineContent() {
     setSaving(true);
     try {
       const method = editingItem ? 'PUT' : 'POST';
-      const body = editingItem ? { ...editingItem, ...form } : form;
+      // Tính trước phi để gửi cùng body (server cũng có thể tính lại)
+      const hhRate = form.hoa_hong > 1 ? form.hoa_hong / 100 : form.hoa_hong;
+      const tienHH = form.gia_tri_thuc_te * hhRate;
+      const computedPhi = {
+        phi_tra_sale: tienHH * ((form.ty_le_tra_sale || 0) / 100),
+        phi_tra_gdda: tienHH * ((form.ty_le_gdda || 0) / 100),
+        phi_tra_gdkd: tienHH * ((form.ty_le_gdkd || 0) / 100),
+      };
+      const body = editingItem
+        ? { ...editingItem, ...form, ...computedPhi }
+        : { ...form, ...computedPhi };
       const res = await fetch('/api/pipeline', {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -680,6 +695,90 @@ function PipelineContent() {
                   </div>
                 )}
               </div>
+              {/* ── Tỷ lệ & phí hoa hồng ── */}
+              {(showPhiTraSale || showPhiTraGDDA || showPhiTraGDKD) && (() => {
+                const hhRate = form.hoa_hong > 1 ? form.hoa_hong / 100 : form.hoa_hong;
+                const tienHH = form.gia_tri_thuc_te * hhRate;
+                return (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 4 }}>
+                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-label)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      💵 Tỷ lệ hoa hồng
+                      {tienHH > 0 && (
+                        <span style={{ fontWeight: 600, color: '#059669', textTransform: 'none', letterSpacing: 0, marginLeft: 8 }}>
+                          — Tiền HH: <strong>{tienHH.toLocaleString('vi-VN')} ₫</strong>
+                        </span>
+                      )}
+                    </p>
+
+                    {showPhiTraSale && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">% Trả sale</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input className="form-input" type="number" step="0.1" min="0" max="100"
+                              placeholder="0"
+                              value={form.ty_le_tra_sale || ''}
+                              onChange={(e) => setForm({ ...form, ty_le_tra_sale: parseFloat(e.target.value) || 0 })}
+                              style={{ flex: 1 }} />
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-label)', fontWeight: 600 }}>%</span>
+                          </div>
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Phí trả sale</label>
+                          <div className="form-input" style={{ background: '#ecfdf5', color: '#065f46', fontWeight: 700, cursor: 'default' }}>
+                            {(tienHH * ((form.ty_le_tra_sale || 0) / 100)).toLocaleString('vi-VN')} ₫
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {showPhiTraGDDA && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: showPhiTraGDKD ? 10 : 0 }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">% GDDA</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input className="form-input" type="number" step="0.1" min="0" max="100"
+                              placeholder="0"
+                              value={form.ty_le_gdda || ''}
+                              onChange={(e) => setForm({ ...form, ty_le_gdda: parseFloat(e.target.value) || 0 })}
+                              style={{ flex: 1 }} />
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-label)', fontWeight: 600 }}>%</span>
+                          </div>
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Phí trả GDDA</label>
+                          <div className="form-input" style={{ background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, cursor: 'default' }}>
+                            {(tienHH * ((form.ty_le_gdda || 0) / 100)).toLocaleString('vi-VN')} ₫
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {showPhiTraGDKD && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">% GĐKD</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input className="form-input" type="number" step="0.1" min="0" max="100"
+                              placeholder="0"
+                              value={form.ty_le_gdkd || ''}
+                              onChange={(e) => setForm({ ...form, ty_le_gdkd: parseFloat(e.target.value) || 0 })}
+                              style={{ flex: 1 }} />
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-label)', fontWeight: 600 }}>%</span>
+                          </div>
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Phí trả GĐKD</label>
+                          <div className="form-input" style={{ background: '#fffbeb', color: '#b45309', fontWeight: 700, cursor: 'default' }}>
+                            {(tienHH * ((form.ty_le_gdkd || 0) / 100)).toLocaleString('vi-VN')} ₫
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">Ngày ký TTĐC/VBTT</label>

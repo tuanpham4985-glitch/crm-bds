@@ -48,12 +48,23 @@ export async function POST(request: NextRequest) {
 
     const plDate = body.ngay_cap_nhat ? new Date(body.ngay_cap_nhat).toISOString() : new Date().toISOString();
 
+    // Tính phi hoa hồng từ tỷ lệ (nếu truyền lên)
+    const ty_le_tra_sale = Number(body.ty_le_tra_sale) || 0;
+    const ty_le_gdda     = Number(body.ty_le_gdda)     || 0;
+    const ty_le_gdkd     = Number(body.ty_le_gdkd)     || 0;
+
     const pl = {
       ...body,
       id_pipeline: generateId('PL'),
       gia_tri_thuc_te: gia_tri,
       hoa_hong: hoa_hong,
       tien_hoa_hong: tien_hoa_hong,
+      ty_le_tra_sale,
+      ty_le_gdda,
+      ty_le_gdkd,
+      phi_tra_sale: body.phi_tra_sale !== undefined ? Number(body.phi_tra_sale) : tien_hoa_hong * (ty_le_tra_sale / 100),
+      phi_tra_gdda: body.phi_tra_gdda !== undefined ? Number(body.phi_tra_gdda) : tien_hoa_hong * (ty_le_gdda / 100),
+      phi_tra_gdkd: body.phi_tra_gdkd !== undefined ? Number(body.phi_tra_gdkd) : tien_hoa_hong * (ty_le_gdkd / 100),
       phi_tkkd: Number(body.phi_tkkd) || 0,
       ngay_cap_nhat: plDate,
       thang: getMonthKey(plDate),
@@ -82,12 +93,29 @@ export async function PUT(request: NextRequest) {
 
     const plDate = body.ngay_cap_nhat ? new Date(body.ngay_cap_nhat).toISOString() : new Date().toISOString();
 
+    const tien_hoa_hong_put = gia_tri * hoa_hong;
+    const ty_le_tra_sale_put = Number(body.ty_le_tra_sale) || 0;
+    const ty_le_gdda_put     = Number(body.ty_le_gdda)     || 0;
+    const ty_le_gdkd_put     = Number(body.ty_le_gdkd)     || 0;
+
     body.gia_tri_thuc_te = gia_tri;
-    body.hoa_hong = hoa_hong;
-    body.tien_hoa_hong = gia_tri * hoa_hong;
-    body.phi_tkkd = Number(body.phi_tkkd) || 0;
-    body.ngay_cap_nhat = plDate;
-    body.thang = getMonthKey(plDate);
+    body.hoa_hong        = hoa_hong;
+    body.tien_hoa_hong   = tien_hoa_hong_put;
+    body.ty_le_tra_sale  = ty_le_tra_sale_put;
+    body.ty_le_gdda      = ty_le_gdda_put;
+    body.ty_le_gdkd      = ty_le_gdkd_put;
+    body.phi_tra_sale    = body.phi_tra_sale !== undefined
+      ? Number(body.phi_tra_sale)
+      : tien_hoa_hong_put * (ty_le_tra_sale_put / 100);
+    body.phi_tra_gdda    = body.phi_tra_gdda !== undefined
+      ? Number(body.phi_tra_gdda)
+      : tien_hoa_hong_put * (ty_le_gdda_put / 100);
+    body.phi_tra_gdkd    = body.phi_tra_gdkd !== undefined
+      ? Number(body.phi_tra_gdkd)
+      : tien_hoa_hong_put * (ty_le_gdkd_put / 100);
+    body.phi_tkkd        = Number(body.phi_tkkd) || 0;
+    body.ngay_cap_nhat   = plDate;
+    body.thang           = getMonthKey(plDate);
 
     const updated = await updatePipeline(body);
 
