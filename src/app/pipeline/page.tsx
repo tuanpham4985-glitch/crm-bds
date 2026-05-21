@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -19,7 +19,7 @@ const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> 
   'Huỷ':         { bg: '#f1f5f9', text: '#64748b', border: '#cbd5e1' },
 };
 
-export default function PipelinePage() {
+function PipelineContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -998,5 +998,14 @@ export default function PipelinePage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Wrapper bắt buộc: useSearchParams() yêu cầu Suspense boundary trong Next.js App Router
+export default function PipelinePage() {
+  return (
+    <Suspense fallback={<div className="loading-spinner"><div className="spinner" /></div>}>
+      <PipelineContent />
+    </Suspense>
   );
 }
