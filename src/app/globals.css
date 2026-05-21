@@ -134,13 +134,15 @@ h4 { font-size: 1rem; }
   max-width: calc(100vw - var(--sidebar-width));
 }
 
+/* Kept for reference — AppShell now uses content-fluid for all routes */
 .content-wrapper {
   max-width: var(--content-max-width);
   margin: 0 auto;
 }
 
+/* All pages use this — fills main-content which already carries padding + max-width */
 .content-fluid {
-  max-width: 100% !important;
+  max-width: 100%;
   margin: 0;
 }
 

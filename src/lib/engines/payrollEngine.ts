@@ -1,7 +1,7 @@
 import { CalendarEngine } from './calendarEngine';
 import { AttendanceEngine } from './attendanceEngine';
 import { NhanVien, PayrollAdjustment, HopDong } from '../types';
-import { calculateTaxMonthly } from '../tax';
+import { calculateTaxMonthly, TAX_CONFIG } from '../tax';
 
 // ================================================================
 // Hằng số Luật Lao động Việt Nam (cập nhật 2024)
@@ -20,8 +20,8 @@ export const BHYT_CTY_RATE = 0.03;    // 3%
 export const BHTN_CTY_RATE = 0.01;    // 1%
 
 // Giảm trừ gia cảnh (Luật TNCN sửa đổi)
-export const GIAM_TRU_BAN_THAN = 11_000_000;     // 11 triệu/tháng
-export const GIAM_TRU_PHU_THUOC = 4_400_000;     // 4.4 triệu/người/tháng
+export const GIAM_TRU_BAN_THAN = TAX_CONFIG.giam_tru_ban_than;   // 15.5 triệu/tháng (2026)
+export const GIAM_TRU_PHU_THUOC = TAX_CONFIG.giam_tru_phu_thuoc; // 6.2 triệu/người/tháng (2026)
 
 // ================================================================
 // SalaryItem: Component lương có đánh dấu tính BH & thuế
