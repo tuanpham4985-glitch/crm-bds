@@ -703,7 +703,7 @@ function PipelineContent() {
         <>
           {/* Backdrop */}
           <div
-            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 200, backdropFilter: 'blur(2px)' }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 200 }}
             onClick={closeTaskPanel}
           />
 
@@ -711,15 +711,15 @@ function PipelineContent() {
           <div style={{
             position: 'fixed', top: 0, right: 0, bottom: 0,
             width: 440, maxWidth: '100vw',
-            background: 'var(--bg-card)',
-            borderLeft: '1px solid var(--border-color)',
-            boxShadow: '-8px 0 32px rgba(15,23,42,0.14)',
+            background: '#ffffff',
+            borderLeft: '1px solid #e2e8f0',
+            boxShadow: '-8px 0 40px rgba(15,23,42,0.18)',
             zIndex: 201,
             display: 'flex', flexDirection: 'column',
           }}>
 
             {/* Header – deal info */}
-            <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-main)', flexShrink: 0 }}>
+            <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
@@ -760,7 +760,7 @@ function PipelineContent() {
             </div>
 
             {/* Body – task list + form */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', background: '#ffffff' }}>
 
               {/* Add task toggle */}
               <div style={{ marginBottom: 14 }}>
@@ -773,7 +773,7 @@ function PipelineContent() {
                     <Plus size={14} /> Thêm công việc
                   </button>
                 ) : (
-                  <div style={{ background: 'var(--bg-main)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: 14 }}>
+                  <div style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
                     <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-title)', margin: '0 0 10px' }}>Công việc mới</p>
                     <input
                       className="form-input"
@@ -839,9 +839,9 @@ function PipelineContent() {
 
                       return (
                         <div key={cv.id_cong_viec} style={{
-                          background: isDone ? 'var(--bg-main)' : 'var(--bg-card)',
-                          border: `1px solid ${isDone ? 'var(--border-color)' : sc.border}`,
-                          borderRadius: 'var(--radius-lg)',
+                          background: isDone ? '#f8fafc' : '#ffffff',
+                          border: `1px solid ${isDone ? '#e2e8f0' : sc.border}`,
+                          borderRadius: 10,
                           padding: '12px 13px',
                           opacity: cv.trang_thai === 'Huỷ' ? 0.58 : 1,
                           transition: 'opacity 0.15s',
@@ -929,9 +929,9 @@ function PipelineContent() {
                               {/* Row 3: result note */}
                               {cv.ket_qua && (
                                 <div style={{
-                                  fontSize: '0.8rem', color: 'var(--text-muted)',
-                                  background: 'var(--bg-main)', borderRadius: 6,
-                                  padding: '5px 9px', borderLeft: '3px solid var(--border-color)',
+                                  fontSize: '0.8rem', color: '#64748b',
+                                  background: '#f1f5f9', borderRadius: 6,
+                                  padding: '5px 9px', borderLeft: '3px solid #cbd5e1',
                                   marginBottom: isDone ? 0 : 8,
                                 }}>
                                   💬 {cv.ket_qua}
@@ -968,7 +968,7 @@ function PipelineContent() {
 
             {/* Footer – task count summary */}
             {tasks.length > 0 && (
-              <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-main)', flexShrink: 0 }}>
+              <div style={{ padding: '10px 18px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0 }}>
                 <div style={{ display: 'flex', gap: 14, fontSize: '0.775rem', color: 'var(--text-label)' }}>
                   <span>📋 {tasks.length} task</span>
                   <span style={{ color: '#059669' }}>✓ {tasks.filter(t => t.trang_thai === 'Hoàn thành').length} xong</span>
