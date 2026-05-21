@@ -14,6 +14,119 @@ import { formatCurrency, formatChange, calcChange } from '@/lib/utils';
 
 const CHART_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
+// ─── Laurel Wreath Medal Frame ───────────────────────────────────────────────
+const WREATH_COLORS = {
+  1: { leafHigh:'#FFF08A', leafMid:'#C9960C', leafShd:'#7A5200', ringHigh:'#FFF5A0', ringMid:'#D4AF37', ringDark:'#8B6000', ribTop:'#E8B820', ribBot:'#8B6000', numFill:'#3D1E00' },
+  2: { leafHigh:'#F0F0F0', leafMid:'#A8A8A8', leafShd:'#505050', ringHigh:'#FFFFFF',  ringMid:'#C0C0C0', ringDark:'#606060', ribTop:'#D0D0D0', ribBot:'#686868', numFill:'#1a1a1a' },
+  3: { leafHigh:'#FFD09A', leafMid:'#A0622A', leafShd:'#5A2800', ringHigh:'#FFD0A0', ringMid:'#B86830', ringDark:'#6B3000', ribTop:'#C87030', ribBot:'#6B3000', numFill:'#2a0e00' },
+} as const;
+
+function LaurelWreathMedal({ rank, avatarSize, children }: { rank:1|2|3; avatarSize:number; children:React.ReactNode }) {
+  const c   = WREATH_COLORS[rank];
+  const aR  = avatarSize / 2;
+  const lR  = aR + (rank === 1 ? 20 : 17);   // leaf orbit radius from avatar center
+  const lRx = rank === 1 ? 13 : 11;           // leaf semi-major
+  const lRy = rank === 1 ? 6  : 5;            // leaf semi-minor
+  const N   = 9;                              // leaves per side
+  const pad = 6;                              // padding so avatar doesn't clip SVG edge
+  const ctr = aR + pad;                       // SVG center
+  const svgW = avatarSize + pad * 2;
+  const ribW = Math.round(avatarSize * 0.76);
+  const ribH = 28;
+  const tail = 14;
+  const ribY = ctr + aR + 14;                 // ribbon top: just below bottom leaf tips
+  const svgH = ribY + ribH + 10;
+
+  // Generate leaf positions along an arc
+  const mkLeaves = (a0: number, a1: number) =>
+    Array.from({ length: N }, (_, i) => {
+      const d = a0 + (a1 - a0) * (i / (N - 1));
+      const r = d * Math.PI / 180;
+      return { x: ctr + Math.cos(r) * lR, y: ctr + Math.sin(r) * lR, rot: d + 90 };
+    });
+
+  // Left branch: arc from ~bottom (97°) counterclockwise to upper-left (254°)
+  // Right branch: mirror arc from ~bottom (83°) to upper-right (−74°)
+  const LL = mkLeaves(97, 254);
+  const RL = mkLeaves(83, -74);
+  const g  = { lf: `wlf${rank}`, rg: `wrg${rank}`, rb: `wrb${rank}` };
+
+  return (
+    <div style={{ position:'relative', width:svgW, height:svgH, flexShrink:0 }}>
+      {/* SVG wreath — overflow:visible lets leaves extend beyond stated bounds */}
+      <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`}
+        style={{ position:'absolute', top:0, left:0 }} overflow="visible">
+        <defs>
+          <linearGradient id={g.lf} x1="0%" y1="0%" x2="85%" y2="100%">
+            <stop offset="0%"   stopColor={c.leafHigh} stopOpacity="0.95" />
+            <stop offset="45%"  stopColor={c.leafMid} />
+            <stop offset="100%" stopColor={c.leafShd} />
+          </linearGradient>
+          <linearGradient id={g.rg} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stopColor={c.ringHigh} />
+            <stop offset="40%"  stopColor={c.ringMid} />
+            <stop offset="100%" stopColor={c.ringDark} />
+          </linearGradient>
+          <linearGradient id={g.rb} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"   stopColor={c.ribTop} />
+            <stop offset="100%" stopColor={c.ribBot} />
+          </linearGradient>
+        </defs>
+
+        {/* Subtle outer glow circle */}
+        <circle cx={ctr} cy={ctr} r={aR + 23} fill="none" stroke={c.ringMid} strokeWidth="1" opacity="0.2" />
+
+        {/* Left laurel branch */}
+        {LL.map((l, i) => (
+          <ellipse key={`ll${i}`} cx={l.x} cy={l.y} rx={lRx} ry={lRy}
+            fill={`url(#${g.lf})`} transform={`rotate(${l.rot},${l.x},${l.y})`}
+            opacity={0.80 + (i % 2 === 0 ? 0.14 : 0)} />
+        ))}
+
+        {/* Right laurel branch */}
+        {RL.map((l, i) => (
+          <ellipse key={`rl${i}`} cx={l.x} cy={l.y} rx={lRx} ry={lRy}
+            fill={`url(#${g.lf})`} transform={`rotate(${l.rot},${l.x},${l.y})`}
+            opacity={0.80 + (i % 2 === 0 ? 0.14 : 0)} />
+        ))}
+
+        {/* Metallic ring around the avatar circle */}
+        <circle cx={ctr} cy={ctr} r={aR + 5} fill="none"
+          stroke={`url(#${g.rg})`} strokeWidth={rank === 1 ? 4.5 : 3.5} />
+
+        {/* Ribbon left/right tails */}
+        <polygon points={`${ctr - ribW/2},${ribY} ${ctr - ribW/2 - tail},${ribY + ribH/2} ${ctr - ribW/2},${ribY + ribH}`}
+          fill={c.ribBot} opacity={0.88} />
+        <polygon points={`${ctr + ribW/2},${ribY} ${ctr + ribW/2 + tail},${ribY + ribH/2} ${ctr + ribW/2},${ribY + ribH}`}
+          fill={c.ribBot} opacity={0.88} />
+
+        {/* Ribbon body */}
+        <rect x={ctr - ribW/2} y={ribY} width={ribW} height={ribH} rx={4}
+          fill={`url(#${g.rb})`} />
+        {/* Sheen highlight on ribbon */}
+        <rect x={ctr - ribW/2 + 5} y={ribY + 4} width={ribW - 10} height={2} rx={1}
+          fill={c.ribTop} opacity={0.45} />
+        {/* Rank number on ribbon */}
+        <text x={ctr} y={ribY + ribH - 7} textAnchor="middle"
+          fontSize={rank === 1 ? 16 : 14} fontWeight="900"
+          fill={c.numFill} fontFamily="Inter, system-ui, sans-serif">
+          {rank}
+        </text>
+      </svg>
+
+      {/* Avatar circle — sits above the SVG wreath */}
+      <div style={{
+        position:'absolute', top:pad, left:pad,
+        width:avatarSize, height:avatarSize,
+        borderRadius:'50%', overflow:'hidden', zIndex:2,
+        boxShadow:`0 0 0 2.5px ${c.ringMid}, 0 6px 24px ${c.ringDark}90`,
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [period, setPeriod] = useState('month');
@@ -226,8 +339,8 @@ export default function DashboardPage() {
                   <div className="podium-container" style={{
                     background: 'radial-gradient(circle at center, #0b1329 0%, #030712 100%)',
                     borderRadius: '20px',
-                    padding: '90px 16px 24px',
-                    minHeight: '500px',
+                    padding: '72px 16px 20px',
+                    minHeight: '440px',
                     display: 'flex',
                     justifyContent: 'space-around',
                     alignItems: 'flex-end',
@@ -266,273 +379,98 @@ export default function DashboardPage() {
                         .slice(-2)
                         .join('');
 
-                      // Premium 2-layer 3D Platform styles
-                      const config: any = {
-                        1: {
-                          glow: 'rgba(251,191,36,0.3)',
-                          platformTopStyle: {
-                            width: '105px',
-                            height: '24px',
-                            borderRadius: '50%',
-                            background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(200,225,255,0.85) 100%)',
-                            border: '1.5px solid #ffffff',
-                            boxShadow: '0 0 15px rgba(255,255,255,0.8), inset 0 0 8px rgba(255,255,255,1)',
-                            zIndex: 3,
-                            transform: 'translateY(12px)'
-                          },
-                          platformFrontStyle: {
-                            width: '105px',
-                            height: '56px',
-                            background: 'linear-gradient(to bottom, rgba(219,234,254,0.8) 0%, rgba(147,197,253,0.5) 100%)',
-                            borderLeft: '1.5px solid #ffffff',
-                            borderRight: '1.5px solid #ffffff',
-                            borderBottom: '3.5px solid #fbbf24',
-                            borderBottomLeftRadius: '14px',
-                            borderBottomRightRadius: '14px',
-                            boxShadow: '0 8px 25px rgba(0,0,0,0.5), 0 0 30px rgba(251,191,36,0.3)',
-                            position: 'relative',
-                            zIndex: 2,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          },
-                          numberStyle: {
-                            background: 'linear-gradient(to bottom, #fff6cc, #fbbf24)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            fontSize: '2.5rem',
-                            fontWeight: 900,
-                            textShadow: '0 2px 5px rgba(0,0,0,0.5)',
-                            lineHeight: 1
-                          },
-                          avatarFrameStyle: {
-                            width: '148px',
-                            height: '148px',
-                            borderRadius: '50%',
-                            border: '3.5px solid #d4af37',
-                            padding: '3px',
-                            background: 'radial-gradient(circle, #fef08a 0%, #ca8a04 100%)',
-                            boxShadow: '0 0 40px rgba(251,191,36,0.7)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            position: 'relative',
-                            zIndex: 4
-                          },
-                          textColor: '#fde047',
-                          crownEmoji: '👑',
-                          beamBg: 'linear-gradient(to top, rgba(251,191,36,0.2) 0%, transparent 80%)'
-                        },
-                        2: {
-                          glow: 'rgba(148,163,184,0.25)',
-                          platformTopStyle: {
-                            width: '95px',
-                            height: '20px',
-                            borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%)',
-                            border: '1.5px solid rgba(255,255,255,0.4)',
-                            boxShadow: '0 0 10px rgba(255,255,255,0.3)',
-                            zIndex: 3,
-                            transform: 'translateY(10px)'
-                          },
-                          platformFrontStyle: {
-                            width: '95px',
-                            height: '46px',
-                            background: 'linear-gradient(to bottom, #475569 0%, #1e293b 100%)',
-                            borderLeft: '1.5px solid #94a3b8',
-                            borderRight: '1.5px solid #94a3b8',
-                            borderBottom: '3px solid #cbd5e1',
-                            borderTop: '2px solid #38bdf8', // Khe LED xanh dương
-                            borderBottomLeftRadius: '12px',
-                            borderBottomRightRadius: '12px',
-                            boxShadow: '0 6px 20px rgba(0,0,0,0.5), 0 0 15px rgba(148,163,184,0.2)',
-                            position: 'relative',
-                            zIndex: 2,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          },
-                          numberStyle: {
-                            background: 'linear-gradient(to bottom, #ffffff, #cbd5e1)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            fontSize: '2.0rem',
-                            fontWeight: 900,
-                            textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                            lineHeight: 1
-                          },
-                          avatarFrameStyle: {
-                            width: '128px',
-                            height: '128px',
-                            borderRadius: '50%',
-                            border: '3.5px solid #cbd5e1',
-                            padding: '2.5px',
-                            background: 'linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%)',
-                            boxShadow: '0 0 32px rgba(203,213,225,0.55)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            position: 'relative',
-                            zIndex: 4
-                          },
-                          textColor: '#94a3b8',
-                          crownEmoji: null,
-                          beamBg: 'linear-gradient(to top, rgba(148,163,184,0.12) 0%, transparent 80%)'
-                        },
-                        3: {
-                          glow: 'rgba(234,88,12,0.2)',
-                          platformTopStyle: {
-                            width: '90px',
-                            height: '18px',
-                            borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #ea580c 0%, #9a3412 100%)',
-                            border: '1.5px solid rgba(251,146,60,0.3)',
-                            boxShadow: '0 0 8px rgba(234,88,12,0.2)',
-                            zIndex: 3,
-                            transform: 'translateY(9px)'
-                          },
-                          platformFrontStyle: {
-                            width: '90px',
-                            height: '40px',
-                            background: 'linear-gradient(to bottom, #7c2d12 0%, #431407 100%)',
-                            borderLeft: '1.5px solid #ea580c',
-                            borderRight: '1.5px solid #ea580c',
-                            borderBottom: '3px solid #b45309',
-                            borderTop: '2px solid #f97316', // Khe LED màu cam đồng
-                            borderBottomLeftRadius: '12px',
-                            borderBottomRightRadius: '12px',
-                            boxShadow: '0 6px 15px rgba(0,0,0,0.5), 0 0 10px rgba(234,88,12,0.15)',
-                            position: 'relative',
-                            zIndex: 2,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          },
-                          numberStyle: {
-                            background: 'linear-gradient(to bottom, #ffedd5, #ea580c)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            fontSize: '1.8rem',
-                            fontWeight: 900,
-                            textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                            lineHeight: 1
-                          },
-                          avatarFrameStyle: {
-                            width: '120px',
-                            height: '120px',
-                            borderRadius: '50%',
-                            border: '3px solid #b45309',
-                            boxShadow: '0 0 24px rgba(180,83,9,0.5)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            position: 'relative',
-                            zIndex: 4,
-                            // Metallic bronze coin finish
-                            background: 'radial-gradient(circle, #a16207 0%, #78350f 60%, #451a03 100%)'
-                          },
-                          textColor: '#ea580c',
-                          crownEmoji: null,
-                          beamBg: 'linear-gradient(to top, rgba(234,88,12,0.1) 0%, transparent 80%)'
-                        }
-                      }[rank as 1 | 2 | 3];
+                      const typedRank = rank as 1 | 2 | 3;
+                      const aSize = rank === 1 ? 148 : rank === 2 ? 128 : 120;
+                      const beamBg =
+                        rank === 1 ? 'linear-gradient(to top, rgba(251,191,36,0.22) 0%, transparent 80%)' :
+                        rank === 2 ? 'linear-gradient(to top, rgba(148,163,184,0.14) 0%, transparent 80%)' :
+                                     'linear-gradient(to top, rgba(234,88,12,0.12) 0%, transparent 80%)';
 
                       return (
-                        <div 
-                          key={sale.nhan_vien} 
+                        <div
+                          key={sale.nhan_vien}
                           className={`floating-platform-${rank}`}
                           style={{
                             flex: 1,
-                            maxWidth: rank === 1 ? '180px' : '160px',
+                            maxWidth: rank === 1 ? '210px' : '190px',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
                             position: 'relative',
                             transition: 'all 0.3s ease',
-                            zIndex: rank === 1 ? 5 : 2
+                            zIndex: rank === 1 ? 5 : 2,
                           }}
                         >
-                          {/* Crown with crescent moon styled for Rank 1 */}
-                          {rank === 1 && (
-                            <span 
-                              style={{ 
-                                position: 'absolute', top: '-40px', zIndex: 10, fontSize: '2.4rem',
-                                filter: 'drop-shadow(0 2px 8px rgba(251,191,36,0.8))'
-                              }}
-                            >
-                              👑
-                            </span>
-                          )}
-
-                          {/* Futuristic Upward Light Beam */}
+                          {/* Upward light beam */}
                           <div style={{
-                            position: 'absolute', bottom: '85px', width: rank === 1 ? '140px' : '120px', height: '220px',
-                            background: config.beamBg,
+                            position: 'absolute',
+                            bottom: '50px',
+                            width: rank === 1 ? '140px' : '120px',
+                            height: '220px',
+                            background: beamBg,
                             clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
                             pointerEvents: 'none',
                             zIndex: 1,
-                            opacity: 0.8
+                            opacity: 0.8,
                           }} />
 
-                          {/* Avatar Frame Container */}
-                          <div style={{ ...config.avatarFrameStyle, marginBottom: '12px' }}>
+                          {/* Laurel wreath medal with embedded avatar */}
+                          <LaurelWreathMedal rank={typedRank} avatarSize={aSize}>
                             <div style={{
                               width: '100%',
                               height: '100%',
-                              borderRadius: '50%',
-                              overflow: 'hidden',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              background: (rank === 3 && !sale.avatar_url) ? 'none' : '#0f172a',
-                              border: (rank === 3 && !sale.avatar_url) ? 'none' : '1.5px solid rgba(255,255,255,0.1)'
+                              background: '#0f172a',
                             }}>
                               {sale.avatar_url ? (
-                                <img 
-                                  src={sale.avatar_url} 
+                                <img
+                                  src={sale.avatar_url}
                                   alt={sale.nhan_vien}
                                   style={{
                                     width: '100%',
                                     height: '100%',
                                     objectFit: 'cover',
-                                    objectPosition: 'top center'
+                                    objectPosition: 'top center',
                                   }}
                                 />
                               ) : (
                                 <div style={{
-                                  fontSize: rank === 1 ? '2.5rem' : rank === 3 ? '2.6rem' : '2.1rem',
-                                  fontWeight: rank === 3 ? 900 : 800,
-                                  color: rank === 3 ? '#ffedd5' : '#fff',
-                                  textShadow: rank === 3 ? '1px 2px 4px rgba(0,0,0,0.6)' : 'none',
-                                  letterSpacing: rank === 3 ? '0.5px' : 'normal'
+                                  fontSize: rank === 1 ? '2.5rem' : rank === 2 ? '2.1rem' : '2.6rem',
+                                  fontWeight: 800,
+                                  color: rank === 2 ? '#e2e8f0' : '#fff',
+                                  letterSpacing: '-1px',
                                 }}>
                                   {initials}
                                 </div>
                               )}
                             </div>
-                          </div>
+                          </LaurelWreathMedal>
 
-                          {/* Name label - warm goldish sand color */}
+                          {/* Name */}
                           <div style={{
                             fontSize: rank === 1 ? '0.82rem' : '0.75rem',
                             fontWeight: 800,
                             color: '#e2b857',
                             textAlign: 'center',
-                            marginTop: '4px',
+                            marginTop: '6px',
                             width: '100%',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             textShadow: '0 2px 4px rgba(0,0,0,0.9)',
-                            zIndex: 3
+                            zIndex: 3,
+                            paddingLeft: '4px',
+                            paddingRight: '4px',
                           }}>
                             {sale.nhan_vien}
                           </div>
 
-                          {/* Score Pill Box - Semi-transparent pill */}
+                          {/* Score Pill */}
                           <div style={{
                             background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.08)',
                             borderRadius: '20px',
                             padding: '3px 10px',
                             marginTop: '4px',
@@ -541,7 +479,6 @@ export default function DashboardPage() {
                             justifyContent: 'center',
                             zIndex: 3,
                             boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-                            marginBottom: '12px'
                           }}>
                             <span style={{
                               fontSize: rank === 1 ? '0.75rem' : '0.7rem',
@@ -549,30 +486,10 @@ export default function DashboardPage() {
                               color: '#cbd5e1',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '2px'
+                              gap: '3px',
                             }}>
                               {formatCurrency(sale.doanh_thu)} <span style={{ color: '#fbbf24' }}>⭐</span>
                             </span>
-                          </div>
-
-                          {/* 3D Platform Container (2 Layers: Platform Top + Platform Front) */}
-                          <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            width: '100%',
-                            position: 'relative',
-                            zIndex: 2
-                          }}>
-                            {/* Platform Top (Ellipse) */}
-                            <div style={config.platformTopStyle} />
-                            
-                            {/* Platform Front (Rectangle containing Rank Number centered) */}
-                            <div style={config.platformFrontStyle}>
-                              <div style={config.numberStyle}>
-                                {rank}
-                              </div>
-                            </div>
                           </div>
                         </div>
                       );
@@ -941,7 +858,7 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
   });
 
   return (
-    <div className="chart-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '625px', maxHeight: '625px', border: '1.5px solid #d4af37' }}>
+    <div className="chart-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', border: '1.5px solid #d4af37' }}>
       {/* Aviation Theme Title Header */}
       <div style={{
         padding: '18px 24px',
@@ -953,19 +870,19 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
         alignItems: 'center'
       }}>
         <div>
-          <div style={{ color: '#d4af37', fontSize: '0.75rem', fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
+          <div style={{ color: '#d4af37', fontSize: '0.875rem', fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 3 }}>
             CỰC CHIẾN 2026
           </div>
-          <div style={{ fontSize: '1.15rem', fontWeight: 800, letterSpacing: '0.5px', textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
+          <div style={{ fontSize: '1.45rem', fontWeight: 800, letterSpacing: '0.5px', textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
             GLOBAL CHAMPION ✈️
           </div>
         </div>
         <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ borderRight: '1px solid rgba(255,255,255,0.2)', paddingRight: 10 }}>
-            <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, letterSpacing: 1 }}>VICTORY AIRLINES</div>
-            <div style={{ fontSize: '0.6rem', color: '#cbd5e1' }}>BOARDING PASS SYSTEM</div>
+            <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 700, letterSpacing: 1 }}>VICTORY AIRLINES</div>
+            <div style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>BOARDING PASS SYSTEM</div>
           </div>
-          <div style={{ fontSize: '1.8rem', lineHeight: 1 }}>🎫</div>
+          <div style={{ fontSize: '2.2rem', lineHeight: 1 }}>🎫</div>
         </div>
       </div>
 
@@ -1001,11 +918,11 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
               }} />
 
               {/* Main Ticket Area */}
-              <div style={{ display: 'flex', height: '105px' }}>
+              <div style={{ display: 'flex', height: '148px' }}>
                 {/* Left: Main Ticket Stub (72% width) */}
                 <div style={{
                   flex: 1,
-                  padding: '10px 14px',
+                  padding: '14px 18px',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
@@ -1013,43 +930,44 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                   position: 'relative'
                 }}>
                   {/* Airplane Logo & Boarding Pass Text */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 700 }}>
                     <span style={{ color: '#d4af37', fontWeight: 800 }}>✈️ VICTORY AIRLINES</span>
                     <span style={{ letterSpacing: '0.5px' }}>BOARDING PASS</span>
                   </div>
 
                   {/* Destination Info & Destination Symbol Pic */}
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '6px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '14px', marginTop: '10px', alignItems: 'center' }}>
                     {/* Destination Symbol Pic */}
-                    <img 
-                      src={level.bgImg} 
-                      alt={level.title} 
-                      style={{ 
-                        width: '75px', 
-                        height: '50px', 
-                        borderRadius: '6px', 
-                        objectFit: 'cover', 
+                    <img
+                      src={level.bgImg}
+                      alt={level.title}
+                      style={{
+                        width: '112px',
+                        height: '72px',
+                        borderRadius: '8px',
+                        objectFit: 'cover',
                         border: '1px solid #e2e8f0',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.08)'
-                      }} 
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                        flexShrink: 0
+                      }}
                     />
-                    
+
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.5px' }}>DESTINATION:</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{level.title}</div>
-                      
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'nowrap' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.5px' }}>DESTINATION:</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.15, marginTop: 2 }}>{level.title}</div>
+
+                      <div style={{ display: 'flex', gap: '12px', marginTop: '6px', flexWrap: 'nowrap' }}>
                         <div style={{ flexShrink: 0 }}>
-                          <span style={{ fontSize: '0.52rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>FLIGHT</span>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap' }}>VIC2026</span>
+                          <span style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>FLIGHT</span>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap' }}>VIC2026</span>
                         </div>
                         <div style={{ flexShrink: 0 }}>
-                          <span style={{ fontSize: '0.52rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>SEAT</span>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap' }}>01A/VIP</span>
+                          <span style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>SEAT</span>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap' }}>01A/VIP</span>
                         </div>
                         <div style={{ flexShrink: 0 }}>
-                          <span style={{ fontSize: '0.52rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>CLASS</span>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4af37', whiteSpace: 'nowrap' }}>FIRST</span>
+                          <span style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>CLASS</span>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#d4af37', whiteSpace: 'nowrap' }}>FIRST</span>
                         </div>
                       </div>
                     </div>
@@ -1059,7 +977,7 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                 {/* Right: Ticket Stub Receipt (28% width) */}
                 <div style={{
                   width: '28%',
-                  padding: '10px 8px',
+                  padding: '14px 10px',
                   background: '#fffdf6',
                   display: 'flex',
                   flexDirection: 'column',
@@ -1068,15 +986,15 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                   position: 'relative'
                 }}>
                   {/* Custom QR Code simulator */}
-                  <div style={{ 
-                    width: '30px', 
-                    height: '30px', 
-                    background: '#0f172a', 
-                    padding: '2px', 
-                    borderRadius: '4px', 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(4, 1fr)', 
-                    gap: '1px' 
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    background: '#0f172a',
+                    padding: '3px',
+                    borderRadius: '6px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '1.5px'
                   }}>
                     {Array.from({ length: 16 }).map((_, i) => (
                       <div key={i} style={{ background: (i % 3 === 0 || i % 7 === 0) ? '#fff' : '#0f172a' }} />
@@ -1084,23 +1002,23 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                   </div>
 
                   {/* Target Revenue Badge */}
-                  <div style={{ 
-                    background: 'linear-gradient(135deg, #d4af37 0%, #b89028 100%)', 
-                    color: '#fff', 
-                    fontSize: '0.75rem', 
-                    fontWeight: 800, 
-                    padding: '2px 0', 
-                    borderRadius: '4px', 
-                    textAlign: 'center', 
+                  <div style={{
+                    background: 'linear-gradient(135deg, #d4af37 0%, #b89028 100%)',
+                    color: '#fff',
+                    fontSize: '0.9rem',
+                    fontWeight: 800,
+                    padding: '4px 0',
+                    borderRadius: '6px',
+                    textAlign: 'center',
                     width: '95%',
-                    boxShadow: '0 2px 4px rgba(212,175,55,0.3)',
+                    boxShadow: '0 2px 6px rgba(212,175,55,0.4)',
                     letterSpacing: '0.5px'
                   }}>
                     {level.condition}
                   </div>
 
                   {/* Custom Barcode simulator */}
-                  <div style={{ display: 'flex', gap: '1px', height: '14px', width: '90%', alignItems: 'stretch', opacity: 0.8 }}>
+                  <div style={{ display: 'flex', gap: '1.5px', height: '20px', width: '90%', alignItems: 'stretch', opacity: 0.8 }}>
                     {[1,2,1,3,1,1,2,1,2,1,1,2,1].map((w, idx) => (
                       <div key={idx} style={{ flex: w, background: '#0f172a' }} />
                     ))}
@@ -1112,49 +1030,49 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
               <div style={{
                 background: '#fafbfc',
                 borderTop: '1px solid #f1f5f9',
-                padding: '6px 12px',
-                minHeight: '38px',
+                padding: '10px 14px',
+                minHeight: '50px',
                 display: 'flex',
                 alignItems: 'center'
               }}>
                 {list.length === 0 ? (
-                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic', width: '100%', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.82rem', color: '#94a3b8', fontStyle: 'italic', width: '100%', textAlign: 'center' }}>
                     Chưa có chiến binh đạt mốc này
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                     {list.map(emp => {
                       const initials = emp.nhan_vien.split(' ').map((w: string) => w[0]).slice(-2).join('');
                       return (
                         <div key={emp.nhan_vien} style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '6px',
+                          gap: '7px',
                           background: '#fff',
-                          padding: '2px 8px 2px 2px',
+                          padding: '3px 10px 3px 3px',
                           borderRadius: '20px',
                           border: '1px solid #e2e8f0',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                          boxShadow: '0 1px 4px rgba(0,0,0,0.07)'
                         }}>
                           {emp.avatar_url ? (
-                            <img src={emp.avatar_url} alt={emp.nhan_vien} style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
+                            <img src={emp.avatar_url} alt={emp.nhan_vien} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
                           ) : (
-                            <div style={{ 
-                              width: 20, 
-                              height: 20, 
-                              borderRadius: '50%', 
-                              background: 'linear-gradient(135deg, #d4af37 0%, #b89028 100%)', 
-                              color: '#fff', 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'center', 
-                              fontSize: '0.55rem', 
-                              fontWeight: 700 
+                            <div style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: '50%',
+                              background: 'linear-gradient(135deg, #d4af37 0%, #b89028 100%)',
+                              color: '#fff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.7rem',
+                              fontWeight: 700
                             }}>
                               {initials}
                             </div>
                           )}
-                          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#334155' }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
                             {emp.nhan_vien}
                           </div>
                         </div>
