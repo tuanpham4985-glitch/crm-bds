@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Plus, Edit3, Trash2, X,
@@ -20,6 +21,8 @@ const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> 
 
 export default function PipelinePage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const isAllVisible = user && (
     user.vai_tro === 'Admin' ||
     ['Admin', 'Chủ tịch', 'TGĐ'].includes(user.employee_type || '')
@@ -43,6 +46,8 @@ export default function PipelinePage() {
   // Filters
   const [filterSale, setFilterSale] = useState('');
   const [filterDuAn, setFilterDuAn] = useState('');
+  // filterKH: id_khach_hang — được set từ URL param ?kh=... (điều hướng từ trang Khách hàng)
+  const [filterKH, setFilterKH] = useState(() => searchParams.get('kh') || '');
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -108,8 +113,14 @@ export default function PipelinePage() {
       }
     }
     if (filterDuAn && pl.id_du_an !== filterDuAn) return false;
+    if (filterKH && pl.id_khach_hang !== filterKH) return false;
     return true;
   });
+
+  // Lấy tên KH đang lọc (nếu có) để hiển thị banner
+  const filterKHName = filterKH
+    ? customers.find(k => k.id_khach_hang === filterKH)?.ten_KH || filterKH
+    : '';
 
   const openCreate = () => {
     setEditingItem(null);
@@ -443,8 +454,25 @@ export default function PipelinePage() {
           <option value="">Tất cả dự án</option>
           {projects.map(da => <option key={da.id_du_an} value={da.id_du_an}>{da.ten_du_an}</option>)}
         </select>
-        {(filterSale || filterDuAn) && (
-          <button className="btn btn-ghost btn-sm" onClick={() => { setFilterSale(''); setFilterDuAn(''); }}>
+        {filterKHName && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: 'rgba(99,102,241,0.1)', color: '#4f46e5',
+            border: '1px solid rgba(99,102,241,0.25)',
+            borderRadius: 20, padding: '4px 10px 4px 12px',
+            fontSize: '0.8125rem', fontWeight: 600,
+          }}>
+            👤 {filterKHName}
+            <button
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: '#4f46e5' }}
+              onClick={() => { setFilterKH(''); router.replace('/pipeline'); }}
+            >
+              <X size={13} />
+            </button>
+          </span>
+        )}
+        {(filterSale || filterDuAn || filterKH) && (
+          <button className="btn btn-ghost btn-sm" onClick={() => { setFilterSale(''); setFilterDuAn(''); setFilterKH(''); router.replace('/pipeline'); }}>
             <X size={14} />Xóa lọc
           </button>
         )}

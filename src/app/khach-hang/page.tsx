@@ -1,17 +1,20 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Search, Plus, Edit3, Trash2, X, ChevronLeft, ChevronRight,
-  Users, Phone, Mail, Filter
+  Users, Phone, Mail, GitBranch
 } from 'lucide-react';
-import type { KhachHang, NhanVien } from '@/lib/types';
+import type { KhachHang, NhanVien, Pipeline } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
-import { NGUON } from '@/lib/constants';
+import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
 
 export default function KhachHangPage() {
+  const router = useRouter();
   const [data, setData] = useState<KhachHang[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -71,6 +74,20 @@ export default function KhachHangPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
+
+  // Load pipeline data in background để hiển thị trạng thái deal của mỗi KH
+  useEffect(() => {
+    fetch('/api/pipeline')
+      .then(r => r.json())
+      .then(d => { if (d.success) setPipelines(d.data); })
+      .catch(() => {});
+  }, []);
+
+  // Lấy deal mới nhất của 1 khách hàng
+  const getDealOfKH = (id_khach_hang: string): Pipeline | undefined =>
+    pipelines
+      .filter(p => p.id_khach_hang === id_khach_hang)
+      .sort((a, b) => new Date(b.ngay_cap_nhat).getTime() - new Date(a.ngay_cap_nhat).getTime())[0];
 
   // Debounced search
   const [searchInput, setSearchInput] = useState('');
@@ -278,6 +295,7 @@ export default function KhachHangPage() {
                     <th>Email</th>
                     <th>Nguồn</th>
                     <th>Nhu cầu</th>
+                    <th>Deal</th>
                     <th>Sale</th>
                     <th>Ngày tạo</th>
                     <th style={{ width: 140, textAlign: 'center' }}>Thao tác</th>
@@ -308,11 +326,31 @@ export default function KhachHangPage() {
                         ) : '—'}
                       </td>
                       <td className="truncate" style={{ maxWidth: 200 }}>{kh.nhu_cau || '—'}</td>
+                      <td>
+                        {(() => {
+                          const deal = getDealOfKH(kh.id_khach_hang);
+                          if (!deal) return <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>;
+                          const colors = GIAI_DOAN_COLORS[deal.giai_doan] || { bg: '#f1f5f9', text: '#475569' };
+                          return (
+                            <span className="badge" style={{ background: colors.bg, color: colors.text, fontSize: '0.72rem', cursor: 'pointer' }}
+                              onClick={() => router.push(`/pipeline?kh=${kh.id_khach_hang}`)}>
+                              {deal.giai_doan}
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td style={{ fontWeight: 500, color: 'var(--primary-text)' }}>{kh.sale_phu_trach || '—'}</td>
                       <td>{formatDate(kh.ngay_tao)}</td>
                       <td>
                         <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
-                          
+                          <button
+                            className="btn btn-ghost btn-icon btn-sm"
+                            title="Xem deal trong Pipeline"
+                            style={{ color: getDealOfKH(kh.id_khach_hang) ? 'var(--primary)' : 'var(--text-muted)' }}
+                            onClick={() => router.push(`/pipeline?kh=${kh.id_khach_hang}`)}
+                          >
+                            <GitBranch size={15} />
+                          </button>
                           <button
                             className="btn btn-primary btn-sm"
                             onClick={() => generateContract(kh)}
@@ -320,7 +358,6 @@ export default function KhachHangPage() {
                           >
                             HĐ
                           </button>
-
                           <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(kh)} title="Sửa">
                             <Edit3 size={15} />
                           </button>

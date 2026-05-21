@@ -27,10 +27,10 @@ export const TRANG_THAI_KH = [
 ] as const;
 
 export const TRANG_THAI_CONG_VIEC = [
-  'Chưa làm',
-  'Đang làm',
+  'Chưa xử lý',
+  'Đang xử lý',
   'Hoàn thành',
-  'Quá hạn',
+  'Huỷ',
 ] as const;
 
 export const NGUON = [
@@ -65,10 +65,12 @@ export const GIAI_DOAN_COLORS: Record<string, { bg: string; text: string; border
 
 // Trạng thái công việc color mapping
 export const TRANG_THAI_CV_COLORS: Record<string, { bg: string; text: string }> = {
-  'Chưa làm': { bg: '#f1f5f9', text: '#475569' },
-  'Đang làm': { bg: '#eff6ff', text: '#1d4ed8' },
-  'Hoàn thành': { bg: '#ecfdf5', text: '#047857' },
-  'Quá hạn': { bg: '#fff1f2', text: '#be123c' },
+  'Chưa xử lý': { bg: '#fef3c7', text: '#92400e' },
+  'Đang xử lý':  { bg: '#dbeafe', text: '#1e40af' },
+  'Hoàn thành':  { bg: '#d1fae5', text: '#065f46' },
+  'Huỷ':         { bg: '#f1f5f9', text: '#64748b' },
+  // legacy guard
+  'Quá hạn':     { bg: '#fff1f2', text: '#be123c' },
 };
 
 export const ITEMS_PER_PAGE = 20;

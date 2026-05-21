@@ -30,7 +30,7 @@ export default function CongViecPage() {
 
   // Form
   const [form, setForm] = useState({
-    ghi_chu: '', id_pipeline: '', trang_thai: 'Chưa làm',
+    ghi_chu: '', id_pipeline: '', trang_thai: 'Chưa xử lý',
     ngay_hen: '', sale_phu_trach: '', ket_qua: '',
   });
 
@@ -57,19 +57,24 @@ export default function CongViecPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Check if task is overdue
+  // Check if task is overdue (chỉ áp dụng cho task chưa hoàn thành / chưa huỷ)
   const isOverdue = (cv: CongViec) => {
-    if (cv.trang_thai === 'Hoàn thành') return false;
+    if (cv.trang_thai === 'Hoàn thành' || cv.trang_thai === 'Huỷ') return false;
     if (!cv.ngay_hen) return false;
     return new Date(cv.ngay_hen) < new Date();
   };
 
-  // Get customer name for pipeline
+  // Get display label for pipeline deal (handles both CRM leads & Victory deals)
   const getPipelineLabel = (pipelineId: string) => {
     const pl = pipelines.find(p => p.id_pipeline === pipelineId);
     if (!pl) return pipelineId;
+    // Luồng 1: CRM lead có id_khach_hang
     const kh = customers.find(k => k.id_khach_hang === pl.id_khach_hang);
-    return kh ? `${kh.ten_KH} — ${pl.giai_doan}` : pl.id_pipeline;
+    if (kh) return `${kh.ten_KH} — ${pl.giai_doan}`;
+    // Luồng 2: Victory deal có ho_ten_kh
+    if (pl.ho_ten_kh) return `${pl.ho_ten_kh} — ${pl.ten_du_an || pl.giai_doan}`;
+    // Fallback
+    return `${pl.ten_du_an || pl.ma_can || pl.id_pipeline} — ${pl.giai_doan}`;
   };
 
   // Filter
@@ -95,26 +100,27 @@ export default function CongViecPage() {
 
   const statusIcon = (status: string) => {
     switch (status) {
-      case 'Chưa làm': return <Circle size={14} />;
-      case 'Đang làm': return <Clock size={14} />;
-      case 'Hoàn thành': return <CheckCircle2 size={14} />;
-      case 'Quá hạn': return <AlertTriangle size={14} />;
-      default: return <Circle size={14} />;
+      case 'Chưa xử lý': return <Circle size={14} />;
+      case 'Đang xử lý':  return <Clock size={14} />;
+      case 'Hoàn thành':  return <CheckCircle2 size={14} />;
+      case 'Huỷ':         return <X size={14} />;
+      case 'Quá hạn':     return <AlertTriangle size={14} />;
+      default:            return <Circle size={14} />;
     }
   };
 
   // Stats
   const stats = {
     total: tasks.length,
-    chuaLam: tasks.filter(cv => cv.trang_thai === 'Chưa làm').length,
-    dangLam: tasks.filter(cv => cv.trang_thai === 'Đang làm').length,
+    chuaXuLy: tasks.filter(cv => cv.trang_thai === 'Chưa xử lý').length,
+    dangXuLy: tasks.filter(cv => cv.trang_thai === 'Đang xử lý').length,
     hoanThanh: tasks.filter(cv => cv.trang_thai === 'Hoàn thành').length,
     quaHan: tasks.filter(cv => isOverdue(cv)).length,
   };
 
   const openCreate = () => {
     setEditingItem(null);
-    setForm({ ghi_chu: '', id_pipeline: '', trang_thai: 'Chưa làm', ngay_hen: '', sale_phu_trach: '', ket_qua: '' });
+    setForm({ ghi_chu: '', id_pipeline: '', trang_thai: 'Chưa xử lý', ngay_hen: '', sale_phu_trach: '', ket_qua: '' });
     setShowModal(true);
   };
 
@@ -196,12 +202,12 @@ export default function CongViecPage() {
           <div className="kpi-value" style={{ fontSize: '1.5rem' }}>{stats.total}</div>
         </div>
         <div className="kpi-card" style={{ padding: '16px 20px' }}>
-          <div className="kpi-label" style={{ marginBottom: 6 }}>Chưa làm</div>
-          <div className="kpi-value" style={{ fontSize: '1.5rem', color: 'var(--text-muted)' }}>{stats.chuaLam}</div>
+          <div className="kpi-label" style={{ marginBottom: 6 }}>Chưa xử lý</div>
+          <div className="kpi-value" style={{ fontSize: '1.5rem', color: '#d97706' }}>{stats.chuaXuLy}</div>
         </div>
         <div className="kpi-card" style={{ padding: '16px 20px' }}>
-          <div className="kpi-label" style={{ marginBottom: 6 }}>Đang làm</div>
-          <div className="kpi-value" style={{ fontSize: '1.5rem', color: 'var(--info-text)' }}>{stats.dangLam}</div>
+          <div className="kpi-label" style={{ marginBottom: 6 }}>Đang xử lý</div>
+          <div className="kpi-value" style={{ fontSize: '1.5rem', color: 'var(--info-text)' }}>{stats.dangXuLy}</div>
         </div>
         <div className="kpi-card" style={{ padding: '16px 20px' }}>
           <div className="kpi-label" style={{ marginBottom: 6 }}>Hoàn thành</div>
