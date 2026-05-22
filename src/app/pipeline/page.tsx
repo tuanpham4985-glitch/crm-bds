@@ -366,14 +366,28 @@ function PipelineContent() {
     setShowViewModal(true);
   };
 
-  // colSpan cho dòng "Chưa có deal" — không tính cột Ngày ký (đã chuyển vào View)
-  let colSpan = 7;
+  // Hiển thị % hoa hồng: data có thể lưu dạng thập phân (0.04) hoặc % (4)
+  const fmtHH = (v: number) => {
+    const pct = v <= 1 ? v * 100 : v;
+    return +pct.toFixed(4); // loại bỏ số 0 thừa
+  };
+
+  // Cột trong TABLE — Admin/CEO dùng view gọn (chi tiết phí xem qua nút View)
+  const tablePhiGDDA  = showPhiTraGDDA && !isAllVisible;
+  const tablePhiGDKD  = showPhiTraGDKD && !isAllVisible;
+  const tableTKKD     = !isAllVisible;
+  const tablePhiTKKD  = showPhiTKKD    && !isAllVisible;
+  const tableMaCan    = filteredPipelines.some(pl => pl.ma_can);
+
+  let colSpan = 6; // #, Giai đoạn, Dự án, Giá trị, Sale, Thao tác
   if (showKhachHang) colSpan++;
+  if (tableMaCan)    colSpan++;
   if (showPhiTraSale) colSpan++;
-  if (showPhiTraGDDA) colSpan++;
-  if (showPhiTraGDKD) colSpan++;
+  if (tablePhiGDDA)  colSpan++;
+  if (tablePhiGDKD)  colSpan++;
   if (showThuongNong) colSpan++;
-  if (showPhiTKKD) colSpan++;
+  if (tableTKKD)     colSpan++;
+  if (tablePhiTKKD)  colSpan++;
 
   return (
     <div>
@@ -597,15 +611,16 @@ function PipelineContent() {
               <tr>
                 <th>#</th>
                 {showKhachHang && <th>Khách hàng</th>}
+                {tableMaCan && <th>Mã căn</th>}
                 <th>Giai đoạn</th>
                 <th>Dự án</th>
                 <th style={{ textAlign: 'right' }}>Giá trị</th>
                 {showPhiTraSale && <th style={{ textAlign: 'right' }}>Phí trả sale</th>}
-                {showPhiTraGDDA && <th style={{ textAlign: 'right' }}>Phí trả GDDA</th>}
-                {showPhiTraGDKD && <th style={{ textAlign: 'right' }}>Phí trả GĐKD</th>}
+                {tablePhiGDDA  && <th style={{ textAlign: 'right' }}>Phí trả GDDA</th>}
+                {tablePhiGDKD  && <th style={{ textAlign: 'right' }}>Phí trả GĐKD</th>}
                 {showThuongNong && <th style={{ textAlign: 'right' }}>Thưởng nóng</th>}
-                <th>TKKD</th>
-                {showPhiTKKD && <th style={{ textAlign: 'right' }}>Phí TKKD</th>}
+                {tableTKKD     && <th>TKKD</th>}
+                {tablePhiTKKD  && <th style={{ textAlign: 'right' }}>Phí TKKD</th>}
                 <th>Sale</th>
                 <th style={{ width: 110, textAlign: 'center' }}>Thao tác</th>
               </tr>
@@ -621,6 +636,11 @@ function PipelineContent() {
                         {pl.ho_ten_kh || getCustomerName(pl.id_khach_hang) || '—'}
                       </td>
                     )}
+                    {tableMaCan && (
+                      <td style={{ color: 'var(--text-label)', fontSize: '0.82rem', fontWeight: 500 }}>
+                        {pl.ma_can || '—'}
+                      </td>
+                    )}
                     <td>
                       <span className="badge" style={{ background: colors.bg, color: colors.text }}>
                         {pl.giai_doan}
@@ -633,41 +653,43 @@ function PipelineContent() {
 
                     {showPhiTraSale && (
                       <td style={{ textAlign: 'right', color: 'var(--success-text)', fontWeight: 600 }}>
-                        {isAllVisible || pl.sale_phu_trach === user?.ho_ten 
-                          ? formatCurrency(pl.phi_tra_sale || 0) 
+                        {isAllVisible || pl.sale_phu_trach === user?.ho_ten
+                          ? formatCurrency(pl.phi_tra_sale || 0)
                           : '—'}
                       </td>
                     )}
 
-                    {showPhiTraGDDA && (
+                    {tablePhiGDDA && (
                       <td style={{ textAlign: 'right', color: 'var(--primary-text)', fontWeight: 600 }}>
-                        {isAllVisible || pl.gdda === user?.ho_ten 
-                          ? formatCurrency(pl.phi_tra_gdda || 0) 
+                        {pl.gdda === user?.ho_ten
+                          ? formatCurrency(pl.phi_tra_gdda || 0)
                           : '—'}
                       </td>
                     )}
 
-                    {showPhiTraGDKD && (
+                    {tablePhiGDKD && (
                       <td style={{ textAlign: 'right', color: '#b45309', fontWeight: 600 }}>
-                        {isAllVisible || pl.gdkd === user?.ho_ten 
-                          ? formatCurrency(pl.phi_tra_gdkd || 0) 
+                        {pl.gdkd === user?.ho_ten
+                          ? formatCurrency(pl.phi_tra_gdkd || 0)
                           : '—'}
                       </td>
                     )}
 
                     {showThuongNong && (
                       <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>
-                        {isAllVisible || pl.sale_phu_trach === user?.ho_ten 
-                          ? formatCurrency(pl.thuong_nong || 0) 
+                        {isAllVisible || pl.sale_phu_trach === user?.ho_ten
+                          ? formatCurrency(pl.thuong_nong || 0)
                           : '—'}
                       </td>
                     )}
 
-                    <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.tkkd || '—'}</td>
-                    {showPhiTKKD && (
+                    {tableTKKD && (
+                      <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.tkkd || '—'}</td>
+                    )}
+                    {tablePhiTKKD && (
                       <td style={{ textAlign: 'right', color: '#8b5cf6', fontWeight: 600 }}>
-                        {isAllVisible || pl.tkkd === user?.ho_ten 
-                          ? formatCurrency(pl.phi_tkkd || 0) 
+                        {pl.tkkd === user?.ho_ten
+                          ? formatCurrency(pl.phi_tkkd || 0)
                           : '—'}
                       </td>
                     )}
@@ -1204,10 +1226,14 @@ function PipelineContent() {
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Giá trị thực tế</span>
                     <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-title)' }}>{formatCurrency(viewingItem.gia_tri_thuc_te)}</p>
                   </div>
-                  <div>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Hoa hồng</span>
-                    <p style={{ margin: '2px 0 0', fontWeight: 600 }}>{viewingItem.hoa_hong}% → {formatCurrency(viewingItem.tien_hoa_hong || 0)}</p>
-                  </div>
+                  {canViewProfit && (
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Hoa hồng</span>
+                      <p style={{ margin: '2px 0 0', fontWeight: 600 }}>
+                        {fmtHH(viewingItem.hoa_hong || 0)}% → {formatCurrency(viewingItem.tien_hoa_hong || 0)}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Ngày ký TTĐC/VBTT</span>
                     <p style={{ margin: '2px 0 0', fontWeight: 600 }}>{formatDate(viewingItem.ngay_cap_nhat) || '—'}</p>
