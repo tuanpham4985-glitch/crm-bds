@@ -381,7 +381,7 @@ export default function DashboardPage() {
       {/* Middle Row: BXH Sale & Vinh Danh Champion */}
       <div className="charts-grid">
         {/* BXH Sale - Podium + List */}
-        <div className="chart-card">
+        <div className="chart-card" style={{ overflow: 'hidden' }}>
           <div className="card-header">
             <div>
               <div className="card-title">🏆 Bảng xếp hạng Sale</div>
