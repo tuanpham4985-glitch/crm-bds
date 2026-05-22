@@ -1028,7 +1028,7 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
   });
 
   return (
-    <div className="chart-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', border: '1.5px solid #d4af37' }}>
+    <div className="chart-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', border: '1.5px solid #d4af37', height: '100%', boxSizing: 'border-box' }}>
       {/* Aviation Theme Title Header */}
       <div style={{
         padding: '18px 24px',
@@ -1057,7 +1057,7 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
       </div>
 
       {/* Ticket List Body */}
-      <div style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', background: '#f8fafc', overflowY: 'auto' }}>
+      <div style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', background: '#f8fafc', overflowY: 'auto' }}>
         {LEVELS.map(level => {
           const list = achievers[level.id as keyof typeof achievers];
           
