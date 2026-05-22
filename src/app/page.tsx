@@ -474,14 +474,13 @@ export default function DashboardPage() {
                       const initials = sale.nhan_vien
                         .split(' ').map((w: string) => w[0]).slice(-2).join('');
 
-                      // Giant number — fills 60-70% of total slot visual area
-                      const numSize = isMobile
-                        ? (rank === 1 ? 110 : 92)
-                        : (rank === 1 ? 182 : 152);
-                      // Small avatar above number
+                      // Avatar is the visual centrepiece — number is accent below
                       const avSize = isMobile
+                        ? (rank === 1 ? 104 : 86)
+                        : (rank === 1 ? 164 : 136);
+                      const numSize = isMobile
                         ? (rank === 1 ? 52 : 44)
-                        : (rank === 1 ? 78 : 66);
+                        : (rank === 1 ? 82 : 68);
 
                       const tc = ({
                         1: {
@@ -516,8 +515,8 @@ export default function DashboardPage() {
                           style={{
                             flex: 1,
                             maxWidth: isMobile
-                              ? (rank === 1 ? '138px' : '116px')
-                              : (rank === 1 ? '232px' : '200px'),
+                              ? (rank === 1 ? '148px' : '124px')
+                              : (rank === 1 ? '248px' : '210px'),
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
@@ -531,9 +530,9 @@ export default function DashboardPage() {
                             position: 'absolute',
                             bottom: '44px',
                             width: isMobile
-                              ? (rank === 1 ? '100px' : '84px')
-                              : (rank === 1 ? '160px' : '134px'),
-                            height: isMobile ? '165px' : '270px',
+                              ? (rank === 1 ? '110px' : '92px')
+                              : (rank === 1 ? '170px' : '142px'),
+                            height: isMobile ? '180px' : '290px',
                             background: tc.beam,
                             clipPath: 'polygon(12% 0%, 88% 0%, 100% 100%, 0% 100%)',
                             pointerEvents: 'none',
@@ -550,7 +549,7 @@ export default function DashboardPage() {
                             border: `${rank === 1 ? 3 : 2.5}px solid ${tc.ring}`,
                             boxShadow: tc.shadow,
                             zIndex: 4,
-                            marginBottom: isMobile ? '-5px' : '-8px',
+                            marginBottom: isMobile ? '4px' : '6px',
                             flexShrink: 0,
                           }}>
                             {sale.avatar_url ? (
