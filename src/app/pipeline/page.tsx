@@ -31,11 +31,12 @@ function PipelineContent() {
   const canViewProfit = isAllVisible;
   const showKhachHang = isAllVisible;
 
-  const showPhiTraSale = isAllVisible || (user?.employee_type === 'NVKD');
-  const showPhiTraGDDA = isAllVisible || (user?.employee_type === 'GDDA');
-  const showPhiTraGDKD = isAllVisible || (user?.employee_type === 'GĐKD');
-  const showThuongNong = isAllVisible || (user?.employee_type === 'NVKD');
-  const showPhiTKKD = isAllVisible || (user?.employee_type === 'TKKD');
+  // Base visibility from primary employee_type — may be extended below after pipelines load
+  let showPhiTraSale = isAllVisible || (user?.employee_type === 'NVKD');
+  let showPhiTraGDDA = isAllVisible || (user?.employee_type === 'GDDA');
+  let showPhiTraGDKD = isAllVisible || (user?.employee_type === 'GĐKD');
+  let showThuongNong = isAllVisible || (user?.employee_type === 'NVKD');
+  const showPhiTKKD  = isAllVisible || (user?.employee_type === 'TKKD');
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
@@ -308,23 +309,34 @@ function PipelineContent() {
     return <div className="loading-spinner"><div className="spinner" /></div>;
   }
 
+  // ── Dual-role detection ───────────────────────────────────────────────────
+  // Người dùng có thể vừa là Sale vừa là GĐKD/GDDA trên cùng một deal.
+  // Mở rộng column visibility dựa trên vai trò THỰC TẾ trong dữ liệu, không chỉ employee_type.
+  if (!isAllVisible && user?.ho_ten) {
+    if (pipelines.some(pl => pl.sale_phu_trach === user.ho_ten)) { showPhiTraSale = true; showThuongNong = true; }
+    if (pipelines.some(pl => pl.gdda === user.ho_ten)) showPhiTraGDDA = true;
+    if (pipelines.some(pl => pl.gdkd === user.ho_ten)) showPhiTraGDKD = true;
+  }
+
   // Summary stats for active stages
   const activeDeals = filteredPipelines.filter(pl => GIAI_DOAN_ACTIVE.includes(pl.giai_doan as typeof GIAI_DOAN_ACTIVE[number]));
   const totalValue = activeDeals.reduce((s, pl) => s + pl.gia_tri_thuc_te, 0);
   const totalProfit = activeDeals.reduce((s, pl) => s + (pl.loi_nhuan || 0), 0);
 
-  // Sum of personal stats for specific roles
+  // ── Hoa hồng cá nhân: cộng TẤT CẢ phí theo vai trò thực tế trên từng deal ──
+  // VD: vừa là Sale vừa là GĐKD → cộng phi_tra_sale + phi_tra_gdkd
   const personalCommission = activeDeals.reduce((s, pl) => {
     if (isAllVisible) return s + (pl.phi_tra_sale || 0);
-    if (user?.employee_type === 'NVKD' && pl.sale_phu_trach === user.ho_ten) return s + (pl.phi_tra_sale || 0);
-    if (user?.employee_type === 'GDDA' && pl.gdda === user.ho_ten) return s + (pl.phi_tra_gdda || 0);
-    if (user?.employee_type === 'GĐKD' && pl.gdkd === user.ho_ten) return s + (pl.phi_tra_gdkd || 0);
-    return s;
+    let earned = 0;
+    if (pl.sale_phu_trach === user?.ho_ten) earned += (pl.phi_tra_sale  || 0);
+    if (pl.gdda            === user?.ho_ten) earned += (pl.phi_tra_gdda || 0);
+    if (pl.gdkd            === user?.ho_ten) earned += (pl.phi_tra_gdkd || 0);
+    return s + earned;
   }, 0);
 
   const personalHotBonus = activeDeals.reduce((s, pl) => {
     if (isAllVisible) return s + (pl.thuong_nong || 0);
-    if (user?.employee_type === 'NVKD' && pl.sale_phu_trach === user.ho_ten) return s + (pl.thuong_nong || 0);
+    if (pl.sale_phu_trach === user?.ho_ten) return s + (pl.thuong_nong || 0);
     return s;
   }, 0);
 
@@ -395,6 +407,8 @@ function PipelineContent() {
                 boxShadow: '0 1px 2px rgba(16, 185, 129, 0.05)'
               }}>
                 <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💵</span> {isAllVisible ? 'Tổng hoa hồng' : 'Hoa hồng cá nhân'}: <span style={{ color: '#059669', fontWeight: 850 }}>{formatCurrency(personalCommission, false)}</span>
+                {!isAllVisible && showPhiTraSale && showPhiTraGDKD && <span style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.75, marginLeft: 2 }}>(MG + GĐKD)</span>}
+                {!isAllVisible && showPhiTraSale && showPhiTraGDDA && !showPhiTraGDKD && <span style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.75, marginLeft: 2 }}>(MG + GDDA)</span>}
               </span>
             )}
 
