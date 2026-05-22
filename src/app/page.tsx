@@ -546,6 +546,131 @@ export default function DashboardPage() {
                             opacity: 0.70,
                           }} />
 
+                          {/* ── Rank 1 luxury crown ── */}
+                          {rank === 1 && (() => {
+                            const crownW = Math.round(ringSize * 0.57);
+                            const crownH = Math.round(crownW * 0.695);
+                            const crownOverlap = Math.round(ringSize * 0.115);
+                            return (
+                              <div style={{
+                                position: 'absolute',
+                                top: -(crownH - crownOverlap),
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                width: crownW,
+                                height: crownH,
+                                zIndex: 15,
+                                pointerEvents: 'none',
+                                filter: [
+                                  'drop-shadow(0 0 12px rgba(255,200,0,0.75))',
+                                  'drop-shadow(0 0 4px rgba(255,160,0,0.50))',
+                                  'drop-shadow(0 5px 10px rgba(0,0,0,0.85))',
+                                ].join(' '),
+                              }}>
+                                <svg viewBox="0 0 80 56" fill="none" xmlns="http://www.w3.org/2000/svg"
+                                     style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+                                  <defs>
+                                    <linearGradient id="rlcg1" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%"  stopColor="#fffce4"/>
+                                      <stop offset="10%" stopColor="#ffe566"/>
+                                      <stop offset="36%" stopColor="#d4a010"/>
+                                      <stop offset="66%" stopColor="#9a6400"/>
+                                      <stop offset="100%" stopColor="#4a2800"/>
+                                    </linearGradient>
+                                    <linearGradient id="rlcb1" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%"  stopColor="#ffe566"/>
+                                      <stop offset="32%" stopColor="#c89010"/>
+                                      <stop offset="100%" stopColor="#3c1a00"/>
+                                    </linearGradient>
+                                    <linearGradient id="rlch1" x1="0.08" y1="0" x2="0.92" y2="1">
+                                      <stop offset="0%"   stopColor="rgba(255,255,255,0.62)"/>
+                                      <stop offset="45%"  stopColor="rgba(255,255,255,0.10)"/>
+                                      <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+                                    </linearGradient>
+                                    <linearGradient id="rlcedge" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%"   stopColor="rgba(255,252,180,0.70)"/>
+                                      <stop offset="55%"  stopColor="rgba(220,170,20,0.30)"/>
+                                      <stop offset="100%" stopColor="rgba(80,40,0,0.10)"/>
+                                    </linearGradient>
+                                    <radialGradient id="rlcdiamond" cx="36%" cy="30%" r="64%">
+                                      <stop offset="0%"   stopColor="#ffffff"/>
+                                      <stop offset="38%"  stopColor="#ddf0ff"/>
+                                      <stop offset="100%" stopColor="#88b4d0"/>
+                                    </radialGradient>
+                                    <radialGradient id="rlcruby" cx="38%" cy="32%" r="60%">
+                                      <stop offset="0%"   stopColor="#ff9090"/>
+                                      <stop offset="52%"  stopColor="#cc0010"/>
+                                      <stop offset="100%" stopColor="#680008"/>
+                                    </radialGradient>
+                                    <radialGradient id="rlcemerald" cx="38%" cy="32%" r="60%">
+                                      <stop offset="0%"   stopColor="#88ffa0"/>
+                                      <stop offset="52%"  stopColor="#007c1e"/>
+                                      <stop offset="100%" stopColor="#003c0e"/>
+                                    </radialGradient>
+                                  </defs>
+
+                                  {/* Shadow layer behind crown */}
+                                  <path d="M4,53 L4,27 L20,8 L29,30 L40,2 L51,30 L60,8 L76,27 L76,53 Z"
+                                        fill="rgba(0,0,0,0.35)" transform="translate(0,3)"/>
+
+                                  {/* Crown body */}
+                                  <path d="M4,53 L4,27 L20,8 L29,30 L40,2 L51,30 L60,8 L76,27 L76,53 Z"
+                                        fill="url(#rlcg1)"/>
+
+                                  {/* Crown outer edge highlight */}
+                                  <path d="M4,53 L4,27 L20,8 L29,30 L40,2 L51,30 L60,8 L76,27 L76,53"
+                                        fill="none" stroke="url(#rlcedge)" strokeWidth="1.4" strokeLinejoin="round"/>
+
+                                  {/* Diagonal shine — left face */}
+                                  <ellipse cx="26" cy="22" rx="8.5" ry="13"
+                                           fill="url(#rlch1)" transform="rotate(-28 26 22)" opacity="0.42"/>
+
+                                  {/* Diagonal shine — right face (mirrored, softer) */}
+                                  <ellipse cx="54" cy="22" rx="8.5" ry="13"
+                                           fill="url(#rlch1)" transform="scale(-1,1) translate(-80,0) rotate(-28 26 22)" opacity="0.25"/>
+
+                                  {/* Base band */}
+                                  <rect x="4" y="42" width="72" height="11.5" rx="2.5" fill="url(#rlcb1)"/>
+                                  {/* Band top edge shine */}
+                                  <rect x="4" y="42" width="72" height="2" rx="1.2" fill="rgba(255,250,160,0.38)"/>
+                                  {/* Band bottom shadow */}
+                                  <rect x="4" y="51.5" width="72" height="1.5" rx="0.8" fill="rgba(0,0,0,0.42)"/>
+
+                                  {/* Center peak gem — diamond */}
+                                  <circle cx="40" cy="4.8" r="4.4" fill="url(#rlcdiamond)"/>
+                                  <circle cx="40" cy="4.8" r="4.4" fill="none" stroke="rgba(255,255,255,0.62)" strokeWidth="0.5"/>
+                                  <circle cx="38.3" cy="3.1" r="1.4" fill="rgba(255,255,255,0.96)"/>
+                                  <circle cx="41.8" cy="5.8" r="0.65" fill="rgba(255,255,255,0.65)"/>
+
+                                  {/* Left peak gem — ruby */}
+                                  <circle cx="20" cy="10.8" r="3.4" fill="url(#rlcruby)"/>
+                                  <circle cx="20" cy="10.8" r="3.4" fill="none" stroke="rgba(255,160,160,0.45)" strokeWidth="0.4"/>
+                                  <circle cx="18.7" cy="9.5" r="1.1" fill="rgba(255,210,210,0.90)"/>
+
+                                  {/* Right peak gem — emerald */}
+                                  <circle cx="60" cy="10.8" r="3.4" fill="url(#rlcemerald)"/>
+                                  <circle cx="60" cy="10.8" r="3.4" fill="none" stroke="rgba(160,255,160,0.45)" strokeWidth="0.4"/>
+                                  <circle cx="58.7" cy="9.5" r="1.1" fill="rgba(210,255,210,0.90)"/>
+
+                                  {/* Valley accent beads */}
+                                  <circle cx="29" cy="31" r="1.7" fill="#ffe066" opacity="0.70"/>
+                                  <circle cx="51" cy="31" r="1.7" fill="#ffe066" opacity="0.70"/>
+
+                                  {/* Band center ruby ornament */}
+                                  <circle cx="40" cy="47.5" r="3.3" fill="url(#rlcruby)"/>
+                                  <circle cx="40" cy="47.5" r="3.3" fill="none" stroke="rgba(255,160,160,0.35)" strokeWidth="0.4"/>
+                                  <circle cx="38.8" cy="46.2" r="1.05" fill="rgba(255,200,200,0.85)"/>
+
+                                  {/* Band side gold accents */}
+                                  <circle cx="26" cy="47.5" r="2.1" fill="#ffe066" opacity="0.82"/>
+                                  <circle cx="54" cy="47.5" r="2.1" fill="#ffe066" opacity="0.82"/>
+                                  <circle cx="14" cy="47.5" r="1.45" fill="#ffd030" opacity="0.62"/>
+                                  <circle cx="66" cy="47.5" r="1.45" fill="#ffd030" opacity="0.62"/>
+                                </svg>
+                              </div>
+                            );
+                          })()}
+
                           {/* ── Thick 3D metallic ring frame ── */}
                           <div style={{
                             position: 'relative',
