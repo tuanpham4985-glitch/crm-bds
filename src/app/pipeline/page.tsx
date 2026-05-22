@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   Plus, Edit3, Trash2, X,
   SlidersHorizontal, ClipboardList,
-  CheckCircle2, Circle, Clock, XCircle,
+  CheckCircle2, Circle, Clock, XCircle, Eye,
 } from 'lucide-react';
 import type { Pipeline, KhachHang, DuAn, NhanVien, CongViec } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -56,6 +56,10 @@ function PipelineContent() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // View detail modal
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingItem, setViewingItem] = useState<Pipeline | null>(null);
 
   // Task drawer
   const [selectedDeal, setSelectedDeal] = useState<Pipeline | null>(null);
@@ -351,7 +355,19 @@ function PipelineContent() {
     return s;
   }, 0);
 
-  let colSpan = 8;
+  // Admin/CEO totals — chi phí phân bổ
+  const totalPhiTraKH   = activeDeals.reduce((s, pl) => s + (pl.phi_tra_kh   || 0), 0);
+  const totalPhiTraGDDA = activeDeals.reduce((s, pl) => s + (pl.phi_tra_gdda || 0), 0);
+  const totalPhiTraGDKD = activeDeals.reduce((s, pl) => s + (pl.phi_tra_gdkd || 0), 0);
+  const totalPhiTraMKT  = activeDeals.reduce((s, pl) => s + (pl.phi_tra_mkt  || 0), 0);
+
+  const openView = (pl: Pipeline) => {
+    setViewingItem(pl);
+    setShowViewModal(true);
+  };
+
+  // colSpan cho dòng "Chưa có deal" — không tính cột Ngày ký (đã chuyển vào View)
+  let colSpan = 7;
   if (showKhachHang) colSpan++;
   if (showPhiTraSale) colSpan++;
   if (showPhiTraGDDA) colSpan++;
@@ -479,6 +495,52 @@ function PipelineContent() {
                 <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💎</span> Tổng lợi nhuận: <span style={{ color: '#d97706', fontWeight: 950 }}>{formatCurrency(totalProfit, false)}</span>
               </span>
             )}
+
+            {/* Admin/CEO cost breakdown totals */}
+            {canViewProfit && (
+              <>
+                {totalPhiTraKH > 0 && (
+                  <span style={{
+                    background: 'rgba(139,92,246,0.08)', color: '#6d28d9',
+                    padding: '6px 14px', borderRadius: '14px', fontWeight: 700,
+                    fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    border: '1px solid rgba(139,92,246,0.18)',
+                  }}>
+                    🏷️ Phí trả KH: <strong style={{ marginLeft: 3 }}>{formatCurrency(totalPhiTraKH, false)}</strong>
+                  </span>
+                )}
+                {totalPhiTraGDDA > 0 && (
+                  <span style={{
+                    background: 'rgba(59,130,246,0.08)', color: '#1d4ed8',
+                    padding: '6px 14px', borderRadius: '14px', fontWeight: 700,
+                    fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    border: '1px solid rgba(59,130,246,0.18)',
+                  }}>
+                    🏗️ Phí GDDA: <strong style={{ marginLeft: 3 }}>{formatCurrency(totalPhiTraGDDA, false)}</strong>
+                  </span>
+                )}
+                {totalPhiTraGDKD > 0 && (
+                  <span style={{
+                    background: 'rgba(245,158,11,0.08)', color: '#b45309',
+                    padding: '6px 14px', borderRadius: '14px', fontWeight: 700,
+                    fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    border: '1px solid rgba(245,158,11,0.18)',
+                  }}>
+                    👔 Phí GĐKD: <strong style={{ marginLeft: 3 }}>{formatCurrency(totalPhiTraGDKD, false)}</strong>
+                  </span>
+                )}
+                {totalPhiTraMKT > 0 && (
+                  <span style={{
+                    background: 'rgba(236,72,153,0.08)', color: '#be185d',
+                    padding: '6px 14px', borderRadius: '14px', fontWeight: 700,
+                    fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    border: '1px solid rgba(236,72,153,0.18)',
+                  }}>
+                    📣 Phí MKT: <strong style={{ marginLeft: 3 }}>{formatCurrency(totalPhiTraMKT, false)}</strong>
+                  </span>
+                )}
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -545,8 +607,7 @@ function PipelineContent() {
                 <th>TKKD</th>
                 {showPhiTKKD && <th style={{ textAlign: 'right' }}>Phí TKKD</th>}
                 <th>Sale</th>
-                <th>Ngày ký TTĐC/VBTT</th>
-                <th style={{ width: 90, textAlign: 'center' }}>Thao tác</th>
+                <th style={{ width: 110, textAlign: 'center' }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -612,9 +673,16 @@ function PipelineContent() {
                     )}
 
                     <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.sale_phu_trach || '—'}</td>
-                    <td>{formatDate(pl.ngay_cap_nhat)}</td>
                     <td>
                       <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
+                        <button
+                          className="btn btn-ghost btn-icon btn-sm"
+                          title="Xem chi tiết"
+                          style={{ color: 'var(--primary)' }}
+                          onClick={() => openView(pl)}
+                        >
+                          <Eye size={15} />
+                        </button>
                         <button
                           className="btn btn-ghost btn-icon btn-sm"
                           title="Công việc"
@@ -1098,6 +1166,157 @@ function PipelineContent() {
         </>
       )}
       {/* ────────────────────────────────────────────────────────────── */}
+
+      {/* ── View Detail Modal ───────────────────────────────────────────── */}
+      {showViewModal && viewingItem && (
+        <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 580 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">Chi tiết deal</h3>
+                <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {viewingItem.ten_du_an || '—'}{viewingItem.ma_can ? ` · ${viewingItem.ma_can}` : ''}
+                </p>
+              </div>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowViewModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+              {/* Thông tin cơ bản */}
+              <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', border: '1px solid #e2e8f0' }}>
+                <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>📋 Thông tin cơ bản</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px' }}>
+                  {showKhachHang && (
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Khách hàng</span>
+                      <p style={{ margin: '2px 0 0', fontWeight: 600, fontSize: '0.875rem' }}>{viewingItem.ho_ten_kh || getCustomerName(viewingItem.id_khach_hang) || '—'}</p>
+                    </div>
+                  )}
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Giai đoạn</span>
+                    <p style={{ margin: '2px 0 0' }}>
+                      <span className="badge" style={{ background: (GIAI_DOAN_COLORS[viewingItem.giai_doan] || {}).bg || '#f1f5f9', color: (GIAI_DOAN_COLORS[viewingItem.giai_doan] || {}).text || '#475569', fontSize: '0.78rem' }}>
+                        {viewingItem.giai_doan}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Giá trị thực tế</span>
+                    <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-title)' }}>{formatCurrency(viewingItem.gia_tri_thuc_te)}</p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Hoa hồng</span>
+                    <p style={{ margin: '2px 0 0', fontWeight: 600 }}>{viewingItem.hoa_hong}% → {formatCurrency(viewingItem.tien_hoa_hong || 0)}</p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Ngày ký TTĐC/VBTT</span>
+                    <p style={{ margin: '2px 0 0', fontWeight: 600 }}>{formatDate(viewingItem.ngay_cap_nhat) || '—'}</p>
+                  </div>
+                  {viewingItem.thang && (
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Tháng</span>
+                      <p style={{ margin: '2px 0 0', fontWeight: 600 }}>{viewingItem.thang}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Nhân sự */}
+              <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', border: '1px solid #e2e8f0' }}>
+                <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>👥 Nhân sự</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px' }}>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Sale phụ trách</span>
+                    <p style={{ margin: '2px 0 0', fontWeight: 600, color: 'var(--primary-text)' }}>{viewingItem.sale_phu_trach || '—'}</p>
+                  </div>
+                  {viewingItem.tkkd && (
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>TKKD</span>
+                      <p style={{ margin: '2px 0 0', fontWeight: 600, color: 'var(--primary-text)' }}>{viewingItem.tkkd}</p>
+                    </div>
+                  )}
+                  {viewingItem.gdda && (
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>GDDA</span>
+                      <p style={{ margin: '2px 0 0', fontWeight: 600, color: '#1d4ed8' }}>{viewingItem.gdda}</p>
+                    </div>
+                  )}
+                  {viewingItem.gdkd && (
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>GĐKD</span>
+                      <p style={{ margin: '2px 0 0', fontWeight: 600, color: '#b45309' }}>{viewingItem.gdkd}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Phân bổ chi phí */}
+              {(showPhiTraSale || showPhiTraGDDA || showPhiTraGDKD || isAllVisible) && (
+                <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', border: '1px solid #e2e8f0' }}>
+                  <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>💵 Phân bổ chi phí</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px' }}>
+                    {showPhiTraSale && (isAllVisible || viewingItem.sale_phu_trach === user?.ho_ten) && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Phí trả sale</span>
+                        <p style={{ margin: '2px 0 0', fontWeight: 700, color: '#059669' }}>{formatCurrency(viewingItem.phi_tra_sale || 0)}</p>
+                      </div>
+                    )}
+                    {isAllVisible && viewingItem.phi_tra_kh != null && viewingItem.phi_tra_kh > 0 && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Phí trả KH</span>
+                        <p style={{ margin: '2px 0 0', fontWeight: 700, color: '#6d28d9' }}>{formatCurrency(viewingItem.phi_tra_kh || 0)}</p>
+                      </div>
+                    )}
+                    {(isAllVisible || viewingItem.gdda === user?.ho_ten) && (viewingItem.phi_tra_gdda || 0) > 0 && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Phí trả GDDA</span>
+                        <p style={{ margin: '2px 0 0', fontWeight: 700, color: '#1d4ed8' }}>{formatCurrency(viewingItem.phi_tra_gdda || 0)}</p>
+                      </div>
+                    )}
+                    {(isAllVisible || viewingItem.gdkd === user?.ho_ten) && (viewingItem.phi_tra_gdkd || 0) > 0 && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Phí trả GĐKD</span>
+                        <p style={{ margin: '2px 0 0', fontWeight: 700, color: '#b45309' }}>{formatCurrency(viewingItem.phi_tra_gdkd || 0)}</p>
+                      </div>
+                    )}
+                    {isAllVisible && (viewingItem.phi_tra_mkt || 0) > 0 && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Phí MKT</span>
+                        <p style={{ margin: '2px 0 0', fontWeight: 700, color: '#be185d' }}>{formatCurrency(viewingItem.phi_tra_mkt || 0)}</p>
+                      </div>
+                    )}
+                    {(viewingItem.thuong_nong || 0) > 0 && (isAllVisible || viewingItem.sale_phu_trach === user?.ho_ten) && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Thưởng nóng</span>
+                        <p style={{ margin: '2px 0 0', fontWeight: 700, color: '#dc2626' }}>{formatCurrency(viewingItem.thuong_nong || 0)}</p>
+                      </div>
+                    )}
+                    {(viewingItem.phi_tkkd || 0) > 0 && (isAllVisible || viewingItem.tkkd === user?.ho_ten) && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Phí TKKD</span>
+                        <p style={{ margin: '2px 0 0', fontWeight: 700, color: '#7c3aed' }}>{formatCurrency(viewingItem.phi_tkkd || 0)}</p>
+                      </div>
+                    )}
+                    {isAllVisible && (viewingItem.loi_nhuan || 0) > 0 && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Lợi nhuận</span>
+                        <p style={{ margin: '2px 0 0', fontWeight: 800, color: '#d97706' }}>{formatCurrency(viewingItem.loi_nhuan || 0)}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowViewModal(false)}>Đóng</button>
+              <button className="btn btn-primary" onClick={() => { setShowViewModal(false); openEdit(viewingItem); }}>
+                <Edit3 size={14} /> Chỉnh sửa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ────────────────────────────────────────────────────────────────── */}
 
       {/* Confirm Delete */}
       {showConfirm && (
