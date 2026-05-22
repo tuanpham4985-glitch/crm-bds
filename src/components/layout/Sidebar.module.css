@@ -48,16 +48,21 @@
 }
 
 .logoTitle {
-  font-size: 1.125rem;
+  font-family: var(--font-heading);
+  font-size: 1rem;
   font-weight: 700;
   color: var(--text-title);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
 }
 
 .logoSubtitle {
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
+  font-weight: 500;
   color: var(--text-label);
-  margin-top: 1px;
+  margin-top: 2px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* Navigation */
@@ -73,24 +78,25 @@
 }
 
 .navLabel {
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
   color: var(--text-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 8px 12px 6px;
+  letter-spacing: 0.08em;
+  padding: 10px 12px 5px;
 }
 
 .navItem {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: 10px;
+  padding: 9px 12px;
   border-radius: var(--radius-md);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text-body);
   text-decoration: none;
+  letter-spacing: -0.005em;
   transition: all var(--transition-fast);
 }
 
@@ -114,17 +120,17 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 10px 14px;
+  padding: 9px 12px;
   margin-top: 4px;
   border-radius: var(--radius-md);
-  font-size: 0.8125rem;
-  font-weight: 700;
+  font-size: 0.625rem;
+  font-weight: 600;
   color: var(--text-label);
   background: transparent;
   border: none;
   cursor: pointer;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   transition: all var(--transition-fast);
 }
 
@@ -163,9 +169,11 @@
 }
 
 .subItem {
-  padding: 8px 14px;
+  padding: 8px 12px;
   margin-bottom: 2px;
   font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: -0.005em;
 }
 
 .subItem svg {
@@ -183,15 +191,16 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 9px 12px;
   border-radius: var(--radius-md);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text-muted);
   background: transparent;
   border: none;
   cursor: pointer;
   font-family: var(--font-family);
+  letter-spacing: -0.005em;
   transition: all var(--transition-fast);
 }
 
@@ -260,13 +269,17 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.01em;
 }
 
 .userRole {
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
+  font-weight: 500;
   color: var(--text-label);
   display: flex;
   align-items: center;
   gap: 3px;
-  margin-top: 1px;
+  margin-top: 2px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }

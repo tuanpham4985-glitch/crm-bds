@@ -1,6 +1,21 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, Geist } from "next/font/google";
 import AppShell from "@/components/layout/AppShell";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin", "vietnamese"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const geist = Geist({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-geist",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "VICTORY HOLDINGS - Quản lý Bất Động Sản",
@@ -30,7 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi">
+    <html lang="vi" className={`${inter.variable} ${geist.variable}`}>
       <body>
         <AppShell>{children}</AppShell>
       </body>
