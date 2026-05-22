@@ -469,23 +469,24 @@ export default function DashboardPage() {
                         .split(' ').map((w: string) => w[0]).slice(-2).join('');
 
                       // Ring frame + number below + pedestal — matches reference image
+                      // Desktop sizes scaled to fit within 1fr column (~152px/slot on 1440px)
                       const ringSize = isMobile
                         ? (rank === 1 ? 96 : 80)
-                        : (rank === 1 ? 216 : 178);
+                        : (rank === 1 ? 148 : 122);
                       const ringThick = isMobile
                         ? (rank === 1 ? 7 : 6)
-                        : (rank === 1 ? 15 : 12);
+                        : (rank === 1 ? 10 : 8);
                       const numSize = isMobile
                         ? (rank === 1 ? 74 : 62)
-                        : (rank === 1 ? 166 : 136);
+                        : (rank === 1 ? 112 : 92);
                       // Number overlaps bottom 1/10 of ring
                       const numMt = Math.round(-(ringSize * 0.10));
                       const pedestalW = isMobile
                         ? (rank === 1 ? 78 : 64)
-                        : (rank === 1 ? 176 : 144);
+                        : (rank === 1 ? 118 : 96);
                       const pedestalH = isMobile
                         ? (rank === 1 ? 14 : 11)
-                        : (rank === 1 ? 30 : 24);
+                        : (rank === 1 ? 20 : 16);
 
                       const tc = ({
                         1: {
@@ -521,7 +522,7 @@ export default function DashboardPage() {
                             flex: 1,
                             maxWidth: isMobile
                               ? (rank === 1 ? '120px' : '102px')
-                              : (rank === 1 ? '286px' : '240px'),
+                              : (rank === 1 ? '200px' : '168px'),
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
