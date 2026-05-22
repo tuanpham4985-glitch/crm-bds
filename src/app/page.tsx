@@ -72,9 +72,9 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
       style={{ overflow: 'visible', display: 'block', flexShrink: 0 }}
     >
       <defs>
-        {/* Wide cinematic bloom */}
-        <filter id={`${id}bl`} x="-160%" y="-160%" width="420%" height="420%" colorInterpolationFilters="linearRGB">
-          <feGaussianBlur stdDeviation="26" result="b"/>
+        {/* Focused cinematic bloom — tighter radius keeps face sharp */}
+        <filter id={`${id}bl`} x="-80%" y="-80%" width="260%" height="260%" colorInterpolationFilters="linearRGB">
+          <feGaussianBlur stdDeviation="10" result="b"/>
           <feBlend in="SourceGraphic" in2="b" mode="screen"/>
         </filter>
         {/* Inner edge glow */}
@@ -83,8 +83,8 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
           <feComposite in="SourceGraphic" in2="b" operator="over"/>
         </filter>
         {/* Rim glow — screen-blend on stroke */}
-        <filter id={`${id}rg`} x="-70%" y="-70%" width="240%" height="240%">
-          <feGaussianBlur stdDeviation="9" result="b"/>
+        <filter id={`${id}rg`} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="5" result="b"/>
           <feBlend in="SourceGraphic" in2="b" mode="screen"/>
         </filter>
         {/* Metallic face — 9 stops */}
@@ -124,7 +124,7 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
       <text x={cx} y={ty} textAnchor="middle"
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
-        fill={t.glow} filter={`url(#${id}bl)`} opacity={0.72}
+        fill={t.glow} filter={`url(#${id}bl)`} opacity={0.40}
         style={{ userSelect:'none' }}>{rank}</text>
 
       {/* Layer 2: Deep 3D extrusion — trophy depth */}
@@ -184,7 +184,7 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
         fill="none" stroke={t.rim} strokeWidth="6"
-        filter={`url(#${id}rg)`} opacity={0.55}
+        filter={`url(#${id}rg)`} opacity={0.40}
         style={{ userSelect:'none' }}>{rank}</text>
 
       {/* Layer 9: Soft inner core glow */}
@@ -471,21 +471,21 @@ export default function DashboardPage() {
 
                       // Ring frame + number below + pedestal — matches reference image
                       const ringSize = isMobile
-                        ? (rank === 1 ? 144 : 118)
+                        ? (rank === 1 ? 96 : 80)
                         : (rank === 1 ? 216 : 178);
                       const ringThick = isMobile
-                        ? (rank === 1 ? 10 : 8)
+                        ? (rank === 1 ? 7 : 6)
                         : (rank === 1 ? 15 : 12);
                       const numSize = isMobile
-                        ? (rank === 1 ? 110 : 90)
+                        ? (rank === 1 ? 74 : 62)
                         : (rank === 1 ? 166 : 136);
-                      // Pull number up so its visual top overlaps bottom ~15% of ring
-                      const numMt = Math.round(-(ringSize * 0.15));
+                      // Number overlaps bottom 1/10 of ring
+                      const numMt = Math.round(-(ringSize * 0.10));
                       const pedestalW = isMobile
-                        ? (rank === 1 ? 116 : 92)
+                        ? (rank === 1 ? 78 : 64)
                         : (rank === 1 ? 176 : 144);
                       const pedestalH = isMobile
-                        ? (rank === 1 ? 20 : 16)
+                        ? (rank === 1 ? 14 : 11)
                         : (rank === 1 ? 30 : 24);
 
                       const tc = ({
@@ -521,7 +521,7 @@ export default function DashboardPage() {
                           style={{
                             flex: 1,
                             maxWidth: isMobile
-                              ? (rank === 1 ? '190px' : '158px')
+                              ? (rank === 1 ? '120px' : '102px')
                               : (rank === 1 ? '286px' : '240px'),
                             display: 'flex',
                             flexDirection: 'column',
@@ -536,9 +536,9 @@ export default function DashboardPage() {
                             position: 'absolute',
                             bottom: '30px',
                             width: isMobile
-                              ? (rank === 1 ? '130px' : '108px')
+                              ? (rank === 1 ? '86px' : '72px')
                               : (rank === 1 ? '196px' : '162px'),
-                            height: isMobile ? '210px' : '320px',
+                            height: isMobile ? '150px' : '320px',
                             background: tc.beam,
                             clipPath: 'polygon(14% 0%, 86% 0%, 100% 100%, 0% 100%)',
                             pointerEvents: 'none',
@@ -618,12 +618,12 @@ export default function DashboardPage() {
                           {/* Name */}
                           <div style={{
                             fontSize: rank === 1
-                              ? (isMobile ? '0.73rem' : '0.90rem')
-                              : (isMobile ? '0.66rem' : '0.80rem'),
+                              ? (isMobile ? '0.68rem' : '1.00rem')
+                              : (isMobile ? '0.62rem' : '0.88rem'),
                             fontWeight: 700,
                             color: '#ffffff',
                             textAlign: 'center',
-                            marginTop: isMobile ? '8px' : '12px',
+                            marginTop: isMobile ? '6px' : '12px',
                             width: '100%',
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             textShadow: `0 0 18px ${tc.ringGlow}, 0 2px 6px rgba(0,0,0,0.95)`,
@@ -647,8 +647,8 @@ export default function DashboardPage() {
                           }}>
                             <span style={{
                               fontSize: rank === 1
-                                ? (isMobile ? '0.64rem' : '0.76rem')
-                                : (isMobile ? '0.60rem' : '0.70rem'),
+                                ? (isMobile ? '0.60rem' : '0.84rem')
+                                : (isMobile ? '0.56rem' : '0.76rem'),
                               fontWeight: 700,
                               color: tc.score,
                               display: 'flex', alignItems: 'center', gap: '4px',
