@@ -20,46 +20,46 @@ const CHART_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3
 function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number }) {
   const id = `crn${rank}`;
   const cx = size / 2;
-  const fs = Math.round(size * 0.84);
-  const ty = Math.round(size * 0.74);
-  const depth = rank === 1 ? 11 : 9;
+  const fs = Math.round(size * 0.96);  // fills almost full SVG height
+  const ty = Math.round(size * 0.84);  // low baseline — number sits flush
+  const depth = rank === 1 ? 22 : 17;  // deep trophy extrusion
 
   const tiers = {
     1: {
       face: [
-        ['0%','#fffaea'],['5%','#ffe040'],['13%','#d4a010'],
-        ['27%','#ffd700'],['41%','#c89010'],['55%','#ffc820'],
-        ['69%','#9a6400'],['84%','#4a2800'],['100%','#1e0e00'],
+        ['0%','#fffdf0'],['4%','#ffe566'],['11%','#d4a010'],
+        ['24%','#ffd700'],['38%','#c89010'],['52%','#ffcc20'],
+        ['66%','#9a6400'],['82%','#4a2800'],['100%','#1e0e00'],
       ],
-      ext: ['#8a5000','#2a1200'] as [string,string],
-      glow: 'rgba(255,195,0,1)',
-      rim: '#fff8a8',
-      shim: 'rgba(255,248,160,0.50)',
-      spec: 0.88,
+      ext: ['#a06000','#3a1600'] as [string,string],
+      glow: 'rgba(255,210,0,1)',
+      rim: '#fff8a0',
+      shim: 'rgba(255,252,180,0.60)',
+      spec: 0.95,
     },
     2: {
       face: [
-        ['0%','#ffffff'],['5%','#f0f2fa'],['13%','#aab4cc'],
-        ['27%','#d8dcea'],['41%','#8898b4'],['55%','#c0c8dc'],
-        ['69%','#606878'],['84%','#282c3c'],['100%','#0c0e16'],
+        ['0%','#ffffff'],['4%','#f2f4fc'],['11%','#b0bcd4'],
+        ['24%','#dce4f0'],['38%','#8898b8'],['52%','#c4d0e4'],
+        ['66%','#606878'],['82%','#282c3c'],['100%','#0c0e16'],
       ],
-      ext: ['#3c4858','#0c0e16'] as [string,string],
-      glow: 'rgba(160,185,235,1)',
-      rim: '#d4e4ff',
-      shim: 'rgba(215,232,255,0.42)',
-      spec: 0.82,
+      ext: ['#485868','#0a0e1a'] as [string,string],
+      glow: 'rgba(180,205,255,1)',
+      rim: '#e0f0ff',
+      shim: 'rgba(220,238,255,0.52)',
+      spec: 0.90,
     },
     3: {
       face: [
-        ['0%','#ffe8b8'],['5%','#f0a030'],['13%','#b06020'],
-        ['27%','#e09040'],['41%','#9a4c18'],['55%','#d08030'],
-        ['69%','#7a3800'],['84%','#3c1800'],['100%','#180800'],
+        ['0%','#fff0d0'],['4%','#f0a030'],['11%','#b06020'],
+        ['24%','#e09848'],['38%','#9a4c18'],['52%','#d08030'],
+        ['66%','#7a3800'],['82%','#3c1800'],['100%','#180800'],
       ],
-      ext: ['#7a3000','#180800'] as [string,string],
-      glow: 'rgba(215,110,10,1)',
-      rim: '#ffd080',
-      shim: 'rgba(255,200,100,0.42)',
-      spec: 0.82,
+      ext: ['#8a3800','#200a00'] as [string,string],
+      glow: 'rgba(230,120,10,1)',
+      rim: '#ffd888',
+      shim: 'rgba(255,210,110,0.52)',
+      spec: 0.88,
     },
   } as const;
 
@@ -72,133 +72,128 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
       style={{ overflow: 'visible', display: 'block', flexShrink: 0 }}
     >
       <defs>
-        {/* Cinematic screen-blend bloom */}
-        <filter id={`${id}bl`} x="-120%" y="-120%" width="340%" height="340%" colorInterpolationFilters="linearRGB">
-          <feGaussianBlur stdDeviation="15" result="b"/>
+        {/* Wide cinematic bloom */}
+        <filter id={`${id}bl`} x="-160%" y="-160%" width="420%" height="420%" colorInterpolationFilters="linearRGB">
+          <feGaussianBlur stdDeviation="26" result="b"/>
           <feBlend in="SourceGraphic" in2="b" mode="screen"/>
         </filter>
-        {/* Soft inner edge glow */}
-        <filter id={`${id}ig`} x="-30%" y="-30%" width="160%" height="160%">
-          <feGaussianBlur stdDeviation="3.5" result="b"/>
+        {/* Inner edge glow */}
+        <filter id={`${id}ig`} x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="5" result="b"/>
           <feComposite in="SourceGraphic" in2="b" operator="over"/>
         </filter>
-        {/* Vertical metallic face gradient — 9 stops for rich material feel */}
+        {/* Rim glow — screen-blend on stroke */}
+        <filter id={`${id}rg`} x="-70%" y="-70%" width="240%" height="240%">
+          <feGaussianBlur stdDeviation="9" result="b"/>
+          <feBlend in="SourceGraphic" in2="b" mode="screen"/>
+        </filter>
+        {/* Metallic face — 9 stops */}
         <linearGradient id={`${id}fc`} x1="0" y1="0" x2="0" y2="1">
           {t.face.map(([offset, color]) => (
             <stop key={offset} offset={offset} stopColor={color} />
           ))}
         </linearGradient>
-        {/* Extrusion side faces — diagonal dark gradient */}
-        <linearGradient id={`${id}ex`} x1="0" y1="0" x2="1" y2="1">
+        {/* Extrusion — bottom-right diagonal */}
+        <linearGradient id={`${id}ex`} x1="0" y1="0" x2="0.6" y2="1">
           <stop offset="0%"   stopColor={t.ext[0]} />
           <stop offset="100%" stopColor={t.ext[1]} />
         </linearGradient>
-        {/* Top specular streak — bright white fading down */}
+        {/* Top specular */}
         <linearGradient id={`${id}sp`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%"   stopColor={`rgba(255,255,255,${t.spec})`} />
-          <stop offset="18%"  stopColor="rgba(255,255,255,0.60)" />
-          <stop offset="42%"  stopColor="rgba(255,255,255,0.12)" />
+          <stop offset="20%"  stopColor="rgba(255,255,255,0.58)" />
+          <stop offset="44%"  stopColor="rgba(255,255,255,0.10)" />
           <stop offset="100%" stopColor="rgba(255,255,255,0)" />
         </linearGradient>
-        {/* Horizontal shimmer sweep — simulates lateral lighting */}
+        {/* Lateral shimmer */}
         <linearGradient id={`${id}sh`} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%"   stopColor="rgba(255,255,255,0)" />
-          <stop offset="32%"  stopColor={t.shim} />
-          <stop offset="55%"  stopColor={t.shim} />
+          <stop offset="30%"  stopColor={t.shim} />
+          <stop offset="58%"  stopColor={t.shim} />
           <stop offset="100%" stopColor="rgba(255,255,255,0)" />
         </linearGradient>
-        {/* Clip: upper 40% for specular highlight */}
         <clipPath id={`${id}cl`}>
-          <rect x={0} y={ty - fs * 0.94} width={size} height={fs * 0.40} />
+          <rect x={0} y={ty - fs * 0.94} width={size} height={fs * 0.42} />
         </clipPath>
-        {/* Clip: mid 20-42% zone for secondary shine band */}
         <clipPath id={`${id}cl2`}>
-          <rect x={0} y={ty - fs * 0.56} width={size} height={fs * 0.20} />
+          <rect x={0} y={ty - fs * 0.52} width={size} height={fs * 0.22} />
         </clipPath>
       </defs>
 
-      {/* ── Layer 1: Distant cinematic bloom (backlit glow) ── */}
+      {/* Layer 1: Wide bloom backlight */}
       <text x={cx} y={ty} textAnchor="middle"
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
-        fill={t.glow} filter={`url(#${id}bl)`} opacity={0.52}
-        style={{ userSelect:'none' }}>
-        {rank}
-      </text>
+        fill={t.glow} filter={`url(#${id}bl)`} opacity={0.72}
+        style={{ userSelect:'none' }}>{rank}</text>
 
-      {/* ── Layer 2: Extrusion depth — 3D side faces ── */}
+      {/* Layer 2: Deep 3D extrusion — trophy depth */}
       {Array.from({ length: depth }, (_, i) => {
         const step = depth - i;
         return (
           <text key={`e${i}`}
-            x={cx + step * 0.62} y={ty + step * 1.10}
+            x={cx + step * 0.55} y={ty + step * 1.50}
             textAnchor="middle" fontSize={fs} fontWeight="900"
             fontFamily="'Inter','Geist',system-ui,sans-serif"
             fill={`url(#${id}ex)`}
-            opacity={Math.max(0.28, 0.70 - i * 0.03)}
-            style={{ userSelect:'none' }}>
-            {rank}
-          </text>
+            opacity={Math.max(0.18, 0.85 - i * 0.028)}
+            style={{ userSelect:'none' }}>{rank}</text>
         );
       })}
 
-      {/* ── Layer 3: Main metallic face — primary visual surface ── */}
+      {/* Layer 3: Main metallic face */}
       <text x={cx} y={ty} textAnchor="middle"
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
         fill={`url(#${id}fc)`}
-        style={{ userSelect:'none' }}>
-        {rank}
-      </text>
+        style={{ userSelect:'none' }}>{rank}</text>
 
-      {/* ── Layer 4: Horizontal shimmer — lateral light reflection ── */}
+      {/* Layer 4: Lateral shimmer */}
       <text x={cx} y={ty} textAnchor="middle"
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
         fill={`url(#${id}sh)`}
-        style={{ userSelect:'none' }}>
-        {rank}
-      </text>
+        style={{ userSelect:'none' }}>{rank}</text>
 
-      {/* ── Layer 5: Top specular (upper 40%) — lit from above ── */}
+      {/* Layer 5: Top specular highlight */}
       <text x={cx} y={ty} textAnchor="middle"
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
         fill={`url(#${id}sp)`}
         clipPath={`url(#${id}cl)`}
-        style={{ userSelect:'none' }}>
-        {rank}
-      </text>
+        style={{ userSelect:'none' }}>{rank}</text>
 
-      {/* ── Layer 6: Mid-body secondary shine band ── */}
+      {/* Layer 6: Mid shine band */}
       <text x={cx} y={ty} textAnchor="middle"
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
-        fill="rgba(255,255,255,0.14)"
+        fill="rgba(255,255,255,0.18)"
         clipPath={`url(#${id}cl2)`}
-        style={{ userSelect:'none' }}>
-        {rank}
-      </text>
+        style={{ userSelect:'none' }}>{rank}</text>
 
-      {/* ── Layer 7: Rim light stroke — polished chrome edge ── */}
+      {/* Layer 7: Rim stroke — polished chrome edge */}
       <text x={cx} y={ty} textAnchor="middle"
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
         fill="none" stroke={t.rim}
-        strokeWidth="1.5" opacity={0.52}
-        style={{ userSelect:'none' }}>
-        {rank}
-      </text>
+        strokeWidth="2.5" opacity={0.72}
+        style={{ userSelect:'none' }}>{rank}</text>
 
-      {/* ── Layer 8: Inner micro-glow (soft emissive core) ── */}
+      {/* Layer 8: Rim glow bloom on stroke */}
+      <text x={cx} y={ty} textAnchor="middle"
+        fontSize={fs} fontWeight="900"
+        fontFamily="'Inter','Geist',system-ui,sans-serif"
+        fill="none" stroke={t.rim} strokeWidth="6"
+        filter={`url(#${id}rg)`} opacity={0.55}
+        style={{ userSelect:'none' }}>{rank}</text>
+
+      {/* Layer 9: Soft inner core glow */}
       <text x={cx} y={ty} textAnchor="middle"
         fontSize={fs} fontWeight="900"
         fontFamily="'Inter','Geist',system-ui,sans-serif"
         fill={t.glow} filter={`url(#${id}ig)`}
-        opacity={0.09}
-        style={{ userSelect:'none' }}>
-        {rank}
-      </text>
+        opacity={0.14}
+        style={{ userSelect:'none' }}>{rank}</text>
     </svg>
   );
 }
@@ -474,38 +469,49 @@ export default function DashboardPage() {
                       const initials = sale.nhan_vien
                         .split(' ').map((w: string) => w[0]).slice(-2).join('');
 
-                      // Avatar is the visual centrepiece — number is accent below
-                      const avSize = isMobile
-                        ? (rank === 1 ? 104 : 86)
-                        : (rank === 1 ? 164 : 136);
+                      // Ring frame + number below + pedestal — matches reference image
+                      const ringSize = isMobile
+                        ? (rank === 1 ? 144 : 118)
+                        : (rank === 1 ? 216 : 178);
+                      const ringThick = isMobile
+                        ? (rank === 1 ? 10 : 8)
+                        : (rank === 1 ? 15 : 12);
                       const numSize = isMobile
-                        ? (rank === 1 ? 52 : 44)
-                        : (rank === 1 ? 82 : 68);
+                        ? (rank === 1 ? 110 : 90)
+                        : (rank === 1 ? 166 : 136);
+                      // Pull number up so its visual top overlaps bottom ~15% of ring
+                      const numMt = Math.round(-(ringSize * 0.15));
+                      const pedestalW = isMobile
+                        ? (rank === 1 ? 116 : 92)
+                        : (rank === 1 ? 176 : 144);
+                      const pedestalH = isMobile
+                        ? (rank === 1 ? 20 : 16)
+                        : (rank === 1 ? 30 : 24);
 
                       const tc = ({
                         1: {
-                          ring:'#ffd700', ringGlow:'rgba(255,195,0,0.55)',
-                          name:'#FFD75A', score:'#FFE88A',
-                          pill:'rgba(255,200,0,0.12)', border:'rgba(255,200,0,0.30)',
+                          ringGlow:'rgba(255,210,0,0.65)',
+                          score:'#FFE88A', border:'rgba(255,200,0,0.35)',
                           avBg:'linear-gradient(145deg,#7a4800,#c8960c)',
-                          shadow:'0 0 0 2.5px rgba(255,200,0,0.18), 0 8px 28px rgba(255,195,0,0.55)',
-                          beam:'linear-gradient(to top, rgba(255,195,0,0.22) 0%, transparent 78%)',
+                          beam:'linear-gradient(to top, rgba(255,210,0,0.28) 0%, transparent 80%)',
+                          ringGrad:'linear-gradient(145deg, #fff0a0 0%, #d4a010 18%, #ffd700 42%, #b87800 68%, #5a2c00 100%)',
+                          pedestalGrad:'linear-gradient(180deg, #ffe040 0%, #c89010 35%, #7a4800 72%, #2e1400 100%)',
                         },
                         2: {
-                          ring:'#b8c8e0', ringGlow:'rgba(160,185,235,0.45)',
-                          name:'#BDD4EE', score:'#d8eaff',
-                          pill:'rgba(160,185,235,0.10)', border:'rgba(160,185,235,0.24)',
+                          ringGlow:'rgba(180,205,255,0.55)',
+                          score:'#d8eaff', border:'rgba(160,185,235,0.28)',
                           avBg:'linear-gradient(145deg,#2c3848,#7890b0)',
-                          shadow:'0 0 0 2px rgba(160,185,235,0.14), 0 8px 24px rgba(160,185,235,0.42)',
-                          beam:'linear-gradient(to top, rgba(160,185,235,0.16) 0%, transparent 78%)',
+                          beam:'linear-gradient(to top, rgba(160,185,235,0.20) 0%, transparent 80%)',
+                          ringGrad:'linear-gradient(145deg, #ffffff 0%, #a8bcd4 18%, #d4dff0 42%, #7890b0 68%, #1a2030 100%)',
+                          pedestalGrad:'linear-gradient(180deg, #d8e4f4 0%, #8090aa 35%, #384050 72%, #101420 100%)',
                         },
                         3: {
-                          ring:'#cd7f32', ringGlow:'rgba(205,110,15,0.45)',
-                          name:'#E8A868', score:'#f5c888',
-                          pill:'rgba(200,110,15,0.10)', border:'rgba(200,110,15,0.26)',
+                          ringGlow:'rgba(220,120,10,0.55)',
+                          score:'#f5c888', border:'rgba(200,110,15,0.30)',
                           avBg:'linear-gradient(145deg,#6a2800,#cd7f32)',
-                          shadow:'0 0 0 2px rgba(200,110,15,0.16), 0 8px 24px rgba(200,110,15,0.44)',
-                          beam:'linear-gradient(to top, rgba(200,110,15,0.16) 0%, transparent 78%)',
+                          beam:'linear-gradient(to top, rgba(210,110,10,0.20) 0%, transparent 80%)',
+                          ringGrad:'linear-gradient(145deg, #ffc870 0%, #c07028 18%, #e09848 42%, #8a4018 68%, #281000 100%)',
+                          pedestalGrad:'linear-gradient(180deg, #e09030 0%, #904020 35%, #4a1c08 72%, #180800 100%)',
                         },
                       } as const)[rank];
 
@@ -515,8 +521,8 @@ export default function DashboardPage() {
                           style={{
                             flex: 1,
                             maxWidth: isMobile
-                              ? (rank === 1 ? '148px' : '124px')
-                              : (rank === 1 ? '248px' : '210px'),
+                              ? (rank === 1 ? '190px' : '158px')
+                              : (rank === 1 ? '286px' : '240px'),
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
@@ -525,92 +531,127 @@ export default function DashboardPage() {
                             gap: 0,
                           }}>
 
-                          {/* Upward light beam behind the number */}
+                          {/* Stage spotlight beam */}
                           <div style={{
                             position: 'absolute',
-                            bottom: '44px',
+                            bottom: '30px',
                             width: isMobile
-                              ? (rank === 1 ? '110px' : '92px')
-                              : (rank === 1 ? '170px' : '142px'),
-                            height: isMobile ? '180px' : '290px',
+                              ? (rank === 1 ? '130px' : '108px')
+                              : (rank === 1 ? '196px' : '162px'),
+                            height: isMobile ? '210px' : '320px',
                             background: tc.beam,
-                            clipPath: 'polygon(12% 0%, 88% 0%, 100% 100%, 0% 100%)',
+                            clipPath: 'polygon(14% 0%, 86% 0%, 100% 100%, 0% 100%)',
                             pointerEvents: 'none',
                             zIndex: 1,
-                            opacity: 0.88,
+                            opacity: 0.70,
                           }} />
 
-                          {/* ── Small avatar floats above the giant number ── */}
+                          {/* ── Thick 3D metallic ring frame ── */}
                           <div style={{
                             position: 'relative',
-                            width: avSize, height: avSize,
+                            width: ringSize,
+                            height: ringSize,
                             borderRadius: '50%',
-                            overflow: 'hidden',
-                            border: `${rank === 1 ? 3 : 2.5}px solid ${tc.ring}`,
-                            boxShadow: tc.shadow,
-                            zIndex: 4,
-                            marginBottom: isMobile ? '4px' : '6px',
+                            background: tc.ringGrad,
+                            padding: ringThick,
+                            boxShadow: [
+                              `0 0 ${rank === 1 ? 50 : 34}px ${tc.ringGlow}`,
+                              `inset 0 ${ringThick * 0.5}px ${ringThick}px rgba(255,255,255,0.30)`,
+                              `inset 0 -${ringThick * 0.5}px ${ringThick}px rgba(0,0,0,0.50)`,
+                              `0 ${rank === 1 ? 14 : 10}px ${rank === 1 ? 44 : 30}px rgba(0,0,0,0.75)`,
+                            ].join(', '),
+                            zIndex: 3,
                             flexShrink: 0,
                           }}>
-                            {sale.avatar_url ? (
-                              <img src={sale.avatar_url} alt={sale.nhan_vien}
-                                style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center' }}
-                              />
-                            ) : (
-                              <div style={{
-                                width:'100%', height:'100%',
-                                display:'flex', alignItems:'center', justifyContent:'center',
-                                background: tc.avBg,
-                                fontSize: Math.round(avSize * 0.34),
-                                fontWeight: 800, color: '#fff', letterSpacing: '-1px',
-                              }}>
-                                {initials}
-                              </div>
-                            )}
+                            {/* Avatar inside ring */}
+                            <div style={{
+                              width: '100%',
+                              height: '100%',
+                              borderRadius: '50%',
+                              overflow: 'hidden',
+                              background: tc.avBg,
+                            }}>
+                              {sale.avatar_url ? (
+                                <img src={sale.avatar_url} alt={sale.nhan_vien}
+                                  style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center' }}
+                                />
+                              ) : (
+                                <div style={{
+                                  width:'100%', height:'100%',
+                                  display:'flex', alignItems:'center', justifyContent:'center',
+                                  background: tc.avBg,
+                                  fontSize: Math.round((ringSize - ringThick * 2) * 0.36),
+                                  fontWeight: 800, color: '#fff', letterSpacing: '-1px',
+                                }}>
+                                  {initials}
+                                </div>
+                              )}
+                            </div>
                           </div>
 
-                          {/* ── GIANT cinematic rank number — visual centrepiece ── */}
-                          <div style={{ position:'relative', zIndex: 3 }}>
+                          {/* ── 3D rank number — sits below ring, slightly overlapping ── */}
+                          <div style={{
+                            position: 'relative',
+                            zIndex: 5,
+                            marginTop: `${numMt}px`,
+                            flexShrink: 0,
+                          }}>
                             <CinematicRankNumber rank={rank} size={numSize} />
                           </div>
+
+                          {/* ── Trophy pedestal base ── */}
+                          <div style={{
+                            width: pedestalW,
+                            height: pedestalH,
+                            background: tc.pedestalGrad,
+                            borderRadius: '6px 6px 10px 10px',
+                            marginTop: '-8px',
+                            flexShrink: 0,
+                            zIndex: 2,
+                            boxShadow: [
+                              '0 8px 24px rgba(0,0,0,0.60)',
+                              'inset 0 1px 0 rgba(255,255,255,0.22)',
+                              'inset 0 -3px 6px rgba(0,0,0,0.45)',
+                            ].join(', '),
+                          }} />
 
                           {/* Name */}
                           <div style={{
                             fontSize: rank === 1
-                              ? (isMobile ? '0.71rem' : '0.86rem')
-                              : (isMobile ? '0.65rem' : '0.77rem'),
-                            fontWeight: 800,
-                            color: tc.name,
+                              ? (isMobile ? '0.73rem' : '0.90rem')
+                              : (isMobile ? '0.66rem' : '0.80rem'),
+                            fontWeight: 700,
+                            color: '#ffffff',
                             textAlign: 'center',
-                            marginTop: isMobile ? '1px' : '2px',
+                            marginTop: isMobile ? '8px' : '12px',
                             width: '100%',
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            textShadow: `0 0 14px ${tc.ringGlow}, 0 2px 4px rgba(0,0,0,0.95)`,
+                            textShadow: `0 0 18px ${tc.ringGlow}, 0 2px 6px rgba(0,0,0,0.95)`,
                             zIndex: 3,
                             paddingLeft: '6px', paddingRight: '6px',
-                            letterSpacing: rank === 1 ? '0.02em' : '0.01em',
+                            letterSpacing: '0.01em',
                           }}>
                             {sale.nhan_vien}
                           </div>
 
                           {/* Revenue pill */}
                           <div style={{
-                            background: tc.pill,
+                            background: 'rgba(0,0,0,0.60)',
                             border: `1px solid ${tc.border}`,
                             borderRadius: '20px',
-                            padding: isMobile ? '2px 8px' : '3px 12px',
-                            marginTop: isMobile ? '3px' : '5px',
+                            padding: isMobile ? '3px 10px' : '4px 14px',
+                            marginTop: isMobile ? '4px' : '6px',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             zIndex: 3,
-                            boxShadow: '0 2px 10px rgba(0,0,0,0.42)',
+                            boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
                           }}>
                             <span style={{
                               fontSize: rank === 1
-                                ? (isMobile ? '0.62rem' : '0.72rem')
-                                : (isMobile ? '0.58rem' : '0.68rem'),
+                                ? (isMobile ? '0.64rem' : '0.76rem')
+                                : (isMobile ? '0.60rem' : '0.70rem'),
                               fontWeight: 700,
                               color: tc.score,
-                              display: 'flex', alignItems: 'center', gap: '3px',
+                              display: 'flex', alignItems: 'center', gap: '4px',
                               fontVariantNumeric: 'tabular-nums',
                             }}>
                               {formatCurrency(sale.doanh_thu)} <span style={{ opacity: 0.88 }}>⭐</span>
