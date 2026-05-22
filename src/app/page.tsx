@@ -14,218 +14,195 @@ import { formatCurrency, formatChange, calcChange } from '@/lib/utils';
 
 const CHART_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
-// ─── Premium Award Medal ─────────────────────────────────────────────────────
-// Each tier: gC=glow, rO/rM1/rSp/rM2/rI/rB = ring layers, lS/lM/lH = leaf, ri* = ribbon
-const MEDAL = {
-  1: { // Gold
-    gC:'#E8C820',
-    rO:'#3a2200', rM1:'#906010', rSp:'#fff8a8', rM2:'#c8a020', rI:'#5a3800', rB:'#ffe060',
-    lS:'#5a3200', lM:'#b88010', lH:'#ffe060',
-    riD:'#5a3800', riM:'#d0a010', riH:'#fff5a0', riN:'#2a1000',
-  },
-  2: { // Silver
-    gC:'#A8C0D8',
-    rO:'#18202a', rM1:'#485870', rSp:'#ecf2ff', rM2:'#7890b0', rI:'#283848', rB:'#c0d8f0',
-    lS:'#283848', lM:'#6878a0', lH:'#d8eaff',
-    riD:'#283848', riM:'#6878a0', riH:'#d0e0f0', riN:'#060e18',
-  },
-  3: { // Bronze
-    gC:'#C87828',
-    rO:'#381800', rM1:'#783818', rSp:'#ffd090', rM2:'#a85c28', rI:'#582800', rB:'#e8a050',
-    lS:'#481e08', lM:'#985828', lH:'#ffc860',
-    riD:'#481e08', riM:'#985828', riH:'#ffc878', riN:'#1e0800',
-  },
-} as const;
+// ─── Cinematic 3D Rank Number ─────────────────────────────────────────────────
+// Layered SVG: bloom → extrusion depth → metallic face → specular → rim light
 
-function LaurelWreathMedal({ rank, avatarSize, children }: { rank:1|2|3; avatarSize:number; children:React.ReactNode }) {
-  const m  = MEDAL[rank];
-  const aR = avatarSize / 2;
+function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number }) {
+  const id = `crn${rank}`;
+  const cx = size / 2;
+  const fs = Math.round(size * 0.84);
+  const ty = Math.round(size * 0.74);
+  const depth = rank === 1 ? 11 : 9;
 
-  // ── Leaf geometry ────────────────────────────────────────────────────────
-  // Orbit radius: leaves centered just outside the metallic ring so their
-  // outer half emerges visually from behind the ring (natural layering)
-  const lLen = rank === 1 ? 21 : 18;   // leaf half-length (tangential)
-  const lWid = rank === 1 ? 7.5 : 6.5; // leaf half-width (radial)
-  const lOrb = aR + 11;                 // orbit radius (center of each leaf)
-  const N    = 13;                      // leaves per branch
+  const tiers = {
+    1: {
+      face: [
+        ['0%','#fffaea'],['5%','#ffe040'],['13%','#d4a010'],
+        ['27%','#ffd700'],['41%','#c89010'],['55%','#ffc820'],
+        ['69%','#9a6400'],['84%','#4a2800'],['100%','#1e0e00'],
+      ],
+      ext: ['#8a5000','#2a1200'] as [string,string],
+      glow: 'rgba(255,195,0,1)',
+      rim: '#fff8a8',
+      shim: 'rgba(255,248,160,0.50)',
+      spec: 0.88,
+    },
+    2: {
+      face: [
+        ['0%','#ffffff'],['5%','#f0f2fa'],['13%','#aab4cc'],
+        ['27%','#d8dcea'],['41%','#8898b4'],['55%','#c0c8dc'],
+        ['69%','#606878'],['84%','#282c3c'],['100%','#0c0e16'],
+      ],
+      ext: ['#3c4858','#0c0e16'] as [string,string],
+      glow: 'rgba(160,185,235,1)',
+      rim: '#d4e4ff',
+      shim: 'rgba(215,232,255,0.42)',
+      spec: 0.82,
+    },
+    3: {
+      face: [
+        ['0%','#ffe8b8'],['5%','#f0a030'],['13%','#b06020'],
+        ['27%','#e09040'],['41%','#9a4c18'],['55%','#d08030'],
+        ['69%','#7a3800'],['84%','#3c1800'],['100%','#180800'],
+      ],
+      ext: ['#7a3000','#180800'] as [string,string],
+      glow: 'rgba(215,110,10,1)',
+      rim: '#ffd080',
+      shim: 'rgba(255,200,100,0.42)',
+      spec: 0.82,
+    },
+  } as const;
 
-  const pad  = 12;
-  const ctr  = aR + pad;
-  const svgW = avatarSize + pad * 2;
-
-  // Quadratic-bezier leaf — smooth taper to a point at both ends,
-  // natural curved silhouette unlike a plain ellipse
-  const lBody = `M ${-lLen},0 Q 0,${-lWid} ${lLen},0 Q 0,${lWid} ${-lLen},0 Z`;
-  // Highlight streak along the "lit" face of each leaf (gives embossed depth)
-  const lGlow = `M ${-lLen*0.55},${-lWid*0.22} Q ${lLen*0.18},${-lWid*0.72} ${lLen*0.86},${-lWid*0.1}`;
-
-  const mkLeaves = (a0: number, a1: number) =>
-    Array.from({ length: N }, (_, i) => {
-      const t = i / (N - 1);
-      const d = a0 + (a1 - a0) * t;
-      const r = d * Math.PI / 180;
-      // Opacity & scale: full mid-branch, tapered at both ends
-      const op = 0.56 + 0.42 * Math.sin(t * Math.PI);
-      const sc = 0.74 + 0.26 * Math.sin(t * Math.PI);
-      return { x: ctr + Math.cos(r) * lOrb, y: ctr + Math.sin(r) * lOrb, rot: d + 90, op, sc };
-    });
-
-  // Left branch : 108° → 252° (lower-right corner CCW to upper-left)
-  // Right branch: 72°  → −72° (lower-left corner CW  to upper-right)
-  // ~36° gap at 12 o'clock keeps the wreath naturally open at the top
-  const LL = mkLeaves(108, 252);
-  const RL = mkLeaves(72, -72);
-  const p  = `pm${rank}`; // unique gradient-ID prefix per rank
-
-  // Ribbon
-  const ribW = Math.round(avatarSize * 0.68);
-  const ribH = 29;
-  const tail = 14;
-  const ribY = ctr + aR + 14;
-  const svgH = ribY + ribH + 13;
+  const t = tiers[rank];
 
   return (
-    <div style={{ position:'relative', width:svgW, height:svgH, flexShrink:0 }}>
-      <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`}
-        style={{ position:'absolute', top:0, left:0 }} overflow="visible">
-        <defs>
-          {/* ── Radial glow behind the entire medal ── */}
-          <radialGradient id={`${p}gl`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stopColor={m.gC} stopOpacity="0.60" />
-            <stop offset="50%"  stopColor={m.gC} stopOpacity="0.18" />
-            <stop offset="100%" stopColor={m.gC} stopOpacity="0"    />
-          </radialGradient>
+    <svg
+      width={size} height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      style={{ overflow: 'visible', display: 'block', flexShrink: 0 }}
+    >
+      <defs>
+        {/* Cinematic screen-blend bloom */}
+        <filter id={`${id}bl`} x="-120%" y="-120%" width="340%" height="340%" colorInterpolationFilters="linearRGB">
+          <feGaussianBlur stdDeviation="15" result="b"/>
+          <feBlend in="SourceGraphic" in2="b" mode="screen"/>
+        </filter>
+        {/* Soft inner edge glow */}
+        <filter id={`${id}ig`} x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="3.5" result="b"/>
+          <feComposite in="SourceGraphic" in2="b" operator="over"/>
+        </filter>
+        {/* Vertical metallic face gradient — 9 stops for rich material feel */}
+        <linearGradient id={`${id}fc`} x1="0" y1="0" x2="0" y2="1">
+          {t.face.map(([offset, color]) => (
+            <stop key={offset} offset={offset} stopColor={color} />
+          ))}
+        </linearGradient>
+        {/* Extrusion side faces — diagonal dark gradient */}
+        <linearGradient id={`${id}ex`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%"   stopColor={t.ext[0]} />
+          <stop offset="100%" stopColor={t.ext[1]} />
+        </linearGradient>
+        {/* Top specular streak — bright white fading down */}
+        <linearGradient id={`${id}sp`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor={`rgba(255,255,255,${t.spec})`} />
+          <stop offset="18%"  stopColor="rgba(255,255,255,0.60)" />
+          <stop offset="42%"  stopColor="rgba(255,255,255,0.12)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </linearGradient>
+        {/* Horizontal shimmer sweep — simulates lateral lighting */}
+        <linearGradient id={`${id}sh`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor="rgba(255,255,255,0)" />
+          <stop offset="32%"  stopColor={t.shim} />
+          <stop offset="55%"  stopColor={t.shim} />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </linearGradient>
+        {/* Clip: upper 40% for specular highlight */}
+        <clipPath id={`${id}cl`}>
+          <rect x={0} y={ty - fs * 0.94} width={size} height={fs * 0.40} />
+        </clipPath>
+        {/* Clip: mid 20-42% zone for secondary shine band */}
+        <clipPath id={`${id}cl2`}>
+          <rect x={0} y={ty - fs * 0.56} width={size} height={fs * 0.20} />
+        </clipPath>
+      </defs>
 
-          {/* ── Leaf body gradient: dark stem → mid → bright highlight → dark tip ── */}
-          <linearGradient id={`${p}lb`} x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
-            <stop offset="0%"   stopColor={m.lS} />
-            <stop offset="32%"  stopColor={m.lM} />
-            <stop offset="64%"  stopColor={m.lH} stopOpacity="0.90" />
-            <stop offset="100%" stopColor={m.lS} stopOpacity="0.85" />
-          </linearGradient>
+      {/* ── Layer 1: Distant cinematic bloom (backlit glow) ── */}
+      <text x={cx} y={ty} textAnchor="middle"
+        fontSize={fs} fontWeight="900"
+        fontFamily="'Inter','Geist',system-ui,sans-serif"
+        fill={t.glow} filter={`url(#${id}bl)`} opacity={0.52}
+        style={{ userSelect:'none' }}>
+        {rank}
+      </text>
 
-          {/* ── Leaf highlight streak (semi-transparent bright line) ── */}
-          <linearGradient id={`${p}lh`} x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
-            <stop offset="0%"   stopColor={m.lH} stopOpacity="0"    />
-            <stop offset="42%"  stopColor={m.lH} stopOpacity="0.95" />
-            <stop offset="100%" stopColor={m.lH} stopOpacity="0"    />
-          </linearGradient>
+      {/* ── Layer 2: Extrusion depth — 3D side faces ── */}
+      {Array.from({ length: depth }, (_, i) => {
+        const step = depth - i;
+        return (
+          <text key={`e${i}`}
+            x={cx + step * 0.62} y={ty + step * 1.10}
+            textAnchor="middle" fontSize={fs} fontWeight="900"
+            fontFamily="'Inter','Geist',system-ui,sans-serif"
+            fill={`url(#${id}ex)`}
+            opacity={Math.max(0.28, 0.70 - i * 0.03)}
+            style={{ userSelect:'none' }}>
+            {rank}
+          </text>
+        );
+      })}
 
-          {/* ── Main ring gradient: top-left specular → upper-dark → lower-metallic → bottom-dark ── */}
-          {/* Creates "light hitting from top-left" metallic illusion */}
-          <linearGradient id={`${p}rg`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%"   stopColor={m.rSp}  />
-            <stop offset="20%"  stopColor={m.rM1}  />
-            <stop offset="58%"  stopColor={m.rM2}  />
-            <stop offset="100%" stopColor={m.rO}   />
-          </linearGradient>
+      {/* ── Layer 3: Main metallic face — primary visual surface ── */}
+      <text x={cx} y={ty} textAnchor="middle"
+        fontSize={fs} fontWeight="900"
+        fontFamily="'Inter','Geist',system-ui,sans-serif"
+        fill={`url(#${id}fc)`}
+        style={{ userSelect:'none' }}>
+        {rank}
+      </text>
 
-          {/* ── Second ring gradient (cross-axis) for lateral metallic band ── */}
-          <linearGradient id={`${p}r2`} x1="1" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={m.rB}  stopOpacity="0.40" />
-            <stop offset="50%"  stopColor={m.rSp} stopOpacity="0.15" />
-            <stop offset="100%" stopColor={m.rB}  stopOpacity="0"    />
-          </linearGradient>
+      {/* ── Layer 4: Horizontal shimmer — lateral light reflection ── */}
+      <text x={cx} y={ty} textAnchor="middle"
+        fontSize={fs} fontWeight="900"
+        fontFamily="'Inter','Geist',system-ui,sans-serif"
+        fill={`url(#${id}sh)`}
+        style={{ userSelect:'none' }}>
+        {rank}
+      </text>
 
-          {/* ── Ribbon gradient ── */}
-          <linearGradient id={`${p}rb`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={m.riM} />
-            <stop offset="100%" stopColor={m.riD} />
-          </linearGradient>
-        </defs>
+      {/* ── Layer 5: Top specular (upper 40%) — lit from above ── */}
+      <text x={cx} y={ty} textAnchor="middle"
+        fontSize={fs} fontWeight="900"
+        fontFamily="'Inter','Geist',system-ui,sans-serif"
+        fill={`url(#${id}sp)`}
+        clipPath={`url(#${id}cl)`}
+        style={{ userSelect:'none' }}>
+        {rank}
+      </text>
 
-        {/* ══ 0. Glow halo disc (largest, deepest layer) ══ */}
-        <circle cx={ctr} cy={ctr} r={aR * 1.65} fill={`url(#${p}gl)`} />
+      {/* ── Layer 6: Mid-body secondary shine band ── */}
+      <text x={cx} y={ty} textAnchor="middle"
+        fontSize={fs} fontWeight="900"
+        fontFamily="'Inter','Geist',system-ui,sans-serif"
+        fill="rgba(255,255,255,0.14)"
+        clipPath={`url(#${id}cl2)`}
+        style={{ userSelect:'none' }}>
+        {rank}
+      </text>
 
-        {/* ══ 1. Outer engraved border ring ══ */}
-        <circle cx={ctr} cy={ctr} r={aR + 14}
-          fill="none" stroke={m.rO} strokeWidth="2.5" opacity={0.80} />
+      {/* ── Layer 7: Rim light stroke — polished chrome edge ── */}
+      <text x={cx} y={ty} textAnchor="middle"
+        fontSize={fs} fontWeight="900"
+        fontFamily="'Inter','Geist',system-ui,sans-serif"
+        fill="none" stroke={t.rim}
+        strokeWidth="1.5" opacity={0.52}
+        style={{ userSelect:'none' }}>
+        {rank}
+      </text>
 
-        {/* ══ 2. Laurel branches — drawn BEFORE main ring so bases hide under it ══ */}
-        {LL.map((l, i) => (
-          <g key={`ll${i}`}
-            transform={`translate(${l.x},${l.y}) rotate(${l.rot}) scale(${l.sc})`}>
-            {/* Leaf body (shadow-side gradient) */}
-            <path d={lBody} fill={`url(#${p}lb)`} opacity={l.op} />
-            {/* Highlight streak (lit-face specular) */}
-            <path d={lGlow} fill="none"
-              stroke={`url(#${p}lh)`} strokeWidth="1.3"
-              strokeLinecap="round" opacity={l.op * 0.88} />
-          </g>
-        ))}
-        {RL.map((l, i) => (
-          <g key={`rl${i}`}
-            transform={`translate(${l.x},${l.y}) rotate(${l.rot}) scale(${l.sc})`}>
-            <path d={lBody} fill={`url(#${p}lb)`} opacity={l.op} />
-            <path d={lGlow} fill="none"
-              stroke={`url(#${p}lh)`} strokeWidth="1.3"
-              strokeLinecap="round" opacity={l.op * 0.88} />
-          </g>
-        ))}
-
-        {/* ══ 3. Four-layer metallic ring stack (creates depth & reflections) ══ */}
-
-        {/* 3a. Outer dark edge — defines the ring's outer boundary */}
-        <circle cx={ctr} cy={ctr} r={aR + 11}
-          fill="none" stroke={m.rO} strokeWidth="3" opacity={0.78} />
-
-        {/* 3b. Main gradient band — primary metallic surface */}
-        <circle cx={ctr} cy={ctr} r={aR + 7}
-          fill="none" stroke={`url(#${p}rg)`}
-          strokeWidth={rank === 1 ? 10 : 8.5} />
-
-        {/* 3c. Cross-axis shimmer (second gradient overlaid, ~45° offset) */}
-        <circle cx={ctr} cy={ctr} r={aR + 7}
-          fill="none" stroke={`url(#${p}r2)`}
-          strokeWidth={rank === 1 ? 10 : 8.5} />
-
-        {/* 3d. Inner specular line — bright edge where ring meets dark interior */}
-        <circle cx={ctr} cy={ctr} r={aR + 2}
-          fill="none" stroke={m.rB} strokeWidth="1.5" opacity={0.52} />
-
-        {/* 3e. Inner dark shadow ring — crisp boundary before avatar */}
-        <circle cx={ctr} cy={ctr} r={aR + 0.6}
-          fill="none" stroke={m.rI} strokeWidth="2.5" opacity={0.55} />
-
-        {/* ══ 4. Ribbon tails ══ */}
-        <polygon
-          points={`${ctr-ribW/2},${ribY} ${ctr-ribW/2-tail},${ribY+ribH/2} ${ctr-ribW/2},${ribY+ribH}`}
-          fill={m.riD} opacity={0.94} />
-        <polygon
-          points={`${ctr+ribW/2},${ribY} ${ctr+ribW/2+tail},${ribY+ribH/2} ${ctr+ribW/2},${ribY+ribH}`}
-          fill={m.riD} opacity={0.94} />
-
-        {/* ══ 5. Ribbon body with 3D detail ══ */}
-        <rect x={ctr-ribW/2} y={ribY} width={ribW} height={ribH} rx={5}
-          fill={`url(#${p}rb)`} />
-        {/* Top sheen line */}
-        <rect x={ctr-ribW/2+7} y={ribY+5} width={ribW-14} height={2} rx={1}
-          fill={m.riH} opacity={0.52} />
-        {/* Bottom shadow edge */}
-        <rect x={ctr-ribW/2+3} y={ribY+ribH-4} width={ribW-6} height={3} rx={2}
-          fill={m.riD} opacity={0.45} />
-
-        {/* ══ 6. Rank number ══ */}
-        <text x={ctr} y={ribY+ribH-8} textAnchor="middle"
-          fontSize={rank===1 ? 18 : 15} fontWeight="900" letterSpacing={1}
-          fill={m.riN} fontFamily="Inter, system-ui, sans-serif">
-          {rank}
-        </text>
-      </svg>
-
-      {/* ══ Avatar (sits above SVG, visible through transparent medal center) ══ */}
-      <div style={{
-        position:'absolute', top:pad, left:pad,
-        width:avatarSize, height:avatarSize,
-        borderRadius:'50%', overflow:'hidden', zIndex:2,
-        // Triple-ring shadow: dark edge + metallic halo + soft glow
-        boxShadow:`0 0 0 2px ${m.rI}, 0 0 0 4.5px ${m.rM2}60, 0 12px 40px ${m.gC}90`,
-      }}>
-        {children}
-      </div>
-    </div>
+      {/* ── Layer 8: Inner micro-glow (soft emissive core) ── */}
+      <text x={cx} y={ty} textAnchor="middle"
+        fontSize={fs} fontWeight="900"
+        fontFamily="'Inter','Geist',system-ui,sans-serif"
+        fill={t.glow} filter={`url(#${id}ig)`}
+        opacity={0.09}
+        style={{ userSelect:'none' }}>
+        {rank}
+      </text>
+    </svg>
   );
 }
+
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -488,139 +465,156 @@ export default function DashboardPage() {
                       pointerEvents: 'none', opacity: 0.6,
                     }} />
 
-                    {/* Sắp xếp: Hạng 2 - Hạng 1 - Hạng 3 */}
+                    {/* Sắp xếp: Hạng 2 — Hạng 1 (centre) — Hạng 3 */}
                     {[1, 0, 2].map((rankIdx) => {
                       const sale = data.doanh_thu_theo_sale[rankIdx];
                       if (!sale) return null;
-                      const rank = rankIdx + 1;
-                      
-                      const initials = sale.nhan_vien
-                        .split(' ')
-                        .map((w: string) => w[0])
-                        .slice(-2)
-                        .join('');
+                      const rank = (rankIdx + 1) as 1|2|3;
 
-                      const typedRank = rank as 1 | 2 | 3;
-                      const aSize = isMobile
-                        ? (rank === 1 ? 78 : rank === 2 ? 68 : 64)
-                        : (rank === 1 ? 148 : rank === 2 ? 128 : 120);
-                      const beamBg =
-                        rank === 1 ? 'linear-gradient(to top, rgba(251,191,36,0.22) 0%, transparent 80%)' :
-                        rank === 2 ? 'linear-gradient(to top, rgba(148,163,184,0.14) 0%, transparent 80%)' :
-                                     'linear-gradient(to top, rgba(234,88,12,0.12) 0%, transparent 80%)';
+                      const initials = sale.nhan_vien
+                        .split(' ').map((w: string) => w[0]).slice(-2).join('');
+
+                      // Giant number — fills 60-70% of total slot visual area
+                      const numSize = isMobile
+                        ? (rank === 1 ? 110 : 92)
+                        : (rank === 1 ? 182 : 152);
+                      // Small avatar above number
+                      const avSize = isMobile
+                        ? (rank === 1 ? 52 : 44)
+                        : (rank === 1 ? 78 : 66);
+
+                      const tc = ({
+                        1: {
+                          ring:'#ffd700', ringGlow:'rgba(255,195,0,0.55)',
+                          name:'#FFD75A', score:'#FFE88A',
+                          pill:'rgba(255,200,0,0.12)', border:'rgba(255,200,0,0.30)',
+                          avBg:'linear-gradient(145deg,#7a4800,#c8960c)',
+                          shadow:'0 0 0 2.5px rgba(255,200,0,0.18), 0 8px 28px rgba(255,195,0,0.55)',
+                          beam:'linear-gradient(to top, rgba(255,195,0,0.22) 0%, transparent 78%)',
+                        },
+                        2: {
+                          ring:'#b8c8e0', ringGlow:'rgba(160,185,235,0.45)',
+                          name:'#BDD4EE', score:'#d8eaff',
+                          pill:'rgba(160,185,235,0.10)', border:'rgba(160,185,235,0.24)',
+                          avBg:'linear-gradient(145deg,#2c3848,#7890b0)',
+                          shadow:'0 0 0 2px rgba(160,185,235,0.14), 0 8px 24px rgba(160,185,235,0.42)',
+                          beam:'linear-gradient(to top, rgba(160,185,235,0.16) 0%, transparent 78%)',
+                        },
+                        3: {
+                          ring:'#cd7f32', ringGlow:'rgba(205,110,15,0.45)',
+                          name:'#E8A868', score:'#f5c888',
+                          pill:'rgba(200,110,15,0.10)', border:'rgba(200,110,15,0.26)',
+                          avBg:'linear-gradient(145deg,#6a2800,#cd7f32)',
+                          shadow:'0 0 0 2px rgba(200,110,15,0.16), 0 8px 24px rgba(200,110,15,0.44)',
+                          beam:'linear-gradient(to top, rgba(200,110,15,0.16) 0%, transparent 78%)',
+                        },
+                      } as const)[rank];
 
                       return (
-                        <div
-                          key={sale.nhan_vien}
+                        <div key={sale.nhan_vien}
                           className={`floating-platform-${rank}`}
                           style={{
                             flex: 1,
-                            maxWidth: isMobile ? (rank === 1 ? '110px' : '98px') : (rank === 1 ? '210px' : '190px'),
+                            maxWidth: isMobile
+                              ? (rank === 1 ? '138px' : '116px')
+                              : (rank === 1 ? '232px' : '200px'),
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
                             position: 'relative',
-                            transition: 'all 0.3s ease',
                             zIndex: rank === 1 ? 5 : 2,
-                          }}
-                        >
-                          {/* Upward light beam */}
+                            gap: 0,
+                          }}>
+
+                          {/* Upward light beam behind the number */}
                           <div style={{
                             position: 'absolute',
-                            bottom: '50px',
-                            width: isMobile ? (rank === 1 ? '80px' : '70px') : (rank === 1 ? '140px' : '120px'),
-                            height: isMobile ? '140px' : '220px',
-                            background: beamBg,
-                            clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
+                            bottom: '44px',
+                            width: isMobile
+                              ? (rank === 1 ? '100px' : '84px')
+                              : (rank === 1 ? '160px' : '134px'),
+                            height: isMobile ? '165px' : '270px',
+                            background: tc.beam,
+                            clipPath: 'polygon(12% 0%, 88% 0%, 100% 100%, 0% 100%)',
                             pointerEvents: 'none',
                             zIndex: 1,
-                            opacity: 0.8,
+                            opacity: 0.88,
                           }} />
 
-                          {/* Laurel wreath medal with embedded avatar */}
-                          <LaurelWreathMedal rank={typedRank} avatarSize={aSize}>
-                            <div style={{
-                              width: '100%',
-                              height: '100%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              background: '#0f172a',
-                            }}>
-                              {sale.avatar_url ? (
-                                <img
-                                  src={sale.avatar_url}
-                                  alt={sale.nhan_vien}
-                                  style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    objectFit: 'cover',
-                                    objectPosition: 'top center',
-                                  }}
-                                />
-                              ) : (
-                                <div style={{
-                                  fontSize: rank === 1 ? '2.5rem' : rank === 2 ? '2.1rem' : '2.6rem',
-                                  fontWeight: 800,
-                                  color: rank === 2 ? '#e2e8f0' : '#fff',
-                                  letterSpacing: '-1px',
-                                }}>
-                                  {initials}
-                                </div>
-                              )}
-                            </div>
-                          </LaurelWreathMedal>
-
-                          {/* Name — tier-colored metallic text */}
+                          {/* ── Small avatar floats above the giant number ── */}
                           <div style={{
-                            fontSize: rank === 1 ? (isMobile ? '0.72rem' : '0.84rem') : (isMobile ? '0.66rem' : '0.76rem'),
-                            fontWeight: 800,
-                            color: rank === 1 ? '#FFD75A' : rank === 2 ? '#BDD4EE' : '#E8A868',
-                            textAlign: 'center',
-                            marginTop: '6px',
-                            width: '100%',
-                            whiteSpace: 'nowrap',
+                            position: 'relative',
+                            width: avSize, height: avSize,
+                            borderRadius: '50%',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            textShadow: rank === 1
-                              ? '0 0 12px rgba(232,184,32,0.6), 0 2px 4px rgba(0,0,0,0.9)'
-                              : rank === 2
-                              ? '0 0 10px rgba(168,192,216,0.4), 0 2px 4px rgba(0,0,0,0.9)'
-                              : '0 0 10px rgba(200,120,40,0.4), 0 2px 4px rgba(0,0,0,0.9)',
+                            border: `${rank === 1 ? 3 : 2.5}px solid ${tc.ring}`,
+                            boxShadow: tc.shadow,
+                            zIndex: 4,
+                            marginBottom: isMobile ? '-5px' : '-8px',
+                            flexShrink: 0,
+                          }}>
+                            {sale.avatar_url ? (
+                              <img src={sale.avatar_url} alt={sale.nhan_vien}
+                                style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center' }}
+                              />
+                            ) : (
+                              <div style={{
+                                width:'100%', height:'100%',
+                                display:'flex', alignItems:'center', justifyContent:'center',
+                                background: tc.avBg,
+                                fontSize: Math.round(avSize * 0.34),
+                                fontWeight: 800, color: '#fff', letterSpacing: '-1px',
+                              }}>
+                                {initials}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ── GIANT cinematic rank number — visual centrepiece ── */}
+                          <div style={{ position:'relative', zIndex: 3 }}>
+                            <CinematicRankNumber rank={rank} size={numSize} />
+                          </div>
+
+                          {/* Name */}
+                          <div style={{
+                            fontSize: rank === 1
+                              ? (isMobile ? '0.71rem' : '0.86rem')
+                              : (isMobile ? '0.65rem' : '0.77rem'),
+                            fontWeight: 800,
+                            color: tc.name,
+                            textAlign: 'center',
+                            marginTop: isMobile ? '1px' : '2px',
+                            width: '100%',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            textShadow: `0 0 14px ${tc.ringGlow}, 0 2px 4px rgba(0,0,0,0.95)`,
                             zIndex: 3,
-                            paddingLeft: '4px',
-                            paddingRight: '4px',
-                            letterSpacing: rank === 1 ? '0.01em' : '0',
+                            paddingLeft: '6px', paddingRight: '6px',
+                            letterSpacing: rank === 1 ? '0.02em' : '0.01em',
                           }}>
                             {sale.nhan_vien}
                           </div>
 
-                          {/* Score Pill — metallic trim matching tier */}
+                          {/* Revenue pill */}
                           <div style={{
-                            background: rank === 1
-                              ? 'rgba(232,184,32,0.10)'
-                              : rank === 2
-                              ? 'rgba(168,192,216,0.08)'
-                              : 'rgba(200,120,40,0.09)',
-                            border: `1px solid ${rank === 1 ? 'rgba(232,184,32,0.25)' : rank === 2 ? 'rgba(168,192,216,0.20)' : 'rgba(200,120,40,0.22)'}`,
+                            background: tc.pill,
+                            border: `1px solid ${tc.border}`,
                             borderRadius: '20px',
-                            padding: '3px 10px',
-                            marginTop: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
+                            padding: isMobile ? '2px 8px' : '3px 12px',
+                            marginTop: isMobile ? '3px' : '5px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
                             zIndex: 3,
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+                            boxShadow: '0 2px 10px rgba(0,0,0,0.42)',
                           }}>
                             <span style={{
-                              fontSize: rank === 1 ? (isMobile ? '0.64rem' : '0.74rem') : (isMobile ? '0.6rem' : '0.70rem'),
+                              fontSize: rank === 1
+                                ? (isMobile ? '0.62rem' : '0.72rem')
+                                : (isMobile ? '0.58rem' : '0.68rem'),
                               fontWeight: 700,
-                              color: rank === 1 ? '#FFD75A' : rank === 2 ? '#BDD4EE' : '#E8A868',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '3px',
+                              color: tc.score,
+                              display: 'flex', alignItems: 'center', gap: '3px',
+                              fontVariantNumeric: 'tabular-nums',
                             }}>
-                              {formatCurrency(sale.doanh_thu)} <span style={{ opacity: 0.85 }}>⭐</span>
+                              {formatCurrency(sale.doanh_thu)} <span style={{ opacity: 0.88 }}>⭐</span>
                             </span>
                           </div>
                         </div>
