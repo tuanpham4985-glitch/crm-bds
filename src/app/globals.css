@@ -776,6 +776,7 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-sm);
   padding: 24px;
+  min-width: 0; /* allow grid cells to shrink to 1fr without content overflow expanding them */
 }
 
 /* === Page Header === */
@@ -1171,6 +1172,7 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   gap: 12px;
   padding: 20px 0 0;
   margin-bottom: 28px;
+  overflow: hidden; /* prevent flex min-content from blowing out grid column */
 }
 
 .podium-item {
@@ -1514,6 +1516,7 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   gap: 12px;
   padding: 20px 0 0;
   margin-bottom: 28px;
+  overflow: hidden; /* prevent flex min-content from blowing out grid column */
 }
 
 .podium-item {
