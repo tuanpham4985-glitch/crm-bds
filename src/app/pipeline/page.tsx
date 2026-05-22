@@ -104,15 +104,15 @@ function PipelineContent() {
     return kh ? kh.ten_KH : id;
   };
 
-  // Filter pipelines
+  // Filter pipelines — hiển thị tất cả deals mà người đó tham gia dưới BẤT KỲ vai trò nào
   const filteredPipelines = pipelines.filter(pl => {
     if (filterSale) {
-      const selectedEmp = employees.find(e => e.ho_ten === filterSale);
-      if (selectedEmp?.employee_type === 'TKKD') {
-        if (pl.tkkd !== filterSale) return false;
-      } else {
-        if (pl.sale_phu_trach !== filterSale) return false;
-      }
+      const participates =
+        pl.sale_phu_trach           === filterSale ||
+        (pl.gdda  || '')            === filterSale ||
+        (pl.gdkd  || '')            === filterSale ||
+        (pl.tkkd  || '')            === filterSale;
+      if (!participates) return false;
     }
     if (filterDuAn && pl.id_du_an !== filterDuAn) return false;
     if (filterKH && pl.id_khach_hang !== filterKH) return false;
@@ -310,12 +310,17 @@ function PipelineContent() {
   }
 
   // ── Dual-role detection ───────────────────────────────────────────────────
-  // Người dùng có thể vừa là Sale vừa là GĐKD/GDDA trên cùng một deal.
-  // Mở rộng column visibility dựa trên vai trò THỰC TẾ trong dữ liệu, không chỉ employee_type.
+  // Mở rộng column visibility dựa trên vai trò THỰC TẾ trong dữ liệu.
+  // Kiểm tra cả toàn bộ pipelines (không lọc) lẫn filteredPipelines để đảm bảo
+  // cột hiển thị đúng khi admin lọc theo tên hoặc khi user xem chính mình.
   if (!isAllVisible && user?.ho_ten) {
-    if (pipelines.some(pl => pl.sale_phu_trach === user.ho_ten)) { showPhiTraSale = true; showThuongNong = true; }
-    if (pipelines.some(pl => pl.gdda === user.ho_ten)) showPhiTraGDDA = true;
-    if (pipelines.some(pl => pl.gdkd === user.ho_ten)) showPhiTraGDKD = true;
+    const checkIn = (arr: typeof pipelines) => {
+      if (arr.some(pl => pl.sale_phu_trach === user.ho_ten)) { showPhiTraSale = true; showThuongNong = true; }
+      if (arr.some(pl => (pl.gdda || '') === user.ho_ten)) showPhiTraGDDA = true;
+      if (arr.some(pl => (pl.gdkd || '') === user.ho_ten)) showPhiTraGDKD = true;
+    };
+    checkIn(pipelines);           // toàn bộ dữ liệu
+    checkIn(filteredPipelines);   // dữ liệu đang lọc (bao gồm cả vai trò GDDA/GĐKD)
   }
 
   // Summary stats for active stages
@@ -407,8 +412,15 @@ function PipelineContent() {
                 boxShadow: '0 1px 2px rgba(16, 185, 129, 0.05)'
               }}>
                 <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💵</span> {isAllVisible ? 'Tổng hoa hồng' : 'Hoa hồng cá nhân'}: <span style={{ color: '#059669', fontWeight: 850 }}>{formatCurrency(personalCommission, false)}</span>
-                {!isAllVisible && showPhiTraSale && showPhiTraGDKD && <span style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.75, marginLeft: 2 }}>(MG + GĐKD)</span>}
-                {!isAllVisible && showPhiTraSale && showPhiTraGDDA && !showPhiTraGDKD && <span style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.75, marginLeft: 2 }}>(MG + GDDA)</span>}
+                {!isAllVisible && (() => {
+                  const parts: string[] = [];
+                  if (showPhiTraSale) parts.push('MG');
+                  if (showPhiTraGDDA) parts.push('GDDA');
+                  if (showPhiTraGDKD) parts.push('GĐKD');
+                  return parts.length > 1
+                    ? <span style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.75, marginLeft: 2 }}>({parts.join(' + ')})</span>
+                    : null;
+                })()}
               </span>
             )}
 
