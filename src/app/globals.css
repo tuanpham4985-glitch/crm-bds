@@ -1903,9 +1903,31 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   .kpi-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* Dashboard header: stack controls below title on mobile */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .page-header-left h1 {
+    font-size: 1.375rem;
+  }
+  .page-header-left p {
+    font-size: 0.8125rem;
+    margin-top: 2px;
+  }
+  /* Controls row: allow toggle-group + button to sit side by side */
+  .page-header > div:last-child {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 }

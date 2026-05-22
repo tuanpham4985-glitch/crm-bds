@@ -231,7 +231,6 @@ export default function DashboardPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const periods = [
-    { value: 'week', label: 'Tuần' },
     { value: 'month', label: 'Tháng' },
     { value: 'quarter', label: 'Quý' },
     { value: 'year', label: 'Năm' },
@@ -1145,51 +1144,37 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                   </div>
                 </div>
 
-                {/* Right: Ticket Stub Receipt (28% width) */}
+                {/* Right: Ticket Stub Receipt (30% width) */}
                 <div style={{
-                  width: '28%',
+                  width: '30%',
                   padding: '14px 10px',
                   background: '#fffdf6',
                   display: 'flex',
                   flexDirection: 'column',
-                  justifyContent: 'space-between',
+                  justifyContent: 'center',
                   alignItems: 'center',
+                  gap: '14px',
                   position: 'relative'
                 }}>
-                  {/* Custom QR Code simulator */}
-                  <div style={{
-                    width: '42px',
-                    height: '42px',
-                    background: '#0f172a',
-                    padding: '3px',
-                    borderRadius: '6px',
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
-                    gap: '1.5px'
-                  }}>
-                    {Array.from({ length: 16 }).map((_, i) => (
-                      <div key={i} style={{ background: (i % 3 === 0 || i % 7 === 0) ? '#fff' : '#0f172a' }} />
-                    ))}
-                  </div>
-
-                  {/* Target Revenue Badge */}
+                  {/* Target Revenue Badge — main visual anchor */}
                   <div style={{
                     background: 'linear-gradient(135deg, #d4af37 0%, #b89028 100%)',
                     color: '#fff',
-                    fontSize: '0.9rem',
-                    fontWeight: 800,
-                    padding: '4px 0',
-                    borderRadius: '6px',
+                    fontSize: '1.05rem',
+                    fontWeight: 900,
+                    padding: '10px 6px',
+                    borderRadius: '8px',
                     textAlign: 'center',
-                    width: '95%',
-                    boxShadow: '0 2px 6px rgba(212,175,55,0.4)',
-                    letterSpacing: '0.5px'
+                    width: '100%',
+                    boxShadow: '0 3px 10px rgba(212,175,55,0.45)',
+                    letterSpacing: '0.5px',
+                    lineHeight: 1.2,
                   }}>
                     {level.condition}
                   </div>
 
-                  {/* Custom Barcode simulator */}
-                  <div style={{ display: 'flex', gap: '1.5px', height: '20px', width: '90%', alignItems: 'stretch', opacity: 0.8 }}>
+                  {/* Barcode simulator */}
+                  <div style={{ display: 'flex', gap: '1.5px', height: '22px', width: '92%', alignItems: 'stretch', opacity: 0.75 }}>
                     {[1,2,1,3,1,1,2,1,2,1,1,2,1].map((w, idx) => (
                       <div key={idx} style={{ flex: w, background: '#0f172a' }} />
                     ))}
