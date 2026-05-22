@@ -22,7 +22,7 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
   const cx = size / 2;
   const fs = Math.round(size * 0.96);  // fills almost full SVG height
   const ty = Math.round(size * 0.84);  // low baseline — number sits flush
-  const depth = rank === 1 ? 22 : 17;  // deep trophy extrusion
+  const depth = rank === 1 ? 10 : 8;  // controlled trophy extrusion
 
   const tiers = {
     1: {
@@ -72,8 +72,8 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
       style={{ overflow: 'visible', display: 'block', flexShrink: 0 }}
     >
       <defs>
-        {/* Focused cinematic bloom — tighter radius keeps face sharp */}
-        <filter id={`${id}bl`} x="-80%" y="-80%" width="260%" height="260%" colorInterpolationFilters="linearRGB">
+        {/* Focused cinematic bloom — clipped below to not bleed into name */}
+        <filter id={`${id}bl`} x="-60%" y="-70%" width="220%" height="185%" colorInterpolationFilters="linearRGB">
           <feGaussianBlur stdDeviation="10" result="b"/>
           <feBlend in="SourceGraphic" in2="b" mode="screen"/>
         </filter>
@@ -132,7 +132,7 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
         const step = depth - i;
         return (
           <text key={`e${i}`}
-            x={cx + step * 0.55} y={ty + step * 1.50}
+            x={cx + step * 0.45} y={ty + step * 0.95}
             textAnchor="middle" fontSize={fs} fontWeight="900"
             fontFamily="'Inter','Geist',system-ui,sans-serif"
             fill={`url(#${id}ex)`}
@@ -589,12 +589,14 @@ export default function DashboardPage() {
                             </div>
                           </div>
 
-                          {/* ── 3D rank number — sits below ring, slightly overlapping ── */}
+                          {/* ── 3D rank number — bloom clipped at bottom so name stays visible ── */}
                           <div style={{
                             position: 'relative',
                             zIndex: 5,
                             marginTop: `${numMt}px`,
                             flexShrink: 0,
+                            overflow: 'hidden',
+                            paddingBottom: isMobile ? '4px' : '8px',
                           }}>
                             <CinematicRankNumber rank={rank} size={numSize} />
                           </div>
@@ -607,7 +609,8 @@ export default function DashboardPage() {
                             borderRadius: '6px 6px 10px 10px',
                             marginTop: '-8px',
                             flexShrink: 0,
-                            zIndex: 2,
+                            position: 'relative',
+                            zIndex: 6,
                             boxShadow: [
                               '0 8px 24px rgba(0,0,0,0.60)',
                               'inset 0 1px 0 rgba(255,255,255,0.22)',
@@ -627,7 +630,8 @@ export default function DashboardPage() {
                             width: '100%',
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             textShadow: `0 0 18px ${tc.ringGlow}, 0 2px 6px rgba(0,0,0,0.95)`,
-                            zIndex: 3,
+                            position: 'relative',
+                            zIndex: 7,
                             paddingLeft: '6px', paddingRight: '6px',
                             letterSpacing: '0.01em',
                           }}>
@@ -642,7 +646,8 @@ export default function DashboardPage() {
                             padding: isMobile ? '3px 10px' : '4px 14px',
                             marginTop: isMobile ? '4px' : '6px',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            zIndex: 3,
+                            position: 'relative',
+                            zIndex: 7,
                             boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
                           }}>
                             <span style={{
