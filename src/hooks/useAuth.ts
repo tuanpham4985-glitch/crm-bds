@@ -1,5 +1,6 @@
 import useSWR from 'swr';
 import type { NhanVien } from '@/lib/types';
+import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -15,7 +16,7 @@ export function useAuth() {
     user,
     isLoading,
     isError: error || (data && !data.success),
-    isAdmin: user?.vai_tro === 'Admin',
+    isAdmin: user?.vai_tro === 'Admin' || (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(user?.employee_type || ''),
     mutate
   };
 }

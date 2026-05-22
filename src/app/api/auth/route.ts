@@ -13,6 +13,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Email là bắt buộc' }, { status: 400 });
     }
 
+    // Check dev admin account before hitting Google Sheets
+    const devEmail    = process.env.DEV_ADMIN_EMAIL    || '';
+    const devPassword = process.env.DEV_ADMIN_PASSWORD || '';
+    const devName     = process.env.DEV_ADMIN_NAME     || 'Dev Admin';
+
+    if (devEmail && email.toLowerCase() === devEmail.toLowerCase()) {
+      if (!mat_khau || mat_khau !== devPassword) {
+        return NextResponse.json({ success: false, error: 'Mật khẩu không đúng' }, { status: 401 });
+      }
+      const devSessionData = JSON.stringify({
+        id_nhan_vien: 'DEV_ADMIN',
+        ho_ten: devName,
+        email: devEmail,
+        vai_tro: 'Admin',
+        employee_type: 'Admin',
+      });
+      const devBase64 = btoa(unescape(encodeURIComponent(devSessionData)));
+      const cookieStore = await cookies();
+      cookieStore.set('crm_session', devBase64, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        maxAge: 60 * 60 * 24 * 7,
+        path: '/',
+      });
+      return NextResponse.json({
+        success: true,
+        data: { id_nhan_vien: 'DEV_ADMIN', ho_ten: devName, email: devEmail, vai_tro: 'Admin', employee_type: 'Admin' },
+      });
+    }
+
     const nv = await findNhanVienByEmail(email);
     console.log('[Auth] Result of findNhanVienByEmail:', nv ? nv.email : 'Not found');
 
@@ -20,14 +51,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Email không tồn tại trong hệ thống' }, { status: 401 });
     }
 
-    // Hardcode system owner as Admin
-    if (nv.email.toLowerCase() === 'tuanpham4985@gmail.com') {
-      nv.vai_tro = 'Admin';
-    }
-
     const ACTIVE_STATUSES = ['đang làm', 'chính thức', 'thử việc'];
     const currentStatus = (nv.trang_thai || '').trim().toLowerCase();
-    
+
     if (!ACTIVE_STATUSES.includes(currentStatus)) {
       return NextResponse.json({ success: false, error: 'Tài khoản đã bị khóa' }, { status: 401 });
     }

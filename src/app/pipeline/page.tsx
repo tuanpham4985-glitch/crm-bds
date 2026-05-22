@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { Pipeline, KhachHang, DuAn, NhanVien, CongViec } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { GIAI_DOAN_PIPELINE, GIAI_DOAN_ACTIVE, GIAI_DOAN_COLORS } from '@/lib/constants';
+import { GIAI_DOAN_PIPELINE, GIAI_DOAN_ACTIVE, GIAI_DOAN_COLORS, SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
 const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> = {
   'Chưa xử lý': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
@@ -25,7 +25,7 @@ function PipelineContent() {
   const router = useRouter();
   const isAllVisible = user && (
     user.vai_tro === 'Admin' ||
-    ['Admin', 'Chủ tịch', 'TGĐ'].includes(user.employee_type || '')
+    (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(user.employee_type || '')
   );
 
   const canViewProfit = isAllVisible;

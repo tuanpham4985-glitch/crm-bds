@@ -322,9 +322,9 @@ export default function Sidebar() {
               <div className={styles.userName}>{user.ho_ten}</div>
               <div className={styles.userRole}>
                 {user.vai_tro === 'Admin' ? (
-                  <><Shield size={11} style={{ color: 'var(--primary)' }} /> {user.vai_tro}</>
+                  <><Shield size={11} style={{ color: 'var(--primary)' }} /> Admin</>
                 ) : (
-                  <><Shield size={11} style={{ color: 'var(--success-text)' }} /> {user.vai_tro}</>
+                  <><Shield size={11} style={{ color: 'var(--success-text)' }} /> {user.employee_type || user.vai_tro}</>
                 )}
               </div>
             </div>

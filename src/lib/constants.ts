@@ -43,6 +43,8 @@ export const NGUON = [
 
 export const VAI_TRO = ['Admin', 'Sale'] as const;
 
+export const SENIOR_EMPLOYEE_TYPES = ['Admin', 'CEO', 'Chủ tịch', 'TGĐ', 'Phó TGĐ'] as const;
+
 // === HỢP ĐỒNG ===
 export const LOAI_HOP_DONG = ['Thử việc', 'Chính thức', 'CTV'] as const;
 
