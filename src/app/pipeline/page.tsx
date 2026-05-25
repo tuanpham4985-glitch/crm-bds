@@ -108,9 +108,16 @@ function PipelineContent() {
     return kh ? kh.ten_KH : id;
   };
 
-  // Filter pipelines — chỉ lọc theo vai trò sale chính (sale_phu_trach)
+  // Filter pipelines — tất cả deals mà nhân viên tham gia dưới bất kỳ vai trò nào
   const filteredPipelines = pipelines.filter(pl => {
-    if (filterSale && pl.sale_phu_trach !== filterSale) return false;
+    if (filterSale) {
+      const participates =
+        pl.sale_phu_trach === filterSale ||
+        (pl.gdda || '')   === filterSale ||
+        (pl.gdkd || '')   === filterSale ||
+        (pl.tkkd || '')   === filterSale;
+      if (!participates) return false;
+    }
     if (filterDuAn && pl.id_du_an !== filterDuAn) return false;
     if (filterKH && pl.id_khach_hang !== filterKH) return false;
     return true;
@@ -322,7 +329,12 @@ function PipelineContent() {
 
   // Summary stats for active stages
   const activeDeals = filteredPipelines.filter(pl => GIAI_DOAN_ACTIVE.includes(pl.giai_doan as typeof GIAI_DOAN_ACTIVE[number]));
-  const totalValue = activeDeals.reduce((s, pl) => s + pl.gia_tri_thuc_te, 0);
+  // Tổng giá trị: chỉ tính deals mà nhân viên là sale chính (sale_phu_trach)
+  // Deals có vai trò GDDA/GDKD không cộng vào giá trị giao dịch của nhân viên đó
+  const totalValue = activeDeals.reduce((s, pl) => {
+    if (filterSale && pl.sale_phu_trach !== filterSale) return s;
+    return s + pl.gia_tri_thuc_te;
+  }, 0);
   const totalProfit = activeDeals.reduce((s, pl) => s + (pl.loi_nhuan || 0), 0);
 
   // ── Hoa hồng cá nhân: cộng TẤT CẢ phí theo vai trò thực tế trên từng deal ──
