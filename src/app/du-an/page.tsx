@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Edit3, Trash2, X, Building2, Eye, EyeOff,
-  TrendingUp, Hash, Percent
+  Hash
 } from 'lucide-react';
 import type { DuAn, Pipeline } from '@/lib/types';
-import { formatCurrency, formatPercent } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function DuAnPage() {
@@ -53,8 +52,6 @@ export default function DuAnPage() {
     return {
       totalDeals: deals.length,
       signedDeals: daKy.length,
-      revenue: daKy.reduce((s, pl) => s + pl.gia_tri_thuc_te, 0),
-      commission: daKy.reduce((s, pl) => s + pl.tien_hoa_hong, 0),
     };
   };
 
@@ -199,19 +196,6 @@ export default function DuAnPage() {
                   </div>
                 </div>
 
-                {/* Commission */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '10px 14px', background: 'var(--bg-page)',
-                  borderRadius: 'var(--radius-md)', marginBottom: 16,
-                }}>
-                  <Percent size={14} style={{ color: 'var(--primary)' }} />
-                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Hoa hồng mặc định:</span>
-                  <span style={{ fontWeight: 600, color: 'var(--primary-text)' }}>
-                    {formatPercent(da.hoa_hong_mac_dinh)}
-                  </span>
-                </div>
-
                 {/* Stats */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                   <div style={{ padding: '10px 14px', background: 'var(--info-bg)', borderRadius: 'var(--radius-md)' }}>
@@ -221,23 +205,6 @@ export default function DuAnPage() {
                   <div style={{ padding: '10px 14px', background: 'var(--success-bg)', borderRadius: 'var(--radius-md)' }}>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--success-text)', fontWeight: 500, marginBottom: 2 }}>Đã ký</div>
                     <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--success-text)' }}>{stats.signedDeals}</div>
-                  </div>
-                </div>
-
-                <div style={{
-                  padding: '12px 14px', background: 'var(--bg-page)',
-                  borderRadius: 'var(--radius-md)', marginBottom: 16,
-                }}>
-                  <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                      <TrendingUp size={13} style={{ display: 'inline', verticalAlign: -2, marginRight: 4 }} />
-                      Doanh thu
-                    </span>
-                    <span style={{ fontWeight: 600, color: 'var(--text-title)' }}>{formatCurrency(stats.revenue)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Hoa hồng</span>
-                    <span style={{ fontWeight: 600, color: 'var(--success-text)' }}>{formatCurrency(stats.commission)}</span>
                   </div>
                 </div>
 
