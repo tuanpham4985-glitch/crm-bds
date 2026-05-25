@@ -30,11 +30,12 @@ export async function POST(request: NextRequest) {
         employee_type: 'Admin',
       });
       const devBase64 = btoa(unescape(encodeURIComponent(devSessionData)));
+      const isProd = process.env.NODE_ENV === 'production';
       const cookieStore = await cookies();
       cookieStore.set('crm_session', devBase64, {
         httpOnly: true,
-        secure: true,
-        sameSite: 'none',
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
         maxAge: 60 * 60 * 24 * 7,
         path: '/',
       });
@@ -76,12 +77,13 @@ export async function POST(request: NextRequest) {
     // Use btoa for Edge compatibility (Note: handle UTF-8 if needed)
     const base64Session = btoa(unescape(encodeURIComponent(sessionData)));
 
+    const isProd = process.env.NODE_ENV === 'production';
     const cookieStore = await cookies();
     cookieStore.set('crm_session', base64Session, {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 60 * 60 * 24 * 7,
       path: '/',
     });
 

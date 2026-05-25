@@ -199,8 +199,12 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
 }
 
 
+// Ngày thành lập công ty — mốc bắt đầu cuộc đua CỰC CHIẾN 2026
+const RACE_START_DATE = '2025-12-23';
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [raceData, setRaceData] = useState<any[] | null>(null);
   const [period, setPeriod] = useState('month');
   const [compare, setCompare] = useState('');
   const [loading, setLoading] = useState(true);
@@ -229,6 +233,18 @@ export default function DashboardPage() {
   }, [period, compare]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Fetch riêng cho CỰC CHIẾN 2026: tính từ ngày thành lập công ty (23/12/2025)
+  // Bao gồm cả các deal ký cuối tháng 12/2025 (23/12, 26/12) vào cuộc đua
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    fetch(`/api/dashboard?from=${RACE_START_DATE}&to=${today}`)
+      .then(r => r.json())
+      .then(result => {
+        if (result.success) setRaceData(result.data.doanh_thu_theo_sale);
+      })
+      .catch(err => console.error('Race data fetch error:', err));
+  }, []);
 
   const periods = [
     { value: 'month', label: 'Tháng' },
@@ -891,8 +907,8 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Vinh danh Global Champion */}
-        <GlobalChampionWidget data={data.doanh_thu_theo_sale} />
+        {/* Vinh danh Global Champion — dữ liệu từ 23/12/2025 (ngày thành lập) */}
+        <GlobalChampionWidget data={raceData ?? data.doanh_thu_theo_sale} />
       </div>
 
       {/* Bottom Row: Nguồn khách hàng & Sinh nhật */}
