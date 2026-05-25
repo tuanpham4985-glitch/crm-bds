@@ -28,7 +28,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Menu size={24} style={{ color: 'var(--text-title)' }} />
           </button>
           <span style={{ fontWeight: 700, fontSize: '1.125rem', color: 'var(--text-title)' }}>
-            CRM BĐS
+            VICTORY HOLDINGS
           </span>
         </div>
       </div>

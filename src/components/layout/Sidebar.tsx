@@ -212,7 +212,7 @@ export default function Sidebar() {
         <div
           className={styles.logoIcon}
           onClick={() => isAdmin && fileInputRef.current?.click()}
-          title={isAdmin ? "Thay đổi avatar công ty" : "CRM BĐS"}
+          title={isAdmin ? "Thay đổi avatar công ty" : "VICTORY HOLDINGS"}
           style={{ cursor: isAdmin ? 'pointer' : 'default' }}
         >
           {logo ? (
@@ -222,7 +222,7 @@ export default function Sidebar() {
           )}
         </div>
         <div>
-          <div className={styles.logoTitle}>CRM BĐS</div>
+          <div className={styles.logoTitle}>VICTORY HOLDINGS</div>
           <div className={styles.logoSubtitle}>Quản lý bất động sản</div>
         </div>
         <input

@@ -434,7 +434,7 @@ export default function DashboardPage() {
                   <div className="podium-container" style={{
                     background: 'radial-gradient(ellipse at 50% 30%, #0d1a3a 0%, #050c1c 55%, #020609 100%)',
                     borderRadius: '20px',
-                    padding: isMobile ? '40px 4px 20px' : '80px 20px 28px',
+                    padding: isMobile ? '80px 4px 20px' : '80px 20px 28px',
                     minHeight: isMobile ? 'unset' : '460px',
                     display: 'flex',
                     justifyContent: 'center',
