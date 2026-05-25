@@ -1016,23 +1016,30 @@ export async function deleteDuAn(id: string): Promise<boolean> {
 export async function addNhanVien(nv: NhanVien): Promise<void> {
   const doc = await getDoc();
   const sheet = await getSheet(doc, SHEETS.NHAN_VIEN);
-  const h = sheet.headerValues;
+  // Ghi theo TÊN CỘT (không theo vị trí index) để tránh lệch cột khi sheet có cột thêm
   await sheet.addRow({
-    [h[0]]: nv.id_nhan_vien, [h[1]]: nv.ho_ten, [h[2]]: nv.so_dien_thoai,
-    [h[3]]: nv.email, [h[4]]: nv.employee_type || '', [h[5]]: nv.trang_thai,
-    [h[6]]: nv.so_cccd || '', [h[7]]: nv.ngay_cap || '',
-    [h[8]]: nv.noi_cap || '', [h[9]]: nv.HKTT || '',
-    [h[10]]: nv.ngay_sinh || '', [h[11]]: nv.gioi_tinh || '',
-    [h[12]]: nv.ma_so_thue || '',
-    [h[13]]: nv.so_tk_ngan_hang || '',
-    [h[14]]: nv.ten_ngan_hang_thu_huong || '',
-    [h[15]]: nv.ngay_tao || '',
-    [h[16]]: nv.avatar_url || '',
-    'vai_tro': nv.vai_tro || 'Sale',
-    'khu_vuc': nv.khu_vuc || '',
-    'phong_KD': nv.phong_KD || '',
-    'so_nguoi_phu_thuoc': nv.so_nguoi_phu_thuoc || 0,
-    'mat_khau': nv.mat_khau || '',
+    'id_nhan_vien':             nv.id_nhan_vien,
+    'ho_ten':                   nv.ho_ten,
+    'so_dien_thoai':            nv.so_dien_thoai,
+    'email':                    nv.email,
+    'employee_type':            nv.employee_type || '',
+    'trang_thai':               nv.trang_thai,
+    'so_cccd':                  nv.so_cccd || '',
+    'ngay_cap':                 nv.ngay_cap || '',
+    'noi_cap':                  nv.noi_cap || '',
+    'HKTT':                     nv.HKTT || '',
+    'ngay_sinh':                nv.ngay_sinh || '',
+    'gioi_tinh':                nv.gioi_tinh || '',
+    'ma_so_thue':               nv.ma_so_thue || '',
+    'so_tk_ngan_hang':          nv.so_tk_ngan_hang || '',
+    'ten_ngan_hang_thu_huong':  nv.ten_ngan_hang_thu_huong || '',
+    'ngay_tao':                 nv.ngay_tao || '',
+    'avatar_url':               nv.avatar_url || '',
+    'vai_tro':                  nv.vai_tro || 'Sale',
+    'khu_vuc':                  nv.khu_vuc || '',
+    'phong_KD':                 nv.phong_KD || '',
+    'so_nguoi_phu_thuoc':       nv.so_nguoi_phu_thuoc || 0,
+    'mat_khau':                 nv.mat_khau || '',
   });
   await addLog(doc, 'CREATE_NV', nv.id_nhan_vien, '', '');
 }
@@ -1046,24 +1053,28 @@ export async function updateNhanVien(nv: NhanVien): Promise<boolean> {
   const row = rows.find(r => str(r.toObject()[h[0]]) === nv.id_nhan_vien);
   if (!row) return false;
 
-  row.set(h[1], nv.ho_ten); row.set(h[2], nv.so_dien_thoai);
-  row.set(h[3], nv.email); row.set(h[4], nv.employee_type || '');
-  row.set(h[5], nv.trang_thai);
-  if (h[6]) row.set(h[6], nv.so_cccd || '');
-  if (h[7]) row.set(h[7], nv.ngay_cap || '');
-  if (h[8]) row.set(h[8], nv.noi_cap || '');
-  if (h[9]) row.set(h[9], nv.HKTT || '');
-  if (h[10]) row.set(h[10], nv.ngay_sinh || '');
-  if (h[11]) row.set(h[11], nv.gioi_tinh || '');
-  if (h[12]) row.set(h[12], nv.ma_so_thue || '');
-  if (h[13]) row.set(h[13], nv.so_tk_ngan_hang || '');
-  if (h[14]) row.set(h[14], nv.ten_ngan_hang_thu_huong || '');
-  if (h[15]) row.set(h[15], nv.ngay_tao || '');
-  if (h[16]) row.set(h[16], nv.avatar_url || '');
-  if (h.includes('vai_tro')) row.set('vai_tro', nv.vai_tro || 'Sale');
-  if (h.includes('khu_vuc')) row.set('khu_vuc', nv.khu_vuc || '');
-  if (h.includes('phong_KD')) row.set('phong_KD', nv.phong_KD || '');
-  if (h.includes('so_nguoi_phu_thuoc')) row.set('so_nguoi_phu_thuoc', nv.so_nguoi_phu_thuoc || 0);
+  // Ghi theo TÊN CỘT (không theo vị trí index) để tránh lệch cột
+  const setIfExists = (col: string, val: any) => { if (h.includes(col)) row.set(col, val); };
+  setIfExists('ho_ten',                  nv.ho_ten);
+  setIfExists('so_dien_thoai',           nv.so_dien_thoai);
+  setIfExists('email',                   nv.email);
+  setIfExists('employee_type',           nv.employee_type || '');
+  setIfExists('trang_thai',              nv.trang_thai);
+  setIfExists('so_cccd',                 nv.so_cccd || '');
+  setIfExists('ngay_cap',                nv.ngay_cap || '');
+  setIfExists('noi_cap',                 nv.noi_cap || '');
+  setIfExists('HKTT',                    nv.HKTT || '');
+  setIfExists('ngay_sinh',               nv.ngay_sinh || '');
+  setIfExists('gioi_tinh',               nv.gioi_tinh || '');
+  setIfExists('ma_so_thue',              nv.ma_so_thue || '');
+  setIfExists('so_tk_ngan_hang',         nv.so_tk_ngan_hang || '');
+  setIfExists('ten_ngan_hang_thu_huong', nv.ten_ngan_hang_thu_huong || '');
+  setIfExists('ngay_tao',                nv.ngay_tao || '');
+  setIfExists('avatar_url',              nv.avatar_url || '');
+  setIfExists('vai_tro',                 nv.vai_tro || 'Sale');
+  setIfExists('khu_vuc',                 nv.khu_vuc || '');
+  setIfExists('phong_KD',               nv.phong_KD || '');
+  setIfExists('so_nguoi_phu_thuoc',      nv.so_nguoi_phu_thuoc || 0);
   if (h.includes('mat_khau') && nv.mat_khau) row.set('mat_khau', nv.mat_khau);
   
   await row.save();
