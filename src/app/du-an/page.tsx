@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Edit3, Trash2, X, Building2, Eye, EyeOff,
-  Hash
+  Hash, ExternalLink
 } from 'lucide-react';
 import type { DuAn, Pipeline } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -24,7 +24,7 @@ export default function DuAnPage() {
 
   // Form
   const [form, setForm] = useState({
-    ma_du_an: '', ten_du_an: '', hien_thi: 1, hoa_hong_mac_dinh: 0,
+    ma_du_an: '', ten_du_an: '', hien_thi: 1, hoa_hong_mac_dinh: 0, link_tai_lieu: '',
   });
 
   const fetchAll = useCallback(async () => {
@@ -59,7 +59,7 @@ export default function DuAnPage() {
 
   const openCreate = () => {
     setEditingItem(null);
-    setForm({ ma_du_an: '', ten_du_an: '', hien_thi: 1, hoa_hong_mac_dinh: 0 });
+    setForm({ ma_du_an: '', ten_du_an: '', hien_thi: 1, hoa_hong_mac_dinh: 0, link_tai_lieu: '' });
     setShowModal(true);
   };
 
@@ -70,6 +70,7 @@ export default function DuAnPage() {
       ten_du_an: da.ten_du_an,
       hien_thi: da.hien_thi,
       hoa_hong_mac_dinh: da.hoa_hong_mac_dinh,
+      link_tai_lieu: da.link_tai_lieu || '',
     });
     setShowModal(true);
   };
@@ -209,17 +210,30 @@ export default function DuAnPage() {
                 </div>
 
                 {/* Actions */}
-                {isAdmin && (
-                  <div className="flex items-center gap-2" style={{ justifyContent: 'flex-end' }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => openEdit(da)}>
-                      <Edit3 size={14} />Sửa
-                    </button>
-                    <button className="btn btn-danger btn-sm"
-                      onClick={() => { setDeletingId(da.id_du_an); setShowConfirm(true); }}>
-                      <Trash2 size={14} />Xóa
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  {da.link_tai_lieu && (
+                    <a
+                      href={da.link_tai_lieu}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-primary btn-sm"
+                      style={{ textDecoration: 'none' }}
+                    >
+                      <ExternalLink size={14} />Thông tin dự án
+                    </a>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <button className="btn btn-secondary btn-sm" onClick={() => openEdit(da)}>
+                        <Edit3 size={14} />Sửa
+                      </button>
+                      <button className="btn btn-danger btn-sm"
+                        onClick={() => { setDeletingId(da.id_du_an); setShowConfirm(true); }}>
+                        <Trash2 size={14} />Xóa
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -273,6 +287,12 @@ placeholder="VD: 3 (%) hoặc 0.03"
                     <option value={0}>Tạm ngừng</option>
                   </select>
                 </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Link thông tin dự án</label>
+                <input className="form-input" value={form.link_tai_lieu}
+                  onChange={(e) => setForm({ ...form, link_tai_lieu: e.target.value })}
+                  placeholder="https://drive.google.com/..." />
               </div>
             </div>
             <div className="modal-footer">

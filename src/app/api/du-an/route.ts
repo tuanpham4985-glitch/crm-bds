@@ -18,7 +18,6 @@ export async function POST(request: NextRequest) {
     const da = {
       ...body,
       id_du_an: generateId('DA_'),
-      label: `${body.ma_du_an} - ${body.ten_du_an}`,
     };
     await addDuAn(da);
     return NextResponse.json({ success: true, data: da });

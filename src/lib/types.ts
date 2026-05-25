@@ -22,7 +22,7 @@ export interface DuAn {
   ten_du_an: string;
   hien_thi: number; // 0 or 1
   hoa_hong_mac_dinh: number;
-  label: string;
+  link_tai_lieu?: string;
 }
 
 // === NHÂN VIÊN ===

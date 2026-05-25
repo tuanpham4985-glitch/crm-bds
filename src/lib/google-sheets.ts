@@ -333,7 +333,7 @@ export async function getDuAn(): Promise<DuAn[]> {
         ten_du_an: str(v[h[2]]),
         hien_thi: num(v[h[3]]),
         hoa_hong_mac_dinh: num(v[h[4]]),
-        label: str(v[h[5]]) || `${str(v[h[1]])} - ${str(v[h[2]])}`,
+        link_tai_lieu: str(v[h[5]]),
       } as DuAn;
     })
     .filter((x): x is DuAn => x !== null);
@@ -972,7 +972,7 @@ export async function addDuAn(da: DuAn): Promise<void> {
   await sheet.addRow({
     [h[0]]: da.id_du_an, [h[1]]: da.ma_du_an, [h[2]]: da.ten_du_an,
     [h[3]]: da.hien_thi, [h[4]]: da.hoa_hong_mac_dinh,
-    [h[5]]: `${da.ma_du_an} - ${da.ten_du_an}`,
+    [h[5]]: da.link_tai_lieu || '',
   });
   await addLog(doc, 'CREATE_DA', da.id_du_an, '', '');
 }
@@ -988,7 +988,7 @@ export async function updateDuAn(da: DuAn): Promise<boolean> {
 
   row.set(h[1], da.ma_du_an); row.set(h[2], da.ten_du_an);
   row.set(h[3], da.hien_thi); row.set(h[4], da.hoa_hong_mac_dinh);
-  row.set(h[5], `${da.ma_du_an} - ${da.ten_du_an}`);
+  row.set(h[5], da.link_tai_lieu || '');
   await row.save();
   await addLog(doc, 'UPDATE_DA', da.id_du_an, '', '');
   return true;
