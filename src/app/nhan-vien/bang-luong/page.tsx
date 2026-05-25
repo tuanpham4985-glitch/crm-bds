@@ -30,7 +30,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
 
 // ================================================================
 export default function BangLuongPage() {
-  const { user, isAdmin, isLoading: authLoading } = useAuth();
+  const { user, isAdmin, isHR, canEditHRM, isLoading: authLoading } = useAuth();
 
   const now = new Date();
   const [thang, setThang] = useState(now.getMonth() + 1);
@@ -125,7 +125,7 @@ export default function BangLuongPage() {
 
   // ── Tính lương (preview) ──
   const handleCalculate = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!canEditHRM) return;
     setCalcLoading(true);
     setPreview([]);
     try {
@@ -146,7 +146,7 @@ export default function BangLuongPage() {
     } finally {
       setCalcLoading(false);
     }
-  }, [isAdmin, thang, nam]);
+  }, [canEditHRM, thang, nam]);
 
   // ── Load saved payrolls ──
   const loadSaved = useCallback(async () => {
@@ -167,10 +167,10 @@ export default function BangLuongPage() {
   }, [tab, loadSaved]);
 
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
+    if (!authLoading && !canEditHRM) {
       setTab('saved');
     }
-  }, [authLoading, isAdmin]);
+  }, [authLoading, canEditHRM]);
 
   // ── Inline edit fields ──
   function updateField(idx: number, field: 'thuong' | 'phat' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot' | 'so_nguoi_phu_thuoc', val: string) {
@@ -240,7 +240,7 @@ export default function BangLuongPage() {
 
   // ── Lưu bảng lương ──
   const handleSave = async () => {
-    if (!isAdmin || preview.length === 0) return;
+    if (!canEditHRM || preview.length === 0) return;
     if (!confirm(`Lưu bảng lương tháng ${thang}/${nam}?\nBản ghi trùng sẽ bị bỏ qua.`)) return;
     
     console.log('[Payroll] Saving entries:', preview.length, { thang, nam });
@@ -318,7 +318,7 @@ export default function BangLuongPage() {
   if (authLoading) return <div className="loading-spinner"><div className="spinner" /></div>;
 
   // ── Access Control Filter ──
-  const displaySaved = isAdmin ? saved : saved.filter(bl => bl.id_nhan_vien === user?.id_nhan_vien);
+  const displaySaved = canEditHRM ? saved : saved.filter(bl => bl.id_nhan_vien === user?.id_nhan_vien);
 
   // ── Tổng kết preview ──
   const totalNet  = preview.reduce((s, r) => s + r.tong_luong, 0);
@@ -350,7 +350,7 @@ export default function BangLuongPage() {
           <h1>Bảng lương & Chấm công</h1>
           <p>Tự động tính từ HOP_DONG (lương cơ bản) + PIPELINE (giai_doan = Chốt)</p>
         </div>
-        {isAdmin && tab === 'preview' && preview.length > 0 && (
+        {canEditHRM && tab === 'preview' && preview.length > 0 && (
           <button
             className="btn btn-primary"
             onClick={handleSave}
@@ -362,7 +362,7 @@ export default function BangLuongPage() {
         )}
         {tab === 'saved' && (
           <div style={{ display: 'flex', gap: 8 }}>
-            {isAdmin && displaySaved.length > 0 && (
+            {canEditHRM && displaySaved.length > 0 && (
               <>
                 <button 
                   className="btn btn-primary" 
@@ -413,7 +413,7 @@ export default function BangLuongPage() {
               onChange={e => setNam(Number(e.target.value))}
             />
           </div>
-          {isAdmin && (
+          {canEditHRM && (
             <button
               className="btn btn-secondary"
               onClick={handleCalculate}
@@ -424,7 +424,7 @@ export default function BangLuongPage() {
             </button>
           )}
           {/* Tab switcher */}
-          {isAdmin && (
+          {canEditHRM && (
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
               {(['preview', 'saved'] as const).map(t => (
                 <button
@@ -449,7 +449,7 @@ export default function BangLuongPage() {
       </div>
 
       {/* ===== TAB: PREVIEW ===== */}
-      {isAdmin && tab === 'preview' && (
+      {canEditHRM && tab === 'preview' && (
         <>
           {/* KPI summary */}
           {preview.length > 0 && (
@@ -550,7 +550,7 @@ export default function BangLuongPage() {
             <div className="empty-state" style={{ padding: 60 }}>
               <Clock size={40} />
               <h3>Chưa có bảng lương tháng {thang}/{nam}</h3>
-              {isAdmin && <p>Chuyển sang tab Preview, tính lương rồi lưu.</p>}
+              {canEditHRM && <p>Chuyển sang tab Preview, tính lương rồi lưu.</p>}
             </div>
           ) : (
             <div className="table-wrapper" style={{ overflow: 'visible' }}>
@@ -593,7 +593,7 @@ export default function BangLuongPage() {
                             <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => openDrawer(bl.id_nhan_vien)}>
                               <Eye size={14} /> Chi tiết
                             </button>
-                            {isAdmin && (
+                            {canEditHRM && (
                               <select
                                 className="form-select"
                                 style={{ padding: '2px 22px 2px 6px', fontSize: '0.75rem', height: 26, width: 'auto' }}

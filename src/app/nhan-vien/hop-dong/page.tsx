@@ -85,7 +85,7 @@ export default function HopDongPage() {
 }
 
 function HopDongContent() {
-  const { isAdmin, isLoading: authLoading, user } = useAuth();
+  const { isAdmin, isHR, canEditHRM, isLoading: authLoading, user } = useAuth();
   const searchParams = useSearchParams();
   const prefilledEmployeeId = searchParams.get('id_nhan_vien') || '';
 
@@ -206,7 +206,7 @@ function HopDongContent() {
   };
 
   const accessibleContracts = contracts.filter(c => {
-    if (isAdmin) return true;
+    if (canEditHRM) return true;
     return user && c.id_nhan_vien === user.id_nhan_vien;
   });
 
@@ -455,7 +455,7 @@ function HopDongContent() {
           </h1>
           <p>Quản lý hợp đồng lao động ({totalContracts} hợp đồng)</p>
         </div>
-        {isAdmin && (
+        {canEditHRM && (
           <button className="btn btn-primary" onClick={() => openCreate()}>
             <Plus size={18} />
             Tạo hợp đồng
@@ -544,7 +544,7 @@ function HopDongContent() {
                   <th>{getFieldLabel('ngay_ket_thuc')}</th>
                   <th>Trạng thái</th>
                   <th style={{ textAlign: 'right' }}>{getFieldLabel('luong_co_ban')}</th>
-                  {isAdmin && <th style={{ width: 150, textAlign: 'center' }}>Thao tác</th>}
+                  {canEditHRM && <th style={{ width: 150, textAlign: 'center' }}>Thao tác</th>}
                 </tr>
               </thead>
               <tbody>
@@ -601,7 +601,7 @@ function HopDongContent() {
                           {formatCurrency(hd.luong_co_ban)}
                         </div>
                       </td>
-                      {isAdmin && (
+                      {canEditHRM && (
                         <td>
                           <div className="flex items-center gap-1" style={{ justifyContent: 'center' }}>
                             <button className="btn btn-ghost btn-icon btn-sm"
@@ -871,7 +871,7 @@ function HopDongContent() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setViewItem(null)}>Đóng</button>
-              {isAdmin && (
+              {canEditHRM && (
                 <button className="btn btn-primary" onClick={() => {
                   setViewItem(null);
                   openEdit(viewItem);

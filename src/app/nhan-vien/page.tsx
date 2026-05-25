@@ -29,7 +29,7 @@ const NHAN_VIEN_FIELDS = [
 ];
 
 export default function NhanVienPage() {
-  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { isAdmin, isHR, canEditHRM, isLoading: authLoading } = useAuth();
   const visibleColumns = NHAN_VIEN_FIELDS.filter(f => f.public);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -393,6 +393,9 @@ export default function NhanVienPage() {
       if (nv.vai_tro === 'Admin') {
         borderStyle = '2.5px solid #d4af37'; // Gold for Admin
         glowStyle = '0 2px 8px rgba(212,175,55,0.45)';
+      } else if (nv.vai_tro === 'HR') {
+        borderStyle = '2.5px solid #6366f1'; // Indigo for HR
+        glowStyle = '0 2px 8px rgba(99,102,241,0.35)';
       } else if (nv.vai_tro === 'Manager' || nv.employee_type?.includes('Trưởng')) {
         borderStyle = '2.5px solid #d4af37'; // Gold for Managers
         glowStyle = '0 2px 8px rgba(212,175,55,0.45)';
@@ -463,6 +466,8 @@ export default function NhanVienPage() {
         width: size, height: size, borderRadius: '50%',
         background: nv.vai_tro === 'Admin'
           ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)'
+          : nv.vai_tro === 'HR'
+          ? 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)'
           : 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
         display: nv.avatar_url ? 'none' : 'flex',
         alignItems: 'center', justifyContent: 'center',
@@ -487,11 +492,11 @@ export default function NhanVienPage() {
           <p>Quản lý nhân viên kinh doanh ({employees.length} nhân viên)</p>
         </div>
         <div className="flex gap-2">
-          {isAdmin && (
+          {canEditHRM && (
             <>
-              <button 
-                className="btn btn-secondary" 
-                onClick={handleSync} 
+              <button
+                className="btn btn-secondary"
+                onClick={handleSync}
                 disabled={syncing}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
@@ -530,7 +535,7 @@ export default function NhanVienPage() {
               <thead>
                 <tr>
                   {visibleColumns.map(col => {
-                    if (col.adminOnly && !isAdmin) return null;
+                    if (col.adminOnly && !canEditHRM) return null;
                     return (
                       <th
                         key={col.id}
@@ -552,7 +557,7 @@ export default function NhanVienPage() {
                   return (
                     <tr key={nv.id_nhan_vien}>
                       {visibleColumns.map((col) => {
-                        if (col.adminOnly && !isAdmin) return null;
+                        if (col.adminOnly && !canEditHRM) return null;
 
                         if (col.id === 'index') {
                           return <td key={col.id} style={{ color: 'var(--text-label)', textAlign: col.align as any }}>{idx + 1}</td>;
@@ -837,6 +842,7 @@ export default function NhanVienPage() {
                   <select className="form-select" value={form.vai_tro}
                     onChange={(e) => setForm({ ...form, vai_tro: e.target.value })}>
                     <option value="Sale">Sale</option>
+                    <option value="HR">HR (Nhân sự)</option>
                     <option value="Admin">Admin</option>
                   </select>
                 </div>
