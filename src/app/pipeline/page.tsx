@@ -108,16 +108,9 @@ function PipelineContent() {
     return kh ? kh.ten_KH : id;
   };
 
-  // Filter pipelines — hiển thị tất cả deals mà người đó tham gia dưới BẤT KỲ vai trò nào
+  // Filter pipelines — chỉ lọc theo vai trò sale chính (sale_phu_trach)
   const filteredPipelines = pipelines.filter(pl => {
-    if (filterSale) {
-      const participates =
-        pl.sale_phu_trach           === filterSale ||
-        (pl.gdda  || '')            === filterSale ||
-        (pl.gdkd  || '')            === filterSale ||
-        (pl.tkkd  || '')            === filterSale;
-      if (!participates) return false;
-    }
+    if (filterSale && pl.sale_phu_trach !== filterSale) return false;
     if (filterDuAn && pl.id_du_an !== filterDuAn) return false;
     if (filterKH && pl.id_khach_hang !== filterKH) return false;
     return true;
