@@ -358,6 +358,11 @@ export async function getNhanVien(): Promise<NhanVien[]> {
     newHeaders.push('mat_khau');
     needsHeaderUpdate = true;
   }
+  if (!h.includes('vai_tro')) {
+    console.log('[GSheets] Adding missing column "vai_tro" to NHAN_VIEN');
+    newHeaders.push('vai_tro');
+    needsHeaderUpdate = true;
+  }
 
   if (needsHeaderUpdate) {
     await sheet.setHeaderRow(newHeaders);
@@ -412,7 +417,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
 
     // Backward compatibility: previous bug saved vai_tro into ngay_tao column (h[15])
     const rawNgayTao = str(v['ngay_tao']);
-    const isVaiTroInNgayTao = rawNgayTao === 'Admin' || rawNgayTao === 'Sale';
+    const isVaiTroInNgayTao = rawNgayTao === 'Admin' || rawNgayTao === 'Sale' || rawNgayTao === 'HR';
 
     const finalVaiTro = v['vai_tro'] ? str(v['vai_tro']) : (isVaiTroInNgayTao ? rawNgayTao : 'Sale');
     const finalNgayTao = isVaiTroInNgayTao ? '' : rawNgayTao;
