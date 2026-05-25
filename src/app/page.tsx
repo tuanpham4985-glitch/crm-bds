@@ -252,6 +252,30 @@ export default function DashboardPage() {
     { value: 'year', label: 'Năm' },
   ];
 
+  // Tính khoảng thời gian hiển thị ở Bảng xếp hạng theo period đang chọn
+  const periodDateRange = (() => {
+    const fmt = (d: Date) =>
+      `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const today = new Date();
+    let from: Date;
+    switch (period) {
+      case 'month':
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      case 'quarter': {
+        const q = Math.floor(today.getMonth() / 3);
+        from = new Date(today.getFullYear(), q * 3, 1);
+        break;
+      }
+      case 'year':
+        from = new Date(today.getFullYear(), 0, 1);
+        break;
+      default:
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+    return `Từ ${fmt(from)} đến ${fmt(today)}`;
+  })();
+
   const renderKpiCard = (
     label: string, 
     value: number, 
@@ -400,8 +424,8 @@ export default function DashboardPage() {
         <div className="chart-card" style={{ overflow: 'hidden' }}>
           <div className="card-header">
             <div>
-              <div className="card-title">🏆 Bảng xếp hạng Sale</div>
-              <div className="card-subtitle">Doanh thu deal đã ký theo nhân viên</div>
+              <div className="card-title">🏆 Bảng xếp hạng</div>
+              <div className="card-subtitle">{periodDateRange}</div>
             </div>
           </div>
 
