@@ -9,6 +9,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const isLoginPage = pathname === '/login';
 
   // Close mobile menu on route change
@@ -20,6 +21,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const saved = localStorage.getItem('sidebar_collapsed');
     if (saved === 'true') setSidebarCollapsed(true);
+  }, []);
+
+  // Track mobile breakpoint — don't apply collapsed state on mobile
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 768px)');
+    const handleChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    setIsMobile(mql.matches);
+    mql.addEventListener('change', handleChange);
+    return () => mql.removeEventListener('change', handleChange);
   }, []);
 
   const handleToggleCollapse = () => {
@@ -34,11 +44,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  // On mobile, never apply collapsed — sidebar uses hamburger menu instead
+  const effectivelyCollapsed = sidebarCollapsed && !isMobile;
+
   return (
-    <div
-      className="app-layout"
-      style={{ '--active-sidebar-width': sidebarCollapsed ? '60px' : 'var(--sidebar-width)' } as React.CSSProperties}
-    >
+    <div className={`app-layout${effectivelyCollapsed ? ' sidebar-is-collapsed' : ''}`}>
       {/* Mobile Top Header */}
       <div className="mobile-header">
         <div className="flex items-center gap-3">
@@ -58,16 +68,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Sidebar Wrapper */}
       <div className={`sidebar-wrapper ${mobileMenuOpen ? 'open' : ''}`}>
-        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleCollapse} />
+        <Sidebar collapsed={effectivelyCollapsed} onToggleCollapse={handleToggleCollapse} />
       </div>
 
       {/* Desktop Collapse Toggle Button */}
       <button
         className="sidebar-toggle-btn"
         onClick={handleToggleCollapse}
-        title={sidebarCollapsed ? 'Mở rộng sidebar' : 'Thu hẹp sidebar'}
+        title={effectivelyCollapsed ? 'Mở rộng sidebar' : 'Thu hẹp sidebar'}
       >
-        {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        {effectivelyCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
 
       <main className="main-content">

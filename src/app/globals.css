@@ -151,10 +151,16 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
 
 .main-content {
   flex: 1;
-  margin-left: var(--active-sidebar-width, var(--sidebar-width));
+  margin-left: var(--sidebar-width);
   padding: 28px 32px;
-  max-width: calc(100vw - var(--active-sidebar-width, var(--sidebar-width)));
+  max-width: calc(100vw - var(--sidebar-width));
   transition: margin-left 0.3s ease, max-width 0.3s ease;
+}
+
+/* Collapsed sidebar — expand main content */
+.app-layout.sidebar-is-collapsed .main-content {
+  margin-left: 60px;
+  max-width: calc(100vw - 60px);
 }
 
 /* Kept for reference — AppShell now uses content-fluid for all routes */
@@ -1837,7 +1843,7 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
 /* === Sidebar Toggle Button === */
 .sidebar-toggle-btn {
   position: fixed;
-  left: calc(var(--active-sidebar-width, var(--sidebar-width)) - 12px);
+  left: calc(var(--sidebar-width) - 12px);
   top: 24px;
   width: 24px;
   height: 24px;
@@ -1859,6 +1865,10 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   background: var(--primary-light);
   color: var(--primary);
   border-color: var(--primary);
+}
+
+.app-layout.sidebar-is-collapsed .sidebar-toggle-btn {
+  left: 48px; /* 60px - 12px */
 }
 
 /* === Mobile Navigation & Header === */
@@ -1922,6 +1932,12 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
     inset: 0;
     background: rgba(15, 23, 42, 0.5);
     z-index: 100;
+  }
+
+  /* Reset collapsed state on mobile — sidebar always full-width when opened via hamburger */
+  .app-layout.sidebar-is-collapsed .main-content {
+    margin-left: 0;
+    max-width: 100%;
   }
 
   /* Make sure Sidebar module CSS resolves width correctly */

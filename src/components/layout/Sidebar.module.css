@@ -2,7 +2,7 @@
   position: fixed;
   top: 0;
   left: 0;
-  width: var(--active-sidebar-width, var(--sidebar-width));
+  width: var(--sidebar-width);
   height: 100vh;
   background: var(--bg-surface);
   border-right: 1px solid var(--border-light);
@@ -184,6 +184,7 @@
 
 /* ===== Collapsed Sidebar ===== */
 .collapsed {
+  width: 60px;
   overflow-x: hidden;
 }
 

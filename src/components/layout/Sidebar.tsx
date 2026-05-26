@@ -234,10 +234,16 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
             <Building2 size={22} />
           )}
         </div>
-        <div>
+        <a
+          href="https://victoryholdings.com.vn/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Website công ty Victory Holdings"
+          style={{ textDecoration: 'none', color: 'inherit', lineHeight: 1 }}
+        >
           <div className={styles.logoTitle}>VICTORY HOLDINGS</div>
           <div className={styles.logoSubtitle}>Quản lý bất động sản</div>
-        </div>
+        </a>
         <input
           type="file"
           accept="image/*"
