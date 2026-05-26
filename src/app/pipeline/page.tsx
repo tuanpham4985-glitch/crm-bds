@@ -19,6 +19,20 @@ const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> 
   'Huỷ':         { bg: '#f1f5f9', text: '#64748b', border: '#cbd5e1' },
 };
 
+// Chuyển bất kỳ định dạng ngày nào (ISO, DD/MM/YYYY, v.v.) thành chuỗi YYYY-MM-DD cho <input type="date">
+function safeToDateInput(raw: string): string {
+  if (!raw) return new Date().toISOString().split('T')[0];
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  // Thử DD/MM/YYYY hoặc DD-MM-YYYY
+  const m = raw.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  if (m) {
+    const d2 = new Date(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
+    if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0];
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
 function PipelineContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
@@ -157,7 +171,7 @@ function PipelineContent() {
       thuong_nong: Number(pl.thuong_nong) || 0,
       tkkd: pl.tkkd || '',
       phi_tkkd: Number(pl.phi_tkkd) || 0,
-      ngay_cap_nhat: pl.ngay_cap_nhat ? new Date(pl.ngay_cap_nhat).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      ngay_cap_nhat: safeToDateInput(pl.ngay_cap_nhat),
       ty_le_tra_sale: Number(pl.ty_le_tra_sale) || 0,
       ty_le_kh:       Number(pl.ty_le_kh)       || 0,
       ty_le_gdda:     Number(pl.ty_le_gdda)      || 0,
@@ -384,10 +398,9 @@ function PipelineContent() {
   };
 
   // Cột trong TABLE — Admin/CEO dùng view gọn (chi tiết phí xem qua nút View)
+  // TKKD & Phí TKKD đã bỏ khỏi bảng — xem qua nút "Xem chi tiết"
   const tablePhiGDDA  = showPhiTraGDDA && !isAllVisible;
   const tablePhiGDKD  = showPhiTraGDKD && !isAllVisible;
-  const tableTKKD     = !isAllVisible;
-  const tablePhiTKKD  = showPhiTKKD    && !isAllVisible;
   const tableMaCan    = filteredPipelines.some(pl => pl.ma_can);
 
   let colSpan = 6; // #, Giai đoạn, Dự án, Giá trị, Sale, Thao tác
@@ -397,8 +410,6 @@ function PipelineContent() {
   if (tablePhiGDDA)  colSpan++;
   if (tablePhiGDKD)  colSpan++;
   if (showThuongNong) colSpan++;
-  if (tableTKKD)     colSpan++;
-  if (tablePhiTKKD)  colSpan++;
 
   return (
     <div>
@@ -632,8 +643,6 @@ function PipelineContent() {
                 {tablePhiGDDA  && <th style={{ textAlign: 'right' }}>Phí trả GDDA</th>}
                 {tablePhiGDKD  && <th style={{ textAlign: 'right' }}>Phí trả GĐKD</th>}
                 {showThuongNong && <th style={{ textAlign: 'right' }}>Thưởng nóng</th>}
-                {tableTKKD     && <th>TKKD</th>}
-                {tablePhiTKKD  && <th style={{ textAlign: 'right' }}>Phí TKKD</th>}
                 <th>Sale</th>
                 <th style={{ width: 110, textAlign: 'center' }}>Thao tác</th>
               </tr>
@@ -692,17 +701,6 @@ function PipelineContent() {
                       <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>
                         {isAllVisible || pl.sale_phu_trach === user?.ho_ten
                           ? formatCurrency(pl.thuong_nong || 0)
-                          : '—'}
-                      </td>
-                    )}
-
-                    {tableTKKD && (
-                      <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.tkkd || '—'}</td>
-                    )}
-                    {tablePhiTKKD && (
-                      <td style={{ textAlign: 'right', color: '#8b5cf6', fontWeight: 600 }}>
-                        {pl.tkkd === user?.ho_ten
-                          ? formatCurrency(pl.phi_tkkd || 0)
                           : '—'}
                       </td>
                     )}
