@@ -19,6 +19,14 @@ const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> 
   'Huỷ':         { bg: '#f1f5f9', text: '#64748b', border: '#cbd5e1' },
 };
 
+// Chuyển tỷ lệ thập phân (0.04) thành % (4) để hiển thị trong input
+function toPercent(v: number | undefined | string): number {
+  const n = Number(v) || 0;
+  if (n === 0) return 0;
+  // Nếu đã ở dạng % (> 1), giữ nguyên; nếu dạng thập phân (≤ 1), nhân 100
+  return n > 1 ? +n.toFixed(4) : +(n * 100).toFixed(4);
+}
+
 // Chuyển bất kỳ định dạng ngày nào (ISO, DD/MM/YYYY, v.v.) thành chuỗi YYYY-MM-DD cho <input type="date">
 function safeToDateInput(raw: string): string {
   if (!raw) return new Date().toISOString().split('T')[0];
@@ -166,17 +174,17 @@ function PipelineContent() {
       sale_phu_trach: pl.sale_phu_trach,
       id_du_an: pl.id_du_an,
       ten_du_an: pl.ten_du_an,
-      hoa_hong: pl.hoa_hong,
+      hoa_hong: toPercent(pl.hoa_hong),
       thang: pl.thang,
       thuong_nong: Number(pl.thuong_nong) || 0,
       tkkd: pl.tkkd || '',
       phi_tkkd: Number(pl.phi_tkkd) || 0,
       ngay_cap_nhat: safeToDateInput(pl.ngay_cap_nhat),
-      ty_le_tra_sale: Number(pl.ty_le_tra_sale) || 0,
-      ty_le_kh:       Number(pl.ty_le_kh)       || 0,
-      ty_le_gdda:     Number(pl.ty_le_gdda)      || 0,
-      ty_le_gdkd:     Number(pl.ty_le_gdkd)      || 0,
-      ty_le_mkt:      Number(pl.ty_le_mkt)       || 0,
+      ty_le_tra_sale: toPercent(pl.ty_le_tra_sale),
+      ty_le_kh:       toPercent(pl.ty_le_kh),
+      ty_le_gdda:     toPercent(pl.ty_le_gdda),
+      ty_le_gdkd:     toPercent(pl.ty_le_gdkd),
+      ty_le_mkt:      toPercent(pl.ty_le_mkt),
     });
 
     setShowModal(true);
@@ -787,10 +795,15 @@ function PipelineContent() {
                   <label className="form-label">Giá trị thực tế (VNĐ)</label>
                   <input className="form-input" type="number" value={form.gia_tri_thuc_te}
                     onChange={(e) => setForm({ ...form, gia_tri_thuc_te: parseFloat(e.target.value) || 0 })} />
+                  {form.gia_tri_thuc_te > 0 && (
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4f46e5', marginTop: 5 }}>
+                      = {form.gia_tri_thuc_te.toLocaleString('vi-VN')} đ
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Hoa hồng (%)</label>
-                  <input className="form-input" type="number" step="0.01" value={form.hoa_hong}
+                  <input className="form-input" type="number" step="0.01" min="0" max="100" value={form.hoa_hong}
                     onChange={(e) => setForm({ ...form, hoa_hong: parseFloat(e.target.value) || 0 })} />
                 </div>
               </div>
