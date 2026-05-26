@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import type { DashboardData, SinhNhatNhanVien } from '@/lib/types';
 import { formatCurrency, formatChange, calcChange } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 const CHART_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
@@ -203,6 +204,7 @@ function CinematicRankNumber({ rank, size = 160 }: { rank: 1|2|3; size?: number 
 const RACE_START_DATE = '2025-12-23';
 
 export default function DashboardPage() {
+  const { isAdmin } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [raceData, setRaceData] = useState<any[] | null>(null);
   const [period, setPeriod] = useState('month');
@@ -340,83 +342,89 @@ export default function DashboardPage() {
               </button>
             ))}
           </div>
-          {/* Compare toggle */}
-          <button
-            className={`btn ${compare ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-            onClick={() => setCompare(compare ? '' : 'prev')}
-            title="So sánh cùng kỳ"
-          >
-            {compare ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-            So sánh
-          </button>
+          {/* Compare toggle — admin only */}
+          {isAdmin && (
+            <button
+              className={`btn ${compare ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+              onClick={() => setCompare(compare ? '' : 'prev')}
+              title="So sánh cùng kỳ"
+            >
+              {compare ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+              So sánh
+            </button>
+          )}
         </div>
       </div>
 
-      {/* KPI Grid */}
-      <div className="kpi-grid">
-        {renderKpiCard('Tổng Deal', data.kpi.tong_deal, data.kpi.tong_deal_prev, <BarChart3 size={20} />)}
-        {renderKpiCard('Đang xử lý', data.kpi.dang_xu_ly, data.kpi.dang_xu_ly_prev, <Target size={20} />)}
-        {renderKpiCard('Đã ký HĐ', data.kpi.da_ky, data.kpi.da_ky_prev, <Handshake size={20} />)}
-        {renderKpiCard('Doanh thu', data.kpi.doanh_thu, data.kpi.doanh_thu_prev, <DollarSign size={20} />, 'currency')}
-      </div>
-
-      {/* Charts Row */}
-      <div className="charts-grid">
-        {/* Doanh thu theo dự án */}
-        <div className="chart-card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">Doanh thu theo dự án</div>
-              <div className="card-subtitle">Tổng doanh thu các deal đã ký</div>
-            </div>
-          </div>
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
-              <BarChart data={data.doanh_thu_theo_du_an} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis type="number" tickFormatter={(v) => formatCurrency(v as number)} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="du_an" width={150} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => formatCurrency(v as number)} />
-                <Bar dataKey="doanh_thu" fill="#6366f1" radius={[0, 6, 6, 0]} name="Doanh thu" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+      {/* KPI Grid — admin only */}
+      {isAdmin && (
+        <div className="kpi-grid">
+          {renderKpiCard('Tổng Deal', data.kpi.tong_deal, data.kpi.tong_deal_prev, <BarChart3 size={20} />)}
+          {renderKpiCard('Đang xử lý', data.kpi.dang_xu_ly, data.kpi.dang_xu_ly_prev, <Target size={20} />)}
+          {renderKpiCard('Đã ký HĐ', data.kpi.da_ky, data.kpi.da_ky_prev, <Handshake size={20} />)}
+          {renderKpiCard('Doanh thu', data.kpi.doanh_thu, data.kpi.doanh_thu_prev, <DollarSign size={20} />, 'currency')}
         </div>
+      )}
 
-        {/* Doanh thu theo thời gian */}
-        <div className="chart-card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">Doanh thu theo thời gian</div>
-              <div className="card-subtitle">Xu hướng doanh thu qua các tháng</div>
+      {/* Charts Row — admin only */}
+      {isAdmin && (
+        <div className="charts-grid">
+          {/* Doanh thu theo dự án */}
+          <div className="chart-card">
+            <div className="card-header">
+              <div>
+                <div className="card-title">Doanh thu theo dự án</div>
+                <div className="card-subtitle">Tổng doanh thu các deal đã ký</div>
+              </div>
+            </div>
+            <div style={{ width: '100%', height: 280 }}>
+              <ResponsiveContainer>
+                <BarChart data={data.doanh_thu_theo_du_an} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis type="number" tickFormatter={(v) => formatCurrency(v as number)} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="du_an" width={150} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v) => formatCurrency(v as number)} />
+                  <Bar dataKey="doanh_thu" fill="#6366f1" radius={[0, 6, 6, 0]} name="Doanh thu" />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
-              <LineChart data={data.doanh_thu_theo_thang}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="thang" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={(v) => formatCurrency(v as number)} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => formatCurrency(v as number)} />
-                <Line 
-                  type="monotone" dataKey="doanh_thu" 
-                  stroke="#6366f1" strokeWidth={2.5} 
-                  dot={{ r: 4, fill: '#6366f1' }}
-                  name="Kỳ hiện tại"
-                />
-                {compare && (
-                  <Line 
-                    type="monotone" dataKey="doanh_thu_prev" 
-                    stroke="#cbd5e1" strokeWidth={2} strokeDasharray="5 5"
-                    dot={{ r: 3, fill: '#cbd5e1' }}
-                    name="Kỳ trước"
+
+          {/* Doanh thu theo thời gian */}
+          <div className="chart-card">
+            <div className="card-header">
+              <div>
+                <div className="card-title">Doanh thu theo thời gian</div>
+                <div className="card-subtitle">Xu hướng doanh thu qua các tháng</div>
+              </div>
+            </div>
+            <div style={{ width: '100%', height: 280 }}>
+              <ResponsiveContainer>
+                <LineChart data={data.doanh_thu_theo_thang}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="thang" tick={{ fontSize: 11 }} />
+                  <YAxis tickFormatter={(v) => formatCurrency(v as number)} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v) => formatCurrency(v as number)} />
+                  <Line
+                    type="monotone" dataKey="doanh_thu"
+                    stroke="#6366f1" strokeWidth={2.5}
+                    dot={{ r: 4, fill: '#6366f1' }}
+                    name="Kỳ hiện tại"
                   />
-                )}
-              </LineChart>
-            </ResponsiveContainer>
+                  {compare && (
+                    <Line
+                      type="monotone" dataKey="doanh_thu_prev"
+                      stroke="#cbd5e1" strokeWidth={2} strokeDasharray="5 5"
+                      dot={{ r: 3, fill: '#cbd5e1' }}
+                      name="Kỳ trước"
+                    />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Middle Row: BXH Sale & Vinh Danh Champion */}
       <div className="charts-grid">
@@ -935,43 +943,47 @@ export default function DashboardPage() {
         <GlobalChampionWidget data={raceData ?? data.doanh_thu_theo_sale} />
       </div>
 
-      {/* Bottom Row: Nguồn khách hàng & Sinh nhật */}
-      <div className="charts-grid" style={{ marginTop: 24 }}>
-        {/* Nguồn khách hàng */}
-        <div className="chart-card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">Nguồn khách hàng</div>
-              <div className="card-subtitle">Phân bổ theo nguồn</div>
+      {/* Bottom Row: Nguồn khách hàng (admin) & Sinh nhật */}
+      {isAdmin ? (
+        <div className="charts-grid" style={{ marginTop: 24 }}>
+          {/* Nguồn khách hàng — admin only */}
+          <div className="chart-card">
+            <div className="card-header">
+              <div>
+                <div className="card-title">Nguồn khách hàng</div>
+                <div className="card-subtitle">Phân bổ theo nguồn</div>
+              </div>
+            </div>
+            <div style={{ width: '100%', height: 280 }}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={data.nguon_khach_hang}
+                    dataKey="so_luong"
+                    nameKey="nguon"
+                    cx="50%" cy="50%"
+                    outerRadius={100}
+                    innerRadius={50}
+                    strokeWidth={2}
+                    stroke="#fff"
+                  >
+                    {data.nguon_khach_hang.map((_, index) => (
+                      <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={data.nguon_khach_hang}
-                  dataKey="so_luong"
-                  nameKey="nguon"
-                  cx="50%" cy="50%"
-                  outerRadius={100}
-                  innerRadius={50}
-                  strokeWidth={2}
-                  stroke="#fff"
-                >
-                  {data.nguon_khach_hang.map((_, index) => (
-                    <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          <BirthdayWidget employees={data.sinh_nhat_thang_nay} />
         </div>
-
-        {/* Sinh nhật nhân viên tháng này */}
-        <BirthdayWidget employees={data.sinh_nhat_thang_nay} />
-      </div>
+      ) : (
+        <div style={{ marginTop: 24 }}>
+          <BirthdayWidget employees={data.sinh_nhat_thang_nay} />
+        </div>
+      )}
     </div>
   );
 }
@@ -997,7 +1009,7 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
   const monthLabel = MONTH_NAMES[currentMonth - 1];
 
   return (
-    <div className="chart-card" style={{ marginTop: 24 }}>
+    <div className="chart-card">
       <div className="card-header" style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{

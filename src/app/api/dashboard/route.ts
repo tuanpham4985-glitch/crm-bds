@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getPipeline, getKhachHang, getNhanVien } from '@/lib/google-sheets';
 import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien } from '@/lib/types';
+import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
+
+async function getIsAdmin(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('crm_session');
+    if (!session) return false;
+    const decoded = decodeURIComponent(escape(atob(session.value)));
+    const user = JSON.parse(decoded);
+    return user.vai_tro === 'Admin' || (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(user.employee_type || '');
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Parse a date string in many formats returned by Google Sheets.
@@ -130,6 +145,8 @@ function getDateRange(period: string): { from: Date; to: Date; prevFrom: Date; p
 
 export async function GET(request: NextRequest) {
   try {
+    const isAdmin = await getIsAdmin();
+
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'month';
     const compare = searchParams.get('compare') || '';
@@ -336,7 +353,9 @@ export async function GET(request: NextRequest) {
       so_luong,
     }));
 
-    const data: DashboardData = {
+    const leaderboard = Array.from(saleMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
+
+    const data: DashboardData = isAdmin ? {
       kpi: {
         tong_deal: currentPipelines.length,
         dang_xu_ly: dangXuLy.length,
@@ -351,10 +370,17 @@ export async function GET(request: NextRequest) {
           hoa_hong_prev: prevDaKy.reduce((sum, pl) => sum + pl.tien_hoa_hong, 0),
         } : {}),
       },
-      doanh_thu_theo_sale: Array.from(saleMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu),
+      doanh_thu_theo_sale: leaderboard,
       doanh_thu_theo_du_an: Array.from(duAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu),
       doanh_thu_theo_thang: doanhThuTheoThang,
       nguon_khach_hang: nguonKhachHang,
+      sinh_nhat_thang_nay: sinhNhatThangNay,
+    } : {
+      kpi: { tong_deal: 0, dang_xu_ly: 0, da_ky: 0, doanh_thu: 0, hoa_hong: 0 },
+      doanh_thu_theo_sale: leaderboard,
+      doanh_thu_theo_du_an: [],
+      doanh_thu_theo_thang: [],
+      nguon_khach_hang: [],
       sinh_nhat_thang_nay: sinhNhatThangNay,
     };
 
