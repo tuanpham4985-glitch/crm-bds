@@ -332,7 +332,13 @@ function PipelineContent() {
   // Tổng giá trị: chỉ tính deals mà nhân viên là sale chính (sale_phu_trach)
   // Deals có vai trò GDDA/GDKD không cộng vào giá trị giao dịch của nhân viên đó
   const totalValue = activeDeals.reduce((s, pl) => {
-    if (filterSale && pl.sale_phu_trach !== filterSale) return s;
+    if (isAllVisible) {
+      // Admin: lọc theo filterSale nếu có chọn
+      if (filterSale && pl.sale_phu_trach !== filterSale) return s;
+    } else {
+      // Non-admin: chỉ tính deals mà user là sale_phu_trach
+      if (pl.sale_phu_trach !== user?.ho_ten) return s;
+    }
     return s + pl.gia_tri_thuc_te;
   }, 0);
   const totalProfit = activeDeals.reduce((s, pl) => s + (pl.loi_nhuan || 0), 0);

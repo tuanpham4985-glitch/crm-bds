@@ -197,17 +197,19 @@ export default function DuAnPage() {
                   </div>
                 </div>
 
-                {/* Stats */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <div style={{ padding: '10px 14px', background: 'var(--info-bg)', borderRadius: 'var(--radius-md)' }}>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--info-text)', fontWeight: 500, marginBottom: 2 }}>Tổng Deal</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--info-text)' }}>{stats.totalDeals}</div>
+                {/* Stats — admin only */}
+                {isAdmin && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                    <div style={{ padding: '10px 14px', background: 'var(--info-bg)', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--info-text)', fontWeight: 500, marginBottom: 2 }}>Tổng Deal</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--info-text)' }}>{stats.totalDeals}</div>
+                    </div>
+                    <div style={{ padding: '10px 14px', background: 'var(--success-bg)', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--success-text)', fontWeight: 500, marginBottom: 2 }}>Đã ký</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--success-text)' }}>{stats.signedDeals}</div>
+                    </div>
                   </div>
-                  <div style={{ padding: '10px 14px', background: 'var(--success-bg)', borderRadius: 'var(--radius-md)' }}>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--success-text)', fontWeight: 500, marginBottom: 2 }}>Đã ký</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--success-text)' }}>{stats.signedDeals}</div>
-                  </div>
-                </div>
+                )}
 
                 {/* Actions */}
                 <div className="flex items-center gap-2" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
