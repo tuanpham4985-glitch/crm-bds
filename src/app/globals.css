@@ -151,9 +151,10 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
 
 .main-content {
   flex: 1;
-  margin-left: var(--sidebar-width);
+  margin-left: var(--active-sidebar-width, var(--sidebar-width));
   padding: 28px 32px;
-  max-width: calc(100vw - var(--sidebar-width));
+  max-width: calc(100vw - var(--active-sidebar-width, var(--sidebar-width)));
+  transition: margin-left 0.3s ease, max-width 0.3s ease;
 }
 
 /* Kept for reference — AppShell now uses content-fluid for all routes */
@@ -1833,6 +1834,33 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   }
 }
 
+/* === Sidebar Toggle Button === */
+.sidebar-toggle-btn {
+  position: fixed;
+  left: calc(var(--active-sidebar-width, var(--sidebar-width)) - 12px);
+  top: 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 200;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  transition: left 0.3s ease, background 0.2s ease, color 0.2s ease;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.sidebar-toggle-btn:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
 /* === Mobile Navigation & Header === */
 .mobile-header {
   display: none;
@@ -1899,6 +1927,10 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   /* Make sure Sidebar module CSS resolves width correctly */
   aside[class*="sidebar"] {
     width: var(--sidebar-width) !important;
+  }
+
+  .sidebar-toggle-btn {
+    display: none;
   }
   
   .kpi-grid {

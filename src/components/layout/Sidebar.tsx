@@ -33,7 +33,12 @@ const HRM_ITEMS = [
   { href: '/nhan-vien/bang-luong', label: 'Bảng lương', icon: BadgeDollarSign },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+}
+
+export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { user, isAdmin } = useAuth();
   const [logo, setLogo] = useState<string | null>(null);
@@ -41,7 +46,7 @@ export default function Sidebar() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
-  
+
   // Group states
   const [crmOpen, setCrmOpen] = useState(true);
   const [hrmOpen, setHrmOpen] = useState(true);
@@ -51,6 +56,14 @@ export default function Sidebar() {
     if (CRM_ITEMS.some(item => pathname.startsWith(item.href))) setCrmOpen(true);
     if (HRM_ITEMS.some(item => pathname.startsWith(item.href))) setHrmOpen(true);
   }, [pathname]);
+
+  // Force groups open when collapsed (so icons are visible)
+  useEffect(() => {
+    if (collapsed) {
+      setCrmOpen(true);
+      setHrmOpen(true);
+    }
+  }, [collapsed]);
 
   // Password Modal State
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -206,7 +219,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className={styles.sidebar}>
+    <aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
       {/* Logo */}
       <div className={styles.logo}>
         <div
@@ -241,6 +254,7 @@ export default function Sidebar() {
           <Link
             href="/"
             className={`${styles.navItem} ${pathname === '/' ? styles.active : ''}`}
+            title="Dashboard"
           >
             <LayoutDashboard size={20} />
             <span>Dashboard</span>
@@ -269,6 +283,7 @@ export default function Sidebar() {
                   key={item.href}
                   href={item.href}
                   className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
+                  title={item.label}
                 >
                   <Icon size={18} />
                   <span>{item.label}</span>
@@ -300,6 +315,7 @@ export default function Sidebar() {
                   key={item.href}
                   href={item.href}
                   className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
+                  title={item.label}
                 >
                   <Icon size={18} />
                   <span>{item.label}</span>
