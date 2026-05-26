@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Edit3, Trash2, X, Building2, Eye, EyeOff,
-  Hash, ExternalLink, ChevronDown, ChevronRight, Layers
+  Hash, ExternalLink, ChevronDown, ChevronRight, Layers,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { DuAn, Pipeline } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,8 +16,12 @@ export default function DuAnPage() {
   const [loading, setLoading] = useState(true);
   const [showHidden, setShowHidden] = useState(false);
 
-  // Chủ đầu tư nào đang mở rộng
+  // Chủ đầu tư đang expand
   const [expandedCDT, setExpandedCDT] = useState<Set<string>>(new Set());
+
+  // ── Filters ──────────────────────────────────────────────────────────────
+  const [filterCDT, setFilterCDT] = useState('');
+  const [filterDuAn, setFilterDuAn] = useState('');
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -40,9 +45,9 @@ export default function DuAnPage() {
       const [daData, plData] = await Promise.all([daRes.json(), plRes.json()]);
       if (daData.success) {
         setProjects(daData.data);
-        // Tự động mở rộng tất cả chủ đầu tư lần đầu load
+        // Tự động mở rộng tất cả CDT lần đầu
         const cdtSet = new Set<string>(
-          (daData.data as DuAn[]).map(d => d.chu_dau_tu || 'Chưa phân loại')
+          (daData.data as DuAn[]).map(d => d.chu_dau_tu?.trim() || 'Chưa phân loại')
         );
         setExpandedCDT(cdtSet);
       }
@@ -63,9 +68,32 @@ export default function DuAnPage() {
     return { totalDeals: deals.length, signedDeals: daKy.length };
   };
 
-  // Group projects by chu_dau_tu
-  const filteredProjects = showHidden ? projects : projects.filter(p => p.hien_thi === 1);
+  // ── Danh sách CDT cho dropdown (dựa trên hien_thi) ───────────────────────
+  const baseProjects = showHidden ? projects : projects.filter(p => p.hien_thi === 1);
 
+  const allCDT = Array.from(
+    new Set(baseProjects.map(p => p.chu_dau_tu?.trim() || 'Chưa phân loại'))
+  ).sort((a, b) => {
+    if (a === 'Chưa phân loại') return 1;
+    if (b === 'Chưa phân loại') return -1;
+    return a.localeCompare(b, 'vi');
+  });
+
+  // Dự án cho dropdown lọc theo dự án — cascade theo CDT đang chọn
+  const duAnOptions = baseProjects.filter(p =>
+    !filterCDT || (p.chu_dau_tu?.trim() || 'Chưa phân loại') === filterCDT
+  );
+
+  // ── Apply filters ─────────────────────────────────────────────────────────
+  const filteredProjects = baseProjects.filter(p => {
+    if (filterCDT && (p.chu_dau_tu?.trim() || 'Chưa phân loại') !== filterCDT) return false;
+    if (filterDuAn && p.id_du_an !== filterDuAn) return false;
+    return true;
+  });
+
+  const isFiltering = !!(filterCDT || filterDuAn);
+
+  // ── Group by CDT ──────────────────────────────────────────────────────────
   const grouped = filteredProjects.reduce<Record<string, DuAn[]>>((acc, da) => {
     const key = da.chu_dau_tu?.trim() || 'Chưa phân loại';
     if (!acc[key]) acc[key] = [];
@@ -79,6 +107,18 @@ export default function DuAnPage() {
     return a.localeCompare(b, 'vi');
   });
 
+  // Khi đang lọc → tự động mở rộng các CDT có kết quả
+  useEffect(() => {
+    if (isFiltering) {
+      setExpandedCDT(prev => {
+        const next = new Set(prev);
+        sortedCDT.forEach(cdt => next.add(cdt));
+        return next;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterCDT, filterDuAn]);
+
   const toggleCDT = (cdt: string) => {
     setExpandedCDT(prev => {
       const next = new Set(prev);
@@ -87,6 +127,18 @@ export default function DuAnPage() {
       return next;
     });
   };
+
+  // Khi đổi CDT → reset filterDuAn nếu dự án đó không còn thuộc CDT mới
+  const handleFilterCDT = (val: string) => {
+    setFilterCDT(val);
+    if (filterDuAn) {
+      const project = projects.find(p => p.id_du_an === filterDuAn);
+      const projectCDT = project?.chu_dau_tu?.trim() || 'Chưa phân loại';
+      if (val && projectCDT !== val) setFilterDuAn('');
+    }
+  };
+
+  const clearFilters = () => { setFilterCDT(''); setFilterDuAn(''); };
 
   const openCreate = () => {
     setEditingItem(null);
@@ -147,12 +199,15 @@ export default function DuAnPage() {
 
   return (
     <div>
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="page-header">
         <div className="page-header-left">
           <h1>Dự án</h1>
           <p>
-            {sortedCDT.length} chủ đầu tư &nbsp;·&nbsp; {filteredProjects.length} dự án
+            {isFiltering
+              ? `${filteredProjects.length} / ${baseProjects.length} dự án`
+              : `${allCDT.length} chủ đầu tư · ${baseProjects.length} dự án`
+            }
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -172,13 +227,52 @@ export default function DuAnPage() {
         </div>
       </div>
 
-      {/* Empty state */}
+      {/* ── Filter bar ── */}
+      <div className="filter-bar">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal size={14} style={{ color: 'var(--text-label)' }} />
+          <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', fontWeight: 500 }}>Lọc:</span>
+        </div>
+
+        {/* Dropdown: Chủ đầu tư */}
+        <select
+          className="form-select"
+          value={filterCDT}
+          onChange={(e) => handleFilterCDT(e.target.value)}
+        >
+          <option value="">Tất cả chủ đầu tư</option>
+          {allCDT.map(cdt => (
+            <option key={cdt} value={cdt}>{cdt}</option>
+          ))}
+        </select>
+
+        {/* Dropdown: Dự án — cascade theo CDT */}
+        <select
+          className="form-select"
+          value={filterDuAn}
+          onChange={(e) => setFilterDuAn(e.target.value)}
+        >
+          <option value="">Tất cả dự án</option>
+          {duAnOptions.map(da => (
+            <option key={da.id_du_an} value={da.id_du_an}>{da.ten_du_an}</option>
+          ))}
+        </select>
+
+        {/* Nút xóa lọc */}
+        {isFiltering && (
+          <button className="btn btn-ghost btn-sm" onClick={clearFilters}>
+            <X size={14} />Xóa lọc
+          </button>
+        )}
+      </div>
+
+      {/* ── Content ── */}
       {sortedCDT.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <Building2 size={40} />
-            <h3>Chưa có dự án</h3>
-            <p>Nhấn &quot;Thêm dự án&quot; để tạo mới</p>
+            <h3>{isFiltering ? 'Không tìm thấy dự án' : 'Chưa có dự án'}</h3>
+            <p>{isFiltering ? 'Thử thay đổi bộ lọc' : 'Nhấn "Thêm dự án" để tạo mới'}</p>
           </div>
         </div>
       ) : (
@@ -203,7 +297,6 @@ export default function DuAnPage() {
                     borderBottom: isOpen ? '1px solid var(--border)' : 'none',
                   }}
                 >
-                  {/* Icon */}
                   <div style={{
                     width: 40, height: 40, borderRadius: 'var(--radius-lg)',
                     background: 'var(--primary)', display: 'flex',
@@ -212,7 +305,6 @@ export default function DuAnPage() {
                     <Building2 size={20} color="#fff" />
                   </div>
 
-                  {/* Name + counts */}
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--primary)' }}>
                       {cdt}
@@ -230,7 +322,6 @@ export default function DuAnPage() {
                     </div>
                   </div>
 
-                  {/* Badge + Chevron */}
                   <span className="badge badge-primary" style={{ marginRight: 4 }}>
                     {daList.length}
                   </span>
@@ -254,10 +345,7 @@ export default function DuAnPage() {
                         <div
                           key={da.id_du_an}
                           className="card card-interactive"
-                          style={{
-                            margin: 0, opacity: da.hien_thi === 0 ? 0.6 : 1,
-                            position: 'relative',
-                          }}
+                          style={{ margin: 0, opacity: da.hien_thi === 0 ? 0.6 : 1, position: 'relative' }}
                         >
                           {/* Status badge */}
                           <div style={{ position: 'absolute', top: 14, right: 14 }}>
@@ -332,7 +420,7 @@ export default function DuAnPage() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* ── Create/Edit Modal ── */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -400,7 +488,7 @@ export default function DuAnPage() {
         </div>
       )}
 
-      {/* Confirm Delete */}
+      {/* ── Confirm Delete ── */}
       {showConfirm && (
         <div className="confirm-overlay" onClick={() => setShowConfirm(false)}>
           <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
