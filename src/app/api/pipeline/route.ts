@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getPipeline, addPipeline, updatePipeline, deletePipeline } from '@/lib/google-sheets';
 import { generateId, getMonthKey } from '@/lib/utils';
+import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
+
+async function getSessionUser(): Promise<{ ho_ten: string; isAdmin: boolean }> {
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('crm_session');
+    if (!session) return { ho_ten: '', isAdmin: false };
+    const decoded = decodeURIComponent(escape(atob(session.value)));
+    const u = JSON.parse(decoded);
+    const isAdmin = u.vai_tro === 'Admin' || (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(u.employee_type || '');
+    return { ho_ten: u.ho_ten || '', isAdmin };
+  } catch {
+    return { ho_ten: '', isAdmin: false };
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +28,17 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to') || '';
 
     let data = await getPipeline();
+
+    // Phân quyền: nhân viên thường chỉ thấy deals mà họ tham gia (bất kỳ vai trò nào)
+    const { ho_ten, isAdmin } = await getSessionUser();
+    if (!isAdmin && ho_ten) {
+      data = data.filter(pl =>
+        pl.sale_phu_trach === ho_ten ||
+        (pl.gdda || '') === ho_ten ||
+        (pl.gdkd || '') === ho_ten ||
+        (pl.tkkd || '') === ho_ten
+      );
+    }
 
     if (giai_doan) data = data.filter(pl => pl.giai_doan === giai_doan);
     if (du_an) data = data.filter(pl => pl.id_du_an === du_an);

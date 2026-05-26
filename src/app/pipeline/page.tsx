@@ -576,10 +576,12 @@ function PipelineContent() {
           <SlidersHorizontal size={14} style={{ color: 'var(--text-label)' }} />
           <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', fontWeight: 500 }}>Lọc:</span>
         </div>
-        <select className="form-select" value={filterSale} onChange={(e) => setFilterSale(e.target.value)}>
-          <option value="">Tất cả nhân sự</option>
-          {employees.map(nv => <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>)}
-        </select>
+        {isAllVisible && (
+          <select className="form-select" value={filterSale} onChange={(e) => setFilterSale(e.target.value)}>
+            <option value="">Tất cả nhân sự</option>
+            {employees.map(nv => <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>)}
+          </select>
+        )}
         <select className="form-select" value={filterDuAn} onChange={(e) => setFilterDuAn(e.target.value)}>
           <option value="">Tất cả dự án</option>
           {projects.map(da => <option key={da.id_du_an} value={da.id_du_an}>{da.ten_du_an}</option>)}
