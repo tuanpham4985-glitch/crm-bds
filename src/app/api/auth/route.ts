@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/auth — Get current session
+// GET /api/auth — Get current session (always re-read vai_tro + employee_type from sheet)
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -115,6 +115,22 @@ export async function GET() {
     // Use atob for Edge compatibility
     const decoded = decodeURIComponent(escape(atob(session.value)));
     const userData = JSON.parse(decoded);
+
+    // Re-read vai_tro & employee_type từ sheet để role changes có hiệu lực ngay
+    // mà không cần user logout/login lại. Bỏ qua DEV_ADMIN (không có row trong sheet).
+    if (userData.id_nhan_vien !== 'DEV_ADMIN' && userData.email) {
+      try {
+        const nv = await findNhanVienByEmail(userData.email);
+        if (nv) {
+          userData.vai_tro     = nv.vai_tro     || userData.vai_tro;
+          userData.employee_type = nv.employee_type || userData.employee_type;
+        }
+      } catch (refreshErr) {
+        // Nếu sheet không đọc được (timeout, quota...) → fallback về dữ liệu cookie
+        console.warn('[Auth] Could not refresh vai_tro from sheet, using cached value:', refreshErr);
+      }
+    }
+
     return NextResponse.json({ success: true, data: userData });
   } catch (error: any) {
     console.error('[Auth] Session Catch Error:', error);
