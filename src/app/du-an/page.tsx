@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Edit3, Trash2, X, Building2, Eye, EyeOff,
-  Hash, ExternalLink, ChevronDown, ChevronRight, Layers,
+  ExternalLink, ChevronDown, ChevronRight, Layers,
   SlidersHorizontal,
 } from 'lucide-react';
 import type { DuAn, Pipeline } from '@/lib/types';
@@ -33,7 +33,7 @@ export default function DuAnPage() {
   // Form
   const [form, setForm] = useState({
     ma_du_an: '', ten_du_an: '', hien_thi: 1,
-    hoa_hong_mac_dinh: 0, link_tai_lieu: '', chu_dau_tu: '',
+    hoa_hong_mac_dinh: 0, link_tai_lieu: '', chu_dau_tu: '', link_du_an: '',
   });
 
   const fetchAll = useCallback(async () => {
@@ -142,7 +142,7 @@ export default function DuAnPage() {
 
   const openCreate = () => {
     setEditingItem(null);
-    setForm({ ma_du_an: '', ten_du_an: '', hien_thi: 1, hoa_hong_mac_dinh: 0, link_tai_lieu: '', chu_dau_tu: '' });
+    setForm({ ma_du_an: '', ten_du_an: '', hien_thi: 1, hoa_hong_mac_dinh: 0, link_tai_lieu: '', chu_dau_tu: '', link_du_an: '' });
     setShowModal(true);
   };
 
@@ -155,6 +155,7 @@ export default function DuAnPage() {
       hoa_hong_mac_dinh: da.hoa_hong_mac_dinh,
       link_tai_lieu: da.link_tai_lieu || '',
       chu_dau_tu: da.chu_dau_tu || '',
+      link_du_an: da.link_du_an || '',
     });
     setShowModal(true);
   };
@@ -356,21 +357,35 @@ export default function DuAnPage() {
 
                           {/* Project name */}
                           <div style={{ marginBottom: 14, paddingRight: 100 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                               <Layers size={16} color="var(--primary)" style={{ flexShrink: 0 }} />
                               <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-title)' }}>
                                 {da.ten_du_an}
                               </span>
                             </div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', paddingLeft: 24 }}>
-                              <Hash size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 2 }} />
-                              {da.ma_du_an}
-                              {da.hoa_hong_mac_dinh > 0 && (
-                                <span style={{ marginLeft: 10 }}>
-                                  · HH: {(da.hoa_hong_mac_dinh * 100).toFixed(1)}%
-                                </span>
-                              )}
-                            </div>
+                            {da.link_du_an ? (
+                              <div style={{ paddingLeft: 24 }}>
+                                <a
+                                  href={da.link_du_an}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                    fontSize: '0.8rem', color: 'var(--primary)',
+                                    textDecoration: 'none',
+                                  }}
+                                  onMouseOver={e => (e.currentTarget.style.textDecoration = 'underline')}
+                                  onMouseOut={e => (e.currentTarget.style.textDecoration = 'none')}
+                                >
+                                  <ExternalLink size={11} style={{ flexShrink: 0 }} />
+                                  {da.link_du_an.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                                </a>
+                              </div>
+                            ) : (
+                              <div style={{ paddingLeft: 24, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                Chưa có website
+                              </div>
+                            )}
                           </div>
 
                           {/* Stats — admin only */}
@@ -392,9 +407,9 @@ export default function DuAnPage() {
                             {da.link_tai_lieu && (
                               <a
                                 href={da.link_tai_lieu} target="_blank" rel="noopener noreferrer"
-                                className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}
+                                className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}
                               >
-                                <ExternalLink size={13} />Thông tin
+                                <ExternalLink size={13} />Tài liệu
                               </a>
                             )}
                             {isAdmin && (
@@ -471,7 +486,13 @@ export default function DuAnPage() {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Link thông tin dự án</label>
+                <label className="form-label">Website dự án</label>
+                <input className="form-input" value={form.link_du_an}
+                  onChange={(e) => setForm({ ...form, link_du_an: e.target.value })}
+                  placeholder="https://vinhomes.vn/..." />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Link tài liệu nội bộ</label>
                 <input className="form-input" value={form.link_tai_lieu}
                   onChange={(e) => setForm({ ...form, link_tai_lieu: e.target.value })}
                   placeholder="https://drive.google.com/..." />

@@ -24,6 +24,7 @@ export interface DuAn {
   hoa_hong_mac_dinh: number;
   link_tai_lieu?: string;
   chu_dau_tu?: string;
+  link_du_an?: string;
 }
 
 // === NHÂN VIÊN ===

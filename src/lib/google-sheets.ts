@@ -335,6 +335,7 @@ export async function getDuAn(): Promise<DuAn[]> {
         hoa_hong_mac_dinh: num(v[h[4]]),
         link_tai_lieu: str(v[h[5]]),
         chu_dau_tu: str(v[h[6]]),
+        link_du_an: str(v[h[7]]),
       } as DuAn;
     })
     .filter((x): x is DuAn => x !== null);
@@ -980,6 +981,7 @@ export async function addDuAn(da: DuAn): Promise<void> {
     [h[3]]: da.hien_thi, [h[4]]: da.hoa_hong_mac_dinh,
     [h[5]]: da.link_tai_lieu || '',
     [h[6]]: da.chu_dau_tu || '',
+    [h[7]]: da.link_du_an || '',
   });
   await addLog(doc, 'CREATE_DA', da.id_du_an, '', '');
 }
@@ -997,6 +999,7 @@ export async function updateDuAn(da: DuAn): Promise<boolean> {
   row.set(h[3], da.hien_thi); row.set(h[4], da.hoa_hong_mac_dinh);
   row.set(h[5], da.link_tai_lieu || '');
   row.set(h[6], da.chu_dau_tu || '');
+  row.set(h[7], da.link_du_an || '');
   await row.save();
   await addLog(doc, 'UPDATE_DA', da.id_du_an, '', '');
   return true;

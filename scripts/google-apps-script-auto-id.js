@@ -70,7 +70,7 @@ const SHEET_CONFIG = {
   'KHACH_HANG': { prefix: 'KH',  idCol: 1 },
   'PIPELINE':   { prefix: 'PL',  idCol: 1 },
   'CONG_VIEC':  { prefix: 'CV',  idCol: 1 },
-  'DU_AN':      { prefix: 'DA_', idCol: 1 },
+  'DU_AN':      { prefix: 'DA_', idCol: 1, nameCol: 3 }, // Kiểm tra cột C (ten_du_an) thay vì cột B (ma_du_an)
   'HOP_DONG':   { prefix: 'HD',  idCol: 1 },
 };
 
@@ -157,7 +157,7 @@ function fillMissingIdsInRange_(sheet, config, startRow, endRow) {
   const numRows = endRow - startRow + 1;
   if (numRows <= 0) return 0;
 
-  const nameCol = config.idCol + 1; // Column B (name/data column)
+  const nameCol = config.nameCol || (config.idCol + 1); // Dùng nameCol nếu config có, fallback cột B
   const numCols = Math.max(config.idCol, nameCol);
 
   // Batch read: get cols A-B for the entire range in ONE call
@@ -204,7 +204,7 @@ function fillMissingIds_(sheet, config) {
   const lastRow = sheet.getLastRow();
   if (lastRow <= 1) return 0;
 
-  const nameCol = config.idCol + 1;
+  const nameCol = config.nameCol || (config.idCol + 1); // Dùng nameCol nếu config có, fallback cột B
   const numCols = Math.max(config.idCol, nameCol);
   const numRows = lastRow - 1; // Exclude header
 
