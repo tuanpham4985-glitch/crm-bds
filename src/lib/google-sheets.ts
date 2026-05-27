@@ -880,7 +880,9 @@ export async function updatePipeline(pl: Pipeline): Promise<boolean> {
     tkkd: pl.tkkd || '',
     phi_tkkd: pl.phi_tkkd || 0,
     ngay_cap_nhat: now,
-    thang: toMonthKey(now),
+    // Giữ nguyên thang gốc (tháng deal chốt).
+    // Chỉ tự động set khi thang đang rỗng — tránh ghi đè mỗi lần update field khác.
+    thang: pl.thang || toMonthKey(now),
   };
 
   // Cập nhật giá trị an toàn theo tên cột
