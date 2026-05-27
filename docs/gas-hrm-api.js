@@ -787,6 +787,16 @@ function syncEmployees() {
         }
       }
 
+      // Bảo lưu vai_tro đã thiết lập trên CRM — KHÔNG bao giờ đồng bộ đè từ nguồn Victory
+      // (vai_tro là quyền hệ thống CRM, không phải dữ liệu HR)
+      const currentRoleColIdx = targetHeaders.indexOf("vai_tro");
+      if (currentRoleColIdx !== -1) {
+        const curRole = String(existingRow[currentRoleColIdx] || "").trim();
+        if (curRole) {
+          updatedRowValues[currentRoleColIdx] = curRole;
+        }
+      }
+
       employeeSheet.getRange(targetRowIndex, 1, 1, updatedRowValues.length).setValues([updatedRowValues]);
       updateCount++;
     } else {

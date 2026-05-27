@@ -296,10 +296,12 @@ function dongBoNhanSu() {
         var oldPw = String(currentTargetData[existingRow - 1][pwIdx] || "").trim();
         if (oldPw && oldPw !== "123456") rowValues[pwIdx] = oldPw;
       }
+      // Bảo lưu vai_tro đã thiết lập trên CRM — KHÔNG bao giờ đồng bộ đè từ nguồn Victory
+      // (vai_tro là quyền hệ thống CRM, không phải dữ liệu HR)
       var roleIdx = targetHeaders.indexOf("vai_tro");
       if (roleIdx !== -1 && currentTargetData[existingRow - 1]) {
         var oldRole = String(currentTargetData[existingRow - 1][roleIdx] || "").trim();
-        if (oldRole && oldRole !== "Sale") rowValues[roleIdx] = oldRole;
+        if (oldRole) rowValues[roleIdx] = oldRole;
       }
       targetSheet.getRange(existingRow, 1, 1, rowValues.length).setValues([rowValues]);
       updated++;
