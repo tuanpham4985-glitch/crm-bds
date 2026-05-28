@@ -376,8 +376,9 @@ export async function getNhanVien(): Promise<NhanVien[]> {
   const result: NhanVien[] = [];
   for (const row of rows) {
     const v = row.toObject();
-    let id = str(v[h[0]]);
-    const hoTen = str(v[h[1]]);
+    // Read by explicit column name first; fall back to position for legacy sheets
+    let id = str(v['id_nhan_vien'] ?? v[h[0]]);
+    const hoTen = str(v['ho_ten'] ?? v[h[1]]);
 
     // Skip completely empty rows
     if (!id && !hoTen) continue;
@@ -386,7 +387,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
     if (!id && hoTen) {
       id = `NV${Date.now()}`;
       try {
-        row.set(h[0], id);
+        row.set('id_nhan_vien', id);
         await row.save();
         console.log(`[GSheets] Auto-generated id_nhan_vien="${id}" for "${hoTen}"`);
       } catch (err: unknown) {

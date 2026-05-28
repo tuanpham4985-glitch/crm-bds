@@ -189,14 +189,21 @@ function HopDongContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employees.length]);
 
-  // Sync URL id_nhan_vien to filter
+  // Sync URL id_nhan_vien to filter — only if the ID exists in current employee list
   useEffect(() => {
-    setFilterEmployee(prefilledEmployeeId);
-  }, [prefilledEmployeeId]);
+    if (!prefilledEmployeeId) {
+      setFilterEmployee('');
+      return;
+    }
+    if (employees.length === 0) return; // wait until employees are loaded
+    const exists = employees.some(e => e.id_nhan_vien === prefilledEmployeeId);
+    setFilterEmployee(exists ? prefilledEmployeeId : '');
+  }, [prefilledEmployeeId, employees]);
 
   const getEmployeeName = (employeeId: string) => {
+    if (!employeeId) return '(Chưa chọn)';
     const emp = employees.find(e => e.id_nhan_vien === employeeId);
-    return emp?.ho_ten || employeeId;
+    return emp?.ho_ten || `(Không tìm thấy: ${employeeId})`;
   };
 
   const getActiveContractCount = (employeeId: string) => {
@@ -225,16 +232,20 @@ function HopDongContent() {
   const openCreate = (employeeId = '') => {
     setEditingItem(null);
     const emp = employees.find(e => e.id_nhan_vien === employeeId);
-    
+
+    // If the prefilled ID from URL doesn't match any current employee, clear it
+    // to prevent saving contracts with stale/mismatched id_nhan_vien
+    const resolvedId = emp ? employeeId : '';
+
     // Auto-detect contract type from employee status
     const initialContractType = emp?.trang_thai === 'Học viên' ? 'Học viên' : 'Thử việc';
-    
+
     const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', initialContractType, emp?.employee_type);
     const dept: Department = classification.department;
-    const soHD = generateContractNumber(employeeId, initialContractType);
-    
+    const soHD = generateContractNumber(resolvedId, initialContractType);
+
     setForm({
-      id_nhan_vien: employeeId || '',
+      id_nhan_vien: resolvedId,
       so_hop_dong: soHD,
       contract_type: initialContractType,
       ngay_bat_dau: new Date().toISOString().split('T')[0],
