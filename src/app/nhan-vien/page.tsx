@@ -149,9 +149,13 @@ export default function NhanVienPage() {
     };
   };
 
-  // Contract count per employee
+  // Contract count per employee — match by ID first, then by stored name as fallback
   const getContractCount = (employeeId: string) => {
-    const empContracts = contracts.filter(c => c.id_nhan_vien === employeeId);
+    const emp = employees.find(e => e.id_nhan_vien === employeeId);
+    const empContracts = contracts.filter(c =>
+      c.id_nhan_vien === employeeId ||
+      (emp && c.ten_nhan_vien && c.ten_nhan_vien === emp.ho_ten)
+    );
     const active = empContracts.filter(c => {
       if (!c.ngay_ket_thuc) return true;
       return new Date(c.ngay_ket_thuc) >= new Date();

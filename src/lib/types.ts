@@ -57,6 +57,7 @@ export interface NhanVien {
 export interface HopDong {
   id: string;
   id_nhan_vien: string;
+  ten_nhan_vien?: string;
   so_hop_dong: string;
   phong_KD?: string;
   employee_type?: string; // index 13/4 (Position)

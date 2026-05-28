@@ -123,6 +123,17 @@ const SHEETS = {
   PAYROLL_ITEMS: 'PAYROLL_ITEMS',
 } as const;
 
+/**
+ * Recover leading zeros stripped by Google Sheets number auto-detection.
+ * e.g. "1" → "0001", "44" → "0044", "0001" → "0001" (idempotent)
+ * Only applies to purely numeric IDs with 1–4 digits (matches the 0001-9999 format).
+ */
+function padEmployeeId(id: string): string {
+  if (!id) return '';
+  if (/^\d{1,4}$/.test(id)) return id.padStart(4, '0');
+  return id;
+}
+
 // Exact column headers of the BANG_LUONG sheet (must match Google Sheets exactly)
 const BANG_LUONG_HEADERS = [
   'id', 'id_nhan_vien', 'thang', 'nam',
@@ -377,7 +388,8 @@ export async function getNhanVien(): Promise<NhanVien[]> {
   for (const row of rows) {
     const v = row.toObject();
     // Read by explicit column name first; fall back to position for legacy sheets
-    let id = str(v['id_nhan_vien'] ?? v[h[0]]);
+    // padEmployeeId recovers leading zeros stripped by Sheets auto-detection (e.g. "0001" → stored as 1 → read as "1" → restored to "0001")
+    let id = padEmployeeId(str(v['id_nhan_vien'] ?? v[h[0]]));
     const hoTen = str(v['ho_ten'] ?? v[h[1]]);
 
     // Skip completely empty rows
@@ -1115,7 +1127,7 @@ export async function findNhanVienByEmail(email: string): Promise<NhanVien | nul
 // HỢP ĐỒNG (Contracts) — CORE LAYER: English keys
 // ============================================================
 
-const HOP_DONG_HEADERS = ['id', 'id_nhan_vien', 'so_hop_dong', 'phong_KD', 'employee_type', 'department', 'contract_type', 'template_file', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at'];
+const HOP_DONG_HEADERS = ['id', 'id_nhan_vien', 'ten_nhan_vien', 'so_hop_dong', 'phong_KD', 'employee_type', 'department', 'contract_type', 'template_file', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at'];
 
 export async function getHopDong(): Promise<HopDong[]> {
   const doc = await getDoc();
@@ -1156,7 +1168,8 @@ export async function getHopDong(): Promise<HopDong[]> {
       if (!id) return null;
       return {
         id,
-        id_nhan_vien: str(v['id_nhan_vien']),
+        id_nhan_vien: padEmployeeId(str(v['id_nhan_vien'])),
+        ten_nhan_vien: str(v['ten_nhan_vien']),
         so_hop_dong: str(v['so_hop_dong']),
         phong_KD: str(v['phong_KD']),
         employee_type: str(v['employee_type']),
@@ -1188,6 +1201,7 @@ export async function addHopDong(hd: HopDong): Promise<void> {
   const rowData: Record<string, string | number> = {};
   rowData['id'] = hd.id || '';
   rowData['id_nhan_vien'] = hd.id_nhan_vien || '';
+  rowData['ten_nhan_vien'] = hd.ten_nhan_vien || '';
   rowData['so_hop_dong'] = hd.so_hop_dong || '';
   rowData['phong_KD'] = hd.phong_KD || '';
   rowData['employee_type'] = hd.employee_type || '';
@@ -1220,6 +1234,7 @@ export async function updateHopDong(hd: HopDong): Promise<boolean> {
 
   row.assign({
     id_nhan_vien: hd.id_nhan_vien || '',
+    ten_nhan_vien: hd.ten_nhan_vien || '',
     so_hop_dong: hd.so_hop_dong || '',
     phong_KD: hd.phong_KD || '',
     employee_type: hd.employee_type || '',
@@ -1293,7 +1308,7 @@ export async function getBangLuong(): Promise<BangLuong[]> {
       if (!id) return null;
       return {
         id,
-        id_nhan_vien: str(v['id_nhan_vien']),
+        id_nhan_vien: padEmployeeId(str(v['id_nhan_vien'])),
         thang:        num(v['thang']),
         nam:          num(v['nam']),
         luong_co_ban: num(v['luong_co_ban']),

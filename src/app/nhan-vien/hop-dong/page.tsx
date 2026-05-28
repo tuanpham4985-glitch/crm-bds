@@ -200,10 +200,10 @@ function HopDongContent() {
     setFilterEmployee(exists ? prefilledEmployeeId : '');
   }, [prefilledEmployeeId, employees]);
 
-  const getEmployeeName = (employeeId: string) => {
-    if (!employeeId) return '(Chưa chọn)';
+  const getEmployeeName = (employeeId: string, fallbackName?: string) => {
+    if (!employeeId && !fallbackName) return '(Chưa chọn)';
     const emp = employees.find(e => e.id_nhan_vien === employeeId);
-    return emp?.ho_ten || `(Không tìm thấy: ${employeeId})`;
+    return emp?.ho_ten || fallbackName || `(Không tìm thấy: ${employeeId})`;
   };
 
   const getActiveContractCount = (employeeId: string) => {
@@ -219,7 +219,7 @@ function HopDongContent() {
 
   // Filtered contracts
   const filteredContracts = accessibleContracts.filter(hd => {
-    const empName = getEmployeeName(hd.id_nhan_vien).toLowerCase();
+    const empName = getEmployeeName(hd.id_nhan_vien, hd.ten_nhan_vien).toLowerCase();
     const matchSearch = !searchQuery ||
       hd.so_hop_dong.toLowerCase().includes(searchQuery.toLowerCase()) ||
       empName.includes(searchQuery.toLowerCase());
@@ -261,11 +261,14 @@ function HopDongContent() {
 
   const openEdit = (hd: HopDong) => {
     setEditingItem(hd);
-    const emp = employees.find(e => e.id_nhan_vien === hd.id_nhan_vien);
+    const emp = employees.find(e => e.id_nhan_vien === hd.id_nhan_vien)
+      ?? employees.find(e => hd.ten_nhan_vien && e.ho_ten === hd.ten_nhan_vien);
     const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', hd.contract_type || 'Thử việc', emp?.employee_type);
     const dept: Department = (hd.department as Department) || classification.department;
+    // If found by name fallback, use the current employee ID to fix the mismatch
+    const resolvedId = emp?.id_nhan_vien || hd.id_nhan_vien;
     setForm({
-      id_nhan_vien: hd.id_nhan_vien,
+      id_nhan_vien: resolvedId,
       so_hop_dong: hd.so_hop_dong,
       contract_type: hd.contract_type || 'Thử việc',
       ngay_bat_dau: parseToISODate(hd.ngay_bat_dau),
@@ -273,8 +276,8 @@ function HopDongContent() {
       luong_co_ban: String(hd.luong_co_ban || ''),
       ghi_chu: hd.ghi_chu,
       department: dept,
-      phong_KD: hd.phong_KD || '',
-      employee_type: hd.employee_type || '',
+      phong_KD: hd.phong_KD || emp?.phong_KD || '',
+      employee_type: hd.employee_type || emp?.employee_type || '',
     });
     setShowModal(true);
   };
@@ -289,9 +292,13 @@ function HopDongContent() {
       const method = editingItem ? 'PUT' : 'POST';
       // Use contract engine to resolve template
       const engineResult = resolvedTemplate;
+      // Snapshot employee name at save time so it survives future ID changes
+      const empSnap = employees.find(e => e.id_nhan_vien === form.id_nhan_vien);
+      const ten_nhan_vien = empSnap?.ho_ten || editingItem?.ten_nhan_vien || '';
       const body = editingItem
         ? {
           ...editingItem, ...form,
+          ten_nhan_vien,
           luong_co_ban: Number(form.luong_co_ban) || 0,
           department: form.department,
           contract_type: engineResult?.contract_type || form.contract_type,
@@ -299,6 +306,7 @@ function HopDongContent() {
         }
         : {
           ...form,
+          ten_nhan_vien,
           id: form.so_hop_dong,
           luong_co_ban: Number(form.luong_co_ban) || 0,
           department: form.department,
@@ -348,7 +356,8 @@ function HopDongContent() {
     if (!exportItem) return;
     setExporting(true);
     try {
-      const emp = employees.find(e => e.id_nhan_vien === exportItem.id_nhan_vien);
+      const emp = employees.find(e => e.id_nhan_vien === exportItem.id_nhan_vien)
+        ?? employees.find(e => exportItem.ten_nhan_vien && e.ho_ten === exportItem.ten_nhan_vien);
       const now = new Date();
       // Resolve template_file from stored data or re-compute via engine
       const exportClassification = detectEmployeeClassification(emp?.vai_tro || 'Sale', exportItem.contract_type, emp?.employee_type);
@@ -574,7 +583,7 @@ function HopDongContent() {
                         <div className="flex items-center gap-2">
                           <User size={14} style={{ color: 'var(--text-label)' }} />
                           <span style={{ fontWeight: 500, color: 'var(--text-title)' }}>
-                            {getEmployeeName(hd.id_nhan_vien)}
+                            {getEmployeeName(hd.id_nhan_vien, hd.ten_nhan_vien)}
                           </span>
                         </div>
                       </td>
@@ -833,7 +842,7 @@ function HopDongContent() {
               }}>
                 {[
                   { label: getFieldLabel('so_hop_dong'), value: viewItem.so_hop_dong },
-                  { label: 'Nhân viên', value: getEmployeeName(viewItem.id_nhan_vien) },
+                  { label: 'Nhân viên', value: getEmployeeName(viewItem.id_nhan_vien, viewItem.ten_nhan_vien) },
                   { label: 'Chức danh', value: viewItem.employee_type || '—' },
                   { label: getFieldLabel('phong_KD'), value: viewItem.phong_KD || '—' },
                   { label: getFieldLabel('contract_type'), value: viewItem.contract_type },
@@ -914,7 +923,7 @@ function HopDongContent() {
                 borderRadius: 'var(--radius-md)', fontSize: '0.8rem',
                 color: 'var(--info-text)', marginBottom: 8,
               }}>
-                <strong>HĐ:</strong> {exportItem.so_hop_dong} — <strong>{getEmployeeName(exportItem.id_nhan_vien)}</strong>
+                <strong>HĐ:</strong> {exportItem.so_hop_dong} — <strong>{getEmployeeName(exportItem.id_nhan_vien, exportItem.ten_nhan_vien)}</strong>
               </div>
               <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: 12 }}>
                 Bổ sung thông tin cá nhân để điền vào mẫu hợp đồng:
