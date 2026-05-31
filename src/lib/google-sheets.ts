@@ -121,6 +121,7 @@ const SHEETS = {
   PAYROLL_ADJUSTMENTS: 'PAYROLL_ADJUSTMENTS',
   PAYROLL: 'PAYROLL',
   PAYROLL_ITEMS: 'PAYROLL_ITEMS',
+  NHIEM_VU: 'NHIEM_VU',
 } as const;
 
 /**
@@ -656,6 +657,32 @@ export async function getCongViec(): Promise<CongViec[]> {
       } as CongViec;
     })
     .filter((x): x is CongViec => x !== null);
+}
+
+/**
+ * Đọc sheet NHIEM_VU: "Vị trí" → "Công việc phải làm"
+ * Trả về map { [vi_tri]: cong_viec_phai_lam }
+ * Dùng để tự động điền {{cong_viec_phai_lam}} vào mẫu hợp đồng theo chức danh.
+ */
+export async function getNhiemVu(): Promise<Record<string, string>> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.NHIEM_VU);
+  } catch {
+    console.warn('[GSheets] NHIEM_VU sheet not found — returning empty map.');
+    return {};
+  }
+  const rows = await sheet.getRows();
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    const v = row.toObject();
+    // Tìm cột "Vị trí" (chức danh) — key-insensitive fallback
+    const viTri = str(v['Vị trí'] ?? v['vi_tri'] ?? v['chuc_danh'] ?? '');
+    const congViec = str(v['Công việc phải làm'] ?? v['cong_viec_phai_lam'] ?? '');
+    if (viTri) result[viTri] = congViec;
+  }
+  return result;
 }
 
 // ============================================================

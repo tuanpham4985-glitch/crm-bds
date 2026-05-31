@@ -137,6 +137,9 @@ function HopDongContent() {
     trang_thai_nhan_vien: []
   });
 
+  // Map { [chuc_danh]: cong_viec_phai_lam } from NHIEM_VU sheet
+  const [nhiemVu, setNhiemVu] = useState<Record<string, string>>({});
+
   // Auto-computed contract template based on form selections
   const selectedEmployee = employees.find(e => e.id_nhan_vien === form.id_nhan_vien);
   const classification = detectEmployeeClassification(
@@ -159,18 +162,21 @@ function HopDongContent() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [hdRes, nvRes, dmRes] = await Promise.all([
+      const [hdRes, nvRes, dmRes, nvuRes] = await Promise.all([
         fetch('/api/contracts'),
         fetch('/api/nhan-vien'),
         fetch('/api/danh-muc'),
+        fetch('/api/nhiem-vu'),
       ]);
       const hdData = await safeJson(hdRes);
       const nvData = await safeJson(nvRes);
       const dmData = await safeJson(dmRes);
+      const nvuData = await safeJson(nvuRes);
 
       if (hdData.success) setContracts(hdData.data);
       if (nvData.success) setEmployees(nvData.data);
       if (dmData.success) setDanhMuc(dmData.data);
+      if (nvuData.success) setNhiemVu(nvuData.data || {});
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -365,6 +371,10 @@ function HopDongContent() {
       const exportTemplate = getContractTemplate(exportClassification.contract_category, exportDept);
       const templateFile = exportItem.template_file || exportTemplate?.template_file || '';
       // Merge: exportForm (user input) overrides employee defaults for shared fields
+      // Resolve cong_viec_phai_lam from NHIEM_VU sheet based on employee's chuc_danh
+      const chucDanh = emp?.employee_type || exportItem.employee_type || '';
+      const congViecPhaiLam = (chucDanh && nhiemVu[chucDanh]) ? nhiemVu[chucDanh] : '';
+
       const mergedData = {
         // Template file
         template_file: templateFile,
@@ -387,13 +397,15 @@ function HopDongContent() {
         noi_cap: emp?.noi_cap || '',
         HKTT: emp?.HKTT || '',
         ma_so_thue: emp?.ma_so_thue || '',
-        employee_type: emp?.employee_type || '',
+        employee_type: chucDanh,
         email: emp?.email || '',
         so_dien_thoai: emp?.so_dien_thoai || '',
         // Signing date
         ngay_ky: String(now.getDate()),
         thang_ky: String(now.getMonth() + 1),
         nam_ky: String(now.getFullYear()),
+        // Nhiệm vụ / công việc phải làm (tự động từ NHIEM_VU theo chức danh)
+        cong_viec_phai_lam: congViecPhaiLam,
       };
       // Export form user input overrides (so_cccd, noi_cap, ma_so_thue, bank info, etc.)
       const finalData = { ...mergedData };

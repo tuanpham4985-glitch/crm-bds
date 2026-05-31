@@ -216,6 +216,8 @@ export async function POST(req: Request) {
       phong_KD: data.phong_KD || '',
       phong_ban: data.phong_KD || '',
       Phong_Ban: data.phong_KD || '',
+      // Nhiệm vụ / công việc phải làm (điền từ sheet NHIEM_VU theo chức danh)
+      cong_viec_phai_lam: data.cong_viec_phai_lam || '',
     };
 
     // ---- 1. Generate main contract .docx ----
