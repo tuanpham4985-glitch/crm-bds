@@ -156,6 +156,7 @@ function HopDongContent() {
     department: 'KD' as Department,
     phong_KD: '',
     employee_type: '',
+    so_nguoi_phu_thuoc: 0,
   });
 
   const [danhMuc, setDanhMuc] = useState<DanhMuc>({
@@ -289,6 +290,7 @@ function HopDongContent() {
       department: dept,
       phong_KD: emp?.phong_KD || '',
       employee_type: empType,
+      so_nguoi_phu_thuoc: emp?.so_nguoi_phu_thuoc ?? 0,
     });
     setShowModal(true);
   };
@@ -312,6 +314,7 @@ function HopDongContent() {
       department: dept,
       phong_KD: hd.phong_KD || emp?.phong_KD || '',
       employee_type: hd.employee_type || emp?.employee_type || '',
+      so_nguoi_phu_thuoc: emp?.so_nguoi_phu_thuoc ?? 0,
     });
     setShowModal(true);
   };
@@ -355,6 +358,19 @@ function HopDongContent() {
       });
       const result = await res.json();
       if (result.success) {
+        // Nếu so_nguoi_phu_thuoc thay đổi → cập nhật ngược lại hồ sơ nhân viên
+        const empSnap2 = employees.find(e => e.id_nhan_vien === form.id_nhan_vien);
+        if (empSnap2 && (empSnap2.so_nguoi_phu_thuoc ?? 0) !== form.so_nguoi_phu_thuoc) {
+          try {
+            await fetch('/api/nhan-vien', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...empSnap2, so_nguoi_phu_thuoc: form.so_nguoi_phu_thuoc }),
+            });
+          } catch (e) {
+            console.warn('[HopDong] Could not sync so_nguoi_phu_thuoc to employee:', e);
+          }
+        }
         alert(editingItem ? 'Cập nhật hợp đồng thành công!' : 'Tạo hợp đồng thành công!');
         setShowModal(false);
         fetchAll();
@@ -741,6 +757,7 @@ function HopDongContent() {
                       phong_KD: emp?.phong_KD || '',
                       employee_type: newEmpType,
                       luong_co_ban: getDefaultSalary(newEmpType, newDept),
+                      so_nguoi_phu_thuoc: emp?.so_nguoi_phu_thuoc ?? 0,
                     });
                   }}>
                   <option value="">— Chọn nhân viên —</option>
@@ -857,11 +874,22 @@ function HopDongContent() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Lương cơ bản (VNĐ)</label>
-                <input className="form-input" type="number" value={form.luong_co_ban}
-                  onChange={e => setForm({ ...form, luong_co_ban: e.target.value })}
-                  placeholder="10000000" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Lương cơ bản (VNĐ)</label>
+                  <input className="form-input" type="number" value={form.luong_co_ban}
+                    onChange={e => setForm({ ...form, luong_co_ban: e.target.value })}
+                    placeholder="10000000" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">
+                    Số người phụ thuộc
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 400, marginLeft: 4 }}>(giảm trừ thuế TNCN)</span>
+                  </label>
+                  <input className="form-input" type="number" min="0" value={form.so_nguoi_phu_thuoc}
+                    onChange={e => setForm({ ...form, so_nguoi_phu_thuoc: parseInt(e.target.value) || 0 })}
+                    placeholder="0" />
+                </div>
               </div>
 
               <div className="form-group">
