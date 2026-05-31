@@ -51,6 +51,33 @@ function generateContractNumber(idNhanVien: string, contractType: string): strin
   return `${empNum}/${suffix}`;
 }
 
+// ---- Mức lương cơ bản mặc định theo chức danh ----
+// Tra theo employee_type trước; nếu không khớp và khối là BO → dùng mức BO chung.
+const SALARY_DEFAULTS: Record<string, number> = {
+  'NVKD':  5_350_000,
+  'TPKD':  5_500_000,
+  'GĐKD':  6_000_000,
+  'GDDA':  6_000_000,
+};
+// Các chức danh được loại trừ khỏi mức BO mặc định
+const BO_SALARY_EXCLUDE = new Set(['NVKD', 'TPKD', 'GĐKD', 'GDDA', 'Chủ tịch', 'CEO']);
+const BO_DEFAULT_SALARY = 7_000_000;
+
+/**
+ * Trả về mức LCB mặc định (dạng string) dựa theo chức danh + khối.
+ * Trả '' nếu không có mức mặc định (VD: Chủ tịch, CEO).
+ */
+function getDefaultSalary(employee_type: string, department: string): string {
+  if (employee_type && SALARY_DEFAULTS[employee_type] !== undefined) {
+    return String(SALARY_DEFAULTS[employee_type]);
+  }
+  // Khối BO: áp dụng mức chung, trừ các chức danh đặc biệt
+  if (department === 'BO' && employee_type && !BO_SALARY_EXCLUDE.has(employee_type)) {
+    return String(BO_DEFAULT_SALARY);
+  }
+  return '';
+}
+
 /**
  * Safely parse date string to YYYY-MM-DD format for <input type="date">
  * Handles both ISO strings and DD/MM/YYYY
@@ -250,17 +277,18 @@ function HopDongContent() {
     const dept: Department = classification.department;
     const soHD = generateContractNumber(resolvedId, initialContractType);
 
+    const empType = emp?.employee_type || '';
     setForm({
       id_nhan_vien: resolvedId,
       so_hop_dong: soHD,
       contract_type: initialContractType,
       ngay_bat_dau: new Date().toISOString().split('T')[0],
       ngay_ket_thuc: '',
-      luong_co_ban: '',
+      luong_co_ban: getDefaultSalary(empType, dept),
       ghi_chu: '',
       department: dept,
       phong_KD: emp?.phong_KD || '',
-      employee_type: emp?.employee_type || '',
+      employee_type: empType,
     });
     setShowModal(true);
   };
@@ -703,13 +731,16 @@ function HopDongContent() {
                     const empId = e.target.value;
                     const emp = employees.find(x => x.id_nhan_vien === empId);
                     const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', form.contract_type, emp?.employee_type);
+                    const newEmpType = emp?.employee_type || '';
+                    const newDept = classification.department;
                     setForm({
                       ...form,
                       id_nhan_vien: empId,
                       so_hop_dong: generateContractNumber(empId, form.contract_type),
-                      department: classification.department,
+                      department: newDept,
                       phong_KD: emp?.phong_KD || '',
-                      employee_type: emp?.employee_type || ''
+                      employee_type: newEmpType,
+                      luong_co_ban: getDefaultSalary(newEmpType, newDept),
                     });
                   }}>
                   <option value="">— Chọn nhân viên —</option>
@@ -751,7 +782,14 @@ function HopDongContent() {
                 <div className="form-group">
                   <label className="form-label">{getFieldLabel('department')}</label>
                   <select className="form-select" value={form.department}
-                    onChange={e => setForm({ ...form, department: e.target.value as Department })}>
+                    onChange={e => {
+                      const newDept = e.target.value as Department;
+                      setForm({
+                        ...form,
+                        department: newDept,
+                        luong_co_ban: getDefaultSalary(form.employee_type, newDept) || form.luong_co_ban,
+                      });
+                    }}>
                     <option value="KD">{DEPARTMENT_LABELS.KD}</option>
                     <option value="BO">{DEPARTMENT_LABELS.BO}</option>
                   </select>
@@ -781,7 +819,14 @@ function HopDongContent() {
                 <div className="form-group">
                   <label className="form-label">Chức danh</label>
                   <select className="form-select" value={form.employee_type}
-                    onChange={e => setForm({ ...form, employee_type: e.target.value })}>
+                    onChange={e => {
+                      const newType = e.target.value;
+                      setForm({
+                        ...form,
+                        employee_type: newType,
+                        luong_co_ban: getDefaultSalary(newType, form.department) || form.luong_co_ban,
+                      });
+                    }}>
                     <option value="">— Chọn chức danh —</option>
                     {danhMuc.employee_types.map(cd => <option key={cd} value={cd}>{cd}</option>)}
                   </select>
