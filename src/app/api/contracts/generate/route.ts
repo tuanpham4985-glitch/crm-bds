@@ -9,6 +9,38 @@ export const runtime = 'nodejs';
 const TEMPLATES_DIR = path.join(process.cwd(), "public", "templates");
 
 /**
+ * Chuẩn hóa bất kỳ chuỗi ngày nào sang định dạng DD/MM/YYYY (Việt Nam).
+ * Hỗ trợ đầu vào:
+ *   - "1997-04-04"          → "04/04/1997"
+ *   - "2021-12-26T00:00:00Z"→ "26/12/2021"
+ *   - "04/04/1997"          → "04/04/1997"  (giữ nguyên)
+ *   - ""  / undefined       → ""
+ */
+function formatDateVN(dateStr: string | undefined | null): string {
+  if (!dateStr) return '';
+  const s = String(dateStr).trim();
+  if (!s) return '';
+
+  // Đã là DD/MM/YYYY — normalize zero-padding và trả về
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+    const [d, m, y] = s.split('/');
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  }
+
+  // YYYY-MM-DD hoặc ISO timestamp
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+
+  // Fallback: thử parse bằng Date object
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  return s; // trả nguyên nếu không nhận dạng được
+}
+
+/**
  * Helper: Inspect XML for split tags or common Word artifacts
  * that break Docxtemplater tags like {{field_name}}
  */
@@ -187,8 +219,8 @@ export async function POST(req: Request) {
     const exportData: Record<string, string> = {
       so_hop_dong: data.so_hop_dong || '',
       loai_hop_dong: data.contract_type || '',
-      ngay_bat_dau: data.ngay_bat_dau || '',
-      ngay_ket_thuc: data.ngay_ket_thuc || '',
+      ngay_bat_dau:  formatDateVN(data.ngay_bat_dau),
+      ngay_ket_thuc: formatDateVN(data.ngay_ket_thuc),
       luong_co_ban: data.luong_co_ban || '',
       ngay_ky: data.ngay_ky || new Date().getDate().toString(),
       thang_ky: data.thang_ky || (new Date().getMonth() + 1).toString(),
@@ -199,11 +231,11 @@ export async function POST(req: Request) {
       so_dien_thoai: data.so_dien_thoai || '',
       email: data.email || '',
       Email: data.email || '',
-      ngay_sinh: data.ngay_sinh || '',
+      ngay_sinh:         formatDateVN(data.ngay_sinh),
       gioi_tinh: data.gioi_tinh || '',
       so_cccd: data.so_cccd || '',
-      ngay_cap: data.ngay_cap || '',
-      ngay_thang_nam_cap: data.ngay_thang_nam_cap || data.ngay_cap || '',
+      ngay_cap:          formatDateVN(data.ngay_cap),
+      ngay_thang_nam_cap: formatDateVN(data.ngay_thang_nam_cap || data.ngay_cap),
       noi_cap: data.noi_cap || '',
       HKTT: data.HKTT || '',
       hk_thuong_tru: data.HKTT || data.hk_thuong_tru || '',
