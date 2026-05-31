@@ -674,14 +674,32 @@ export async function getNhiemVu(): Promise<Record<string, string>> {
     return {};
   }
   const rows = await sheet.getRows();
+  const h = sheet.headerValues;
+  console.log('[GSheets] NHIEM_VU headers:', h);
+
   const result: Record<string, string> = {};
   for (const row of rows) {
     const v = row.toObject();
-    // Tìm cột "Vị trí" (chức danh) — key-insensitive fallback
-    const viTri = str(v['Vị trí'] ?? v['vi_tri'] ?? v['chuc_danh'] ?? '');
-    const congViec = str(v['Công việc phải làm'] ?? v['cong_viec_phai_lam'] ?? '');
+    // Hỗ trợ cả tên cột tiếng Anh (employee_type / cong_viec_phai_lam)
+    // lẫn tiếng Việt ("Vị trí" / "Công việc phải làm")
+    const viTri = str(
+      v['employee_type'] ??
+      v['Vị trí'] ??
+      v['vi_tri'] ??
+      v['chuc_danh'] ??
+      (h[0] ? v[h[0]] : '') ??
+      ''
+    );
+    const congViec = str(
+      v['cong_viec_phai_lam'] ??
+      v['Công việc phải làm'] ??
+      v['cong_viec'] ??
+      (h[1] ? v[h[1]] : '') ??
+      ''
+    );
     if (viTri) result[viTri] = congViec;
   }
+  console.log('[GSheets] NHIEM_VU loaded:', Object.keys(result).length, 'entries:', Object.keys(result));
   return result;
 }
 
