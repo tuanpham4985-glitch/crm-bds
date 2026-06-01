@@ -82,8 +82,6 @@ export class AttendanceEngine {
             ? 0
             : (status === 'x/2' || status === 'P/2')
               ? 0.5 * (dayWeight > 0 ? 1 : 0)   // Thứ 7 — chỉ tính nếu ngày làm
-            : status === 'L'
-              ? (dayWeight > 0 ? 1.0 : 0)        // Nghỉ lễ: weight=0 → 0 (đã loại khỏi mẫu số), weight>0 → 1
               : baseWorkday;
 
           // OT: ưu tiên ot_hours trực tiếp (từ BCC OT), fallback check_in/check_out
