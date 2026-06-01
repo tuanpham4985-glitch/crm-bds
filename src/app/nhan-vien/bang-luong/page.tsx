@@ -652,14 +652,19 @@ export default function BangLuongPage() {
             const items = (drawerRecord as any).items || [];
             
             // Nếu không có items (dữ liệu cũ), tự tạo items ảo để hiển thị đồng nhất
+            const _actual   = (drawerRecord as any).so_ngay_lam_viec_thuc_te;
+            const _standard = (drawerRecord as any).so_ngay_cong_chuan;
+            const _congNote = (_actual != null && _standard != null)
+              ? `${_actual}/${_standard} ngày`
+              : '';
             const displayItems = items.length > 0 ? items : [
-              { loai_khoan: 'Lương thực tế', nhom: 'thu_nhap', so_tien: drawerRecord.salary_by_day },
-              { loai_khoan: 'Hoa hồng', nhom: 'thu_nhap', so_tien: drawerRecord.hoa_hong },
-              { loai_khoan: 'Thưởng', nhom: 'thu_nhap', so_tien: drawerRecord.thuong },
-              { loai_khoan: 'Lương OT', nhom: 'thu_nhap', so_tien: drawerRecord.ot_pay },
-              { loai_khoan: 'Phạt', nhom: 'khau_tru', so_tien: drawerRecord.phat },
-              { loai_khoan: 'BHXH (10.5%)', nhom: 'khau_tru', so_tien: drawerRecord.bao_hiem },
-              { loai_khoan: 'Thuế TNCN', nhom: 'khau_tru', so_tien: drawerRecord.thue },
+              { loai_khoan: 'Lương thực tế', nhom: 'thu_nhap', so_tien: drawerRecord.salary_by_day, ghi_chu: _congNote },
+              { loai_khoan: 'Hoa hồng', nhom: 'thu_nhap', so_tien: drawerRecord.hoa_hong, ghi_chu: '' },
+              { loai_khoan: 'Thưởng', nhom: 'thu_nhap', so_tien: drawerRecord.thuong, ghi_chu: '' },
+              { loai_khoan: 'Lương OT', nhom: 'thu_nhap', so_tien: drawerRecord.ot_pay, ghi_chu: '' },
+              { loai_khoan: 'Phạt', nhom: 'khau_tru', so_tien: drawerRecord.phat, ghi_chu: '' },
+              { loai_khoan: 'BHXH (10.5%)', nhom: 'khau_tru', so_tien: drawerRecord.bao_hiem, ghi_chu: '' },
+              { loai_khoan: 'Thuế TNCN', nhom: 'khau_tru', so_tien: drawerRecord.thue, ghi_chu: '' },
             ].filter(i => i.so_tien !== 0);
 
             const incomeItems    = displayItems.filter((i: any) => i.nhom === 'thu_nhap');
@@ -702,7 +707,10 @@ export default function BangLuongPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
                     {incomeItems.map((item: any, i: number) => (
                       <div key={i} className="card" style={{ padding: '10px 14px', boxShadow: 'none', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-body)' }}>{item.loai_khoan}</div>
+                        <div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-body)' }}>{item.loai_khoan}</div>
+                          {item.ghi_chu ? <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>{item.ghi_chu}</div> : null}
+                        </div>
                         <div style={{ fontWeight: 600, color: 'var(--text-title)' }}>{fmtCurrency(item.so_tien)}</div>
                       </div>
                     ))}
