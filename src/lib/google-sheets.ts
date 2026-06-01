@@ -1774,7 +1774,7 @@ export async function getAttendanceRaw(thang: number, nam: number): Promise<Atte
       const v = r.toObject();
       return {
         id:                      str(v.id),
-        id_nhan_vien:            str(v.id_nhan_vien),
+        id_nhan_vien:            padEmployeeId(str(v.id_nhan_vien)),
         date:                    str(v.date),
         status:                  str(v.status) as AttendanceRaw['status'],
         check_in:                str(v.check_in)  || undefined,
