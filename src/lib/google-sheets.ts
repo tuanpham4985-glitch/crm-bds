@@ -1793,6 +1793,7 @@ export async function getAttendanceRaw(thang: number, nam: number): Promise<Atte
 /**
  * Lưu hàng loạt bản ghi chấm công vào ATTENDANCE_RAW.
  * Upsert theo (id_nhan_vien, date): nếu đã có → cập nhật, chưa có → thêm mới.
+ * Dùng batch API để tránh 429 quota: addRows() cho rows mới, values:batchUpdate cho rows cũ.
  */
 export async function saveAttendanceBatch(
   records: Omit<AttendanceRaw, 'id'>[],
@@ -1802,7 +1803,7 @@ export async function saveAttendanceBatch(
   const sheet = await getSheet(doc, SHEETS.ATTENDANCE_RAW);
   const rows  = await sheet.getRows();
 
-  // Build lookup: "id_nv|date" → row index (0-based in rows array)
+  // Build lookup: "id_nv|date" → row
   const existing = new Map<string, typeof rows[number]>();
   rows.forEach(r => {
     const v = r.toObject();
@@ -1810,39 +1811,79 @@ export async function saveAttendanceBatch(
     if (key !== '|') existing.set(key, r);
   });
 
-  let saved = 0, skipped = 0;
   const errors: string[] = [];
+  const toAdd: Record<string, string | number | boolean>[] = [];
+  const toUpdate: Array<{ row: typeof rows[number]; rec: Omit<AttendanceRaw, 'id'> }> = [];
+  let saved = 0, skipped = 0;
 
   for (const rec of records) {
     const key = `${rec.id_nhan_vien}|${rec.date}`;
+    if (existing.has(key)) {
+      if (!forceOverwrite) { skipped++; continue; }
+      toUpdate.push({ row: existing.get(key)!, rec });
+    } else {
+      toAdd.push({
+        id:                     `ATT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id_nhan_vien:           rec.id_nhan_vien,
+        date:                   rec.date,
+        status:                 rec.status ?? '',
+        check_in:               rec.check_in ?? '',
+        check_out:              rec.check_out ?? '',
+        ot_hours:               rec.ot_hours ?? '',
+        late_minutes:           rec.late_minutes ?? '',
+        missed_checkin_minutes: rec.missed_checkin_minutes ?? '',
+      });
+    }
+  }
+
+  // ── 1) Batch-add new rows — 1 API call per 500 rows ──────────────────────
+  for (let i = 0; i < toAdd.length; i += 500) {
     try {
-      if (existing.has(key)) {
-        if (!forceOverwrite) { skipped++; continue; }
-        const row = existing.get(key)!;
-        row.set('status',                 rec.status ?? '');
-        row.set('check_in',               rec.check_in ?? '');
-        row.set('check_out',              rec.check_out ?? '');
-        row.set('ot_hours',               rec.ot_hours ?? '');
-        row.set('late_minutes',           rec.late_minutes ?? '');
-        row.set('missed_checkin_minutes', rec.missed_checkin_minutes ?? '');
-        await row.save();
-      } else {
-        const newId = `ATT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        await sheet.addRow({
-          id:                      newId,
-          id_nhan_vien:            rec.id_nhan_vien,
-          date:                    rec.date,
-          status:                  rec.status ?? '',
-          check_in:                rec.check_in ?? '',
-          check_out:               rec.check_out ?? '',
-          ot_hours:                rec.ot_hours ?? '',
-          late_minutes:            rec.late_minutes ?? '',
-          missed_checkin_minutes:  rec.missed_checkin_minutes ?? '',
-        });
-      }
-      saved++;
+      await sheet.addRows(toAdd.slice(i, i + 500));
+      saved += Math.min(500, toAdd.length - i);
     } catch (e: any) {
-      errors.push(`${key}: ${e?.message ?? e}`);
+      errors.push(`addRows[${i}]: ${e?.message ?? e}`);
+    }
+  }
+
+  // ── 2) Batch-update existing rows — 1 API call per 200 rows ─────────────
+  if (toUpdate.length > 0) {
+    await sheet._ensureHeaderRowLoaded();
+    const headers  = sheet.headerValues;
+    const sheetName = sheet.a1SheetName;
+    const lastCol  = sheet.lastColumnLetter;
+
+    const valueRanges = toUpdate.map(({ row, rec }) => {
+      const cur = row.toObject();
+      const vals = headers.map(h => {
+        switch (h) {
+          case 'status':                  return rec.status ?? '';
+          case 'check_in':               return rec.check_in ?? '';
+          case 'check_out':              return rec.check_out ?? '';
+          case 'ot_hours':               return rec.ot_hours ?? '';
+          case 'late_minutes':           return rec.late_minutes ?? '';
+          case 'missed_checkin_minutes': return rec.missed_checkin_minutes ?? '';
+          default:                       return cur[h] ?? '';
+        }
+      });
+      return {
+        range: `${sheetName}!A${row.rowNumber}:${lastCol}${row.rowNumber}`,
+        values: [vals],
+      };
+    });
+
+    for (let i = 0; i < valueRanges.length; i += 200) {
+      try {
+        await doc.sheetsApi.post('values:batchUpdate', {
+          json: {
+            valueInputOption: 'USER_ENTERED',
+            data: valueRanges.slice(i, i + 200),
+          },
+        });
+        saved += Math.min(200, valueRanges.length - i);
+      } catch (e: any) {
+        errors.push(`batchUpdate[${i}]: ${e?.message ?? e}`);
+      }
     }
   }
 
