@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Database, Briefcase
+  ChevronDown, Database, Briefcase, CalendarDays
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,6 +30,7 @@ const CRM_ITEMS = [
 const HRM_ITEMS = [
   { href: '/nhan-vien', label: 'Nhân viên', icon: UserCog },
   { href: '/nhan-vien/hop-dong', label: 'Hợp đồng', icon: FileText },
+  { href: '/nhan-vien/cham-cong', label: 'Chấm công', icon: CalendarDays },
   { href: '/nhan-vien/bang-luong', label: 'Bảng lương', icon: BadgeDollarSign },
 ];
 

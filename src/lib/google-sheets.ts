@@ -1773,17 +1773,80 @@ export async function getAttendanceRaw(thang: number, nam: number): Promise<Atte
     .map(r => {
       const v = r.toObject();
       return {
-        id: str(v.id),
-        id_nhan_vien: str(v.id_nhan_vien),
-        date: str(v.date),
-        check_in: str(v.check_in),
-        check_out: str(v.check_out),
-      };
+        id:                      str(v.id),
+        id_nhan_vien:            str(v.id_nhan_vien),
+        date:                    str(v.date),
+        status:                  str(v.status) as AttendanceRaw['status'],
+        check_in:                str(v.check_in)  || undefined,
+        check_out:               str(v.check_out) || undefined,
+        ot_hours:                v.ot_hours               != null ? num(v.ot_hours)               : undefined,
+        late_minutes:            v.late_minutes            != null ? num(v.late_minutes)            : undefined,
+        missed_checkin_minutes:  v.missed_checkin_minutes  != null ? num(v.missed_checkin_minutes)  : undefined,
+      } as AttendanceRaw;
     })
     .filter(a => {
       const d = new Date(a.date);
       return (d.getMonth() + 1) === thang && d.getFullYear() === nam;
     });
+}
+
+/**
+ * Lưu hàng loạt bản ghi chấm công vào ATTENDANCE_RAW.
+ * Upsert theo (id_nhan_vien, date): nếu đã có → cập nhật, chưa có → thêm mới.
+ */
+export async function saveAttendanceBatch(
+  records: Omit<AttendanceRaw, 'id'>[],
+  forceOverwrite = true
+): Promise<{ saved: number; skipped: number; errors: string[] }> {
+  const doc   = await getDoc();
+  const sheet = await getSheet(doc, SHEETS.ATTENDANCE_RAW);
+  const rows  = await sheet.getRows();
+
+  // Build lookup: "id_nv|date" → row index (0-based in rows array)
+  const existing = new Map<string, typeof rows[number]>();
+  rows.forEach(r => {
+    const v = r.toObject();
+    const key = `${str(v.id_nhan_vien)}|${str(v.date)}`;
+    if (key !== '|') existing.set(key, r);
+  });
+
+  let saved = 0, skipped = 0;
+  const errors: string[] = [];
+
+  for (const rec of records) {
+    const key = `${rec.id_nhan_vien}|${rec.date}`;
+    try {
+      if (existing.has(key)) {
+        if (!forceOverwrite) { skipped++; continue; }
+        const row = existing.get(key)!;
+        row.set('status',                 rec.status ?? '');
+        row.set('check_in',               rec.check_in ?? '');
+        row.set('check_out',              rec.check_out ?? '');
+        row.set('ot_hours',               rec.ot_hours ?? '');
+        row.set('late_minutes',           rec.late_minutes ?? '');
+        row.set('missed_checkin_minutes', rec.missed_checkin_minutes ?? '');
+        await row.save();
+      } else {
+        const newId = `ATT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        await sheet.addRow({
+          id:                      newId,
+          id_nhan_vien:            rec.id_nhan_vien,
+          date:                    rec.date,
+          status:                  rec.status ?? '',
+          check_in:                rec.check_in ?? '',
+          check_out:               rec.check_out ?? '',
+          ot_hours:                rec.ot_hours ?? '',
+          late_minutes:            rec.late_minutes ?? '',
+          missed_checkin_minutes:  rec.missed_checkin_minutes ?? '',
+        });
+      }
+      saved++;
+    } catch (e: any) {
+      errors.push(`${key}: ${e?.message ?? e}`);
+    }
+  }
+
+  return { saved, skipped, errors };
 }
 
 // --- SHIFTS ---

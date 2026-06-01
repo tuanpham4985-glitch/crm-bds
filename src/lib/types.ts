@@ -331,12 +331,38 @@ export interface WorkCalendar {
   weight: number;     // 1, 0.5, 0...
 }
 
+/**
+ * Mã trạng thái chấm công theo bảng BCC:
+ *   x     = Đi làm đủ ngày (T2–T6)
+ *   x/2   = Đi làm thứ 7 (nửa công)
+ *   N     = Nghỉ không lương (cả ngày)
+ *   N/2   = Nghỉ không lương nửa ngày
+ *   P     = Nghỉ có phép (hưởng lương)
+ *   P/2   = Nghỉ phép thứ 7
+ *   CĐ    = Nghỉ chế độ (thai sản, ốm đau BHXH)
+ *   L     = Nghỉ lễ hưởng lương
+ *   WFH   = Làm việc tại nhà
+ *   0     = Chủ nhật / không phải ngày làm
+ */
+export type AttendanceStatus =
+  | 'x' | 'x/2'
+  | 'N' | 'N/2'
+  | 'P' | 'P/2'
+  | 'CĐ' | 'L'
+  | 'WFH'
+  | '0'
+  | '';   // chưa nhập
+
 export interface AttendanceRaw {
   id: string;
   id_nhan_vien: string;
-  date: string;
-  check_in: string;   // HH:mm
-  check_out: string;  // HH:mm
+  date: string;                  // YYYY-MM-DD
+  status: AttendanceStatus;      // Mã chấm công (nguồn chính)
+  check_in?: string;             // HH:mm  (tùy chọn, cho máy chấm công)
+  check_out?: string;            // HH:mm  (tùy chọn)
+  ot_hours?: number;             // Giờ tăng ca trực tiếp (từ sheet BCC OT)
+  late_minutes?: number;         // Tổng phút đi muộn/về sớm
+  missed_checkin_minutes?: number; // Phút bị trừ do quên chấm công
 }
 
 export interface Shift {

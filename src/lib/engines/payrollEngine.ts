@@ -50,7 +50,15 @@ export class PayrollEngine {
     // ── 1. Công chuẩn & thực tế ──────────────────────────────────
     const standardWorkdays = this.calendar.getStandardWorkdays(startDate, endDate);
     const attendanceResults = this.attendance.processEmployee(nv.id_nhan_vien, startDate, endDate);
-    const actualWorkdays = standardWorkdays; // Mặc định đủ công; HR trừ thủ công
+    // Tổng công thực tế từ dữ liệu ATTENDANCE_RAW
+    // (ngày không có record check_in/check_out → tính = 0)
+    // Nếu chưa nhập chấm công tháng này → fallback về đủ công để không trả lương 0
+    const attendanceTotal = attendanceResults.reduce((s, r) => s + r.actualWorkday, 0);
+    // Tháng đã nhập chấm công nếu có ít nhất 1 record có status hoặc có giờ thực tế
+    const hasAttendanceData = attendanceResults.some(
+      r => r.status !== '' || r.actualWorkday > 0 || r.otHours > 0
+    );
+    const actualWorkdays = hasAttendanceData ? attendanceTotal : standardWorkdays;
 
     const totalOT   = attendanceResults.reduce((s, r) => s + r.otHours, 0);
 
