@@ -1804,10 +1804,18 @@ export async function saveAttendanceBatch(
   const rows  = await sheet.getRows();
 
   // Build lookup: "id_nv|date" → row
+  // Normalize id_nhan_vien giống normalizeId() để tránh mismatch leading zeros:
+  // Google Sheets tự chuyển "0027" → số 27, khi đọc lại str() = "27" ≠ "0027"
+  const normalizeSheetId = (raw: unknown): string => {
+    const s = str(raw);
+    if (!s) return '';
+    return /^\d+$/.test(s) ? s.padStart(4, '0') : s;
+  };
+
   const existing = new Map<string, typeof rows[number]>();
   rows.forEach(r => {
     const v = r.toObject();
-    const key = `${str(v.id_nhan_vien)}|${str(v.date)}`;
+    const key = `${normalizeSheetId(v.id_nhan_vien)}|${str(v.date)}`;
     if (key !== '|') existing.set(key, r);
   });
 
