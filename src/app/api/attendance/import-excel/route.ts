@@ -45,9 +45,16 @@ function xlsxDateToStr(raw: unknown): string | null {
   return null;
 }
 
+// Tập hợp các mã chấm công — không bao giờ là mã nhân viên hợp lệ
+const STATUS_CODE_SET = new Set([
+  'x', 'x/2', 'n', 'n/2', 'p', 'p/2', 'cđ', 'cd', 'l', 'wfh', '0',
+]);
+
 function normalizeId(rawId: unknown): string {
   const s = String(rawId ?? '').trim();
   if (!s || s === '0') return '';
+  // Loại bỏ các dòng legend/chú thích (mã chấm công bị nhầm là mã NV)
+  if (STATUS_CODE_SET.has(s.toLowerCase())) return '';
   if (/^\d+$/.test(s)) return s.padStart(4, '0'); // Số thuần → zero-pad 4 chữ số
   return s; // Đã có chữ cái → giữ nguyên
 }
