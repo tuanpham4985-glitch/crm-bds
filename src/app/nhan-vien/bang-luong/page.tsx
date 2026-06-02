@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import {
   BadgeDollarSign, Calculator, Save, RefreshCw,
-  AlertCircle, CheckCircle2, Clock, Banknote, FileText, X, Eye, Upload, Trash2
+  AlertCircle, CheckCircle2, Clock, Banknote, FileText, X, Eye, Upload, Trash2,
+  Download, Mail, User
 } from 'lucide-react';
 import type { BangLuong, NhanVien, SalaryImportRow } from '@/lib/types';
 import type { PayrollEntry } from '@/lib/payroll';
@@ -132,6 +133,16 @@ export default function BangLuongPage() {
   // Employee maps
   const [empMap, setEmpMap] = useState<Map<string, string>>(new Map());
   const [depMap, setDepMap] = useState<Map<string, number>>(new Map());
+  const [nvMap,  setNvMap]  = useState<Map<string, NhanVien>>(new Map());
+
+  // Slip drawer (Import tab)
+  const [slipRow,       setSlipRow]       = useState<SalaryImportRow | null>(null);
+  const [isSlipDrawer,  setIsSlipDrawer]  = useState(false);
+
+  // Email modal
+  const [emailModal, setEmailModal] = useState<{
+    open: boolean; row: SalaryImportRow | null; emailTo: string; sending: boolean;
+  }>({ open: false, row: null, emailTo: '', sending: false });
 
   // --- Tính ngày công chuẩn (Trừ T7 nửa buổi, CN nghỉ, Trừ Lễ VN) ---
   const getVietnameseHolidays = (year: number) => {
@@ -205,12 +216,15 @@ export default function BangLuongPage() {
         if (d.success) {
           const m = new Map<string, string>();
           const dm = new Map<string, number>();
+          const nvm = new Map<string, NhanVien>();
           d.data.forEach((nv: NhanVien) => {
             m.set(nv.id_nhan_vien, nv.ho_ten);
             dm.set(nv.id_nhan_vien, nv.so_nguoi_phu_thuoc || 0);
+            nvm.set(nv.id_nhan_vien, nv);
           });
           setEmpMap(m);
           setDepMap(dm);
+          setNvMap(nvm);
         }
       })
       .catch(() => {});
@@ -221,6 +235,122 @@ export default function BangLuongPage() {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 4000);
   }
+
+  // ── Tải xuống phiếu lương Word ──
+  const downloadSlip = async (row: SalaryImportRow) => {
+    try {
+      const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+              WidthType, AlignmentType, BorderStyle } = await import('docx');
+      const nv = nvMap.get(row.id_nhan_vien);
+      const ngayIn = new Date();
+
+      const doc = new Document({
+        sections: [{
+          properties: { page: { margin: { top: 1080, bottom: 1080, left: 1440, right: 1440 } } },
+          children: [
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
+              new TextRun({ text: 'CÔNG TY CỔ PHẦN BẤT ĐỘNG SẢN VICTORY HOLDINGS', bold: true, size: 26, font: 'Times New Roman' }),
+            ]}),
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 240 }, children: [
+              new TextRun({ text: 'Website: victoryholdings.com.vn', size: 20, color: '666666', font: 'Times New Roman' }),
+            ]}),
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 }, children: [
+              new TextRun({ text: `PHIẾU LƯƠNG THÁNG ${thang}/${nam}`, bold: true, size: 32, font: 'Times New Roman' }),
+            ]}),
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 400 }, children: [
+              new TextRun({ text: `(Tháng ${thang} năm ${nam})`, size: 22, italics: true, font: 'Times New Roman' }),
+            ]}),
+            new Paragraph({ spacing: { after: 80 }, children: [
+              new TextRun({ text: 'Kính gửi: ', bold: true, size: 24, font: 'Times New Roman' }),
+              new TextRun({ text: row.ho_ten, size: 24, font: 'Times New Roman' }),
+            ]}),
+            new Paragraph({ spacing: { after: 80 }, children: [
+              new TextRun({ text: `Mã nhân viên: ${row.id_nhan_vien}   |   Bộ phận: ${row.loai === 'KD' ? 'Kinh doanh' : 'Back Office'}`, size: 22, font: 'Times New Roman' }),
+            ]}),
+            ...(nv?.phong_KD ? [new Paragraph({ spacing: { after: 240 }, children: [
+              new TextRun({ text: `Phòng/Nhóm: ${nv.phong_KD}`, size: 22, font: 'Times New Roman' }),
+            ]})] : [new Paragraph({ spacing: { after: 240 }, children: [] })]),
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: [
+                new TableRow({ children: [
+                  new TableCell({ width: { size: 70, type: WidthType.PERCENTAGE }, shading: { fill: 'F3F4F6' }, children: [
+                    new Paragraph({ children: [new TextRun({ text: 'Khoản mục', bold: true, size: 22, font: 'Times New Roman' })] }),
+                  ]}),
+                  new TableCell({ width: { size: 30, type: WidthType.PERCENTAGE }, shading: { fill: 'F3F4F6' }, children: [
+                    new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: 'Số tiền (VNĐ)', bold: true, size: 22, font: 'Times New Roman' })] }),
+                  ]}),
+                ]}),
+                new TableRow({ children: [
+                  new TableCell({ children: [
+                    new Paragraph({ children: [new TextRun({ text: 'THỰC LĨNH', bold: true, size: 24, font: 'Times New Roman' })] }),
+                  ]}),
+                  new TableCell({ shading: { fill: 'ECFDF5' }, children: [
+                    new Paragraph({ alignment: AlignmentType.RIGHT, children: [
+                      new TextRun({ text: row.thuc_linh.toLocaleString('vi-VN'), bold: true, size: 24, color: '059669', font: 'Times New Roman' }),
+                    ]}),
+                  ]}),
+                ]}),
+              ],
+            }),
+            new Paragraph({ spacing: { before: 400, after: 80 }, children: [
+              new TextRun({ text: 'Đây là thông báo lương chính thức. Mọi thắc mắc vui lòng liên hệ phòng Nhân sự trong vòng 3 ngày làm việc.', size: 20, italics: true, color: '666666', font: 'Times New Roman' }),
+            ]}),
+            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 480 }, children: [
+              new TextRun({ text: `Hà Nội, ngày ${ngayIn.getDate()} tháng ${ngayIn.getMonth()+1} năm ${ngayIn.getFullYear()}`, size: 22, font: 'Times New Roman' }),
+            ]}),
+            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 0 }, children: [
+              new TextRun({ text: 'GIÁM ĐỐC', bold: true, size: 22, font: 'Times New Roman' }),
+            ]}),
+            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 0 }, children: [
+              new TextRun({ text: '(Ký và đóng dấu)', size: 20, italics: true, color: '666666', font: 'Times New Roman' }),
+            ]}),
+          ],
+        }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `Phieu_luong_${row.id_nhan_vien}_T${thang}_${nam}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      showToast('Lỗi tạo file Word: ' + (e?.message ?? e), false);
+    }
+  };
+
+  // ── Mở modal gửi email ──
+  function openEmailModal(row: SalaryImportRow) {
+    const nv = nvMap.get(row.id_nhan_vien);
+    setEmailModal({ open: true, row, emailTo: nv?.email || '', sending: false });
+  }
+
+  // ── Gửi email lương ──
+  const sendSalaryEmail = async () => {
+    const { row, emailTo } = emailModal;
+    if (!row || !emailTo) return;
+    setEmailModal(m => ({ ...m, sending: true }));
+    try {
+      const res = await fetch('/api/email/salary-slip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ho_ten: row.ho_ten, id_nhan_vien: row.id_nhan_vien, thuc_linh: row.thuc_linh, loai: row.loai, thang, nam, email_to: emailTo }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Đã gửi phiếu lương tới ${emailTo}`);
+        setEmailModal({ open: false, row: null, emailTo: '', sending: false });
+      } else {
+        showToast('Lỗi gửi email: ' + data.error, false);
+        setEmailModal(m => ({ ...m, sending: false }));
+      }
+    } catch (e: any) {
+      showToast('Lỗi kết nối: ' + (e?.message ?? e), false);
+      setEmailModal(m => ({ ...m, sending: false }));
+    }
+  };
 
   // ── Tính lương (preview) ──
   const handleCalculate = useCallback(async () => {
@@ -669,7 +799,8 @@ export default function BangLuongPage() {
                         <th style={{ width: 60 }}>Loại</th>
                         <th style={{ width: 90 }}>Mã NV</th>
                         <th>Họ và tên</th>
-                        <th style={{ textAlign: 'right', fontWeight: 700 }}>Thực lĩnh (cột AM)</th>
+                        <th style={{ textAlign: 'right', fontWeight: 700 }}>Thực lĩnh</th>
+                        <th style={{ textAlign: 'center', width: 130 }}>Thao tác</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -688,12 +819,28 @@ export default function BangLuongPage() {
                           <td style={{ textAlign: 'right', fontWeight: 700, color: row.thuc_linh > 0 ? 'var(--success-text)' : 'var(--text-muted)' }}>
                             {fmt(row.thuc_linh)}
                           </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                              <button title="Xem chi tiết" className="btn btn-secondary" style={{ padding: '4px 7px' }}
+                                onClick={() => { setSlipRow(row); setIsSlipDrawer(true); }}>
+                                <Eye size={13} />
+                              </button>
+                              <button title="Tải xuống Word" className="btn btn-secondary" style={{ padding: '4px 7px', color: '#2563eb' }}
+                                onClick={() => downloadSlip(row)}>
+                                <Download size={13} />
+                              </button>
+                              <button title="Gửi email" className="btn btn-secondary" style={{ padding: '4px 7px', color: '#059669' }}
+                                onClick={() => openEmailModal(row)}>
+                                <Mail size={13} />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr style={{ background: 'var(--bg-muted)', fontWeight: 700 }}>
-                        <td colSpan={4} style={{ textAlign: 'right', padding: '10px 16px' }}>Tổng cộng:</td>
+                        <td colSpan={5} style={{ textAlign: 'right', padding: '10px 16px' }}>Tổng cộng:</td>
                         <td style={{ textAlign: 'right', color: 'var(--success-text)', padding: '10px 16px' }}>{fmt(totalThucLinh)}</td>
                       </tr>
                     </tfoot>
@@ -1032,6 +1179,100 @@ export default function BangLuongPage() {
           })()}
         </div>
       </div>
+      {/* ===== SLIP DRAWER (Import tab) ===== */}
+      <div className={`drawer-overlay ${isSlipDrawer ? 'open' : ''}`} onClick={() => setIsSlipDrawer(false)} />
+      <div className={`drawer-panel ${isSlipDrawer ? 'open' : ''}`}>
+        <div className="drawer-header">
+          <h3>Chi tiết phiếu lương</h3>
+          <button className="btn-icon" onClick={() => setIsSlipDrawer(false)}><X size={20} /></button>
+        </div>
+        <div className="drawer-body">
+          {slipRow && (() => {
+            const nv = nvMap.get(slipRow.id_nhan_vien);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Profile */}
+                <div style={{ background: 'var(--bg-page)', padding: 16, borderRadius: 'var(--radius-lg)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--primary-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 700, fontSize: '1.1rem' }}>
+                      {slipRow.ho_ten.split(' ').pop()?.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '1rem' }}>{slipRow.ho_ten}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {slipRow.id_nhan_vien} · {slipRow.loai === 'KD' ? 'Kinh doanh' : 'Back Office'}
+                        {nv?.phong_KD ? ` · ${nv.phong_KD}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  {nv && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '0.8rem', color: 'var(--text-body)', borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
+                      {nv.email      && <div><span style={{ color: 'var(--text-muted)' }}>Email: </span>{nv.email}</div>}
+                      {nv.so_dien_thoai && <div><span style={{ color: 'var(--text-muted)' }}>SĐT: </span>{nv.so_dien_thoai}</div>}
+                      {nv.so_tk_ngan_hang && <div style={{ gridColumn: '1/-1' }}><span style={{ color: 'var(--text-muted)' }}>STK: </span>{nv.so_tk_ngan_hang} · {nv.ten_ngan_hang_thu_huong}</div>}
+                    </div>
+                  )}
+                </div>
+                {/* Salary */}
+                <div style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 'var(--radius-lg)', padding: 20, textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                    Thực lĩnh — Tháng {thang}/{nam}
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success-text)' }}>{fmtCurrency(slipRow.thuc_linh)}</div>
+                </div>
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => downloadSlip(slipRow)}>
+                    <Download size={15} /> Tải Word
+                  </button>
+                  <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => { setIsSlipDrawer(false); openEmailModal(slipRow); }}>
+                    <Mail size={15} /> Gửi email
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* ===== EMAIL MODAL ===== */}
+      {emailModal.open && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content" style={{ maxWidth: 460 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">
+                <Mail size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                Gửi phiếu lương
+              </h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setEmailModal(m => ({ ...m, open: false }))}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background: 'var(--bg-page)', borderRadius: 'var(--radius-md)', padding: '12px 14px', marginBottom: 16, fontSize: '0.85rem' }}>
+                <div style={{ fontWeight: 600 }}>{emailModal.row?.ho_ten}</div>
+                <div style={{ color: 'var(--text-muted)' }}>
+                  {emailModal.row?.id_nhan_vien} · Tháng {thang}/{nam} · Thực lĩnh: <strong style={{ color: 'var(--success-text)' }}>{fmtCurrency(emailModal.row?.thuc_linh ?? 0)}</strong>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Địa chỉ email nhận</label>
+                <input
+                  type="email" className="form-input"
+                  placeholder="example@email.com"
+                  value={emailModal.emailTo}
+                  onChange={e => setEmailModal(m => ({ ...m, emailTo: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setEmailModal(m => ({ ...m, open: false }))}>Hủy</button>
+              <button className="btn btn-primary" disabled={!emailModal.emailTo || emailModal.sending} onClick={sendSalaryEmail}>
+                <Mail size={15} />
+                {emailModal.sending ? 'Đang gửi...' : 'Gửi email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

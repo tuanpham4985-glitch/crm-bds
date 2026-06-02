@@ -13,6 +13,7 @@
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
     "@hello-pangea/dnd": "^18.0.1",
+    "@types/nodemailer": "^8.0.0",
     "date-fns": "^4.1.0",
     "docx": "^9.6.1",
     "docxtemplater": "^3.68.5",
@@ -22,6 +23,7 @@
     "googleapis": "^171.4.0",
     "lucide-react": "^1.7.0",
     "next": "16.2.2",
+    "nodemailer": "^8.0.10",
     "pizzip": "^3.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
