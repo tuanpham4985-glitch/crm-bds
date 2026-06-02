@@ -4,7 +4,7 @@
 // ============================================================
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment, PayrollRecord, PayrollItemRecord } from './types';
+import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord } from './types';
 
 // ---- Environment Variable Validation ----
 function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
@@ -115,9 +115,6 @@ const SHEETS = {
   LOG_HE_THONG: 'LOG_HE_THONG',
   HOP_DONG: 'HOP_DONG',
   BANG_LUONG: 'BANG_LUONG',
-  WORK_CALENDAR: 'WORK_CALENDAR',
-  ATTENDANCE_RAW: 'ATTENDANCE_RAW',
-  SHIFTS: 'SHIFTS',
   PAYROLL_ADJUSTMENTS: 'PAYROLL_ADJUSTMENTS',
   PAYROLL: 'PAYROLL',
   PAYROLL_ITEMS: 'PAYROLL_ITEMS',
@@ -1736,190 +1733,6 @@ export async function deleteBangLuong(id: string): Promise<boolean> {
 
   await addLog(doc, 'DELETE_PAYROLL', id, '', '');
   return true;
-}
-
-// --- WORK CALENDAR ---
-export async function getWorkCalendar(): Promise<WorkCalendar[]> {
-  const doc = await getDoc();
-  let sheet: GoogleSpreadsheetWorksheet;
-  try {
-    sheet = await getSheet(doc, SHEETS.WORK_CALENDAR);
-  } catch {
-    return [];
-  }
-  const rows = await sheet.getRows();
-  return rows.map(r => {
-    const v = r.toObject();
-    return {
-      date: str(v.date),
-      day_type: str(v.day_type) as any,
-      description: str(v.description),
-      weight: num(v.weight),
-    };
-  });
-}
-
-// --- ATTENDANCE RAW ---
-export async function getAttendanceRaw(thang: number, nam: number): Promise<AttendanceRaw[]> {
-  const doc = await getDoc();
-  let sheet: GoogleSpreadsheetWorksheet;
-  try {
-    sheet = await getSheet(doc, SHEETS.ATTENDANCE_RAW);
-  } catch {
-    return [];
-  }
-  const rows = await sheet.getRows();
-  return rows
-    .map(r => {
-      const v = r.toObject();
-      return {
-        id:                      str(v.id),
-        id_nhan_vien:            padEmployeeId(str(v.id_nhan_vien)),
-        date:                    str(v.date),
-        status:                  str(v.status) as AttendanceRaw['status'],
-        check_in:                str(v.check_in)  || undefined,
-        check_out:               str(v.check_out) || undefined,
-        ot_hours:                v.ot_hours               != null ? num(v.ot_hours)               : undefined,
-        late_minutes:            v.late_minutes            != null ? num(v.late_minutes)            : undefined,
-        missed_checkin_minutes:  v.missed_checkin_minutes  != null ? num(v.missed_checkin_minutes)  : undefined,
-      } as AttendanceRaw;
-    })
-    .filter(a => {
-      const d = new Date(a.date);
-      return (d.getMonth() + 1) === thang && d.getFullYear() === nam;
-    });
-}
-
-/**
- * Lưu hàng loạt bản ghi chấm công vào ATTENDANCE_RAW.
- * Upsert theo (id_nhan_vien, date): nếu đã có → cập nhật, chưa có → thêm mới.
- * Dùng batch API để tránh 429 quota: addRows() cho rows mới, values:batchUpdate cho rows cũ.
- */
-export async function saveAttendanceBatch(
-  records: Omit<AttendanceRaw, 'id'>[],
-  forceOverwrite = true
-): Promise<{ saved: number; skipped: number; errors: string[] }> {
-  const doc   = await getDoc();
-  const sheet = await getSheet(doc, SHEETS.ATTENDANCE_RAW);
-  const rows  = await sheet.getRows();
-
-  // Build lookup: "id_nv|date" → row
-  // Normalize id_nhan_vien giống normalizeId() để tránh mismatch leading zeros:
-  // Google Sheets tự chuyển "0027" → số 27, khi đọc lại str() = "27" ≠ "0027"
-  const normalizeSheetId = (raw: unknown): string => {
-    const s = str(raw);
-    if (!s) return '';
-    return /^\d+$/.test(s) ? s.padStart(4, '0') : s;
-  };
-
-  const existing = new Map<string, typeof rows[number]>();
-  rows.forEach(r => {
-    const v = r.toObject();
-    const key = `${normalizeSheetId(v.id_nhan_vien)}|${str(v.date)}`;
-    if (key !== '|') existing.set(key, r);
-  });
-
-  const errors: string[] = [];
-  const toAdd: Record<string, string | number | boolean>[] = [];
-  const toUpdate: Array<{ row: typeof rows[number]; rec: Omit<AttendanceRaw, 'id'> }> = [];
-  let saved = 0, skipped = 0;
-
-  for (const rec of records) {
-    const key = `${rec.id_nhan_vien}|${rec.date}`;
-    if (existing.has(key)) {
-      if (!forceOverwrite) { skipped++; continue; }
-      toUpdate.push({ row: existing.get(key)!, rec });
-    } else {
-      toAdd.push({
-        id:                     `ATT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        id_nhan_vien:           rec.id_nhan_vien,
-        date:                   rec.date,
-        status:                 rec.status ?? '',
-        check_in:               rec.check_in ?? '',
-        check_out:              rec.check_out ?? '',
-        ot_hours:               rec.ot_hours ?? '',
-        late_minutes:           rec.late_minutes ?? '',
-        missed_checkin_minutes: rec.missed_checkin_minutes ?? '',
-      });
-    }
-  }
-
-  // ── 1) Batch-add new rows — 1 API call per 500 rows ──────────────────────
-  for (let i = 0; i < toAdd.length; i += 500) {
-    try {
-      await sheet.addRows(toAdd.slice(i, i + 500));
-      saved += Math.min(500, toAdd.length - i);
-    } catch (e: any) {
-      errors.push(`addRows[${i}]: ${e?.message ?? e}`);
-    }
-  }
-
-  // ── 2) Batch-update existing rows — 1 API call per 200 rows ─────────────
-  if (toUpdate.length > 0) {
-    await sheet._ensureHeaderRowLoaded();
-    const headers  = sheet.headerValues;
-    const sheetName = sheet.a1SheetName;
-    const lastCol  = sheet.lastColumnLetter;
-
-    const valueRanges = toUpdate.map(({ row, rec }) => {
-      const cur = row.toObject();
-      const vals = headers.map(h => {
-        switch (h) {
-          case 'status':                  return rec.status ?? '';
-          case 'check_in':               return rec.check_in ?? '';
-          case 'check_out':              return rec.check_out ?? '';
-          case 'ot_hours':               return rec.ot_hours ?? '';
-          case 'late_minutes':           return rec.late_minutes ?? '';
-          case 'missed_checkin_minutes': return rec.missed_checkin_minutes ?? '';
-          default:                       return cur[h] ?? '';
-        }
-      });
-      return {
-        range: `${sheetName}!A${row.rowNumber}:${lastCol}${row.rowNumber}`,
-        values: [vals],
-      };
-    });
-
-    for (let i = 0; i < valueRanges.length; i += 200) {
-      try {
-        await doc.sheetsApi.post('values:batchUpdate', {
-          json: {
-            valueInputOption: 'USER_ENTERED',
-            data: valueRanges.slice(i, i + 200),
-          },
-        });
-        saved += Math.min(200, valueRanges.length - i);
-      } catch (e: any) {
-        errors.push(`batchUpdate[${i}]: ${e?.message ?? e}`);
-      }
-    }
-  }
-
-  return { saved, skipped, errors };
-}
-
-// --- SHIFTS ---
-export async function getShifts(): Promise<Shift[]> {
-  const doc = await getDoc();
-  let sheet: GoogleSpreadsheetWorksheet;
-  try {
-    sheet = await getSheet(doc, SHEETS.SHIFTS);
-  } catch {
-    return [];
-  }
-  const rows = await sheet.getRows();
-  return rows.map(r => {
-    const v = r.toObject();
-    return {
-      id: str(v.id),
-      name: str(v.name),
-      start_time: str(v.start_time),
-      end_time: str(v.end_time),
-      break_start: str(v.break_start),
-      break_end: str(v.break_end),
-      grace_period: num(v.grace_period),
-    };
-  });
 }
 
 // --- PAYROLL ADJUSTMENTS ---

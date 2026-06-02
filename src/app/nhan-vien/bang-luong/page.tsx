@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BadgeDollarSign, Calculator, Save, RefreshCw,
-  AlertCircle, CheckCircle2, Clock, Banknote, FileText, X, ChevronRight, Eye
+  AlertCircle, CheckCircle2, Clock, Banknote, FileText, X, Eye, Upload, Trash2
 } from 'lucide-react';
 import type { BangLuong, NhanVien } from '@/lib/types';
 import type { PayrollEntry } from '@/lib/payroll';
+import type { SalaryImportRow } from '@/app/api/payroll/import-excel/route';
 import { useAuth } from '@/hooks/useAuth';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 
@@ -36,8 +37,8 @@ export default function BangLuongPage() {
   const [thang, setThang] = useState(now.getMonth() + 1);
   const [nam,   setNam]   = useState(now.getFullYear());
 
-  // Tab: 'preview' | 'saved'
-  const [tab, setTab] = useState<'preview' | 'saved'>('preview');
+  // Tab: 'import' | 'preview' | 'saved'
+  const [tab, setTab] = useState<'import' | 'preview' | 'saved'>('import');
 
   // Preview state
   const [preview,   setPreview]   = useState<PayrollEntry[]>([]);
@@ -52,10 +53,18 @@ export default function BangLuongPage() {
   const [exporting, setExporting] = useState(false);
   const [toast,  setToast]  = useState<{ msg: string; ok: boolean } | null>(null);
 
+  // Import Excel state
+  const [importedKD, setImportedKD] = useState<SalaryImportRow[]>([]);
+  const [importedBO, setImportedBO] = useState<SalaryImportRow[]>([]);
+  const [importingKD, setImportingKD] = useState(false);
+  const [importingBO, setImportingBO] = useState(false);
+  const fileKDRef = useRef<HTMLInputElement>(null);
+  const fileBORef = useRef<HTMLInputElement>(null);
+
   // Drawer state
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
+
   const openDrawer = (id: string) => {
     setSelectedId(id);
     setIsDrawerOpen(true);
@@ -96,6 +105,30 @@ export default function BangLuongPage() {
       }
     }
     return standard;
+  };
+
+  // ── Import Excel KD/BO ──
+  const handleImportExcel = async (file: File, loai: 'KD' | 'BO') => {
+    const setLoading = loai === 'KD' ? setImportingKD : setImportingBO;
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('loai', loai);
+      const res = await fetch('/api/payroll/import-excel', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.success) {
+        if (loai === 'KD') setImportedKD(data.data);
+        else setImportedBO(data.data);
+        showToast(`Đã đọc ${data.total} dòng từ file Bảng lương ${loai}`);
+      } else {
+        showToast('Lỗi: ' + data.error, false);
+      }
+    } catch {
+      showToast('Lỗi đọc file Excel', false);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ── Load employee names ──
@@ -171,6 +204,9 @@ export default function BangLuongPage() {
       setTab('saved');
     }
   }, [authLoading, canEditHRM]);
+
+  const allImported = [...importedKD, ...importedBO];
+  const totalThucLinh = allImported.reduce((s, r) => s + r.thuc_linh, 0);
 
   // ── Inline edit fields ──
   function updateField(idx: number, field: 'thuong' | 'phat' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot' | 'so_nguoi_phu_thuoc', val: string) {
@@ -347,8 +383,8 @@ export default function BangLuongPage() {
       {/* Header */}
       <div className="page-header">
         <div className="page-header-left">
-          <h1>Bảng lương & Chấm công</h1>
-          <p>Tự động tính từ HOP_DONG (lương cơ bản) + PIPELINE (giai_doan = Chốt)</p>
+          <h1>Bảng lương</h1>
+          <p>Import từ file Excel KD/BO hoặc tính từ HOP_DONG + PIPELINE</p>
         </div>
         {canEditHRM && tab === 'preview' && preview.length > 0 && (
           <button
@@ -426,27 +462,196 @@ export default function BangLuongPage() {
           {/* Tab switcher */}
           {canEditHRM && (
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              {(['preview', 'saved'] as const).map(t => (
+              {([
+                { key: 'import',  label: '📥 Import Excel' },
+                { key: 'preview', label: '📊 Preview' },
+                { key: 'saved',   label: '📁 Đã lưu' },
+              ] as const).map(t => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
                   style={{
                     padding: '7px 16px', borderRadius: 'var(--radius-full)',
                     fontSize: '0.8125rem', fontWeight: 500, cursor: 'pointer',
                     border: '1px solid',
-                    background: tab === t ? 'var(--primary)' : 'var(--bg-page)',
-                    color: tab === t ? '#fff' : 'var(--text-muted)',
-                    borderColor: tab === t ? 'var(--primary)' : 'var(--border-light)',
+                    background: tab === t.key ? 'var(--primary)' : 'var(--bg-page)',
+                    color: tab === t.key ? '#fff' : 'var(--text-muted)',
+                    borderColor: tab === t.key ? 'var(--primary)' : 'var(--border-light)',
                     transition: 'all var(--transition-fast)',
                   }}
                 >
-                  {t === 'preview' ? '📊 Preview' : '📁 Đã lưu'}
+                  {t.label}
                 </button>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* ===== TAB: IMPORT EXCEL ===== */}
+      {canEditHRM && tab === 'import' && (
+        <>
+          {/* Upload cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            {/* KD */}
+            <div className="card" style={{ padding: 24 }}>
+              <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: 4 }}>
+                <BadgeDollarSign size={16} style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--primary)' }} />
+                Bảng lương KD
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 16 }}>
+                Sheet "BẢNG LƯƠNG" — cột AM "Thực Lĩnh"
+              </div>
+              <input
+                ref={fileKDRef}
+                type="file"
+                accept=".xlsx,.xls"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) handleImportExcel(f, 'KD');
+                  e.target.value = '';
+                }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => fileKDRef.current?.click()}
+                  disabled={importingKD}
+                  style={{ flex: 1 }}
+                >
+                  <Upload size={15} />
+                  {importingKD ? 'Đang đọc...' : importedKD.length > 0 ? `Đổi file (${importedKD.length} NV)` : 'Chọn file KD'}
+                </button>
+                {importedKD.length > 0 && (
+                  <button className="btn btn-secondary" onClick={() => setImportedKD([])}>
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+              {importedKD.length > 0 && (
+                <div style={{ marginTop: 12, fontSize: '0.8rem', color: 'var(--success-text)' }}>
+                  <CheckCircle2 size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                  {importedKD.length} nhân viên — Tổng thực lĩnh: <strong>{fmt(importedKD.reduce((s, r) => s + r.thuc_linh, 0))}</strong>
+                </div>
+              )}
+            </div>
+
+            {/* BO */}
+            <div className="card" style={{ padding: 24 }}>
+              <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: 4 }}>
+                <Banknote size={16} style={{ marginRight: 6, verticalAlign: 'middle', color: '#6366f1' }} />
+                Bảng lương BO
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 16 }}>
+                Sheet "BẢNG LƯƠNG" — cột AM "Thực Lĩnh"
+              </div>
+              <input
+                ref={fileBORef}
+                type="file"
+                accept=".xlsx,.xls"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) handleImportExcel(f, 'BO');
+                  e.target.value = '';
+                }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => fileBORef.current?.click()}
+                  disabled={importingBO}
+                  style={{ flex: 1, background: '#6366f1', borderColor: '#6366f1' }}
+                >
+                  <Upload size={15} />
+                  {importingBO ? 'Đang đọc...' : importedBO.length > 0 ? `Đổi file (${importedBO.length} NV)` : 'Chọn file BO'}
+                </button>
+                {importedBO.length > 0 && (
+                  <button className="btn btn-secondary" onClick={() => setImportedBO([])}>
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+              {importedBO.length > 0 && (
+                <div style={{ marginTop: 12, fontSize: '0.8rem', color: 'var(--success-text)' }}>
+                  <CheckCircle2 size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                  {importedBO.length} nhân viên — Tổng thực lĩnh: <strong>{fmt(importedBO.reduce((s, r) => s + r.thuc_linh, 0))}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Table tổng hợp */}
+          {allImported.length > 0 ? (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
+                {[
+                  { label: 'Tổng nhân viên', value: allImported.length + ' người', color: 'var(--primary)' },
+                  { label: 'KD thực lĩnh',   value: fmt(importedKD.reduce((s,r) => s+r.thuc_linh, 0)), color: 'var(--primary)' },
+                  { label: 'Tổng thực lĩnh', value: fmt(totalThucLinh), color: 'var(--success-text)' },
+                ].map(k => (
+                  <div key={k.label} className="kpi-card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div>
+                      <div className="kpi-label">{k.label}</div>
+                      <div className="kpi-value" style={{ fontSize: '1.1rem', color: k.color }}>{k.value}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="card" style={{ padding: 0 }}>
+                <div className="table-wrapper">
+                  <table className="data-table" style={{ fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 30 }}>#</th>
+                        <th style={{ width: 60 }}>Loại</th>
+                        <th style={{ width: 90 }}>Mã NV</th>
+                        <th>Họ và tên</th>
+                        <th style={{ textAlign: 'right', fontWeight: 700 }}>Thực lĩnh (cột AM)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allImported.map((row, idx) => (
+                        <tr key={`${row.loai}-${row.id_nhan_vien}-${idx}`}>
+                          <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
+                          <td>
+                            <span style={{
+                              fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                              background: row.loai === 'KD' ? 'var(--primary-bg)' : '#e0e7ff',
+                              color: row.loai === 'KD' ? 'var(--primary)' : '#6366f1',
+                            }}>{row.loai}</span>
+                          </td>
+                          <td style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{row.id_nhan_vien}</td>
+                          <td style={{ fontWeight: 500 }}>{row.ho_ten}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: row.thuc_linh > 0 ? 'var(--success-text)' : 'var(--text-muted)' }}>
+                            {fmt(row.thuc_linh)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: 'var(--bg-muted)', fontWeight: 700 }}>
+                        <td colSpan={4} style={{ textAlign: 'right', padding: '10px 16px' }}>Tổng cộng:</td>
+                        <td style={{ textAlign: 'right', color: 'var(--success-text)', padding: '10px 16px' }}>{fmt(totalThucLinh)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="card">
+              <div className="empty-state" style={{ padding: 60 }}>
+                <Upload size={40} />
+                <h3>Chưa có dữ liệu</h3>
+                <p>Chọn file Excel Bảng lương KD hoặc BO ở trên để đọc dữ liệu Thực Lĩnh</p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* ===== TAB: PREVIEW ===== */}
       {canEditHRM && tab === 'preview' && (

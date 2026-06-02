@@ -11,15 +11,10 @@ import {
   getBangLuong,
   getPayrollRecords,
   savePayrollBatch,
-  getWorkCalendar,
-  getAttendanceRaw,
-  getShifts,
   getPayrollAdjustments
 } from '@/lib/google-sheets';
-import type { NhanVien, HopDong, Pipeline, BangLuong, WorkCalendar, AttendanceRaw, Shift, PayrollAdjustment, PayrollRecord, PayrollItemRecord, SavePayrollResult } from '@/lib/types';
+import type { NhanVien, HopDong, Pipeline, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord, SavePayrollResult } from '@/lib/types';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
-import { CalendarEngine } from './engines/calendarEngine';
-import { AttendanceEngine } from './engines/attendanceEngine';
 import { PayrollEngine } from './engines/payrollEngine';
 
 // ============================================================
@@ -80,9 +75,6 @@ interface PayrollRawData {
   closedPipelinesForMonth: Pipeline[]; // Đã lọc: giai_doan=chốt + đúng tháng
   existingLegacyKeys: Set<string>;
   existingDynamicKeys: Set<string>;
-  calendar: WorkCalendar[];
-  attendance: AttendanceRaw[];
-  shifts: Shift[];
   adjustments: PayrollAdjustment[];
 }
 
@@ -115,15 +107,12 @@ export async function fetchPayrollData(
   nam: number
 ): Promise<PayrollRawData> {
   // Batch: parallel fetch tất cả sheets cùng lúc
-  const [employees, pipelines, contracts, savedLegacy, savedDynamic, calendar, attendance, shifts, adjustments] = await Promise.all([
+  const [employees, pipelines, contracts, savedLegacy, savedDynamic, adjustments] = await Promise.all([
     getNhanVien(),
     getPipeline(),
     getHopDong(),
     getBangLuong(),
     getPayrollRecords(thang, nam),
-    getWorkCalendar(),
-    getAttendanceRaw(thang, nam),
-    getShifts(),
     getPayrollAdjustments(thang, nam),
   ]);
 
@@ -200,9 +189,6 @@ export async function fetchPayrollData(
     closedPipelinesForMonth,
     existingLegacyKeys,
     existingDynamicKeys,
-    calendar,
-    attendance,
-    shifts,
     adjustments,
   };
 }
@@ -372,10 +358,7 @@ export async function generatePayroll(
   const rawData = await fetchPayrollData(thang, nam);
   const { activeEmployees, contractMap, closedPipelinesForMonth } = rawData;
 
-  // Khởi tạo Engines
-  const calEngine = new CalendarEngine(rawData.calendar);
-  const attEngine = new AttendanceEngine(rawData.attendance, rawData.shifts, rawData.calendar);
-  const payEngine = new PayrollEngine(calEngine, attEngine, rawData.adjustments);
+  const payEngine = new PayrollEngine(rawData.adjustments);
 
   // Group pipelines theo id_nhan_vien
   const pipelinesByEmployee = new Map<string, Pipeline[]>();

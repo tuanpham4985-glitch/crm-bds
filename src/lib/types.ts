@@ -323,57 +323,6 @@ export interface PayrollItemRecord {
   tinh_bhxh: boolean;  // Cộng vào lương đóng BHXH
   tinh_thue: boolean;  // Tính vào thu nhập chịu thuế TNCN
 }
-// === CHẤM CÔNG VÀ LỊCH LÀM VIỆC (MỚI) ===
-export interface WorkCalendar {
-  date: string;       // YYYY-MM-DD
-  day_type: 'workday' | 'weekend' | 'holiday' | 'makeup_workday' | 'half_day';
-  description?: string;
-  weight: number;     // 1, 0.5, 0...
-}
-
-/**
- * Mã trạng thái chấm công theo bảng BCC:
- *   x     = Đi làm đủ ngày (T2–T6)
- *   x/2   = Đi làm thứ 7 (nửa công)
- *   N     = Nghỉ không lương (cả ngày)
- *   N/2   = Nghỉ không lương nửa ngày
- *   P     = Nghỉ có phép (hưởng lương)
- *   P/2   = Nghỉ phép thứ 7
- *   CĐ    = Nghỉ chế độ (thai sản, ốm đau BHXH)
- *   L     = Nghỉ lễ hưởng lương
- *   WFH   = Làm việc tại nhà
- *   0     = Chủ nhật / không phải ngày làm
- */
-export type AttendanceStatus =
-  | 'x' | 'x/2'
-  | 'N' | 'N/2'
-  | 'P' | 'P/2'
-  | 'CĐ' | 'L'
-  | 'WFH'
-  | '0'
-  | '';   // chưa nhập
-
-export interface AttendanceRaw {
-  id: string;
-  id_nhan_vien: string;
-  date: string;                  // YYYY-MM-DD
-  status: AttendanceStatus;      // Mã chấm công (nguồn chính)
-  check_in?: string;             // HH:mm  (tùy chọn, cho máy chấm công)
-  check_out?: string;            // HH:mm  (tùy chọn)
-  ot_hours?: number;             // Giờ tăng ca trực tiếp (từ sheet BCC OT)
-  late_minutes?: number;         // Tổng phút đi muộn/về sớm
-  missed_checkin_minutes?: number; // Phút bị trừ do quên chấm công
-}
-
-export interface Shift {
-  id: string;
-  name: string;
-  start_time: string; // 08:00
-  end_time: string;   // 17:00
-  break_start?: string;
-  break_end?: string;
-  grace_period: number; // minutes
-}
 
 export interface PayrollAdjustment {
   id: string;

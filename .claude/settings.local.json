@@ -18,7 +18,10 @@
       "Bash(node -e \"const XLSX = require\\('xlsx'\\); const wb = XLSX.readFile\\('C:/Users/Admin/Desktop/BCC THÁNG 4.xlsx', {cellDates:true}\\); console.log\\('Sheets:', wb.SheetNames\\); const ws = wb.Sheets['Cham cong']; const data = XLSX.utils.sheet_to_json\\(ws, {header:1, defval:''}\\); const header = data[9]; console.log\\('Header row cols:', header.slice\\(0,6\\).map\\(String\\)\\); console.log\\('First data row:', data[11].slice\\(0,8\\).map\\(String\\)\\);\")",
       "Bash(node -e ' *)",
       "Bash(node -e \"const pkg = require\\('./node_modules/google-spreadsheet/package.json'\\); console.log\\(pkg.version\\)\")",
-      "Bash(node -e \"const gs = require\\('./node_modules/google-spreadsheet/build/index.js'\\); const ws = Object.getOwnPropertyNames\\(Object.getPrototypeOf\\(new gs.GoogleSpreadsheetWorksheet\\(\\)\\)\\); console.log\\(ws.join\\('\\\\n'\\)\\)\")"
+      "Bash(node -e \"const gs = require\\('./node_modules/google-spreadsheet/build/index.js'\\); const ws = Object.getOwnPropertyNames\\(Object.getPrototypeOf\\(new gs.GoogleSpreadsheetWorksheet\\(\\)\\)\\); console.log\\(ws.join\\('\\\\n'\\)\\)\")",
+      "Bash(Get-ChildItem -Path \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" -Recurse -Force)",
+      "Bash(Select-Object -First 50)",
+      "Bash(Format-Table FullName)"
     ]
   }
 }

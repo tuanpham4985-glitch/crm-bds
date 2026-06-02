@@ -1,5 +1,3 @@
-import { CalendarEngine } from './calendarEngine';
-import { AttendanceEngine } from './attendanceEngine';
 import { NhanVien, PayrollAdjustment, HopDong } from '../types';
 import { calculateTaxMonthly, TAX_CONFIG } from '../tax';
 
@@ -38,29 +36,25 @@ export interface SalaryItem {
 // ================================================================
 export class PayrollEngine {
   constructor(
-    private calendar: CalendarEngine,
-    private attendance: AttendanceEngine,
     private adjustments: PayrollAdjustment[]
   ) {}
 
+  private getStandardWorkdays(thang: number, nam: number): number {
+    const lastDay = new Date(nam, thang, 0).getDate();
+    let total = 0;
+    for (let d = 1; d <= lastDay; d++) {
+      const day = new Date(nam, thang - 1, d).getDay();
+      if (day >= 1 && day <= 5) total += 1;
+      else if (day === 6) total += 0.5;
+    }
+    return total;
+  }
+
   calculate(nv: NhanVien, hd: HopDong, thang: number, nam: number, hoa_hong: number = 0, doanh_thu: number = 0, thuong_nong: number = 0) {
-    const startDate = new Date(nam, thang - 1, 1);
-    const endDate   = new Date(nam, thang, 0);
-
     // ── 1. Công chuẩn & thực tế ──────────────────────────────────
-    const standardWorkdays = this.calendar.getStandardWorkdays(startDate, endDate);
-    const attendanceResults = this.attendance.processEmployee(nv.id_nhan_vien, startDate, endDate);
-    // Tổng công thực tế từ dữ liệu ATTENDANCE_RAW
-    // (ngày không có record check_in/check_out → tính = 0)
-    // Nếu chưa nhập chấm công tháng này → fallback về đủ công để không trả lương 0
-    const attendanceTotal = attendanceResults.reduce((s, r) => s + r.actualWorkday, 0);
-    // Tháng đã nhập chấm công nếu có ít nhất 1 record có status hoặc có giờ thực tế
-    const hasAttendanceData = attendanceResults.some(
-      r => r.status !== '' || r.actualWorkday > 0 || r.otHours > 0
-    );
-    const actualWorkdays = hasAttendanceData ? attendanceTotal : standardWorkdays;
-
-    const totalOT   = attendanceResults.reduce((s, r) => s + r.otHours, 0);
+    const standardWorkdays = this.getStandardWorkdays(thang, nam);
+    const actualWorkdays = standardWorkdays; // Không có chấm công → đủ công
+    const totalOT = 0;
 
     // ── 2. Lương cơ bản theo ngày công ───────────────────────────
     const baseSalary  = hd.luong_co_ban || 0;
