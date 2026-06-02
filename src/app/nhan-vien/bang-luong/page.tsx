@@ -11,18 +11,18 @@ import type { PayrollEntry } from '@/lib/payroll';
 import { useAuth } from '@/hooks/useAuth';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 
-// ── Hằng số cột Excel (0-indexed) ──
-const COL_MA_NV  = 1;   // Cột B
-const COL_HO_TEN = 2;   // Cột C
-const COL_KD     = 38;  // Cột AM — Thực Lĩnh KD
-const COL_BO     = 62;  // Cột BK — Lương Thực lĩnh BO
+// ── Cấu hình cột theo loại file ──
+const LAYOUT = {
+  KD: { colId: 1,  colName: 2,  colVal: 38 }, // B=Mã NV, C=Họ tên, AM=Thực Lĩnh
+  BO: { colId: 2,  colName: 4,  colVal: 62 }, // C=Mã ID, E=Họ tên, BK=Lương TL
+};
 
+// Chỉ chấp nhận số nguyên dương — bỏ header text, số âm, mã nhóm (I. II. VIC-XX)
 function normalizeEmpId(raw: unknown): string {
   const s = String(raw ?? '').trim();
   if (!s || s === '0') return '';
-  if (/^VIC-/i.test(s)) return '';
-  if (/^\d+$/.test(s)) return s.padStart(4, '0');
-  return s;
+  if (/^\d+$/.test(s) && parseInt(s, 10) > 0) return s.padStart(4, '0');
+  return '';
 }
 
 function parseExcelFile(file: File, loai: 'KD' | 'BO'): Promise<SalaryImportRow[]> {
@@ -33,7 +33,6 @@ function parseExcelFile(file: File, loai: 'KD' | 'BO'): Promise<SalaryImportRow[
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
 
-        // Tìm sheet BẢNG LƯƠNG (linh hoạt)
         const sheetName =
           wb.SheetNames.find(n => n === 'BẢNG LƯƠNG') ||
           wb.SheetNames.find(n => n.toLowerCase().includes('lương') || n.toLowerCase().includes('luong'));
@@ -45,21 +44,21 @@ function parseExcelFile(file: File, loai: 'KD' | 'BO'): Promise<SalaryImportRow[
 
         const ws = wb.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
-        const col = loai === 'BO' ? COL_BO : COL_KD;
+        const { colId, colName, colVal } = LAYOUT[loai];
         const results: SalaryImportRow[] = [];
 
-        for (const row of rows as unknown[][]) {
-          const id = normalizeEmpId(row[COL_MA_NV]);
+        for (const row of rows) {
+          const id = normalizeEmpId(row[colId]);
           if (!id) continue;
-          const ho_ten = String(row[COL_HO_TEN] ?? '').trim();
-          if (!ho_ten || /^tổng$/i.test(ho_ten)) continue;
-          const raw = row[col];
-          const thuc_linh = typeof raw === 'number' ? raw : (Number(raw) || 0);
+          const ho_ten = String(row[colName] ?? '').trim();
+          if (!ho_ten || /^(tổng|họ và tên|họ tên|name)$/i.test(ho_ten)) continue;
+          const rawVal = row[colVal];
+          const thuc_linh = typeof rawVal === 'number' ? rawVal : (Number(rawVal) || 0);
           results.push({ id_nhan_vien: id, ho_ten, thuc_linh, loai });
         }
 
         if (results.length === 0) {
-          reject(new Error(`Không đọc được dữ liệu. Kiểm tra cột B (Mã NV), cột C (Họ tên), ${loai === 'BO' ? 'cột BK' : 'cột AM'} (Thực Lĩnh).`));
+          reject(new Error(`Không đọc được dữ liệu từ file ${loai}.`));
         } else {
           resolve(results);
         }
