@@ -340,3 +340,10 @@ export interface SavePayrollResult {
   skipped: number;
   errors: string[];
 }
+
+export interface SalaryImportRow {
+  id_nhan_vien: string;
+  ho_ten: string;
+  thuc_linh: number;
+  loai: 'KD' | 'BO';
+}

@@ -11,15 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
-
-export const maxDuration = 30;
-
-export interface SalaryImportRow {
-  id_nhan_vien: string;
-  ho_ten: string;
-  thuc_linh: number;
-  loai: 'KD' | 'BO';
-}
+import type { SalaryImportRow } from '@/lib/types';
 
 const COL_MA_NV   = 1;  // Cột B (0-indexed)
 const COL_HO_TEN  = 2;  // Cột C

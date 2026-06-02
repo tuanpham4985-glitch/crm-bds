@@ -5,9 +5,8 @@ import {
   BadgeDollarSign, Calculator, Save, RefreshCw,
   AlertCircle, CheckCircle2, Clock, Banknote, FileText, X, Eye, Upload, Trash2
 } from 'lucide-react';
-import type { BangLuong, NhanVien } from '@/lib/types';
+import type { BangLuong, NhanVien, SalaryImportRow } from '@/lib/types';
 import type { PayrollEntry } from '@/lib/payroll';
-import type { SalaryImportRow } from '@/app/api/payroll/import-excel/route';
 import { useAuth } from '@/hooks/useAuth';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 
