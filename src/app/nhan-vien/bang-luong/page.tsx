@@ -56,10 +56,9 @@ export default function BangLuongPage() {
   // Import Excel state
   const [importedKD, setImportedKD] = useState<SalaryImportRow[]>([]);
   const [importedBO, setImportedBO] = useState<SalaryImportRow[]>([]);
-  const [importingKD, setImportingKD] = useState(false);
-  const [importingBO, setImportingBO] = useState(false);
-  const fileKDRef = useRef<HTMLInputElement>(null);
-  const fileBORef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Drawer state
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -107,27 +106,50 @@ export default function BangLuongPage() {
     return standard;
   };
 
-  // ── Import Excel KD/BO ──
-  const handleImportExcel = async (file: File, loai: 'KD' | 'BO') => {
-    const setLoading = loai === 'KD' ? setImportingKD : setImportingBO;
-    setLoading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('loai', loai);
-      const res = await fetch('/api/payroll/import-excel', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (data.success) {
-        if (loai === 'KD') setImportedKD(data.data);
-        else setImportedBO(data.data);
-        showToast(`Đã đọc ${data.total} dòng từ file Bảng lương ${loai}`);
-      } else {
-        showToast('Lỗi: ' + data.error, false);
+  // ── Phát hiện loại KD/BO từ tên file ──
+  function detectLoai(filename: string): 'KD' | 'BO' {
+    const upper = filename.toUpperCase();
+    if (upper.includes('KD')) return 'KD';
+    if (upper.includes('BO') || upper.includes('BÒ') || upper.includes('BỔ')) return 'BO';
+    return 'KD'; // fallback
+  }
+
+  // ── Import nhiều file cùng lúc ──
+  const handleFiles = async (files: File[]) => {
+    const xlsFiles = files.filter(f => /\.(xlsx|xls)$/i.test(f.name));
+    if (xlsFiles.length === 0) {
+      showToast('Chỉ chấp nhận file .xlsx hoặc .xls', false);
+      return;
+    }
+    setIsImporting(true);
+    let successCount = 0;
+    for (const file of xlsFiles) {
+      const loai = detectLoai(file.name);
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('loai', loai);
+        const res = await fetch('/api/payroll/import-excel', { method: 'POST', body: fd });
+        let data: any;
+        const text = await res.text();
+        try { data = JSON.parse(text); } catch {
+          showToast(`Lỗi server khi đọc ${file.name}: phản hồi không hợp lệ`, false);
+          continue;
+        }
+        if (data.success) {
+          if (loai === 'KD') setImportedKD(data.data);
+          else setImportedBO(data.data);
+          successCount++;
+        } else {
+          showToast(`${file.name}: ${data.error}`, false);
+        }
+      } catch (e: any) {
+        showToast(`Lỗi đọc ${file.name}: ${e?.message ?? e}`, false);
       }
-    } catch {
-      showToast('Lỗi đọc file Excel', false);
-    } finally {
-      setLoading(false);
+    }
+    setIsImporting(false);
+    if (successCount > 0) {
+      showToast(`Đã đọc thành công ${successCount} file`);
     }
   };
 
@@ -491,93 +513,87 @@ export default function BangLuongPage() {
       {/* ===== TAB: IMPORT EXCEL ===== */}
       {canEditHRM && tab === 'import' && (
         <>
-          {/* Upload cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-            {/* KD */}
-            <div className="card" style={{ padding: 24 }}>
-              <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: 4 }}>
-                <BadgeDollarSign size={16} style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--primary)' }} />
-                Bảng lương KD
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 16 }}>
-                Sheet "BẢNG LƯƠNG" — cột AM "Thực Lĩnh"
-              </div>
-              <input
-                ref={fileKDRef}
-                type="file"
-                accept=".xlsx,.xls"
-                style={{ display: 'none' }}
-                onChange={e => {
-                  const f = e.target.files?.[0];
-                  if (f) handleImportExcel(f, 'KD');
-                  e.target.value = '';
-                }}
-              />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => fileKDRef.current?.click()}
-                  disabled={importingKD}
-                  style={{ flex: 1 }}
-                >
-                  <Upload size={15} />
-                  {importingKD ? 'Đang đọc...' : importedKD.length > 0 ? `Đổi file (${importedKD.length} NV)` : 'Chọn file KD'}
-                </button>
-                {importedKD.length > 0 && (
-                  <button className="btn btn-secondary" onClick={() => setImportedKD([])}>
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </div>
-              {importedKD.length > 0 && (
-                <div style={{ marginTop: 12, fontSize: '0.8rem', color: 'var(--success-text)' }}>
-                  <CheckCircle2 size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                  {importedKD.length} nhân viên — Tổng thực lĩnh: <strong>{fmt(importedKD.reduce((s, r) => s + r.thuc_linh, 0))}</strong>
-                </div>
-              )}
-            </div>
+          {/* Hidden file input - multiple */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            multiple
+            style={{ display: 'none' }}
+            onChange={e => {
+              const files = Array.from(e.target.files || []);
+              if (files.length) handleFiles(files);
+              e.target.value = '';
+            }}
+          />
 
-            {/* BO */}
-            <div className="card" style={{ padding: 24 }}>
-              <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: 4 }}>
-                <Banknote size={16} style={{ marginRight: 6, verticalAlign: 'middle', color: '#6366f1' }} />
-                Bảng lương BO
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 16 }}>
-                Sheet "BẢNG LƯƠNG" — cột AM "Thực Lĩnh"
-              </div>
-              <input
-                ref={fileBORef}
-                type="file"
-                accept=".xlsx,.xls"
-                style={{ display: 'none' }}
-                onChange={e => {
-                  const f = e.target.files?.[0];
-                  if (f) handleImportExcel(f, 'BO');
-                  e.target.value = '';
-                }}
-              />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => fileBORef.current?.click()}
-                  disabled={importingBO}
-                  style={{ flex: 1, background: '#6366f1', borderColor: '#6366f1' }}
-                >
-                  <Upload size={15} />
-                  {importingBO ? 'Đang đọc...' : importedBO.length > 0 ? `Đổi file (${importedBO.length} NV)` : 'Chọn file BO'}
-                </button>
-                {importedBO.length > 0 && (
-                  <button className="btn btn-secondary" onClick={() => setImportedBO([])}>
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </div>
-              {importedBO.length > 0 && (
-                <div style={{ marginTop: 12, fontSize: '0.8rem', color: 'var(--success-text)' }}>
-                  <CheckCircle2 size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                  {importedBO.length} nhân viên — Tổng thực lĩnh: <strong>{fmt(importedBO.reduce((s, r) => s + r.thuc_linh, 0))}</strong>
-                </div>
+          {/* Drop zone */}
+          <div
+            className="card"
+            style={{
+              marginBottom: 20, padding: 0,
+              border: `2px dashed ${isDragging ? 'var(--primary)' : 'var(--border-light)'}`,
+              background: isDragging ? 'var(--primary-bg)' : undefined,
+              transition: 'all 0.15s',
+              cursor: isImporting ? 'wait' : 'pointer',
+            }}
+            onClick={() => !isImporting && fileInputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={e => {
+              e.preventDefault();
+              setIsDragging(false);
+              const files = Array.from(e.dataTransfer.files);
+              if (files.length) handleFiles(files);
+            }}
+          >
+            <div style={{ padding: '32px 24px', textAlign: 'center' }}>
+              {isImporting ? (
+                <>
+                  <div className="spinner" style={{ margin: '0 auto 12px' }} />
+                  <div style={{ fontWeight: 500, color: 'var(--text-body)' }}>Đang đọc file...</div>
+                </>
+              ) : (
+                <>
+                  <Upload size={32} style={{ color: 'var(--primary)', marginBottom: 10 }} />
+                  <div style={{ fontWeight: 600, color: 'var(--text-title)', marginBottom: 4 }}>
+                    Kéo thả hoặc nhấn để chọn file
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 12 }}>
+                    Chọn 1 hoặc 2 file cùng lúc — tên file chứa <strong>KD</strong> hoặc <strong>BO</strong> để tự phân loại
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {importedKD.length > 0 ? (
+                      <span style={{ fontSize: '0.78rem', background: 'var(--primary-bg)', color: 'var(--primary)', padding: '3px 10px', borderRadius: 'var(--radius-full)', fontWeight: 500 }}>
+                        <CheckCircle2 size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                        KD: {importedKD.length} NV
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.78rem', background: 'var(--bg-muted)', color: 'var(--text-muted)', padding: '3px 10px', borderRadius: 'var(--radius-full)' }}>
+                        KD: chưa có
+                      </span>
+                    )}
+                    {importedBO.length > 0 ? (
+                      <span style={{ fontSize: '0.78rem', background: '#e0e7ff', color: '#6366f1', padding: '3px 10px', borderRadius: 'var(--radius-full)', fontWeight: 500 }}>
+                        <CheckCircle2 size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                        BO: {importedBO.length} NV
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.78rem', background: 'var(--bg-muted)', color: 'var(--text-muted)', padding: '3px 10px', borderRadius: 'var(--radius-full)' }}>
+                        BO: chưa có
+                      </span>
+                    )}
+                    {(importedKD.length > 0 || importedBO.length > 0) && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.75rem', padding: '3px 10px', height: 'auto' }}
+                        onClick={e => { e.stopPropagation(); setImportedKD([]); setImportedBO([]); }}
+                      >
+                        <Trash2 size={12} /> Xóa
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -588,8 +604,8 @@ export default function BangLuongPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
                 {[
                   { label: 'Tổng nhân viên', value: allImported.length + ' người', color: 'var(--primary)' },
-                  { label: 'KD thực lĩnh',   value: fmt(importedKD.reduce((s,r) => s+r.thuc_linh, 0)), color: 'var(--primary)' },
-                  { label: 'Tổng thực lĩnh', value: fmt(totalThucLinh), color: 'var(--success-text)' },
+                  { label: 'KD thực lĩnh',   value: fmt(importedKD.reduce((s,r)=>s+r.thuc_linh,0)), color: 'var(--primary)' },
+                  { label: 'BO + KD tổng',   value: fmt(totalThucLinh), color: 'var(--success-text)' },
                 ].map(k => (
                   <div key={k.label} className="kpi-card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                     <div>
@@ -642,12 +658,8 @@ export default function BangLuongPage() {
               </div>
             </>
           ) : (
-            <div className="card">
-              <div className="empty-state" style={{ padding: 60 }}>
-                <Upload size={40} />
-                <h3>Chưa có dữ liệu</h3>
-                <p>Chọn file Excel Bảng lương KD hoặc BO ở trên để đọc dữ liệu Thực Lĩnh</p>
-              </div>
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 8 }}>
+              Chưa có dữ liệu — kéo thả file vào vùng trên để bắt đầu
             </div>
           )}
         </>
