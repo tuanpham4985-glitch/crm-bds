@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
   BadgeDollarSign, Calculator, Save, RefreshCw,
   AlertCircle, CheckCircle2, Clock, Banknote, FileText, X, Eye, Upload, Trash2
@@ -9,6 +10,67 @@ import type { BangLuong, NhanVien, SalaryImportRow } from '@/lib/types';
 import type { PayrollEntry } from '@/lib/payroll';
 import { useAuth } from '@/hooks/useAuth';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
+
+// ── Hằng số cột Excel (0-indexed) ──
+const COL_MA_NV  = 1;   // Cột B
+const COL_HO_TEN = 2;   // Cột C
+const COL_KD     = 38;  // Cột AM — Thực Lĩnh KD
+const COL_BO     = 62;  // Cột BK — Lương Thực lĩnh BO
+
+function normalizeEmpId(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s || s === '0') return '';
+  if (/^VIC-/i.test(s)) return '';
+  if (/^\d+$/.test(s)) return s.padStart(4, '0');
+  return s;
+}
+
+function parseExcelFile(file: File, loai: 'KD' | 'BO'): Promise<SalaryImportRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+
+        // Tìm sheet BẢNG LƯƠNG (linh hoạt)
+        const sheetName =
+          wb.SheetNames.find(n => n === 'BẢNG LƯƠNG') ||
+          wb.SheetNames.find(n => n.toLowerCase().includes('lương') || n.toLowerCase().includes('luong'));
+
+        if (!sheetName) {
+          reject(new Error(`Không tìm thấy sheet "BẢNG LƯƠNG". Các sheet: ${wb.SheetNames.join(', ')}`));
+          return;
+        }
+
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
+        const col = loai === 'BO' ? COL_BO : COL_KD;
+        const results: SalaryImportRow[] = [];
+
+        for (const row of rows as unknown[][]) {
+          const id = normalizeEmpId(row[COL_MA_NV]);
+          if (!id) continue;
+          const ho_ten = String(row[COL_HO_TEN] ?? '').trim();
+          if (!ho_ten || /^tổng$/i.test(ho_ten)) continue;
+          const raw = row[col];
+          const thuc_linh = typeof raw === 'number' ? raw : (Number(raw) || 0);
+          results.push({ id_nhan_vien: id, ho_ten, thuc_linh, loai });
+        }
+
+        if (results.length === 0) {
+          reject(new Error(`Không đọc được dữ liệu. Kiểm tra cột B (Mã NV), cột C (Họ tên), ${loai === 'BO' ? 'cột BK' : 'cột AM'} (Thực Lĩnh).`));
+        } else {
+          resolve(results);
+        }
+      } catch (err: any) {
+        reject(new Error('Lỗi parse Excel: ' + (err?.message ?? err)));
+      }
+    };
+    reader.onerror = () => reject(new Error('Không đọc được file'));
+    reader.readAsArrayBuffer(file);
+  });
+}
 
 // ---- helpers ----
 function fmt(n: number) {
@@ -108,12 +170,11 @@ export default function BangLuongPage() {
   // ── Phát hiện loại KD/BO từ tên file ──
   function detectLoai(filename: string): 'KD' | 'BO' {
     const upper = filename.toUpperCase();
-    if (upper.includes('KD')) return 'KD';
-    if (upper.includes('BO') || upper.includes('BÒ') || upper.includes('BỔ')) return 'BO';
-    return 'KD'; // fallback
+    if (upper.includes(' BO ') || upper.includes('-BO-') || upper.includes('_BO_') || upper.endsWith(' BO') || /\bBO\b/.test(upper)) return 'BO';
+    return 'KD'; // default KD
   }
 
-  // ── Import nhiều file cùng lúc ──
+  // ── Import nhiều file — parse trực tiếp trên browser ──
   const handleFiles = async (files: File[]) => {
     const xlsFiles = files.filter(f => /\.(xlsx|xls)$/i.test(f.name));
     if (xlsFiles.length === 0) {
@@ -125,31 +186,16 @@ export default function BangLuongPage() {
     for (const file of xlsFiles) {
       const loai = detectLoai(file.name);
       try {
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('loai', loai);
-        const res = await fetch('/api/payroll/import-excel', { method: 'POST', body: fd });
-        let data: any;
-        const text = await res.text();
-        try { data = JSON.parse(text); } catch {
-          showToast(`Lỗi server khi đọc ${file.name}: phản hồi không hợp lệ`, false);
-          continue;
-        }
-        if (data.success) {
-          if (loai === 'KD') setImportedKD(data.data);
-          else setImportedBO(data.data);
-          successCount++;
-        } else {
-          showToast(`${file.name}: ${data.error}`, false);
-        }
+        const rows = await parseExcelFile(file, loai);
+        if (loai === 'KD') setImportedKD(rows);
+        else setImportedBO(rows);
+        showToast(`Đọc file ${loai} thành công: ${rows.length} nhân viên`);
+        successCount++;
       } catch (e: any) {
         showToast(`Lỗi đọc ${file.name}: ${e?.message ?? e}`, false);
       }
     }
     setIsImporting(false);
-    if (successCount > 0) {
-      showToast(`Đã đọc thành công ${successCount} file`);
-    }
   };
 
   // ── Load employee names ──

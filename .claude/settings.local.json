@@ -21,7 +21,10 @@
       "Bash(node -e \"const gs = require\\('./node_modules/google-spreadsheet/build/index.js'\\); const ws = Object.getOwnPropertyNames\\(Object.getPrototypeOf\\(new gs.GoogleSpreadsheetWorksheet\\(\\)\\)\\); console.log\\(ws.join\\('\\\\n'\\)\\)\")",
       "Bash(Get-ChildItem -Path \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" -Recurse -Force)",
       "Bash(Select-Object -First 50)",
-      "Bash(Format-Table FullName)"
+      "Bash(Format-Table FullName)",
+      "Bash(ls src/middleware* src/app/middleware*)",
+      "Bash(cat src/middleware.ts)",
+      "Bash(cat src/middleware.js)"
     ]
   }
 }
