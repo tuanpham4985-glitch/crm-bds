@@ -647,9 +647,9 @@ export default function BangLuongPage() {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
                 {[
-                  { label: 'Tổng nhân viên', value: allImported.length + ' người', color: 'var(--primary)' },
-                  { label: 'KD thực lĩnh',   value: fmt(importedKD.reduce((s,r)=>s+r.thuc_linh,0)), color: 'var(--primary)' },
-                  { label: 'BO + KD tổng',   value: fmt(totalThucLinh), color: 'var(--success-text)' },
+                  { label: `KD thực lĩnh (${importedKD.length} NV)`,  value: fmt(importedKD.reduce((s,r)=>s+r.thuc_linh,0)), color: 'var(--primary)' },
+                  { label: `BO thực lĩnh (${importedBO.length} NV)`,  value: importedBO.length > 0 ? fmt(importedBO.reduce((s,r)=>s+r.thuc_linh,0)) : '—', color: '#6366f1' },
+                  { label: 'Tổng thực lĩnh',                          value: fmt(totalThucLinh), color: 'var(--success-text)' },
                 ].map(k => (
                   <div key={k.label} className="kpi-card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                     <div>
