@@ -281,10 +281,17 @@ export default function BangLuongPage() {
   const [slipRow,       setSlipRow]       = useState<SalaryImportRow | null>(null);
   const [isSlipDrawer,  setIsSlipDrawer]  = useState(false);
 
-  // Email modal
+  // Email modal (individual)
   const [emailModal, setEmailModal] = useState<{
     open: boolean; row: SalaryImportRow | null; emailTo: string; sending: boolean;
   }>({ open: false, row: null, emailTo: '', sending: false });
+
+  // Bulk email modal
+  const [bulkEmail, setBulkEmail] = useState<{
+    open: boolean;
+    phase: 'preview' | 'sending' | 'done';
+    sent: number; skipped: number; failed: number; errors: string[];
+  }>({ open: false, phase: 'preview', sent: 0, skipped: 0, failed: 0, errors: [] });
 
   // --- Tính ngày công chuẩn (Trừ T7 nửa buổi, CN nghỉ, Trừ Lễ VN) ---
   const getVietnameseHolidays = (year: number) => {
@@ -681,6 +688,39 @@ export default function BangLuongPage() {
     }
   };
 
+  // ── Gửi email hàng loạt ──
+  const handleBulkEmail = async () => {
+    if (allImported.length === 0) return;
+    setBulkEmail(s => ({ ...s, phase: 'sending', sent: 0, skipped: 0, failed: 0, errors: [] }));
+
+    // Gắn email từ nvMap vào mỗi row
+    const rowsWithEmail = allImported.map(row => ({
+      ...row,
+      email: nvMap.get(row.id_nhan_vien)?.email || '',
+    }));
+
+    try {
+      const res = await fetch('/api/email/salary-slip/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thang, nam, rows: rowsWithEmail }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBulkEmail(s => ({
+          ...s, phase: 'done',
+          sent: data.sent, skipped: data.skipped, failed: data.failed, errors: data.errors || [],
+        }));
+      } else {
+        showToast('Lỗi: ' + data.error, false);
+        setBulkEmail(s => ({ ...s, phase: 'preview' }));
+      }
+    } catch (e: any) {
+      showToast('Lỗi kết nối khi gửi email', false);
+      setBulkEmail(s => ({ ...s, phase: 'preview' }));
+    }
+  };
+
   // ── Tính lương (preview) ──
   const handleCalculate = useCallback(async () => {
     if (!canEditHRM) return;
@@ -965,14 +1005,23 @@ export default function BangLuongPage() {
           <p>Import từ file Excel KD/BO hoặc tính từ HOP_DONG + PIPELINE</p>
         </div>
         {canEditHRM && tab === 'import' && allImported.length > 0 && (
-          <button
-            className="btn btn-primary"
-            onClick={handleSaveImport}
-            disabled={saving}
-          >
-            <Save size={16} />
-            {saving ? 'Đang lưu...' : `Lưu ${allImported.length} bản ghi`}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setBulkEmail({ open: true, phase: 'preview', sent: 0, skipped: 0, failed: 0, errors: [] })}
+            >
+              <Mail size={16} />
+              Gửi email hàng loạt
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleSaveImport}
+              disabled={saving}
+            >
+              <Save size={16} />
+              {saving ? 'Đang lưu...' : `Lưu ${allImported.length} bản ghi`}
+            </button>
+          </div>
         )}
         {canEditHRM && tab === 'preview' && preview.length > 0 && (
           <button
@@ -1746,6 +1795,147 @@ export default function BangLuongPage() {
           </div>
         </div>
       )}
+      {/* ===== BULK EMAIL MODAL ===== */}
+      {bulkEmail.open && (() => {
+        const rowsWithEmail = allImported.map(r => ({
+          ...r, email: nvMap.get(r.id_nhan_vien)?.email || '',
+        }));
+        const hasEmail    = rowsWithEmail.filter(r => r.email).length;
+        const noEmail     = rowsWithEmail.filter(r => !r.email).length;
+        const isSending   = bulkEmail.phase === 'sending';
+        const isDone      = bulkEmail.phase === 'done';
+
+        return (
+          <div className="modal-overlay" style={{ zIndex: 9999 }}>
+            <div className="modal-content" style={{ maxWidth: 540 }}>
+              <div className="modal-header">
+                <h3 className="modal-title">
+                  <Mail size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                  Gửi email phiếu lương hàng loạt
+                </h3>
+                {!isSending && (
+                  <button className="btn btn-ghost btn-icon" onClick={() => setBulkEmail(s => ({ ...s, open: false }))}><X size={18} /></button>
+                )}
+              </div>
+
+              <div className="modal-body" style={{ maxHeight: 420, overflowY: 'auto' }}>
+                {/* Phase: Preview */}
+                {bulkEmail.phase === 'preview' && (
+                  <>
+                    {/* Tóm tắt */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+                      {[
+                        { label: 'Tổng NV', value: allImported.length, color: 'var(--text-title)' },
+                        { label: '✓ Có email', value: hasEmail, color: 'var(--success-text)' },
+                        { label: '✗ Chưa có', value: noEmail, color: 'var(--danger-text)' },
+                      ].map(k => (
+                        <div key={k.label} style={{ background: 'var(--bg-page)', borderRadius: 'var(--radius-md)', padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: k.color }}>{k.value}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {noEmail > 0 && (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--warning-text)', background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', marginBottom: 12 }}>
+                        <AlertCircle size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                        {noEmail} nhân viên chưa có email trong hệ thống sẽ bị bỏ qua.
+                      </div>
+                    )}
+                    {/* Danh sách */}
+                    <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-muted)' }}>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Nhân viên</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Email</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)' }}>Thực lĩnh</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rowsWithEmail.map((r, i) => (
+                            <tr key={`${r.loai}-${r.id_nhan_vien}`} style={{ borderTop: '1px solid var(--border-light)', background: i % 2 === 0 ? 'transparent' : 'var(--bg-page)' }}>
+                              <td style={{ padding: '6px 10px' }}>
+                                <div style={{ fontWeight: 500 }}>{r.ho_ten}</div>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.73rem' }}>{r.id_nhan_vien} · {r.loai}</div>
+                              </td>
+                              <td style={{ padding: '6px 10px' }}>
+                                {r.email
+                                  ? <span style={{ color: 'var(--success-text)', fontSize: '0.78rem' }}>✓ {r.email}</span>
+                                  : <span style={{ color: 'var(--danger-text)', fontSize: '0.78rem' }}>✗ Chưa có</span>}
+                              </td>
+                              <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--success-text)' }}>
+                                {fmt(r.thuc_linh)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {/* Phase: Sending */}
+                {isSending && (
+                  <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                    <div className="spinner" style={{ margin: '0 auto 16px', width: 36, height: 36 }} />
+                    <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: 8 }}>Đang gửi email...</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      Đang xử lý {allImported.length} nhân viên, vui lòng không đóng trang.
+                    </div>
+                  </div>
+                )}
+
+                {/* Phase: Done */}
+                {isDone && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+                      {[
+                        { label: '✓ Đã gửi',  value: bulkEmail.sent,    color: 'var(--success-text)', bg: 'var(--success-bg)' },
+                        { label: '⊘ Bỏ qua',  value: bulkEmail.skipped, color: 'var(--text-muted)',   bg: 'var(--bg-page)' },
+                        { label: '✗ Lỗi',     value: bulkEmail.failed,  color: 'var(--danger-text)',  bg: 'var(--danger-bg)' },
+                      ].map(k => (
+                        <div key={k.label} style={{ background: k.bg, borderRadius: 'var(--radius-md)', padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.6rem', fontWeight: 700, color: k.color }}>{k.value}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {bulkEmail.errors.length > 0 && (
+                      <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', borderRadius: 'var(--radius-md)', padding: '10px 14px', fontSize: '0.78rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--danger-text)', marginBottom: 6 }}>Chi tiết lỗi:</div>
+                        {bulkEmail.errors.map((e, i) => (
+                          <div key={i} style={{ color: 'var(--danger-text)', marginTop: 2 }}>• {e}</div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                {bulkEmail.phase === 'preview' && (
+                  <>
+                    <button className="btn btn-secondary" onClick={() => setBulkEmail(s => ({ ...s, open: false }))}>Hủy</button>
+                    <button
+                      className="btn btn-primary"
+                      disabled={hasEmail === 0}
+                      onClick={handleBulkEmail}
+                    >
+                      <Mail size={15} />
+                      Gửi {hasEmail} email
+                    </button>
+                  </>
+                )}
+                {isDone && (
+                  <button className="btn btn-primary" onClick={() => setBulkEmail(s => ({ ...s, open: false }))}>
+                    <CheckCircle2 size={15} /> Đóng
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
