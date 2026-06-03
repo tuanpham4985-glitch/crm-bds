@@ -1779,31 +1779,44 @@ export default function BangLuongPage() {
                 </div>
 
                 {/* ── IV. Khấu trừ ── */}
-                {(slipRow.bhxh_nld || slipRow.thue_tncn || slipRow.tien_di_muon || slipRow.tru_khac || slipRow.tam_ung_luong) ? (
+                {(slipRow.bhxh_nld || slipRow.thue_tncn !== undefined || slipRow.tien_di_muon || slipRow.tru_khac || slipRow.tam_ung_luong || slipRow.tien_ung_phat || slipRow.tru_di_muon_bo) ? (
                   <div className="form-section">
                     <div className="form-section-title">IV. Khấu trừ</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-                      {[
-                        { label: 'Lương đóng BHXH',             value: slipRow.luong_dong_bhxh },
-                        { label: 'BHXH NLĐ đóng (10.5%)',        value: slipRow.bhxh_nld },
-                        { label: 'Giảm trừ bản thân',            value: slipRow.giam_tru_ban_than },
-                        { label: `Giảm trừ NPT (${slipRow.so_nguoi_giam_tru ?? 0} người)`, value: slipRow.so_tien_giam_tru },
-                        { label: 'Thu nhập tính thuế',           value: slipRow.thu_nhap_tinh_thue },
-                        { label: 'Thuế TNCN',                    value: slipRow.thue_tncn },
-                        { label: `Phút đi muộn: ${Math.round(slipRow.so_phut_di_muon ?? 0)} ph`, value: slipRow.tien_di_muon },
-                        { label: 'Trừ khác',                     value: slipRow.tru_khac },
-                        { label: 'Tạm ứng lương',                value: slipRow.tam_ung_luong },
-                        { label: 'Tiền đã ứng/phạt (BO)',        value: slipRow.tien_ung_phat },
-                        { label: 'Trừ đi muộn về sớm (BO)',      value: slipRow.tru_di_muon_bo },
-                      ].filter(i => !!i.value).map(i => (
-                        <div key={i.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '3px 0', borderBottom: '1px dashed var(--border-light)' }}>
-                          <span style={{ color: 'var(--text-body)' }}>{i.label}</span>
-                          <strong style={{ color: 'var(--danger-text)' }}>-{fmt(i.value!)}</strong>
-                        </div>
-                      ))}
+                      {([
+                        // color: 'dim'  = thông tin cơ sở tính (xám, nghiêng)
+                        // color: 'blue' = giảm trừ thuế (không khấu trừ trực tiếp)
+                        // color: 'red'  = khấu trừ thực tế vào lương
+                        { label: 'Lương đóng BHXH (cơ sở tính)',                                      value: slipRow.luong_dong_bhxh,    showIfZero: false, color: 'dim'  },
+                        { label: 'BHXH NLĐ đóng (10.5%)',                                             value: slipRow.bhxh_nld,           showIfZero: false, color: 'red'  },
+                        { label: 'Giảm trừ bản thân (tính thuế)',                                     value: slipRow.giam_tru_ban_than,  showIfZero: false, color: 'blue' },
+                        { label: `Giảm trừ NPT (${slipRow.so_nguoi_giam_tru ?? 0} người)`,            value: slipRow.so_tien_giam_tru,   showIfZero: false, color: 'blue' },
+                        { label: 'Thu nhập tính thuế',                                                value: slipRow.thu_nhap_tinh_thue, showIfZero: true,  color: 'dim'  },
+                        { label: 'Thuế TNCN',                                                         value: slipRow.thue_tncn,          showIfZero: true,  color: 'red'  },
+                        { label: `Tiền đi muộn (${Math.round(slipRow.so_phut_di_muon ?? 0)} phút)`,   value: slipRow.tien_di_muon,       showIfZero: false, color: 'red'  },
+                        { label: 'Trừ khác',                                                          value: slipRow.tru_khac,           showIfZero: false, color: 'red'  },
+                        { label: 'Tạm ứng lương',                                                     value: slipRow.tam_ung_luong,      showIfZero: false, color: 'red'  },
+                        { label: 'Tiền đã ứng/phạt (BO)',                                             value: slipRow.tien_ung_phat,      showIfZero: false, color: 'red'  },
+                        { label: 'Trừ đi muộn về sớm (BO)',                                           value: slipRow.tru_di_muon_bo,     showIfZero: false, color: 'red'  },
+                      ] as { label: string; value: number | undefined; showIfZero: boolean; color: 'red' | 'blue' | 'dim' }[])
+                        .filter(i => i.showIfZero ? i.value !== undefined : !!i.value)
+                        .map(i => {
+                          const colorVal = i.color === 'red' ? 'var(--danger-text)' : i.color === 'blue' ? '#2563EB' : 'var(--text-muted)';
+                          const isZero   = (i.value ?? 0) === 0;
+                          return (
+                            <div key={i.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '3px 0', borderBottom: '1px dashed var(--border-light)' }}>
+                              <span style={{ color: i.color === 'dim' ? 'var(--text-muted)' : 'var(--text-body)', fontStyle: i.color === 'dim' ? 'italic' : 'normal' }}>
+                                {i.label}
+                              </span>
+                              <strong style={{ color: isZero ? 'var(--text-muted)' : colorVal }}>
+                                {isZero ? 'Miễn thuế' : fmtCurrency(i.value!)}
+                              </strong>
+                            </div>
+                          );
+                        })}
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700, padding: '6px 0', borderTop: '2px solid var(--border)' }}>
                         <span>TỔNG KHẤU TRỪ</span>
-                        <span style={{ color: 'var(--danger-text)' }}>-{fmtCurrency(slipRow.tong_khau_tru ?? 0)}</span>
+                        <span style={{ color: 'var(--danger-text)' }}>{fmtCurrency(slipRow.tong_khau_tru ?? 0)}</span>
                       </div>
                     </div>
                   </div>
