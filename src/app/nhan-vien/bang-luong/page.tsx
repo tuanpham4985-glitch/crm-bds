@@ -598,8 +598,20 @@ export default function BangLuongPage() {
                 // Giảm trừ thuế: dùng taxInfoRow (màu xanh, không phải tiền bị khấu trừ)
                 ...(row.giam_tru_ban_than ? [taxInfoRow('Giảm trừ bản thân (tính thuế)', row.giam_tru_ban_than)] : []),
                 ...(row.so_tien_giam_tru  ? [taxInfoRow(`Giảm trừ NPT (${row.so_nguoi_giam_tru ?? 0} người)`, row.so_tien_giam_tru)] : []),
-                ...(row.thu_nhap_tinh_thue ? [moneyRow('Thu nhập tính thuế', row.thu_nhap_tinh_thue, { dim: true })] : []),
-                ...(row.thue_tncn          ? [moneyRow('Thuế TNCN', row.thue_tncn, { color: 'DC2626' })] : []),
+                // Thu nhập tính thuế — luôn hiển thị (Miễn thuế nếu = 0)
+                ...((row.thu_nhap_tinh_thue ?? 0) > 0
+                  ? [moneyRow('Thu nhập tính thuế', row.thu_nhap_tinh_thue!, { dim: true })]
+                  : [new TableRow({ children: [
+                      cell('Thu nhập tính thuế', { color: '9CA3AF', italic: true }),
+                      cell('Miễn thuế', { align: AlignmentType.RIGHT, color: '9CA3AF', italic: true }),
+                    ]})]),
+                // Thuế TNCN — luôn hiển thị (Miễn thuế nếu = 0)
+                ...((row.thue_tncn ?? 0) > 0
+                  ? [moneyRow('Thuế TNCN', row.thue_tncn!, { color: 'DC2626' })]
+                  : [new TableRow({ children: [
+                      cell('Thuế TNCN', { color: '9CA3AF', italic: true }),
+                      cell('Miễn thuế', { align: AlignmentType.RIGHT, color: '9CA3AF', italic: true }),
+                    ]})]),
                 // KD-specific deductions
                 ...(isKD ? [
                   ...(row.so_phut_di_muon  ? [infoRow('Số phút đi muộn', `${Math.round(row.so_phut_di_muon)} phút`)] : []),
