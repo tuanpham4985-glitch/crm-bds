@@ -286,8 +286,15 @@ export default function BangLuongPage() {
     open: boolean; row: SalaryImportRow | null; emailTo: string; sending: boolean;
   }>({ open: false, row: null, emailTo: '', sending: false });
 
-  // Bulk email modal
+  // Bulk email modal (Import tab — kept for future use but not shown by default)
   const [bulkEmail, setBulkEmail] = useState<{
+    open: boolean;
+    phase: 'preview' | 'sending' | 'done';
+    sent: number; skipped: number; failed: number; errors: string[];
+  }>({ open: false, phase: 'preview', sent: 0, skipped: 0, failed: 0, errors: [] });
+
+  // Bulk approved email modal (Saved tab)
+  const [bulkApproved, setBulkApproved] = useState<{
     open: boolean;
     phase: 'preview' | 'sending' | 'done';
     sent: number; skipped: number; failed: number; errors: string[];
@@ -688,7 +695,61 @@ export default function BangLuongPage() {
     }
   };
 
-  // ── Gửi email hàng loạt ──
+  // ── Gửi email hàng loạt từ bảng lương ĐÃ DUYỆT ──
+  const handleBulkApprovedEmail = async () => {
+    const approvedRecords = saved.filter(bl => bl.trang_thai === 'approved');
+    if (approvedRecords.length === 0) return;
+
+    setBulkApproved(s => ({ ...s, phase: 'sending', sent: 0, skipped: 0, failed: 0, errors: [] }));
+
+    const records = approvedRecords.map(bl => {
+      const nv = nvMap.get(bl.id_nhan_vien);
+      const gross = bl.gross ?? (bl.salary_by_day + bl.hoa_hong + bl.thuong + bl.ot_pay - (bl.phat || 0));
+      return {
+        id_nhan_vien: bl.id_nhan_vien,
+        ho_ten:       empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien,
+        email:        nv?.email || '',
+        chuc_vu:      nv?.employee_type || '',
+        phong_ban:    nv?.phong_KD || '',
+        salary_by_day: bl.salary_by_day,
+        hoa_hong:     bl.hoa_hong,
+        thuong:       bl.thuong,
+        ot_pay:       bl.ot_pay,
+        phat:         bl.phat || 0,
+        gross,
+        bao_hiem:     bl.bao_hiem,
+        thue:         bl.thue,
+        tong_luong:   bl.tong_luong,
+        luong_dong_bh:       bl.luong_dong_bh,
+        thu_nhap_chiu_thue:  bl.thu_nhap_chiu_thue,
+        so_nguoi_phu_thuoc:  bl.so_nguoi_phu_thuoc,
+        trang_thai:   bl.trang_thai,
+      };
+    });
+
+    try {
+      const res = await fetch('/api/email/salary-slip/bulk-approved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thang, nam, records }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBulkApproved(s => ({
+          ...s, phase: 'done',
+          sent: data.sent, skipped: data.skipped, failed: data.failed, errors: data.errors || [],
+        }));
+      } else {
+        showToast('Lỗi: ' + data.error, false);
+        setBulkApproved(s => ({ ...s, phase: 'preview' }));
+      }
+    } catch (e: any) {
+      showToast('Lỗi kết nối khi gửi email', false);
+      setBulkApproved(s => ({ ...s, phase: 'preview' }));
+    }
+  };
+
+  // ── Gửi email hàng loạt (Import tab - legacy) ──
   const handleBulkEmail = async () => {
     if (allImported.length === 0) return;
     setBulkEmail(s => ({ ...s, phase: 'sending', sent: 0, skipped: 0, failed: 0, errors: [] }));
@@ -1005,23 +1066,14 @@ export default function BangLuongPage() {
           <p>Import từ file Excel KD/BO hoặc tính từ HOP_DONG + PIPELINE</p>
         </div>
         {canEditHRM && tab === 'import' && allImported.length > 0 && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              className="btn btn-secondary"
-              onClick={() => setBulkEmail({ open: true, phase: 'preview', sent: 0, skipped: 0, failed: 0, errors: [] })}
-            >
-              <Mail size={16} />
-              Gửi email hàng loạt
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleSaveImport}
-              disabled={saving}
-            >
-              <Save size={16} />
-              {saving ? 'Đang lưu...' : `Lưu ${allImported.length} bản ghi`}
-            </button>
-          </div>
+          <button
+            className="btn btn-primary"
+            onClick={handleSaveImport}
+            disabled={saving}
+          >
+            <Save size={16} />
+            {saving ? 'Đang lưu...' : `Lưu ${allImported.length} bản ghi`}
+          </button>
         )}
         {canEditHRM && tab === 'preview' && preview.length > 0 && (
           <button
@@ -1035,28 +1087,41 @@ export default function BangLuongPage() {
         )}
         {tab === 'saved' && (
           <div style={{ display: 'flex', gap: 8 }}>
-            {canEditHRM && displaySaved.length > 0 && (
-              <>
-                <button 
-                  className="btn btn-primary" 
-                  onClick={() => handleExport(false)} 
-                  disabled={exporting}
-                  style={{ background: 'var(--info-text)', borderColor: 'var(--info-text)' }}
-                >
-                  <FileText size={15} />
-                  {exporting ? '...' : `Xuất tháng ${thang}`}
-                </button>
-                <button 
-                  className="btn btn-primary" 
-                  onClick={() => handleExport(true)} 
-                  disabled={exporting}
-                  style={{ background: '#6366f1', borderColor: '#6366f1' }}
-                >
-                  <Calculator size={15} />
-                  {exporting ? '...' : `Xuất năm ${nam}`}
-                </button>
-              </>
-            )}
+            {canEditHRM && displaySaved.length > 0 && (() => {
+              const approvedCount = saved.filter(bl => bl.trang_thai === 'approved').length;
+              return (
+                <>
+                  {approvedCount > 0 && (
+                    <button
+                      className="btn btn-primary"
+                      style={{ background: '#059669', borderColor: '#059669' }}
+                      onClick={() => setBulkApproved({ open: true, phase: 'preview', sent: 0, skipped: 0, failed: 0, errors: [] })}
+                    >
+                      <Mail size={15} />
+                      Gửi email ({approvedCount} đã duyệt)
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handleExport(false)}
+                    disabled={exporting}
+                    style={{ background: 'var(--info-text)', borderColor: 'var(--info-text)' }}
+                  >
+                    <FileText size={15} />
+                    {exporting ? '...' : `Xuất tháng ${thang}`}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handleExport(true)}
+                    disabled={exporting}
+                    style={{ background: '#6366f1', borderColor: '#6366f1' }}
+                  >
+                    <Calculator size={15} />
+                    {exporting ? '...' : `Xuất năm ${nam}`}
+                  </button>
+                </>
+              );
+            })()}
             <button className="btn btn-secondary" onClick={loadSaved} disabled={savedLoading}>
               <RefreshCw size={15} />
               Làm mới
@@ -1795,6 +1860,157 @@ export default function BangLuongPage() {
           </div>
         </div>
       )}
+      {/* ===== BULK APPROVED EMAIL MODAL ===== */}
+      {bulkApproved.open && (() => {
+        const approvedRecords = saved.filter(bl => bl.trang_thai === 'approved');
+        const withEmail    = approvedRecords.filter(bl => nvMap.get(bl.id_nhan_vien)?.email);
+        const withoutEmail = approvedRecords.filter(bl => !nvMap.get(bl.id_nhan_vien)?.email);
+        const isSending    = bulkApproved.phase === 'sending';
+        const isDone       = bulkApproved.phase === 'done';
+
+        return (
+          <div className="modal-overlay" style={{ zIndex: 9999 }}>
+            <div className="modal-content" style={{ maxWidth: 560 }}>
+              <div className="modal-header">
+                <h3 className="modal-title">
+                  <Mail size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                  Gửi phiếu lương tháng {thang}/{nam} — Đã duyệt
+                </h3>
+                {!isSending && (
+                  <button className="btn btn-ghost btn-icon" onClick={() => setBulkApproved(s => ({ ...s, open: false }))}><X size={18} /></button>
+                )}
+              </div>
+
+              <div className="modal-body" style={{ maxHeight: 440, overflowY: 'auto' }}>
+                {/* Phase: Preview */}
+                {bulkApproved.phase === 'preview' && (
+                  <>
+                    {/* Thông tin quy trình */}
+                    <div style={{ background: 'var(--success-bg)', border: '1px solid var(--success-border)', borderRadius: 'var(--radius-md)', padding: '10px 14px', marginBottom: 14, fontSize: '0.82rem', color: 'var(--success-text)' }}>
+                      <CheckCircle2 size={13} style={{ verticalAlign: 'middle', marginRight: 5 }} />
+                      <strong>{approvedRecords.length} bản ghi</strong> đã được duyệt cho tháng {thang}/{nam}.
+                      Email sẽ được gửi tới nhân viên có địa chỉ email trong hệ thống.
+                    </div>
+
+                    {/* Stats */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
+                      {[
+                        { label: 'Đã duyệt',    value: approvedRecords.length, color: 'var(--text-title)' },
+                        { label: '✓ Có email',   value: withEmail.length,       color: 'var(--success-text)' },
+                        { label: '✗ Chưa có',   value: withoutEmail.length,    color: 'var(--danger-text)' },
+                      ].map(k => (
+                        <div key={k.label} style={{ background: 'var(--bg-page)', borderRadius: 'var(--radius-md)', padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: k.color }}>{k.value}</div>
+                          <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>{k.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {withoutEmail.length > 0 && (
+                      <div style={{ fontSize: '0.79rem', color: 'var(--warning-text)', background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', borderRadius: 'var(--radius-md)', padding: '7px 12px', marginBottom: 12 }}>
+                        <AlertCircle size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                        {withoutEmail.length} NV chưa có email sẽ bị bỏ qua: {withoutEmail.map(bl => empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien).join(', ')}
+                      </div>
+                    )}
+
+                    {/* Danh sách approved */}
+                    <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', fontSize: '0.79rem', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-muted)' }}>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Nhân viên</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Email</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)' }}>Thực nhận</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {approvedRecords.map((bl, i) => {
+                            const email = nvMap.get(bl.id_nhan_vien)?.email;
+                            return (
+                              <tr key={bl.id} style={{ borderTop: '1px solid var(--border-light)', background: i % 2 ? 'var(--bg-page)' : 'transparent' }}>
+                                <td style={{ padding: '6px 10px' }}>
+                                  <div style={{ fontWeight: 500 }}>{empMap.get(bl.id_nhan_vien) || bl.id_nhan_vien}</div>
+                                  <div style={{ color: 'var(--text-muted)', fontSize: '0.71rem' }}>{bl.id_nhan_vien}</div>
+                                </td>
+                                <td style={{ padding: '6px 10px' }}>
+                                  {email
+                                    ? <span style={{ color: 'var(--success-text)', fontSize: '0.77rem' }}>✓ {email}</span>
+                                    : <span style={{ color: 'var(--danger-text)', fontSize: '0.77rem' }}>✗ Chưa có</span>}
+                                </td>
+                                <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--success-text)' }}>
+                                  {fmt(bl.tong_luong)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {/* Phase: Sending */}
+                {isSending && (
+                  <div style={{ textAlign: 'center', padding: '36px 0' }}>
+                    <div className="spinner" style={{ margin: '0 auto 16px', width: 36, height: 36 }} />
+                    <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: 8 }}>Đang gửi phiếu lương...</div>
+                    <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                      Đang xử lý {approvedRecords.length} bản ghi đã duyệt. Vui lòng không đóng trang.
+                    </div>
+                  </div>
+                )}
+
+                {/* Phase: Done */}
+                {isDone && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
+                      {[
+                        { label: '✓ Đã gửi',  value: bulkApproved.sent,    color: 'var(--success-text)', bg: 'var(--success-bg)' },
+                        { label: '⊘ Bỏ qua',  value: bulkApproved.skipped, color: 'var(--text-muted)',   bg: 'var(--bg-page)' },
+                        { label: '✗ Lỗi',     value: bulkApproved.failed,  color: 'var(--danger-text)',  bg: 'var(--danger-bg)' },
+                      ].map(k => (
+                        <div key={k.label} style={{ background: k.bg, borderRadius: 'var(--radius-md)', padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.6rem', fontWeight: 700, color: k.color }}>{k.value}</div>
+                          <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>{k.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {bulkApproved.errors.length > 0 && (
+                      <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', borderRadius: 'var(--radius-md)', padding: '10px 14px', fontSize: '0.78rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--danger-text)', marginBottom: 6 }}>Chi tiết lỗi:</div>
+                        {bulkApproved.errors.map((e, i) => <div key={i} style={{ color: 'var(--danger-text)', marginTop: 2 }}>• {e}</div>)}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                {bulkApproved.phase === 'preview' && (
+                  <>
+                    <button className="btn btn-secondary" onClick={() => setBulkApproved(s => ({ ...s, open: false }))}>Hủy</button>
+                    <button
+                      className="btn btn-primary"
+                      disabled={withEmail.length === 0}
+                      onClick={handleBulkApprovedEmail}
+                      style={{ background: '#059669', borderColor: '#059669' }}
+                    >
+                      <Mail size={15} />
+                      Gửi {withEmail.length} phiếu lương
+                    </button>
+                  </>
+                )}
+                {isDone && (
+                  <button className="btn btn-primary" onClick={() => setBulkApproved(s => ({ ...s, open: false }))}>
+                    <CheckCircle2 size={15} /> Đóng
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ===== BULK EMAIL MODAL ===== */}
       {bulkEmail.open && (() => {
         const rowsWithEmail = allImported.map(r => ({
