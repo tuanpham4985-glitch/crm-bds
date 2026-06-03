@@ -155,11 +155,16 @@ function parseExcelFile(file: File, loai: 'KD' | 'BO'): Promise<SalaryImportRow[
             entry.so_tien_giam_tru    = _n(row[c.so_tien_giam_tru]);
             entry.thu_nhap_tinh_thue  = _n(row[c.thu_nhap_tinh_thue]);
             entry.thue_tncn           = _n(row[c.thue_tncn]);
-            entry.so_phut_di_muon     = _n(row[c.so_phut_di_muon]);
+            entry.so_phut_di_muon     = Math.round(_n(row[c.so_phut_di_muon]));
             entry.tien_di_muon        = _n(row[c.tien_di_muon]);
             entry.tru_khac            = _n(row[c.tru_khac]);
             entry.tam_ung_luong       = _n(row[c.tam_ung_luong]);
-            entry.tong_khau_tru       = _n(row[c.tong_khau_tru]);
+            // Tính lại tong_khau_tru từ các thành phần (Excel có thể bỏ BHXH)
+            entry.tong_khau_tru = (entry.bhxh_nld ?? 0)
+              + (entry.thue_tncn ?? 0)
+              + (entry.tien_di_muon ?? 0)
+              + (entry.tru_khac ?? 0)
+              + (entry.tam_ung_luong ?? 0);
           } else {
             // ── BO columns ──
             const c = BO_COLS;
@@ -382,22 +387,28 @@ export default function BangLuongPage() {
       const ngayIn = new Date();
       const F  = 'Times New Roman';
       const fmtM = (v?: number) => (v != null && v !== 0) ? Math.round(v).toLocaleString('vi-VN') + ' ₫' : '—';
-      const fmtV = (v?: number) => (v != null && v !== 0) ? String(v) : '—';
+      const fmtV = (v?: number) => (v != null && v !== 0) ? String(Math.round(v)) : '—';
       const isKD = row.loai === 'KD';
+
+      // Cell margins chung (padding bên trong ô)
+      const CM = { top: 80, bottom: 80, left: 120, right: 120 };
+      const CM_R = { top: 80, bottom: 80, left: 80, right: 140 }; // ô số tiền — padding phải rộng hơn
 
       // ── builder helpers ──
       const cell = (text: string, opts: {
         w?: number; bold?: boolean; color?: string; bg?: string;
         align?: typeof AlignmentType[keyof typeof AlignmentType]; size?: number; italic?: boolean;
+        isRight?: boolean;
       } = {}) =>
         new TableCell({
           width: opts.w != null ? { size: opts.w, type: WidthType.PERCENTAGE } : undefined,
           shading: opts.bg ? { fill: opts.bg } : undefined,
+          margins: opts.isRight ? CM_R : CM,
           children: [new Paragraph({
             alignment: opts.align ?? AlignmentType.LEFT,
-            spacing: { before: 40, after: 40 },
+            spacing: { before: 20, after: 20 },
             children: [new TextRun({
-              text, bold: opts.bold ?? false, size: opts.size ?? 20,
+              text, bold: opts.bold ?? false, size: opts.size ?? 22,
               color: opts.color ?? '1F2937', font: F, italics: opts.italic ?? false,
             })],
           })],
@@ -408,9 +419,10 @@ export default function BangLuongPage() {
         new TableCell({
           columnSpan: 2,
           shading: { fill: '1E3A5F' },
+          margins: CM,
           children: [new Paragraph({
-            spacing: { before: 60, after: 60 },
-            children: [new TextRun({ text: title, bold: true, size: 22, color: 'FFFFFF', font: F })],
+            spacing: { before: 40, after: 40 },
+            children: [new TextRun({ text: title, bold: true, size: 24, color: 'FFFFFF', font: F })],
           })],
         }),
       ]});
@@ -420,9 +432,10 @@ export default function BangLuongPage() {
         new TableCell({
           columnSpan: 2,
           shading: { fill: 'DBEAFE' },
+          margins: CM,
           children: [new Paragraph({
-            spacing: { before: 40, after: 40 },
-            children: [new TextRun({ text: title, bold: true, size: 19, color: '1D4ED8', font: F, italics: true })],
+            spacing: { before: 30, after: 30 },
+            children: [new TextRun({ text: title, bold: true, size: 20, color: '1D4ED8', font: F, italics: true })],
           })],
         }),
       ]});
@@ -434,40 +447,51 @@ export default function BangLuongPage() {
       ]});
 
       // Money row: label | số tiền (right-align, optional color)
-      const moneyRow = (label: string, value?: number, opts: { bold?: boolean; color?: string; bg?: string; indent?: boolean } = {}) =>
+      const moneyRow = (label: string, value?: number, opts: {
+        bold?: boolean; color?: string; bg?: string; indent?: boolean; dim?: boolean;
+      } = {}) =>
         new TableRow({ children: [
-          cell((opts.indent ? '    ' : '') + label, { bg: opts.bg }),
+          cell((opts.indent ? '      ' : '') + label, {
+            bg: opts.bg,
+            color: opts.dim ? '6B7280' : undefined,
+            italic: opts.dim,
+          }),
           cell(fmtM(value), {
             align: AlignmentType.RIGHT,
             bold: opts.bold,
-            color: opts.color ?? (opts.bold ? '111827' : '374151'),
+            color: opts.dim ? '6B7280' : (opts.color ?? (opts.bold ? '111827' : '374151')),
             bg: opts.bg,
+            isRight: true,
           }),
         ]});
 
+      // Separator: dòng thông tin thuế (giảm trừ) — màu xám/xanh, không tính vào khấu trừ trực tiếp
+      const taxInfoRow = (label: string, value?: number) =>
+        moneyRow(label, value, { color: '2563EB', dim: false });
+
       // Total row (green bg)
       const totalRow = (label: string, value?: number) => new TableRow({ children: [
-        new TableCell({ shading: { fill: 'D1FAE5' }, children: [new Paragraph({
-          spacing: { before: 60, after: 60 },
-          children: [new TextRun({ text: label, bold: true, size: 22, color: '065F46', font: F })],
+        new TableCell({ shading: { fill: 'D1FAE5' }, margins: CM, children: [new Paragraph({
+          spacing: { before: 50, after: 50 },
+          children: [new TextRun({ text: label, bold: true, size: 24, color: '065F46', font: F })],
         })] }),
-        new TableCell({ shading: { fill: 'D1FAE5' }, children: [new Paragraph({
+        new TableCell({ shading: { fill: 'D1FAE5' }, margins: CM_R, children: [new Paragraph({
           alignment: AlignmentType.RIGHT,
-          spacing: { before: 60, after: 60 },
-          children: [new TextRun({ text: fmtM(value), bold: true, size: 22, color: '065F46', font: F })],
+          spacing: { before: 50, after: 50 },
+          children: [new TextRun({ text: fmtM(value), bold: true, size: 24, color: '065F46', font: F })],
         })] }),
       ]});
 
       // Deduction total row (red-ish)
       const deductTotalRow = (label: string, value?: number) => new TableRow({ children: [
-        new TableCell({ shading: { fill: 'FEE2E2' }, children: [new Paragraph({
-          spacing: { before: 60, after: 60 },
-          children: [new TextRun({ text: label, bold: true, size: 22, color: '991B1B', font: F })],
+        new TableCell({ shading: { fill: 'FEE2E2' }, margins: CM, children: [new Paragraph({
+          spacing: { before: 50, after: 50 },
+          children: [new TextRun({ text: label, bold: true, size: 24, color: '991B1B', font: F })],
         })] }),
-        new TableCell({ shading: { fill: 'FEE2E2' }, children: [new Paragraph({
+        new TableCell({ shading: { fill: 'FEE2E2' }, margins: CM_R, children: [new Paragraph({
           alignment: AlignmentType.RIGHT,
-          spacing: { before: 60, after: 60 },
-          children: [new TextRun({ text: fmtM(value), bold: true, size: 22, color: '991B1B', font: F })],
+          spacing: { before: 50, after: 50 },
+          children: [new TextRun({ text: fmtM(value), bold: true, size: 24, color: '991B1B', font: F })],
         })] }),
       ]});
 
@@ -555,15 +579,16 @@ export default function BangLuongPage() {
 
                 // ── IV. KHẤU TRỪ ──
                 secRow('IV. KHẤU TRỪ'),
-                ...(row.luong_dong_bhxh  ? [moneyRow('Lương đóng BHXH', row.luong_dong_bhxh)] : []),
+                ...(row.luong_dong_bhxh  ? [moneyRow('Lương đóng BHXH (cơ sở tính)', row.luong_dong_bhxh, { dim: true })] : []),
                 ...(row.bhxh_nld         ? [moneyRow('BHXH NLĐ đóng (10.5%)', row.bhxh_nld, { color: 'DC2626' })] : []),
-                ...(row.giam_tru_ban_than ? [moneyRow('Giảm trừ bản thân', row.giam_tru_ban_than, { color: '059669' })] : []),
-                ...(row.so_tien_giam_tru  ? [moneyRow(`Giảm trừ NPT (${row.so_nguoi_giam_tru ?? 0} người)`, row.so_tien_giam_tru, { color: '059669' })] : []),
-                ...(row.thu_nhap_tinh_thue ? [moneyRow('Thu nhập tính thuế', row.thu_nhap_tinh_thue)] : []),
+                // Giảm trừ thuế: dùng taxInfoRow (màu xanh, không phải tiền bị khấu trừ)
+                ...(row.giam_tru_ban_than ? [taxInfoRow('Giảm trừ bản thân (tính thuế)', row.giam_tru_ban_than)] : []),
+                ...(row.so_tien_giam_tru  ? [taxInfoRow(`Giảm trừ NPT (${row.so_nguoi_giam_tru ?? 0} người)`, row.so_tien_giam_tru)] : []),
+                ...(row.thu_nhap_tinh_thue ? [moneyRow('Thu nhập tính thuế', row.thu_nhap_tinh_thue, { dim: true })] : []),
                 ...(row.thue_tncn          ? [moneyRow('Thuế TNCN', row.thue_tncn, { color: 'DC2626' })] : []),
                 // KD-specific deductions
                 ...(isKD ? [
-                  ...(row.so_phut_di_muon  ? [infoRow('Số phút đi muộn', `${row.so_phut_di_muon} phút`)] : []),
+                  ...(row.so_phut_di_muon  ? [infoRow('Số phút đi muộn', `${Math.round(row.so_phut_di_muon)} phút`)] : []),
                   ...(row.tien_di_muon     ? [moneyRow('Tiền đi muộn', row.tien_di_muon, { color: 'DC2626' })] : []),
                   ...(row.tru_khac         ? [moneyRow('Trừ khác', row.tru_khac, { color: 'DC2626' })] : []),
                   ...(row.tam_ung_luong    ? [moneyRow('Tạm ứng lương', row.tam_ung_luong, { color: 'DC2626' })] : []),
@@ -1642,7 +1667,7 @@ export default function BangLuongPage() {
                         { label: `Giảm trừ NPT (${slipRow.so_nguoi_giam_tru ?? 0} người)`, value: slipRow.so_tien_giam_tru },
                         { label: 'Thu nhập tính thuế',           value: slipRow.thu_nhap_tinh_thue },
                         { label: 'Thuế TNCN',                    value: slipRow.thue_tncn },
-                        { label: `Phút đi muộn: ${slipRow.so_phut_di_muon ?? 0} ph`, value: slipRow.tien_di_muon },
+                        { label: `Phút đi muộn: ${Math.round(slipRow.so_phut_di_muon ?? 0)} ph`, value: slipRow.tien_di_muon },
                         { label: 'Trừ khác',                     value: slipRow.tru_khac },
                         { label: 'Tạm ứng lương',                value: slipRow.tam_ung_luong },
                         { label: 'Tiền đã ứng/phạt (BO)',        value: slipRow.tien_ung_phat },
