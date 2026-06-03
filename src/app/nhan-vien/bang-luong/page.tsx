@@ -422,7 +422,7 @@ export default function BangLuongPage() {
             alignment: opts.align ?? AlignmentType.LEFT,
             spacing: { before: 20, after: 20 },
             children: [new TextRun({
-              text, bold: opts.bold ?? false, size: opts.size ?? 22,
+              text, bold: opts.bold ?? false, size: opts.size ?? 24,
               color: opts.color ?? '1F2937', font: F, italics: opts.italic ?? false,
             })],
           })],
@@ -534,7 +534,7 @@ export default function BangLuongPage() {
           children: [
             // ── Tiêu đề công ty ──
             new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
-              new TextRun({ text: 'CÔNG TY CỔ PHẦN BẤT ĐỘNG SẢN VICTORY HOLDINGS', bold: true, size: 26, font: F }),
+              new TextRun({ text: 'CÔNG TY TNHH VICTORY HOLDINGS VIỆT NAM', bold: true, size: 26, font: F }),
             ]}),
             new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [
               new TextRun({ text: 'victoryholdings.com.vn', size: 18, color: '888888', font: F }),
