@@ -832,7 +832,8 @@ export default function BangLuongPage() {
   }, [authLoading, canEditHRM]);
 
   const allImported = [...importedKD, ...importedBO];
-  const totalThucLinh = allImported.reduce((s, r) => s + r.thuc_linh, 0);
+  const totalThucLinh  = allImported.reduce((s, r) => s + r.thuc_linh, 0);
+  const totalThueTNCN  = allImported.reduce((s, r) => s + (r.thue_tncn ?? 0), 0);
 
   // ── Inline edit fields ──
   function updateField(idx: number, field: 'thuong' | 'phat' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot' | 'so_nguoi_phu_thuoc', val: string) {
@@ -1305,6 +1306,7 @@ export default function BangLuongPage() {
                         <th style={{ width: 60 }}>Loại</th>
                         <th style={{ width: 90 }}>Mã NV</th>
                         <th>Họ và tên</th>
+                        <th style={{ textAlign: 'right' }}>Thuế TNCN</th>
                         <th style={{ textAlign: 'right', fontWeight: 700 }}>Thực lĩnh</th>
                         <th style={{ textAlign: 'center', width: 130 }}>Thao tác</th>
                       </tr>
@@ -1322,6 +1324,9 @@ export default function BangLuongPage() {
                           </td>
                           <td style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{row.id_nhan_vien}</td>
                           <td style={{ fontWeight: 500 }}>{row.ho_ten}</td>
+                          <td style={{ textAlign: 'right', color: (row.thue_tncn ?? 0) > 0 ? 'var(--danger-text)' : 'var(--text-muted)' }}>
+                            {(row.thue_tncn ?? 0) > 0 ? fmt(row.thue_tncn!) : '—'}
+                          </td>
                           <td style={{ textAlign: 'right', fontWeight: 700, color: row.thuc_linh > 0 ? 'var(--success-text)' : 'var(--text-muted)' }}>
                             {fmt(row.thuc_linh)}
                           </td>
@@ -1346,8 +1351,12 @@ export default function BangLuongPage() {
                     </tbody>
                     <tfoot>
                       <tr style={{ background: 'var(--bg-muted)', fontWeight: 700 }}>
-                        <td colSpan={5} style={{ textAlign: 'right', padding: '10px 16px' }}>Tổng cộng:</td>
+                        <td colSpan={4} style={{ textAlign: 'right', padding: '10px 16px' }}>Tổng cộng:</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger-text)', padding: '10px 16px' }}>
+                          {totalThueTNCN > 0 ? fmt(totalThueTNCN) : '—'}
+                        </td>
                         <td style={{ textAlign: 'right', color: 'var(--success-text)', padding: '10px 16px' }}>{fmt(totalThucLinh)}</td>
+                        <td />
                       </tr>
                     </tfoot>
                   </table>
