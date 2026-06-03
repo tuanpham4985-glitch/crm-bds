@@ -24,7 +24,9 @@
       "Bash(Format-Table FullName)",
       "Bash(ls src/middleware* src/app/middleware*)",
       "Bash(cat src/middleware.ts)",
-      "Bash(cat src/middleware.js)"
+      "Bash(cat src/middleware.js)",
+      "WebFetch(domain:docs.google.com)",
+      "WebFetch(domain:doc-10-40-sheets.googleusercontent.com)"
     ]
   }
 }

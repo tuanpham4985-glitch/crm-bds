@@ -12,11 +12,77 @@ import type { PayrollEntry } from '@/lib/payroll';
 import { useAuth } from '@/hooks/useAuth';
 import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 
-// ── Cấu hình cột theo loại file ──
+// ── Cấu hình cột cơ bản (id / tên / thực lĩnh) ──
 const LAYOUT = {
-  KD: { colId: 1,  colName: 2,  colVal: 38 }, // B=Mã NV, C=Họ tên, AM=Thực Lĩnh
-  BO: { colId: 2,  colName: 4,  colVal: 62 }, // C=Mã ID, E=Họ tên, BK=Lương TL
+  KD: { colId: 1, colName: 2, colVal: 38 }, // B=Mã NV, C=Họ tên, AM=Thực Lĩnh
+  BO: { colId: 2, colName: 4, colVal: 62 }, // C=Mã ID, E=Họ tên, BK=Lương TL
 };
+
+// ── Mapping tất cả cột của file KD (0-indexed, A=0) ──
+const KD_COLS = {
+  chuc_vu:              3,  // D
+  phong_ban:            5,  // F
+  ct_tv:                9,  // J  — CT/TV
+  cong_thuc_te:        10,  // K
+  cong_tinh_luong:     11,  // L
+  cong_tv:             12,  // M
+  cong_ct:             13,  // N
+  luong_tv:            14,  // O
+  luong_ct:            15,  // P
+  luong_vi_tri:        16,  // Q
+  lcb_theo_ngay_cong:  17,  // R
+  kpi_quy_mo:          18,  // S  — GĐDA: quy mô & duy trì
+  kpi_hieu_qua_van_hanh: 19,// T  — GĐDA: hiệu quả vận hành
+  kpi_chat_luong_quan_ly: 20,// U — GĐDA: chất lượng quản lý
+  kpi_doanh_thu_gdkd:  21,  // V  — GĐKD/TPKD
+  kpi_doanh_thu_nvkd:  22,  // W  — NVKD: doanh thu
+  kpi_plus:            23,  // X  — NVKD: KPI Plus
+  dieu_chinh_ky_truoc: 24,  // Y
+  tong_thu_nhap:       25,  // Z
+  luong_dong_bhxh:     26,  // AA
+  bhxh_nld:            27,  // AB — BHXH NLĐ 10.5%
+  giam_tru_ban_than:   28,  // AC
+  so_nguoi_giam_tru:   29,  // AD
+  so_tien_giam_tru:    30,  // AE
+  thu_nhap_tinh_thue:  31,  // AF
+  thue_tncn:           32,  // AG
+  so_phut_di_muon:     33,  // AH
+  tien_di_muon:        34,  // AI
+  tru_khac:            35,  // AJ
+  tam_ung_luong:       36,  // AK
+  tong_khau_tru:       37,  // AL
+  // AM (38) = Thực Lĩnh — đã có trong LAYOUT.KD.colVal
+} as const;
+
+// ── Mapping tất cả cột của file BO (0-indexed absolute, offset +2 từ header) ──
+// File BO có 2 cột ẩn A,B đầu tiên → Mã NV ở C(2), Họ tên ở E(4), Thực lĩnh ở BK(62)
+const BO_COLS = {
+  phong_ban:              6,   // G
+  chuc_vu:                7,   // H
+  luong_ct_thang:         9,   // J  — Tiền lương Chính thức/tháng
+  luong_tv_thang:         10,  // K  — Tiền lương Thử việc/tháng
+  gio_cong_ct:            13,  // N  — Giờ công CT
+  gio_cong_tv:            14,  // O  — Giờ công TV
+  ngay_cong_tien_an:      17,  // R  — Ngày công tiền ăn
+  luong_cong:             32,  // AG — Lương Công
+  luong_ltg:              33,  // AH — Lương LTG
+  kpi_hieu_qua:           36,  // AK — KPI Hiệu quả công việc
+  tong_phu_cap_thuc_nhan: 45,  // AT — Tổng phụ cấp thực nhận
+  phu_cap_tien_an:        46,  // AU — Phụ cấp tiền ăn (miễn thuế)
+  tong_luong_phu_cap:     48,  // AW — Tổng lương offline + Phụ cấp
+  thuong_tkkd:            49,  // AX — Thưởng TKKD theo giao dịch
+  thuong_thang_13:        50,  // AY — Thưởng tháng 13
+  luong_dong_bh:          52,  // BA — Lương đóng BH
+  bhxh_nld:               53,  // BB — BHXH NLĐ đóng (10.5%)
+  giam_tru_ban_than:      55,  // BD — Bản thân người nộp thuế
+  so_nguoi_phu_thuoc:     56,  // BE — Số người phụ thuộc
+  giam_tru_npt:           57,  // BF — Giảm trừ cho người phụ thuộc
+  thu_nhap_chiu_thue:     58,  // BG — Thu nhập chịu thuế
+  thue_tncn:              59,  // BH — Thuế TNCN
+  tien_ung_phat:          60,  // BI — Tiền đã ứng/phạt/thu tiền DL
+  tru_di_muon:            61,  // BJ — Trừ đi muộn về sớm
+  // BK (62) = Thực lĩnh — đã có trong LAYOUT.BO.colVal
+} as const;
 
 // Chỉ chấp nhận số nguyên dương — bỏ header text, số âm, mã nhóm (I. II. VIC-XX)
 function normalizeEmpId(raw: unknown): string {
@@ -25,6 +91,10 @@ function normalizeEmpId(raw: unknown): string {
   if (/^\d+$/.test(s) && parseInt(s, 10) > 0) return s.padStart(4, '0');
   return '';
 }
+
+// Helpers parse giá trị từ cell Excel
+const _n = (v: unknown): number => typeof v === 'number' ? v : (Number(v) || 0);
+const _s = (v: unknown): string => String(v ?? '').trim();
 
 function parseExcelFile(file: File, loai: 'KD' | 'BO'): Promise<SalaryImportRow[]> {
   return new Promise((resolve, reject) => {
@@ -51,11 +121,78 @@ function parseExcelFile(file: File, loai: 'KD' | 'BO'): Promise<SalaryImportRow[
         for (const row of rows) {
           const id = normalizeEmpId(row[colId]);
           if (!id) continue;
-          const ho_ten = String(row[colName] ?? '').trim();
+          const ho_ten = _s(row[colName]);
           if (!ho_ten || /^(tổng|họ và tên|họ tên|name)$/i.test(ho_ten)) continue;
-          const rawVal = row[colVal];
-          const thuc_linh = typeof rawVal === 'number' ? rawVal : (Number(rawVal) || 0);
-          results.push({ id_nhan_vien: id, ho_ten, thuc_linh, loai });
+          const thuc_linh = _n(row[colVal]);
+
+          const entry: SalaryImportRow = { id_nhan_vien: id, ho_ten, thuc_linh, loai };
+
+          if (loai === 'KD') {
+            const c = KD_COLS;
+            entry.chuc_vu             = _s(row[c.chuc_vu]);
+            entry.phong_ban           = _s(row[c.phong_ban]);
+            entry.ct_tv               = _s(row[c.ct_tv]);
+            entry.cong_thuc_te        = _n(row[c.cong_thuc_te]);
+            entry.cong_tinh_luong     = _n(row[c.cong_tinh_luong]);
+            entry.cong_tv             = _n(row[c.cong_tv]);
+            entry.cong_ct             = _n(row[c.cong_ct]);
+            entry.luong_tv            = _n(row[c.luong_tv]);
+            entry.luong_ct            = _n(row[c.luong_ct]);
+            entry.luong_vi_tri        = _n(row[c.luong_vi_tri]);
+            entry.lcb_theo_ngay_cong  = _n(row[c.lcb_theo_ngay_cong]);
+            entry.kpi_quy_mo          = _n(row[c.kpi_quy_mo]);
+            entry.kpi_hieu_qua_van_hanh = _n(row[c.kpi_hieu_qua_van_hanh]);
+            entry.kpi_chat_luong_quan_ly = _n(row[c.kpi_chat_luong_quan_ly]);
+            entry.kpi_doanh_thu_gdkd  = _n(row[c.kpi_doanh_thu_gdkd]);
+            entry.kpi_doanh_thu_nvkd  = _n(row[c.kpi_doanh_thu_nvkd]);
+            entry.kpi_plus            = _n(row[c.kpi_plus]);
+            entry.dieu_chinh_ky_truoc = _n(row[c.dieu_chinh_ky_truoc]);
+            entry.tong_thu_nhap       = _n(row[c.tong_thu_nhap]);
+            entry.luong_dong_bhxh     = _n(row[c.luong_dong_bhxh]);
+            entry.bhxh_nld            = _n(row[c.bhxh_nld]);
+            entry.giam_tru_ban_than   = _n(row[c.giam_tru_ban_than]);
+            entry.so_nguoi_giam_tru   = _n(row[c.so_nguoi_giam_tru]);
+            entry.so_tien_giam_tru    = _n(row[c.so_tien_giam_tru]);
+            entry.thu_nhap_tinh_thue  = _n(row[c.thu_nhap_tinh_thue]);
+            entry.thue_tncn           = _n(row[c.thue_tncn]);
+            entry.so_phut_di_muon     = _n(row[c.so_phut_di_muon]);
+            entry.tien_di_muon        = _n(row[c.tien_di_muon]);
+            entry.tru_khac            = _n(row[c.tru_khac]);
+            entry.tam_ung_luong       = _n(row[c.tam_ung_luong]);
+            entry.tong_khau_tru       = _n(row[c.tong_khau_tru]);
+          } else {
+            // ── BO columns ──
+            const c = BO_COLS;
+            entry.phong_ban           = _s(row[c.phong_ban]);
+            entry.chuc_vu             = _s(row[c.chuc_vu]);
+            entry.luong_ct            = _n(row[c.luong_ct_thang]);
+            entry.luong_tv            = _n(row[c.luong_tv_thang]);
+            entry.cong_thuc_te        = _n(row[c.gio_cong_ct]);    // Giờ công CT
+            entry.cong_tv             = _n(row[c.gio_cong_tv]);    // Giờ công TV
+            entry.cong_tinh_luong     = _n(row[c.ngay_cong_tien_an]);
+            entry.luong_cong          = _n(row[c.luong_cong]);
+            entry.luong_ltg           = _n(row[c.luong_ltg]);
+            entry.kpi_plus            = _n(row[c.kpi_hieu_qua]);
+            entry.tong_phu_cap_thuc_nhan = _n(row[c.tong_phu_cap_thuc_nhan]);
+            entry.phu_cap_tien_an_bo  = _n(row[c.phu_cap_tien_an]);
+            entry.tong_thu_nhap       = _n(row[c.tong_luong_phu_cap]);
+            entry.thuong_tkkd         = _n(row[c.thuong_tkkd]);
+            entry.thuong_thang_13     = _n(row[c.thuong_thang_13]);
+            entry.luong_dong_bhxh     = _n(row[c.luong_dong_bh]);
+            entry.bhxh_nld            = _n(row[c.bhxh_nld]);
+            entry.giam_tru_ban_than   = _n(row[c.giam_tru_ban_than]);
+            entry.so_nguoi_giam_tru   = _n(row[c.so_nguoi_phu_thuoc]);
+            entry.so_tien_giam_tru    = _n(row[c.giam_tru_npt]);
+            entry.thu_nhap_tinh_thue  = _n(row[c.thu_nhap_chiu_thue]);
+            entry.thue_tncn           = _n(row[c.thue_tncn]);
+            entry.tien_ung_phat       = _n(row[c.tien_ung_phat]);
+            entry.tru_di_muon_bo      = _n(row[c.tru_di_muon]);
+            // Tổng khấu trừ tự tính
+            entry.tong_khau_tru = entry.bhxh_nld + entry.thue_tncn
+              + (entry.tien_ung_phat ?? 0) + (entry.tru_di_muon_bo ?? 0);
+          }
+
+          results.push(entry);
         }
 
         if (results.length === 0) {
@@ -236,74 +373,241 @@ export default function BangLuongPage() {
     setTimeout(() => setToast(null), 4000);
   }
 
-  // ── Tải xuống phiếu lương Word ──
+  // ── Tải xuống phiếu lương Word (đầy đủ template) ──
   const downloadSlip = async (row: SalaryImportRow) => {
     try {
       const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-              WidthType, AlignmentType, BorderStyle } = await import('docx');
-      const nv = nvMap.get(row.id_nhan_vien);
+              WidthType, AlignmentType } = await import('docx');
+
       const ngayIn = new Date();
+      const F  = 'Times New Roman';
+      const fmtM = (v?: number) => (v != null && v !== 0) ? Math.round(v).toLocaleString('vi-VN') + ' ₫' : '—';
+      const fmtV = (v?: number) => (v != null && v !== 0) ? String(v) : '—';
+      const isKD = row.loai === 'KD';
+
+      // ── builder helpers ──
+      const cell = (text: string, opts: {
+        w?: number; bold?: boolean; color?: string; bg?: string;
+        align?: typeof AlignmentType[keyof typeof AlignmentType]; size?: number; italic?: boolean;
+      } = {}) =>
+        new TableCell({
+          width: opts.w != null ? { size: opts.w, type: WidthType.PERCENTAGE } : undefined,
+          shading: opts.bg ? { fill: opts.bg } : undefined,
+          children: [new Paragraph({
+            alignment: opts.align ?? AlignmentType.LEFT,
+            spacing: { before: 40, after: 40 },
+            children: [new TextRun({
+              text, bold: opts.bold ?? false, size: opts.size ?? 20,
+              color: opts.color ?? '1F2937', font: F, italics: opts.italic ?? false,
+            })],
+          })],
+        });
+
+      // Section header (full-width, navy bg)
+      const secRow = (title: string) => new TableRow({ children: [
+        new TableCell({
+          columnSpan: 2,
+          shading: { fill: '1E3A5F' },
+          children: [new Paragraph({
+            spacing: { before: 60, after: 60 },
+            children: [new TextRun({ text: title, bold: true, size: 22, color: 'FFFFFF', font: F })],
+          })],
+        }),
+      ]});
+
+      // Sub-group header (light blue)
+      const groupRow = (title: string) => new TableRow({ children: [
+        new TableCell({
+          columnSpan: 2,
+          shading: { fill: 'DBEAFE' },
+          children: [new Paragraph({
+            spacing: { before: 40, after: 40 },
+            children: [new TextRun({ text: title, bold: true, size: 19, color: '1D4ED8', font: F, italics: true })],
+          })],
+        }),
+      ]});
+
+      // Info row: label | value (2 cols)
+      const infoRow = (label: string, value: string, vBold = false) => new TableRow({ children: [
+        cell(label, { w: 55 }),
+        cell(value || '—', { w: 45, bold: vBold }),
+      ]});
+
+      // Money row: label | số tiền (right-align, optional color)
+      const moneyRow = (label: string, value?: number, opts: { bold?: boolean; color?: string; bg?: string; indent?: boolean } = {}) =>
+        new TableRow({ children: [
+          cell((opts.indent ? '    ' : '') + label, { bg: opts.bg }),
+          cell(fmtM(value), {
+            align: AlignmentType.RIGHT,
+            bold: opts.bold,
+            color: opts.color ?? (opts.bold ? '111827' : '374151'),
+            bg: opts.bg,
+          }),
+        ]});
+
+      // Total row (green bg)
+      const totalRow = (label: string, value?: number) => new TableRow({ children: [
+        new TableCell({ shading: { fill: 'D1FAE5' }, children: [new Paragraph({
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: label, bold: true, size: 22, color: '065F46', font: F })],
+        })] }),
+        new TableCell({ shading: { fill: 'D1FAE5' }, children: [new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: fmtM(value), bold: true, size: 22, color: '065F46', font: F })],
+        })] }),
+      ]});
+
+      // Deduction total row (red-ish)
+      const deductTotalRow = (label: string, value?: number) => new TableRow({ children: [
+        new TableCell({ shading: { fill: 'FEE2E2' }, children: [new Paragraph({
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: label, bold: true, size: 22, color: '991B1B', font: F })],
+        })] }),
+        new TableCell({ shading: { fill: 'FEE2E2' }, children: [new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: fmtM(value), bold: true, size: 22, color: '991B1B', font: F })],
+        })] }),
+      ]});
+
+      // KPI groups for KD (chỉ render nếu có giá trị > 0)
+      const kpiGDDARows = isKD && (row.kpi_quy_mo || row.kpi_hieu_qua_van_hanh || row.kpi_chat_luong_quan_ly) ? [
+        groupRow('▸ KPI Giám đốc dự án (GĐDA)'),
+        ...(row.kpi_quy_mo          ? [moneyRow('KPI quy mô & duy trì hoạt động', row.kpi_quy_mo, { indent: true })] : []),
+        ...(row.kpi_hieu_qua_van_hanh ? [moneyRow('KPI hiệu quả vận hành dự án', row.kpi_hieu_qua_van_hanh, { indent: true })] : []),
+        ...(row.kpi_chat_luong_quan_ly ? [moneyRow('KPI chất lượng quản lý vận hành', row.kpi_chat_luong_quan_ly, { indent: true })] : []),
+      ] : [];
+
+      const kpiGDKDRows = isKD && row.kpi_doanh_thu_gdkd ? [
+        groupRow('▸ KPI Giám đốc / Trưởng phòng KD (GĐKD/TPKD)'),
+        moneyRow('KPI doanh thu', row.kpi_doanh_thu_gdkd, { indent: true }),
+      ] : [];
+
+      const kpiNVKDRows = isKD && (row.kpi_doanh_thu_nvkd || row.kpi_plus) ? [
+        groupRow('▸ KPI Nhân viên Kinh doanh (NVKD)'),
+        ...(row.kpi_doanh_thu_nvkd ? [moneyRow('KPI doanh thu', row.kpi_doanh_thu_nvkd, { indent: true })] : []),
+        ...(row.kpi_plus ? [moneyRow('KPI Plus — Hiệu quả làm việc', row.kpi_plus, { indent: true })] : []),
+      ] : [];
 
       const doc = new Document({
         sections: [{
-          properties: { page: { margin: { top: 1080, bottom: 1080, left: 1440, right: 1440 } } },
+          properties: { page: { margin: { top: 720, bottom: 720, left: 1080, right: 1080 } } },
           children: [
+            // ── Tiêu đề công ty ──
             new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
-              new TextRun({ text: 'CÔNG TY CỔ PHẦN BẤT ĐỘNG SẢN VICTORY HOLDINGS', bold: true, size: 26, font: 'Times New Roman' }),
+              new TextRun({ text: 'CÔNG TY CỔ PHẦN BẤT ĐỘNG SẢN VICTORY HOLDINGS', bold: true, size: 26, font: F }),
             ]}),
-            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 240 }, children: [
-              new TextRun({ text: 'Website: victoryholdings.com.vn', size: 20, color: '666666', font: 'Times New Roman' }),
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [
+              new TextRun({ text: 'victoryholdings.com.vn', size: 18, color: '888888', font: F }),
             ]}),
-            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 }, children: [
-              new TextRun({ text: `PHIẾU LƯƠNG THÁNG ${thang}/${nam}`, bold: true, size: 32, font: 'Times New Roman' }),
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 60 }, children: [
+              new TextRun({ text: `PHIẾU LƯƠNG THÁNG ${thang}/${nam}`, bold: true, size: 34, font: F }),
             ]}),
-            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 400 }, children: [
-              new TextRun({ text: `(Tháng ${thang} năm ${nam})`, size: 22, italics: true, font: 'Times New Roman' }),
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 280 }, children: [
+              new TextRun({ text: `Khối: ${isKD ? 'Kinh Doanh' : 'Back Office'}`, size: 20, italics: true, color: '666666', font: F }),
             ]}),
-            new Paragraph({ spacing: { after: 80 }, children: [
-              new TextRun({ text: 'Kính gửi: ', bold: true, size: 24, font: 'Times New Roman' }),
-              new TextRun({ text: row.ho_ten, size: 24, font: 'Times New Roman' }),
-            ]}),
-            new Paragraph({ spacing: { after: 80 }, children: [
-              new TextRun({ text: `Mã nhân viên: ${row.id_nhan_vien}   |   Bộ phận: ${row.loai === 'KD' ? 'Kinh doanh' : 'Back Office'}`, size: 22, font: 'Times New Roman' }),
-            ]}),
-            ...(nv?.phong_KD ? [new Paragraph({ spacing: { after: 240 }, children: [
-              new TextRun({ text: `Phòng/Nhóm: ${nv.phong_KD}`, size: 22, font: 'Times New Roman' }),
-            ]})] : [new Paragraph({ spacing: { after: 240 }, children: [] })]),
+
+            // ── Bảng chính ──
             new Table({
               width: { size: 100, type: WidthType.PERCENTAGE },
               rows: [
-                new TableRow({ children: [
-                  new TableCell({ width: { size: 70, type: WidthType.PERCENTAGE }, shading: { fill: 'F3F4F6' }, children: [
-                    new Paragraph({ children: [new TextRun({ text: 'Khoản mục', bold: true, size: 22, font: 'Times New Roman' })] }),
-                  ]}),
-                  new TableCell({ width: { size: 30, type: WidthType.PERCENTAGE }, shading: { fill: 'F3F4F6' }, children: [
-                    new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: 'Số tiền (VNĐ)', bold: true, size: 22, font: 'Times New Roman' })] }),
-                  ]}),
-                ]}),
-                new TableRow({ children: [
-                  new TableCell({ children: [
-                    new Paragraph({ children: [new TextRun({ text: 'THỰC LĨNH', bold: true, size: 24, font: 'Times New Roman' })] }),
-                  ]}),
-                  new TableCell({ shading: { fill: 'ECFDF5' }, children: [
-                    new Paragraph({ alignment: AlignmentType.RIGHT, children: [
-                      new TextRun({ text: row.thuc_linh.toLocaleString('vi-VN'), bold: true, size: 24, color: '059669', font: 'Times New Roman' }),
-                    ]}),
-                  ]}),
-                ]}),
+                // ── I. THÔNG TIN NHÂN SỰ ──
+                secRow('I. THÔNG TIN NHÂN SỰ'),
+                infoRow('Mã nhân viên', row.id_nhan_vien, true),
+                infoRow('Họ và tên', row.ho_ten, true),
+                infoRow('Chức vụ', row.chuc_vu || '—'),
+                infoRow('Phòng ban', row.phong_ban || '—'),
+                infoRow('Loại hợp đồng', row.ct_tv || '—'),
+
+                // ── II. CÔNG THÁNG ──
+                secRow('II. CÔNG THÁNG'),
+                infoRow('Công thực tế', fmtV(row.cong_thuc_te)),
+                infoRow('Công tính lương', fmtV(row.cong_tinh_luong)),
+                ...(row.cong_tv  ? [infoRow('Công thử việc (TV)', fmtV(row.cong_tv))]  : []),
+                ...(row.cong_ct  ? [infoRow('Công chính thức (CT)', fmtV(row.cong_ct))] : []),
+                ...(row.luong_tv ? [moneyRow('Lương thử việc', row.luong_tv)]  : []),
+                ...(row.luong_ct ? [moneyRow('Lương chính thức', row.luong_ct)] : []),
+
+                // ── III. THU NHẬP ──
+                secRow('III. THU NHẬP'),
+                // ── KD Thu nhập ──
+                ...(isKD ? [
+                  ...(row.luong_vi_tri       ? [moneyRow('Lương vị trí', row.luong_vi_tri)]           : []),
+                  ...(row.lcb_theo_ngay_cong ? [moneyRow('LCB theo ngày công', row.lcb_theo_ngay_cong)] : []),
+                  ...kpiGDDARows, ...kpiGDKDRows, ...kpiNVKDRows,
+                  ...(row.dieu_chinh_ky_truoc ? [moneyRow('Điều chỉnh kỳ trước', row.dieu_chinh_ky_truoc, { color: (row.dieu_chinh_ky_truoc ?? 0) >= 0 ? '059669' : 'DC2626' })] : []),
+                ] : [
+                  // ── BO Thu nhập ──
+                  ...(row.luong_ct         ? [moneyRow('Tiền lương CT/tháng', row.luong_ct)]             : []),
+                  ...(row.luong_tv         ? [moneyRow('Tiền lương TV/tháng', row.luong_tv)]             : []),
+                  ...(row.luong_cong       ? [moneyRow('Lương Công', row.luong_cong)]                    : []),
+                  ...(row.luong_ltg        ? [moneyRow('Lương LTG (làm thêm giờ)', row.luong_ltg)]       : []),
+                  ...(row.kpi_plus         ? [moneyRow('KPI Hiệu quả công việc', row.kpi_plus)]          : []),
+                  ...(row.thuong_tkkd      ? [moneyRow('Thưởng TKKD theo giao dịch', row.thuong_tkkd)]   : []),
+                  ...(row.thuong_thang_13  ? [moneyRow('Thưởng tháng 13', row.thuong_thang_13)]          : []),
+                  ...(row.tong_phu_cap_thuc_nhan ? [moneyRow('Tổng phụ cấp thực nhận', row.tong_phu_cap_thuc_nhan)] : []),
+                  ...(row.phu_cap_tien_an_bo ? [moneyRow('Phụ cấp tiền ăn (miễn thuế)', row.phu_cap_tien_an_bo)] : []),
+                ]),
+
+                // Tổng thu nhập
+                totalRow('TỔNG THU NHẬP', row.tong_thu_nhap),
+
+                // ── IV. KHẤU TRỪ ──
+                secRow('IV. KHẤU TRỪ'),
+                ...(row.luong_dong_bhxh  ? [moneyRow('Lương đóng BHXH', row.luong_dong_bhxh)] : []),
+                ...(row.bhxh_nld         ? [moneyRow('BHXH NLĐ đóng (10.5%)', row.bhxh_nld, { color: 'DC2626' })] : []),
+                ...(row.giam_tru_ban_than ? [moneyRow('Giảm trừ bản thân', row.giam_tru_ban_than, { color: '059669' })] : []),
+                ...(row.so_tien_giam_tru  ? [moneyRow(`Giảm trừ NPT (${row.so_nguoi_giam_tru ?? 0} người)`, row.so_tien_giam_tru, { color: '059669' })] : []),
+                ...(row.thu_nhap_tinh_thue ? [moneyRow('Thu nhập tính thuế', row.thu_nhap_tinh_thue)] : []),
+                ...(row.thue_tncn          ? [moneyRow('Thuế TNCN', row.thue_tncn, { color: 'DC2626' })] : []),
+                // KD-specific deductions
+                ...(isKD ? [
+                  ...(row.so_phut_di_muon  ? [infoRow('Số phút đi muộn', `${row.so_phut_di_muon} phút`)] : []),
+                  ...(row.tien_di_muon     ? [moneyRow('Tiền đi muộn', row.tien_di_muon, { color: 'DC2626' })] : []),
+                  ...(row.tru_khac         ? [moneyRow('Trừ khác', row.tru_khac, { color: 'DC2626' })] : []),
+                  ...(row.tam_ung_luong    ? [moneyRow('Tạm ứng lương', row.tam_ung_luong, { color: 'DC2626' })] : []),
+                ] : [
+                  // BO-specific deductions
+                  ...(row.tien_ung_phat    ? [moneyRow('Tiền đã ứng/phạt/thu tiền DL', row.tien_ung_phat, { color: 'DC2626' })] : []),
+                  ...(row.tru_di_muon_bo   ? [moneyRow('Trừ đi muộn về sớm', row.tru_di_muon_bo, { color: 'DC2626' })] : []),
+                ]),
+
+                deductTotalRow('TỔNG KHẤU TRỪ', row.tong_khau_tru),
               ],
             }),
-            new Paragraph({ spacing: { before: 400, after: 80 }, children: [
-              new TextRun({ text: 'Đây là thông báo lương chính thức. Mọi thắc mắc vui lòng liên hệ phòng Nhân sự trong vòng 3 ngày làm việc.', size: 20, italics: true, color: '666666', font: 'Times New Roman' }),
+
+            // ── Thực lĩnh (highlight box) ──
+            new Paragraph({ spacing: { before: 200, after: 0 } }),
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: [new TableRow({ children: [
+                new TableCell({
+                  shading: { fill: '064E3B' },
+                  children: [new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 100, after: 100 },
+                    children: [new TextRun({
+                      text: `LƯƠNG THỰC LĨNH:  ${row.thuc_linh.toLocaleString('vi-VN')} ₫`,
+                      bold: true, size: 32, color: 'FFFFFF', font: F,
+                    })],
+                  })],
+                }),
+              ]})],
+            }),
+
+            // ── Ghi chú + ký tên ──
+            new Paragraph({ spacing: { before: 240, after: 60 }, children: [
+              new TextRun({ text: 'Mọi thắc mắc về lương vui lòng liên hệ phòng Nhân sự trong vòng 3 ngày làm việc.', size: 18, italics: true, color: '888888', font: F }),
             ]}),
-            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 480 }, children: [
-              new TextRun({ text: `Hà Nội, ngày ${ngayIn.getDate()} tháng ${ngayIn.getMonth()+1} năm ${ngayIn.getFullYear()}`, size: 22, font: 'Times New Roman' }),
+            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 280 }, children: [
+              new TextRun({ text: `Hà Nội, ngày ${ngayIn.getDate()} tháng ${ngayIn.getMonth()+1} năm ${ngayIn.getFullYear()}`, size: 20, font: F }),
             ]}),
             new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 0 }, children: [
-              new TextRun({ text: 'GIÁM ĐỐC', bold: true, size: 22, font: 'Times New Roman' }),
+              new TextRun({ text: 'GIÁM ĐỐC', bold: true, size: 22, font: F }),
             ]}),
-            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 0 }, children: [
-              new TextRun({ text: '(Ký và đóng dấu)', size: 20, italics: true, color: '666666', font: 'Times New Roman' }),
+            new Paragraph({ alignment: AlignmentType.RIGHT, children: [
+              new TextRun({ text: '(Ký và đóng dấu)', size: 18, italics: true, color: '888888', font: F }),
             ]}),
           ],
         }],
@@ -1276,7 +1580,88 @@ export default function BangLuongPage() {
                     </div>
                   )}
                 </div>
-                {/* Salary */}
+                {/* ── II. Công tháng ── */}
+                {(slipRow.cong_thuc_te != null || slipRow.cong_tinh_luong != null) && (
+                  <div className="form-section">
+                    <div className="form-section-title">II. Công tháng</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '0.82rem', marginTop: 8 }}>
+                      {slipRow.cong_thuc_te     != null && <div>Công thực tế: <strong>{slipRow.cong_thuc_te}</strong></div>}
+                      {slipRow.cong_tinh_luong  != null && <div>Công tính lương: <strong>{slipRow.cong_tinh_luong}</strong></div>}
+                      {!!slipRow.cong_tv  && <div>Công TV: <strong>{slipRow.cong_tv}</strong></div>}
+                      {!!slipRow.cong_ct  && <div>Công CT: <strong>{slipRow.cong_ct}</strong></div>}
+                      {!!slipRow.luong_tv && <div>Lương TV: <strong style={{color:'var(--success-text)'}}>{fmt(slipRow.luong_tv)}</strong></div>}
+                      {!!slipRow.luong_ct && <div>Lương CT: <strong style={{color:'var(--success-text)'}}>{fmt(slipRow.luong_ct)}</strong></div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── III. Thu nhập ── */}
+                <div className="form-section">
+                  <div className="form-section-title">III. Thu nhập</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                    {[
+                      { label: 'Lương vị trí',          value: slipRow.luong_vi_tri },
+                      { label: 'LCB theo ngày công',     value: slipRow.lcb_theo_ngay_cong },
+                      // KD fields
+                      { label: 'KPI quy mô & duy trì',   value: slipRow.kpi_quy_mo },
+                      { label: 'KPI hiệu quả vận hành',  value: slipRow.kpi_hieu_qua_van_hanh },
+                      { label: 'KPI chất lượng quản lý', value: slipRow.kpi_chat_luong_quan_ly },
+                      { label: 'KPI doanh thu (GĐKD)',   value: slipRow.kpi_doanh_thu_gdkd },
+                      { label: 'KPI doanh thu (NVKD)',   value: slipRow.kpi_doanh_thu_nvkd },
+                      { label: 'KPI Plus / Hiệu quả',   value: slipRow.kpi_plus },
+                      { label: 'Điều chỉnh kỳ trước',   value: slipRow.dieu_chinh_ky_truoc },
+                      // BO fields
+                      { label: 'Lương Công (BO)',              value: slipRow.luong_cong },
+                      { label: 'Lương LTG (BO)',               value: slipRow.luong_ltg },
+                      { label: 'Thưởng TKKD (BO)',             value: slipRow.thuong_tkkd },
+                      { label: 'Thưởng tháng 13 (BO)',         value: slipRow.thuong_thang_13 },
+                      { label: 'Phụ cấp thực nhận (BO)',       value: slipRow.tong_phu_cap_thuc_nhan },
+                      { label: 'Phụ cấp tiền ăn (BO)',         value: slipRow.phu_cap_tien_an_bo },
+                    ].filter(i => !!i.value).map(i => (
+                      <div key={i.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '3px 0', borderBottom: '1px dashed var(--border-light)' }}>
+                        <span style={{ color: 'var(--text-body)' }}>{i.label}</span>
+                        <strong style={{ color: 'var(--success-text)' }}>{fmt(i.value!)}</strong>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700, padding: '6px 0', borderTop: '2px solid var(--border)' }}>
+                      <span>TỔNG THU NHẬP</span>
+                      <span style={{ color: 'var(--primary)' }}>{fmtCurrency(slipRow.tong_thu_nhap ?? 0)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── IV. Khấu trừ ── */}
+                {(slipRow.bhxh_nld || slipRow.thue_tncn || slipRow.tien_di_muon || slipRow.tru_khac || slipRow.tam_ung_luong) ? (
+                  <div className="form-section">
+                    <div className="form-section-title">IV. Khấu trừ</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                      {[
+                        { label: 'Lương đóng BHXH',             value: slipRow.luong_dong_bhxh },
+                        { label: 'BHXH NLĐ đóng (10.5%)',        value: slipRow.bhxh_nld },
+                        { label: 'Giảm trừ bản thân',            value: slipRow.giam_tru_ban_than },
+                        { label: `Giảm trừ NPT (${slipRow.so_nguoi_giam_tru ?? 0} người)`, value: slipRow.so_tien_giam_tru },
+                        { label: 'Thu nhập tính thuế',           value: slipRow.thu_nhap_tinh_thue },
+                        { label: 'Thuế TNCN',                    value: slipRow.thue_tncn },
+                        { label: `Phút đi muộn: ${slipRow.so_phut_di_muon ?? 0} ph`, value: slipRow.tien_di_muon },
+                        { label: 'Trừ khác',                     value: slipRow.tru_khac },
+                        { label: 'Tạm ứng lương',                value: slipRow.tam_ung_luong },
+                        { label: 'Tiền đã ứng/phạt (BO)',        value: slipRow.tien_ung_phat },
+                        { label: 'Trừ đi muộn về sớm (BO)',      value: slipRow.tru_di_muon_bo },
+                      ].filter(i => !!i.value).map(i => (
+                        <div key={i.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '3px 0', borderBottom: '1px dashed var(--border-light)' }}>
+                          <span style={{ color: 'var(--text-body)' }}>{i.label}</span>
+                          <strong style={{ color: 'var(--danger-text)' }}>-{fmt(i.value!)}</strong>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700, padding: '6px 0', borderTop: '2px solid var(--border)' }}>
+                        <span>TỔNG KHẤU TRỪ</span>
+                        <span style={{ color: 'var(--danger-text)' }}>-{fmtCurrency(slipRow.tong_khau_tru ?? 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* ── Thực lĩnh ── */}
                 <div style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 'var(--radius-lg)', padding: 20, textAlign: 'center' }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                     Thực lĩnh — Tháng {thang}/{nam}

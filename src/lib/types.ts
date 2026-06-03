@@ -346,4 +346,49 @@ export interface SalaryImportRow {
   ho_ten: string;
   thuc_linh: number;
   loai: 'KD' | 'BO';
+  // I. Thông tin nhân sự
+  chuc_vu?: string;
+  phong_ban?: string;
+  ct_tv?: string;           // Chính thức / Thử việc
+  // II. Công tháng
+  cong_thuc_te?: number;
+  cong_tinh_luong?: number;
+  cong_tv?: number;
+  cong_ct?: number;
+  luong_tv?: number;
+  luong_ct?: number;
+  // III. Thu nhập
+  luong_vi_tri?: number;
+  lcb_theo_ngay_cong?: number;
+  // IV. KPI
+  kpi_quy_mo?: number;              // KPI quy mô & duy trì hoạt động (GĐDA)
+  kpi_hieu_qua_van_hanh?: number;   // KPI hiệu quả vận hành dự án (GĐDA)
+  kpi_chat_luong_quan_ly?: number;  // KPI chất lượng quản lý vận hành (GĐDA)
+  kpi_doanh_thu_gdkd?: number;      // KPI doanh thu (GĐKD/TPKD)
+  kpi_doanh_thu_nvkd?: number;      // KPI doanh thu (NVKD)
+  kpi_plus?: number;                // KPI Plus - hiệu quả làm việc (NVKD)
+  dieu_chinh_ky_truoc?: number;
+  tong_thu_nhap?: number;
+  // V. Khấu trừ
+  luong_dong_bhxh?: number;
+  bhxh_nld?: number;                // BHXH NLĐ đóng (10.5%)
+  giam_tru_ban_than?: number;
+  so_nguoi_giam_tru?: number;
+  so_tien_giam_tru?: number;
+  thu_nhap_tinh_thue?: number;
+  thue_tncn?: number;
+  so_phut_di_muon?: number;
+  tien_di_muon?: number;
+  tru_khac?: number;
+  tam_ung_luong?: number;
+  tong_khau_tru?: number;
+  // BO-specific fields
+  luong_cong?: number;              // Lương Công (BO: AG=32)
+  luong_ltg?: number;               // Lương LTG (BO: AH=33)
+  tong_phu_cap_thuc_nhan?: number;  // Tổng phụ cấp thực nhận (BO: AT=45)
+  phu_cap_tien_an_bo?: number;      // Phụ cấp tiền ăn miễn thuế (BO: AU=46)
+  thuong_tkkd?: number;             // Thưởng TKKD theo giao dịch (BO: AX=49)
+  thuong_thang_13?: number;         // Thưởng tháng 13 (BO: AY=50)
+  tien_ung_phat?: number;           // Tiền đã ứng/phạt/thu tiền DL (BO: BI=60)
+  tru_di_muon_bo?: number;          // Trừ đi muộn về sớm (BO: BJ=61)
 }
