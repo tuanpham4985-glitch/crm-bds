@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  TrendingUp, TrendingDown, BarChart3, Target, 
-  DollarSign, Handshake, ToggleLeft, ToggleRight, Cake 
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  TrendingUp, TrendingDown, BarChart3, Target,
+  DollarSign, Handshake, ToggleLeft, ToggleRight, Cake, ChevronDown
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -208,6 +208,9 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [raceData, setRaceData] = useState<any[] | null>(null);
   const [period, setPeriod] = useState('month');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
+  const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+  const monthDropdownRef = useRef<HTMLDivElement>(null);
   const [compare, setCompare] = useState('');
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -219,10 +222,27 @@ export default function DashboardPage() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (monthDropdownRef.current && !monthDropdownRef.current.contains(e.target as Node)) {
+        setShowMonthDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ period });
+      if (period === 'month') {
+        const year = new Date().getFullYear();
+        const mm = String(selectedMonth).padStart(2, '0');
+        const lastDay = new Date(year, selectedMonth, 0).getDate();
+        params.set('from', `${year}-${mm}-01`);
+        params.set('to', `${year}-${mm}-${String(lastDay).padStart(2, '0')}`);
+      }
       if (compare) params.set('compare', compare);
       const res = await fetch(`/api/dashboard?${params}`);
       const result = await res.json();
@@ -232,7 +252,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, compare]);
+  }, [period, compare, selectedMonth]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -260,10 +280,16 @@ export default function DashboardPage() {
       `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
     const today = new Date();
     let from: Date;
+    let to: Date = today;
     switch (period) {
-      case 'month':
-        from = new Date(today.getFullYear(), today.getMonth(), 1);
+      case 'month': {
+        const year = today.getFullYear();
+        from = new Date(year, selectedMonth - 1, 1);
+        to = selectedMonth === today.getMonth() + 1
+          ? today
+          : new Date(year, selectedMonth, 0);
         break;
+      }
       case 'quarter': {
         const q = Math.floor(today.getMonth() / 3);
         from = new Date(today.getFullYear(), q * 3, 1);
@@ -275,7 +301,7 @@ export default function DashboardPage() {
       default:
         from = new Date(today.getFullYear(), today.getMonth(), 1);
     }
-    return `Từ ${fmt(from)} đến ${fmt(today)}`;
+    return `Từ ${fmt(from)} đến ${fmt(to)}`;
   })();
 
   const renderKpiCard = (
@@ -331,16 +357,65 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           {/* Period selector */}
-          <div className="toggle-group">
-            {periods.map(p => (
-              <button
-                key={p.value}
-                className={`toggle-btn ${period === p.value ? 'active' : ''}`}
-                onClick={() => setPeriod(p.value)}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="toggle-group">
+              {periods.map(p => {
+                if (p.value === 'month') {
+                  return (
+                    <div key="month" ref={monthDropdownRef} style={{ position: 'relative' }}>
+                      <button
+                        className={`toggle-btn ${period === 'month' ? 'active' : ''}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                        onClick={() => {
+                          setPeriod('month');
+                          setShowMonthDropdown(v => !v);
+                        }}
+                      >
+                        {period === 'month' ? `T${selectedMonth}` : 'Tháng'}
+                        <ChevronDown size={13} style={{ opacity: 0.7, transition: 'transform 150ms', transform: showMonthDropdown ? 'rotate(180deg)' : 'none' }} />
+                      </button>
+                      {showMonthDropdown && (
+                        <div style={{
+                          position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                          background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
+                          borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+                          padding: 8, zIndex: 100,
+                          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4,
+                          minWidth: 192,
+                        }}>
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                            <button
+                              key={m}
+                              onClick={() => { setSelectedMonth(m); setShowMonthDropdown(false); }}
+                              style={{
+                                padding: '6px 4px', borderRadius: 'var(--radius-sm)',
+                                border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                                background: selectedMonth === m ? 'var(--primary)' : 'transparent',
+                                color: selectedMonth === m ? '#fff' : 'var(--text-body)',
+                                transition: 'background var(--transition-fast)',
+                              }}
+                              onMouseEnter={e => { if (selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'var(--primary-light)'; }}
+                              onMouseLeave={e => { if (selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'transparent'; }}
+                            >
+                              T{m}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={p.value}
+                    className={`toggle-btn ${period === p.value ? 'active' : ''}`}
+                    onClick={() => { setPeriod(p.value); setShowMonthDropdown(false); }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           {/* Compare toggle — admin only */}
           {isAdmin && (
