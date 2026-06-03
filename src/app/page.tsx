@@ -356,66 +356,54 @@ export default function DashboardPage() {
           <p>Tổng quan hoạt động kinh doanh</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Period selector */}
-          <div className="flex items-center gap-2">
+          {/* Period selector — wrapper has position:relative so dropdown escapes toggle-group overflow:hidden */}
+          <div ref={monthDropdownRef} style={{ position: 'relative' }}>
             <div className="toggle-group">
-              {periods.map(p => {
-                if (p.value === 'month') {
-                  return (
-                    <div key="month" ref={monthDropdownRef} style={{ position: 'relative' }}>
-                      <button
-                        className={`toggle-btn ${period === 'month' ? 'active' : ''}`}
-                        style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                        onClick={() => {
-                          setPeriod('month');
-                          setShowMonthDropdown(v => !v);
-                        }}
-                      >
-                        {period === 'month' ? `T${selectedMonth}` : 'Tháng'}
-                        <ChevronDown size={13} style={{ opacity: 0.7, transition: 'transform 150ms', transform: showMonthDropdown ? 'rotate(180deg)' : 'none' }} />
-                      </button>
-                      {showMonthDropdown && (
-                        <div style={{
-                          position: 'absolute', top: 'calc(100% + 6px)', left: 0,
-                          background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
-                          borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
-                          padding: 8, zIndex: 100,
-                          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4,
-                          minWidth: 192,
-                        }}>
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                            <button
-                              key={m}
-                              onClick={() => { setSelectedMonth(m); setShowMonthDropdown(false); }}
-                              style={{
-                                padding: '6px 4px', borderRadius: 'var(--radius-sm)',
-                                border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                                background: selectedMonth === m ? 'var(--primary)' : 'transparent',
-                                color: selectedMonth === m ? '#fff' : 'var(--text-body)',
-                                transition: 'background var(--transition-fast)',
-                              }}
-                              onMouseEnter={e => { if (selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'var(--primary-light)'; }}
-                              onMouseLeave={e => { if (selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'transparent'; }}
-                            >
-                              T{m}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-                return (
-                  <button
-                    key={p.value}
-                    className={`toggle-btn ${period === p.value ? 'active' : ''}`}
-                    onClick={() => { setPeriod(p.value); setShowMonthDropdown(false); }}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
+              <button
+                className={`toggle-btn ${period === 'month' ? 'active' : ''}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                onClick={() => { setPeriod('month'); setShowMonthDropdown(v => !v); }}
+              >
+                {period === 'month' ? `T${selectedMonth}` : 'Tháng'}
+                <ChevronDown size={13} style={{ opacity: 0.7, transition: 'transform 150ms', transform: showMonthDropdown ? 'rotate(180deg)' : 'none' }} />
+              </button>
+              <button
+                className={`toggle-btn ${period === 'quarter' ? 'active' : ''}`}
+                onClick={() => { setPeriod('quarter'); setShowMonthDropdown(false); }}
+              >Quý</button>
+              <button
+                className={`toggle-btn ${period === 'year' ? 'active' : ''}`}
+                onClick={() => { setPeriod('year'); setShowMonthDropdown(false); }}
+              >Năm</button>
             </div>
+            {showMonthDropdown && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
+                borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+                padding: 8, zIndex: 200,
+                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4,
+                minWidth: 192,
+              }}>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                  <button
+                    key={m}
+                    onClick={() => { setSelectedMonth(m); setShowMonthDropdown(false); }}
+                    style={{
+                      padding: '6px 4px', borderRadius: 'var(--radius-sm)',
+                      border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                      background: selectedMonth === m ? 'var(--primary)' : 'transparent',
+                      color: selectedMonth === m ? '#fff' : 'var(--text-body)',
+                      transition: 'background var(--transition-fast)',
+                    }}
+                    onMouseEnter={e => { if (selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'var(--primary-light)'; }}
+                    onMouseLeave={e => { if (selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'transparent'; }}
+                  >
+                    T{m}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {/* Compare toggle — admin only */}
           {isAdmin && (
