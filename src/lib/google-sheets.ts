@@ -1506,7 +1506,7 @@ export async function getPayrollRecords(thang: number, nam: number): Promise<Pay
       const v = r.toObject();
       return {
         id: str(v.id),
-        id_nhan_vien: str(v.id_nhan_vien),
+        id_nhan_vien: padEmployeeId(str(v.id_nhan_vien)),
         thang: num(v.thang),
         nam: num(v.nam),
         gross: num(v.gross),
