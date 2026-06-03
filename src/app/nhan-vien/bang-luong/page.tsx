@@ -470,6 +470,59 @@ export default function BangLuongPage() {
     });
   }
 
+  // ── Lưu bảng lương từ Import Excel ──
+  const handleSaveImport = async () => {
+    if (!canEditHRM || allImported.length === 0) return;
+    if (!confirm(`Lưu bảng lương import tháng ${thang}/${nam} (${allImported.length} nhân viên)?\nBản ghi trùng sẽ bị bỏ qua.`)) return;
+
+    setSaving(true);
+    try {
+      const entries: PayrollEntry[] = allImported.map(row => ({
+        id_nhan_vien: row.id_nhan_vien,
+        ho_ten: row.ho_ten,
+        thang,
+        nam,
+        luong_co_ban: 0,
+        doanh_thu: 0,
+        hoa_hong: 0,
+        thuong: 0,
+        phat: 0,
+        so_ngay_cong_chuan: 0,
+        so_ngay_lam_viec_thuc_te: 0,
+        so_ngay_nghi_khong_luong: 0,
+        so_gio_ot: 0,
+        salary_by_day: 0,
+        ot_pay: 0,
+        bao_hiem: 0,
+        bh_company: 0,
+        thue: 0,
+        gross: row.thuc_linh,
+        tong_luong: row.thuc_linh,
+        trang_thai: 'draft',
+      }));
+
+      const res = await fetch('/api/payroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thang, nam, entries }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message || `Đã lưu thành công ${data.saved} bản ghi!`);
+        setImportedKD([]);
+        setImportedBO([]);
+        setTab('saved');
+        await loadSaved();
+      } else {
+        showToast('Lỗi: ' + (data.error || data.errors?.join(', ')), false);
+      }
+    } catch (err) {
+      showToast('Lỗi lưu bảng lương', false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ── Lưu bảng lương ──
   const handleSave = async () => {
     if (!canEditHRM || preview.length === 0) return;
@@ -582,6 +635,16 @@ export default function BangLuongPage() {
           <h1>Bảng lương</h1>
           <p>Import từ file Excel KD/BO hoặc tính từ HOP_DONG + PIPELINE</p>
         </div>
+        {canEditHRM && tab === 'import' && allImported.length > 0 && (
+          <button
+            className="btn btn-primary"
+            onClick={handleSaveImport}
+            disabled={saving}
+          >
+            <Save size={16} />
+            {saving ? 'Đang lưu...' : `Lưu ${allImported.length} bản ghi`}
+          </button>
+        )}
         {canEditHRM && tab === 'preview' && preview.length > 0 && (
           <button
             className="btn btn-primary"
