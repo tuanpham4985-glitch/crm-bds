@@ -961,7 +961,7 @@ export async function addPipeline(pl: Pipeline): Promise<void> {
   await addLog(doc, 'CREATE_PIPELINE', pl.id_pipeline, pl.id_khach_hang, '');
 }
 
-export async function updatePipeline(pl: Pipeline): Promise<boolean> {
+export async function updatePipeline(pl: Pipeline): Promise<{ updated: boolean; oldGiaiDoan: string }> {
   const doc = await getDoc();
   const sheet = await getSheet(doc, SHEETS.PIPELINE);
   const rows = await sheet.getRows();
@@ -970,7 +970,10 @@ export async function updatePipeline(pl: Pipeline): Promise<boolean> {
   // Xác định cột ID
   const idCol = h.includes('id_pipeline') ? 'id_pipeline' : h[0];
   const row = rows.find(r => str(r.toObject()[idCol]) === pl.id_pipeline);
-  if (!row) return false;
+  if (!row) return { updated: false, oldGiaiDoan: '' };
+
+  // Đọc giai_doan cũ trước khi ghi đè (dùng để trigger auto-task)
+  const oldGiaiDoan = str(row.toObject()[h.includes('giai_doan') ? 'giai_doan' : h[2]]);
 
   const now = new Date().toISOString();
   const schema = {
@@ -1036,7 +1039,7 @@ export async function updatePipeline(pl: Pipeline): Promise<boolean> {
 
   await row.save();
   await addLog(doc, 'UPDATE_PIPELINE', pl.id_pipeline, '', '');
-  return true;
+  return { updated: true, oldGiaiDoan };
 }
 
 export async function deletePipeline(id: string): Promise<boolean> {

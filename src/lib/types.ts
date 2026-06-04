@@ -159,12 +159,18 @@ export interface DashboardKPI {
   da_ky: number;
   doanh_thu: number;
   hoa_hong: number;
+  kh_chua_assign: number;
   // Comparison
   tong_deal_prev?: number;
   dang_xu_ly_prev?: number;
   da_ky_prev?: number;
   doanh_thu_prev?: number;
   hoa_hong_prev?: number;
+}
+
+export interface PipelineFunnelItem {
+  giai_doan: string;
+  count: number;
 }
 
 export interface DoanhThuTheoSale {
@@ -213,6 +219,7 @@ export interface DashboardData {
   doanh_thu_theo_thang: DoanhThuTheoThang[];
   nguon_khach_hang: NguonKhachHang[];
   sinh_nhat_thang_nay: SinhNhatNhanVien[];
+  pipeline_funnel: PipelineFunnelItem[];
 }
 
 // === FILTERS ===

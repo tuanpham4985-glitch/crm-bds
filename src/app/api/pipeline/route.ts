@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, addPipeline, updatePipeline, deletePipeline } from '@/lib/google-sheets';
+import { getPipeline, addPipeline, updatePipeline, deletePipeline, addCongViec } from '@/lib/google-sheets';
 import { generateId, getMonthKey } from '@/lib/utils';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
+
+// Task được tạo tự động khi pipeline chuyển sang giai đoạn mới
+const STAGE_TASKS: Record<string, { ten: string; days: number }> = {
+  'Đã liên hệ':           { ten: 'Gọi tư vấn thêm',                    days: 1 },
+  'Hẹn xem':              { ten: 'Xác nhận lịch hẹn & chuẩn bị hồ sơ', days: 2 },
+  'Đặt cọc':              { ten: 'Soạn hợp đồng đặt cọc',              days: 3 },
+  'Ký HĐ':                { ten: 'Hoàn tất thủ tục ký hợp đồng',       days: 5 },
+  'Hủy - Không nghe máy': { ten: 'Ghi nhận lý do & lưu hồ sơ khách',   days: 1 },
+  'Hủy - Không đủ tiền':  { ten: 'Ghi nhận lý do & lưu hồ sơ khách',   days: 1 },
+  'Hủy - Không thích':    { ten: 'Ghi nhận lý do & lưu hồ sơ khách',   days: 1 },
+};
 
 async function getSessionUser(): Promise<{ ho_ten: string; isAdmin: boolean }> {
   try {
@@ -159,10 +170,29 @@ export async function PUT(request: NextRequest) {
     body.ngay_cap_nhat   = plDate;
     body.thang           = getMonthKey(plDate);
 
-    const updated = await updatePipeline(body);
+    const { updated, oldGiaiDoan } = await updatePipeline(body);
 
     if (!updated) {
       return NextResponse.json({ success: false, error: 'Không tìm thấy deal' }, { status: 404 });
+    }
+
+    // Tự động tạo task khi giai đoạn thay đổi
+    if (oldGiaiDoan && oldGiaiDoan !== body.giai_doan) {
+      const taskDef = STAGE_TASKS[body.giai_doan];
+      if (taskDef) {
+        const ngayHen = new Date();
+        ngayHen.setDate(ngayHen.getDate() + taskDef.days);
+        await addCongViec({
+          id_cong_viec:   `CV_${Date.now()}`,
+          ngay_tao:       new Date().toISOString(),
+          ghi_chu:        taskDef.ten,
+          id_pipeline:    body.id_pipeline,
+          trang_thai:     'Chưa xử lý',
+          ngay_hen:       ngayHen.toISOString(),
+          sale_phu_trach: body.sale_phu_trach || '',
+          ket_qua:        '',
+        }).catch(e => console.warn('[pipeline] auto-task failed:', e));
+      }
     }
 
     return NextResponse.json({ success: true, data: body });

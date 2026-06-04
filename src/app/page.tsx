@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TrendingUp, TrendingDown, BarChart3, Target,
-  DollarSign, Handshake, ToggleLeft, ToggleRight, Cake, ChevronDown
+  DollarSign, Handshake, ToggleLeft, ToggleRight, Cake, ChevronDown,
+  AlertTriangle, Users
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -426,6 +427,92 @@ export default function DashboardPage() {
           {renderKpiCard('Đang xử lý', data.kpi.dang_xu_ly, data.kpi.dang_xu_ly_prev, <Target size={20} />)}
           {renderKpiCard('Đã ký HĐ', data.kpi.da_ky, data.kpi.da_ky_prev, <Handshake size={20} />)}
           {renderKpiCard('Doanh thu', data.kpi.doanh_thu, data.kpi.doanh_thu_prev, <DollarSign size={20} />, 'currency')}
+        </div>
+      )}
+
+      {/* Cảnh báo KH chưa assign + Funnel — admin only */}
+      {isAdmin && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 16, alignItems: 'start', marginBottom: 24 }}>
+
+          {/* Alert: KH chưa assign */}
+          {data.kpi.kh_chua_assign > 0 && (
+            <a href="/khach-hang" style={{ textDecoration: 'none' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px',
+                background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12,
+                cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>
+                <AlertTriangle size={20} color="#d97706" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#92400e' }}>
+                    {data.kpi.kh_chua_assign}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#b45309', marginTop: 1 }}>
+                    KH chưa assign sale
+                  </div>
+                </div>
+              </div>
+            </a>
+          )}
+
+          {/* Pipeline Funnel */}
+          {data.pipeline_funnel && data.pipeline_funnel.length > 0 && (
+            <div className="card" style={{ padding: '16px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <Users size={16} style={{ color: 'var(--primary)' }} />
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Phễu chuyển đổi (toàn bộ)</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {(() => {
+                  const active = data.pipeline_funnel.filter(f =>
+                    !f.giai_doan.startsWith('Hủy') && f.count > 0
+                  );
+                  const cancelled = data.pipeline_funnel.filter(f =>
+                    f.giai_doan.startsWith('Hủy') && f.count > 0
+                  );
+                  const maxCount = Math.max(...data.pipeline_funnel.map(f => f.count), 1);
+                  const stageColors: Record<string, string> = {
+                    'Mới':        '#6366f1',
+                    'Đã liên hệ': '#3b82f6',
+                    'Hẹn xem':    '#f59e0b',
+                    'Đặt cọc':    '#10b981',
+                    'Ký HĐ':      '#16a34a',
+                  };
+                  const renderRow = (f: { giai_doan: string; count: number }, i: number) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-label)', width: 130, flexShrink: 0 }}>
+                        {f.giai_doan}
+                      </span>
+                      <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: 18, overflow: 'hidden' }}>
+                        <div style={{
+                          width: `${Math.round((f.count / maxCount) * 100)}%`,
+                          height: '100%',
+                          background: stageColors[f.giai_doan] || '#94a3b8',
+                          borderRadius: 4,
+                          minWidth: f.count > 0 ? 6 : 0,
+                          transition: 'width 0.4s ease',
+                        }} />
+                      </div>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, width: 28, textAlign: 'right', color: 'var(--text-body)' }}>
+                        {f.count}
+                      </span>
+                    </div>
+                  );
+                  return (
+                    <>
+                      {active.map(renderRow)}
+                      {cancelled.length > 0 && (
+                        <>
+                          <div style={{ borderTop: '1px dashed var(--border)', margin: '4px 0' }} />
+                          {cancelled.map(renderRow)}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

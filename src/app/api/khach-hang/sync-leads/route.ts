@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
-import { getKhachHang, addKhachHangBatch } from '@/lib/google-sheets';
+import { getKhachHang, addKhachHangBatch, getNhanVien } from '@/lib/google-sheets';
 import type { KhachHang } from '@/lib/types';
 
 // ─── Source URLs ──────────────────────────────────────────────────────────────
@@ -209,8 +209,16 @@ export async function POST(): Promise<NextResponse> {
       );
     }
 
-    // 2. Load KH hiện tại để lọc trùng SĐT
-    const existing = await getKhachHang();
+    // 2. Load dữ liệu song song: KH hiện tại + danh sách Sale active
+    const [existing, allEmployees] = await Promise.all([
+      getKhachHang(),
+      getNhanVien(),
+    ]);
+
+    // Sale active để round-robin assign
+    const saleList = allEmployees
+      .filter(nv => nv.vai_tro === 'Sale' && nv.trang_thai !== 'Nghỉ việc')
+      .map(nv => nv.ho_ten);
     const seenPhones = new Set(existing.map(kh => kh.so_dien_thoai.replace(/\s+/g, '')));
 
     const duplicateList: { ten_KH: string; so_dien_thoai: string; nguon: string }[] = [];
@@ -234,7 +242,8 @@ export async function POST(): Promise<NextResponse> {
 
     // 4. Batch-insert — 3 API calls cho tất cả
     if (newLeads.length > 0) {
-      const khs: KhachHang[] = newLeads.map(lead => ({
+      // Round-robin: phân đều lead cho các Sale theo thứ tự
+      const khs: KhachHang[] = newLeads.map((lead, i) => ({
         id_khach_hang:  `KH_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
         ngay_tao:       lead.ngay_tao,
         ten_KH:         lead.ten_KH,
@@ -243,7 +252,7 @@ export async function POST(): Promise<NextResponse> {
         nguon:          lead.nguon,
         nhu_cau:        lead.nhu_cau,
         ghi_chu:        lead.ghi_chu,
-        sale_phu_trach: '',
+        sale_phu_trach: saleList.length > 0 ? saleList[i % saleList.length] : '',
         label_khach:    `${lead.ten_KH} - ${lead.so_dien_thoai}`,
       }));
 

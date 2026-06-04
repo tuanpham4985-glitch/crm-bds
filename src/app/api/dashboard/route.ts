@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getPipeline, getKhachHang, getNhanVien } from '@/lib/google-sheets';
-import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien } from '@/lib/types';
+import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem } from '@/lib/types';
+import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
 async function getIsAdmin(): Promise<boolean> {
@@ -353,6 +354,19 @@ export async function GET(request: NextRequest) {
       so_luong,
     }));
 
+    // KH chưa assign sale
+    const kh_chua_assign = allCustomers.filter(kh => !kh.sale_phu_trach).length;
+
+    // Funnel chuyển đổi — đếm tất cả pipeline theo giai đoạn (toàn thời gian)
+    const funnelCountMap = new Map<string, number>();
+    allPipelines.forEach(pl => {
+      funnelCountMap.set(pl.giai_doan, (funnelCountMap.get(pl.giai_doan) || 0) + 1);
+    });
+    const pipeline_funnel: PipelineFunnelItem[] = GIAI_DOAN_PIPELINE.map(gd => ({
+      giai_doan: gd,
+      count: funnelCountMap.get(gd) || 0,
+    }));
+
     const leaderboard = Array.from(saleMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
 
     const data: DashboardData = isAdmin ? {
@@ -362,6 +376,7 @@ export async function GET(request: NextRequest) {
         da_ky: daKy.length,
         doanh_thu: daKy.reduce((sum, pl) => sum + pl.gia_tri_thuc_te, 0),
         hoa_hong: daKy.reduce((sum, pl) => sum + pl.tien_hoa_hong, 0),
+        kh_chua_assign,
         ...(compare ? {
           tong_deal_prev: prevPipelines.length,
           dang_xu_ly_prev: prevDangXuLy.length,
@@ -375,13 +390,15 @@ export async function GET(request: NextRequest) {
       doanh_thu_theo_thang: doanhThuTheoThang,
       nguon_khach_hang: nguonKhachHang,
       sinh_nhat_thang_nay: sinhNhatThangNay,
+      pipeline_funnel,
     } : {
-      kpi: { tong_deal: 0, dang_xu_ly: 0, da_ky: 0, doanh_thu: 0, hoa_hong: 0 },
+      kpi: { tong_deal: 0, dang_xu_ly: 0, da_ky: 0, doanh_thu: 0, hoa_hong: 0, kh_chua_assign: 0 },
       doanh_thu_theo_sale: leaderboard,
       doanh_thu_theo_du_an: [],
       doanh_thu_theo_thang: [],
       nguon_khach_hang: [],
       sinh_nhat_thang_nay: sinhNhatThangNay,
+      pipeline_funnel: [],
     };
 
     return NextResponse.json({ success: true, data });
