@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       ghi_chu: body.ghi_chu || '',
       sale_phu_trach: body.sale_phu_trach || '',
       label_khach: `${body.ten_KH} - ${sdt}`,
+      du_an: body.du_an || '',
     };
 
     await addKhachHang(kh);

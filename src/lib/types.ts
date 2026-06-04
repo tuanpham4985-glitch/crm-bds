@@ -90,6 +90,7 @@ export interface KhachHang {
   ghi_chu: string;
   sale_phu_trach: string;
   label_khach: string;
+  du_an?: string;
 }
 
 // === PIPELINE ===

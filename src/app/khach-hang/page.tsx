@@ -6,7 +6,7 @@ import {
   Search, Plus, Edit3, Trash2, X, ChevronLeft, ChevronRight,
   Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle
 } from 'lucide-react';
-import type { KhachHang, NhanVien, Pipeline } from '@/lib/types';
+import type { KhachHang, NhanVien, Pipeline, DuAn } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
 import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
 
@@ -15,6 +15,7 @@ export default function KhachHangPage() {
   const [data, setData] = useState<KhachHang[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [duAnList, setDuAnList] = useState<DuAn[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -46,7 +47,7 @@ export default function KhachHangPage() {
   // Form
   const [form, setForm] = useState({
     ten_KH: '', so_dien_thoai: '', email: '',
-    nguon: '', nhu_cau: '', ghi_chu: '', sale_phu_trach: '',
+    nguon: '', nhu_cau: '', ghi_chu: '', sale_phu_trach: '', du_an: '',
   });
 
   const fetchData = useCallback(async () => {
@@ -81,8 +82,19 @@ export default function KhachHangPage() {
     }
   }, []);
 
+  const fetchDuAn = useCallback(async () => {
+    try {
+      const res = await fetch('/api/du-an');
+      const result = await res.json();
+      if (result.success) setDuAnList(result.data);
+    } catch (err) {
+      console.error('Fetch du-an error:', err);
+    }
+  }, []);
+
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
+  useEffect(() => { fetchDuAn(); }, [fetchDuAn]);
 
   // Load pipeline data in background để hiển thị trạng thái deal của mỗi KH
   useEffect(() => {
@@ -130,20 +142,21 @@ export default function KhachHangPage() {
 
   const openCreate = () => {
     setEditingItem(null);
-    setForm({ ten_KH: '', so_dien_thoai: '', email: '', nguon: '', nhu_cau: '', ghi_chu: '', sale_phu_trach: '' });
+    setForm({ ten_KH: '', so_dien_thoai: '', email: '', nguon: '', nhu_cau: '', ghi_chu: '', sale_phu_trach: '', du_an: '' });
     setShowModal(true);
   };
 
   const openEdit = (kh: KhachHang) => {
     setEditingItem(kh);
     setForm({
-      ten_KH: kh.ten_KH,
-      so_dien_thoai: kh.so_dien_thoai,
-      email: kh.email,
-      nguon: kh.nguon,
-      nhu_cau: kh.nhu_cau,
-      ghi_chu: kh.ghi_chu,
+      ten_KH:         kh.ten_KH,
+      so_dien_thoai:  kh.so_dien_thoai,
+      email:          kh.email,
+      nguon:          kh.nguon,
+      nhu_cau:        kh.nhu_cau,
+      ghi_chu:        kh.ghi_chu,
       sale_phu_trach: kh.sale_phu_trach,
+      du_an:          kh.du_an || '',
     });
     setShowModal(true);
   };
@@ -286,6 +299,7 @@ export default function KhachHangPage() {
                     <th>Tên KH</th>
                     <th>SĐT</th>
                     <th>Email</th>
+                    <th>Dự án</th>
                     <th>Nguồn</th>
                     <th>Nhu cầu</th>
                     <th>Deal</th>
@@ -312,6 +326,13 @@ export default function KhachHangPage() {
                           <Mail size={13} style={{ color: 'var(--text-label)' }} />
                           {kh.email || '—'}
                         </span>
+                      </td>
+                      <td style={{ maxWidth: 160 }}>
+                        {kh.du_an ? (
+                          <span className="badge" style={{ background: '#ede9fe', color: '#5b21b6', fontSize: '0.72rem' }}>
+                            {kh.du_an}
+                          </span>
+                        ) : '—'}
                       </td>
                       <td>
                         {kh.nguon ? (
@@ -426,6 +447,16 @@ export default function KhachHangPage() {
                   <input className="form-input" type="email" value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
                 </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Dự án</label>
+                <select className="form-select" value={form.du_an}
+                  onChange={(e) => setForm({ ...form, du_an: e.target.value })}>
+                  <option value="">Chọn dự án</option>
+                  {duAnList.filter(d => d.hien_thi !== 0).map(d => (
+                    <option key={d.id_du_an} value={d.ten_du_an}>{d.ten_du_an}</option>
+                  ))}
+                </select>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">

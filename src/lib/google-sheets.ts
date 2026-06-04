@@ -482,27 +482,35 @@ export async function backfillNhanVienIds(): Promise<{ fixed: number; total: num
 export async function getKhachHang(): Promise<KhachHang[]> {
   const doc = await getDoc();
   const sheet = await getSheet(doc, SHEETS.KHACH_HANG);
-  const rows = await sheet.getRows();
+
+  // Auto-add cột du_an nếu chưa có
   const h = sheet.headerValues;
+  if (!h.includes('du_an')) {
+    await sheet.setHeaderRow([...h, 'du_an']);
+  }
+
+  const rows = await sheet.getRows();
+  const headers = sheet.headerValues;
 
   return rows
     .map(row => {
       const v = row.toObject();
-      const id = str(v[h[0]]);
+      const id = str(v[headers[0]]);
       if (!id) return null;
-      const ten = str(v[h[2]]);
-      const sdt = str(v[h[3]]);
+      const ten = str(v[headers[2]]);
+      const sdt = str(v[headers[3]]);
       return {
-        id_khach_hang: id,
-        ngay_tao: str(v[h[1]]),
-        ten_KH: ten,
-        so_dien_thoai: sdt,
-        email: str(v[h[4]]),
-        nguon: str(v[h[5]]),
-        nhu_cau: str(v[h[6]]),
-        ghi_chu: str(v[h[7]]),
-        sale_phu_trach: str(v[h[8]]),
-        label_khach: str(v[h[9]]) || `${ten} - ${sdt}`,
+        id_khach_hang:  id,
+        ngay_tao:       str(v[headers[1]]),
+        ten_KH:         ten,
+        so_dien_thoai:  sdt,
+        email:          str(v[headers[4]]),
+        nguon:          str(v[headers[5]]),
+        nhu_cau:        str(v[headers[6]]),
+        ghi_chu:        str(v[headers[7]]),
+        sale_phu_trach: str(v[headers[8]]),
+        label_khach:    str(v[headers[9]]) || `${ten} - ${sdt}`,
+        du_an:          str(v['du_an'] || ''),
       } as KhachHang;
     })
     .filter((x): x is KhachHang => x !== null);
@@ -745,6 +753,7 @@ export async function addKhachHang(kh: KhachHang): Promise<void> {
     [hKH[7]]: kh.ghi_chu,
     [hKH[8]]: kh.sale_phu_trach,
     [hKH[9]]: `${kh.ten_KH} - ${kh.so_dien_thoai}`,
+    ...(hKH.includes('du_an') ? { du_an: kh.du_an || '' } : {}),
   });
 
   // 2. AUTO tạo pipeline
@@ -813,6 +822,7 @@ export async function addKhachHangBatch(khs: KhachHang[]): Promise<void> {
   // Tạo pipeline ID trước để CONG_VIEC có thể tham chiếu đúng
   const pipelineIds = khs.map((_, i) => `PL_${Date.now()}_${i}`);
 
+  const hasDuAn = hKH.includes('du_an');
   const khRows = khs.map(kh => ({
     [hKH[0]]: kh.id_khach_hang,
     [hKH[1]]: kh.ngay_tao,
@@ -824,6 +834,7 @@ export async function addKhachHangBatch(khs: KhachHang[]): Promise<void> {
     [hKH[7]]: kh.ghi_chu,
     [hKH[8]]: kh.sale_phu_trach,
     [hKH[9]]: `${kh.ten_KH} - ${kh.so_dien_thoai}`,
+    ...(hasDuAn ? { du_an: kh.du_an || '' } : {}),
   }));
 
   const plRows = khs.map((kh, i) => ({
@@ -870,6 +881,7 @@ export async function updateKhachHang(kh: KhachHang): Promise<boolean> {
   row.set(h[6], kh.nhu_cau); row.set(h[7], kh.ghi_chu);
   row.set(h[8], kh.sale_phu_trach);
   row.set(h[9], `${kh.ten_KH} - ${kh.so_dien_thoai}`);
+  if (h.includes('du_an')) row.set('du_an', kh.du_an || '');
   await row.save();
   await addLog(doc, 'UPDATE_KH', kh.id_khach_hang, '', '');
   return true;

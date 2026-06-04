@@ -3,15 +3,18 @@ import * as XLSX from 'xlsx';
 import { getKhachHang, addKhachHangBatch, getNhanVien } from '@/lib/google-sheets';
 import type { KhachHang } from '@/lib/types';
 
-// ─── Source URLs ──────────────────────────────────────────────────────────────
+// ─── Source configs ───────────────────────────────────────────────────────────
+// Mỗi source gắn với 1 dự án cụ thể — dễ mở rộng khi chạy camp mới
 
-// Facebook: tải toàn bộ workbook (XLSX) để đọc tất cả sheet trong 1 lần download
-const FB_XLSX_URL =
-  'https://docs.google.com/spreadsheets/d/1GeoXfJOYSA7sUW7RumLuId0jzhUSNvTqVFSLSQeCOHo/export?format=xlsx';
+const FB_SOURCE = {
+  url:   'https://docs.google.com/spreadsheets/d/1GeoXfJOYSA7sUW7RumLuId0jzhUSNvTqVFSLSQeCOHo/export?format=xlsx',
+  du_an: 'Vinhomes Saigon Park',
+};
 
-// TikTok: chỉ có 1 sheet, dùng CSV nhẹ hơn
-const TT_CSV_URL =
-  'https://docs.google.com/spreadsheets/d/1Ag2fLU01DRorIxep0V4pjXDkSyYYB9ll4Le8w0ybSU8/export?format=csv&gid=1797661699';
+const TT_SOURCE = {
+  url:   'https://docs.google.com/spreadsheets/d/1Ag2fLU01DRorIxep0V4pjXDkSyYYB9ll4Le8w0ybSU8/export?format=csv&gid=1797661699',
+  du_an: 'Vinhomes Saigon Park',
+};
 
 // Sheet không chứa lead — bỏ qua
 const FB_SKIP_SHEETS = new Set(['CRM_Failures']);
@@ -48,12 +51,16 @@ interface LeadRow {
   nhu_cau: string;
   ghi_chu: string;
   ngay_tao: string;
+  du_an: string;
 }
 
 // ─── Per-format mappers ───────────────────────────────────────────────────────
 
 // Format 1: Facebook Instant Form (có cột full_name, phone_number)
-function mapFbInstantForm(row: Record<string, string>): LeadRow | null {
+// du_an được gán bởi caller (source config) — mapper không biết
+type LeadRowNoProject = Omit<LeadRow, 'du_an'>;
+
+function mapFbInstantForm(row: Record<string, string>): LeadRowNoProject | null {
   const tenKH  = String(row['full_name']    ?? '').trim();
   const rawSdt = String(row['phone_number'] ?? '').trim();
   if (!tenKH || !rawSdt) return null;
@@ -81,8 +88,7 @@ function mapFbInstantForm(row: Record<string, string>): LeadRow | null {
   };
 }
 
-// Format 2: Trang tính2 (Họ tên, Số điện thoại, Email, Dự án, Thời gian)
-function mapFbManual(row: Record<string, string>): LeadRow | null {
+function mapFbManual(row: Record<string, string>): LeadRowNoProject | null {
   const tenKH  = String(row['Họ tên']        ?? '').trim();
   const rawSdt = String(row['Số điện thoại'] ?? '').trim();
   if (!tenKH || !rawSdt) return null;
@@ -109,8 +115,7 @@ function mapFbManual(row: Record<string, string>): LeadRow | null {
   };
 }
 
-// Format 3: TikTok
-function mapTikTok(row: Record<string, string>): LeadRow | null {
+function mapTikTok(row: Record<string, string>): LeadRowNoProject | null {
   const tenKH  = String(row['Name']         ?? '').trim();
   const rawSdt = String(row['Phone number'] ?? '').trim();
   if (!tenKH || !rawSdt) return null;
@@ -135,7 +140,7 @@ function mapTikTok(row: Record<string, string>): LeadRow | null {
 
 // Tải XLSX Facebook, duyệt tất cả sheet có dữ liệu lead
 async function fetchFacebookAllSheets(): Promise<LeadRow[]> {
-  const res = await fetch(FB_XLSX_URL, { redirect: 'follow' });
+  const res = await fetch(FB_SOURCE.url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`Facebook XLSX HTTP ${res.status}`);
 
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -158,12 +163,12 @@ async function fetchFacebookAllSheets(): Promise<LeadRow[]> {
     if (hasInstantForm) {
       for (const row of rows) {
         const mapped = mapFbInstantForm(row);
-        if (mapped) leads.push(mapped);
+        if (mapped) leads.push({ ...mapped, du_an: FB_SOURCE.du_an });
       }
     } else if (hasManual) {
       for (const row of rows) {
         const mapped = mapFbManual(row);
-        if (mapped) leads.push(mapped);
+        if (mapped) leads.push({ ...mapped, du_an: FB_SOURCE.du_an });
       }
     }
     // Sheet không nhận dạng được → bỏ qua
@@ -173,7 +178,7 @@ async function fetchFacebookAllSheets(): Promise<LeadRow[]> {
 }
 
 async function fetchTikTokLeads(): Promise<LeadRow[]> {
-  const res = await fetch(TT_CSV_URL, { redirect: 'follow' });
+  const res = await fetch(TT_SOURCE.url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`TikTok CSV HTTP ${res.status}`);
 
   const text = await res.text();
@@ -181,7 +186,10 @@ async function fetchTikTokLeads(): Promise<LeadRow[]> {
   const ws   = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws, { defval: '' });
 
-  return rows.map(mapTikTok).filter((r): r is LeadRow => r !== null);
+  return rows
+    .map(mapTikTok)
+    .filter((r): r is LeadRow => r !== null)
+    .map(r => ({ ...r, du_an: TT_SOURCE.du_an }));
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -254,6 +262,7 @@ export async function POST(): Promise<NextResponse> {
         ghi_chu:        lead.ghi_chu,
         sale_phu_trach: saleList.length > 0 ? saleList[i % saleList.length] : '',
         label_khach:    `${lead.ten_KH} - ${lead.so_dien_thoai}`,
+        du_an:          lead.du_an,
       }));
 
       await addKhachHangBatch(khs);
