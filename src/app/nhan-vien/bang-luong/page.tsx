@@ -560,12 +560,21 @@ export default function BangLuongPage() {
 
                 // ── II. CÔNG THÁNG ──
                 secRow('II. CÔNG THÁNG'),
-                infoRow('Công thực tế', fmtV(row.cong_thuc_te)),
-                infoRow('Công tính lương', fmtV(row.cong_tinh_luong)),
-                ...(row.cong_tv  ? [infoRow('Công thử việc (TV)', fmtV(row.cong_tv))]  : []),
-                ...(row.cong_ct  ? [infoRow('Công chính thức (CT)', fmtV(row.cong_ct))] : []),
-                ...(row.luong_tv ? [moneyRow('Lương thử việc', row.luong_tv)]  : []),
-                ...(row.luong_ct ? [moneyRow('Lương chính thức', row.luong_ct)] : []),
+                ...(isKD ? [
+                  // KD: Công thực tế, Công tính lương, Công TV/CT
+                  infoRow('Công thực tế',    fmtV(row.cong_thuc_te)),
+                  infoRow('Công tính lương', fmtV(row.cong_tinh_luong)),
+                  ...(row.cong_tv ? [infoRow('Công thử việc (TV)',    fmtV(row.cong_tv))] : []),
+                  ...(row.cong_ct ? [infoRow('Công chính thức (CT)',  fmtV(row.cong_ct))] : []),
+                  ...(row.luong_tv ? [moneyRow('Lương thử việc',   row.luong_tv)] : []),
+                  ...(row.luong_ct ? [moneyRow('Lương chính thức', row.luong_ct)] : []),
+                ] : [
+                  // BO: chỉ có Giờ công CT và Giờ công TV
+                  ...(row.cong_thuc_te ? [infoRow('Giờ công CT', fmtV(row.cong_thuc_te))] : []),
+                  ...(row.cong_tv      ? [infoRow('Giờ công TV', fmtV(row.cong_tv))]      : []),
+                  ...(row.luong_ct ? [moneyRow('Lương CT/tháng', row.luong_ct)] : []),
+                  ...(row.luong_tv ? [moneyRow('Lương TV/tháng', row.luong_tv)] : []),
+                ]),
 
                 // ── III. THU NHẬP ──
                 secRow('III. THU NHẬP'),
@@ -1741,14 +1750,24 @@ export default function BangLuongPage() {
                   )}
                 </div>
                 {/* ── II. Công tháng ── */}
-                {(slipRow.cong_thuc_te != null || slipRow.cong_tinh_luong != null) && (
+                {(slipRow.cong_thuc_te != null || slipRow.cong_tinh_luong != null || slipRow.cong_tv) && (
                   <div className="form-section">
                     <div className="form-section-title">II. Công tháng</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '0.82rem', marginTop: 8 }}>
-                      {slipRow.cong_thuc_te     != null && <div>Công thực tế: <strong>{slipRow.cong_thuc_te}</strong></div>}
-                      {slipRow.cong_tinh_luong  != null && <div>Công tính lương: <strong>{slipRow.cong_tinh_luong}</strong></div>}
-                      {!!slipRow.cong_tv  && <div>Công TV: <strong>{slipRow.cong_tv}</strong></div>}
-                      {!!slipRow.cong_ct  && <div>Công CT: <strong>{slipRow.cong_ct}</strong></div>}
+                      {slipRow.loai === 'KD' ? (
+                        <>
+                          {slipRow.cong_thuc_te    != null && <div>Công thực tế: <strong>{slipRow.cong_thuc_te}</strong></div>}
+                          {slipRow.cong_tinh_luong != null && <div>Công tính lương: <strong>{slipRow.cong_tinh_luong}</strong></div>}
+                          {!!slipRow.cong_tv  && <div>Công TV: <strong>{slipRow.cong_tv}</strong></div>}
+                          {!!slipRow.cong_ct  && <div>Công CT: <strong>{slipRow.cong_ct}</strong></div>}
+                        </>
+                      ) : (
+                        <>
+                          {/* BO: chỉ hiển thị Giờ công CT và Giờ công TV */}
+                          {slipRow.cong_thuc_te != null && <div>Giờ công CT: <strong>{slipRow.cong_thuc_te}</strong></div>}
+                          {!!slipRow.cong_tv    && <div>Giờ công TV: <strong>{slipRow.cong_tv}</strong></div>}
+                        </>
+                      )}
                       {!!slipRow.luong_tv && <div>Lương TV: <strong style={{color:'var(--success-text)'}}>{fmt(slipRow.luong_tv)}</strong></div>}
                       {!!slipRow.luong_ct && <div>Lương CT: <strong style={{color:'var(--success-text)'}}>{fmt(slipRow.luong_ct)}</strong></div>}
                     </div>
