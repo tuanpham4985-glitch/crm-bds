@@ -865,8 +865,7 @@ export default function BangLuongPage() {
           sent: data.sent, skipped: data.skipped, failed: data.failed, errors: data.errors ?? [],
         }));
         showToast(`Đã gửi ${data.sent} phiếu lương chấm công`);
-        setTab('saved');
-        await loadSaved();
+        await loadSaved(); // tải trước để sẵn sàng khi user đóng modal
       } else {
         showToast('Lỗi: ' + data.error, false);
         setChamCong(s => ({ ...s, phase: 'preview' }));
@@ -933,9 +932,10 @@ export default function BangLuongPage() {
   // ── Tách lương chấm công: bỏ hoa hồng/KPI doanh thu, tính lại thuế TNCN ──
   function computeAttendanceRow(row: SalaryImportRow): SalaryImportRow {
     // Lương căn cứ theo chấm công (không bao gồm hoa hồng, KPI doanh thu)
+    // Giữ KPI Plus (hiệu quả công việc) vì không phải hoa hồng BĐS
     const chamCongGross = row.loai === 'KD'
-      ? (row.lcb_theo_ngay_cong ?? 0)   // KD: LCB theo ngày công (cột R)
-      : (row.luong_cong ?? 0);           // BO: Lương Công (cột AG)
+      ? (row.lcb_theo_ngay_cong ?? 0) + (row.kpi_plus ?? 0)  // KD: LCB (cột R) + KPI Plus (cột X)
+      : (row.luong_cong ?? 0) + (row.kpi_plus ?? 0);          // BO: Lương Công (cột AG) + KPI Hiệu quả (cột AK)
 
     // BHXH giữ nguyên (tính dựa trên luong_dong_bhxh, không liên quan hoa hồng)
     const bhxh = row.bhxh_nld ?? 0;
@@ -2329,7 +2329,11 @@ export default function BangLuongPage() {
         const hasEmailCount = ccRows.filter(r => !!nvMap.get(r.id_nhan_vien)?.email).length;
         return (
           <div className="modal-overlay open"
-            onClick={() => chamCong.phase !== 'sending' && setChamCong(s => ({ ...s, open: false }))}>
+            onClick={() => {
+              if (chamCong.phase === 'sending') return;
+              setChamCong(s => ({ ...s, open: false }));
+              if (chamCong.phase === 'done') { setImportedKD([]); setImportedBO([]); setTab('saved'); }
+            }}>
             <div className="modal" style={{ width: 500, maxWidth: '94vw' }}
               onClick={e => e.stopPropagation()}>
 
@@ -2416,7 +2420,11 @@ export default function BangLuongPage() {
                     </div>
                   )}
                   <div style={{ textAlign: 'right' }}>
-                    <button className="btn btn-primary" onClick={() => setChamCong(s => ({ ...s, open: false }))}>
+                    <button className="btn btn-primary" onClick={() => {
+                      setChamCong(s => ({ ...s, open: false }));
+                      setImportedKD([]); setImportedBO([]);
+                      setTab('saved');
+                    }}>
                       <CheckCircle2 size={15} /> Đóng
                     </button>
                   </div>
