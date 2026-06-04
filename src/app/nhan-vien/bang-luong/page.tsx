@@ -704,17 +704,20 @@ export default function BangLuongPage() {
     if (!row || !emailTo) return;
     setEmailModal(m => ({ ...m, sending: true }));
     try {
-      const res = await fetch('/api/email/salary-slip', {
+      const res = await fetch('/api/email/salary-slip/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ho_ten: row.ho_ten, id_nhan_vien: row.id_nhan_vien, thuc_linh: row.thuc_linh, loai: row.loai, thang, nam, email_to: emailTo }),
+        body: JSON.stringify({ thang, nam, rows: [{ ...row, email: emailTo }] }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.sent > 0) {
         showToast(`Đã gửi phiếu lương tới ${emailTo}`);
         setEmailModal({ open: false, row: null, emailTo: '', sending: false });
+      } else if (data.success && data.failed > 0) {
+        showToast('Lỗi gửi email: ' + (data.errors?.[0] ?? 'Unknown error'), false);
+        setEmailModal(m => ({ ...m, sending: false }));
       } else {
-        showToast('Lỗi gửi email: ' + data.error, false);
+        showToast('Lỗi gửi email: ' + (data.error ?? 'Không gửi được'), false);
         setEmailModal(m => ({ ...m, sending: false }));
       }
     } catch (e: any) {
