@@ -182,6 +182,74 @@
   opacity: 0.7;
 }
 
+/* Group subtitle (below CRM / HRM label) */
+.groupSubtitle {
+  font-size: 0.5rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  margin-top: 1px;
+  opacity: 0.75;
+  line-height: 1.2;
+}
+
+/* Step badge — số thứ tự bước quy trình */
+.stepBadge {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-page);
+  border: 1.5px solid var(--border-light);
+  color: var(--text-muted);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+  font-variant-numeric: tabular-nums;
+}
+
+.navItem:hover .stepBadge {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.navItem.active .stepBadge {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* Catalog divider — ngăn cách bước quy trình với danh mục tham chiếu */
+.catalogDivider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 4px;
+  margin-top: 2px;
+}
+
+.catalogDivider::before,
+.catalogDivider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-lighter);
+}
+
+.catalogDivider span {
+  font-size: 0.5rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
 /* ===== Collapsed Sidebar ===== */
 .collapsed {
   width: 60px;
@@ -221,6 +289,18 @@
   padding-left: 0;
   padding-top: 0;
   padding-bottom: 0;
+}
+
+.collapsed .stepBadge {
+  display: none;
+}
+
+.collapsed .catalogDivider {
+  display: none;
+}
+
+.collapsed .groupSubtitle {
+  display: none;
 }
 
 .collapsed .subItem {

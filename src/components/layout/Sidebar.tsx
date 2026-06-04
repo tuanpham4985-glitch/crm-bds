@@ -20,10 +20,13 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
-const CRM_ITEMS = [
-  { href: '/khach-hang', label: 'Khách hàng', icon: Users },
-  { href: '/cong-viec', label: 'Công việc', icon: CheckSquare },
-  { href: '/pipeline', label: 'Pipeline', icon: GitBranch },
+const CRM_STEPS = [
+  { href: '/khach-hang', label: 'Khách hàng', icon: Users,       step: 1 },
+  { href: '/pipeline',   label: 'Pipeline',   icon: GitBranch,  step: 2 },
+  { href: '/cong-viec',  label: 'Công việc',  icon: CheckSquare, step: 3 },
+];
+
+const CRM_CATALOG = [
   { href: '/du-an', label: 'Dự án', icon: Building2 },
 ];
 
@@ -53,7 +56,8 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
 
   // Auto-expand group if current path is inside
   useEffect(() => {
-    if (CRM_ITEMS.some(item => pathname.startsWith(item.href))) setCrmOpen(true);
+    const allCrmItems = [...CRM_STEPS, ...CRM_CATALOG];
+    if (allCrmItems.some(item => pathname.startsWith(item.href))) setCrmOpen(true);
     if (HRM_ITEMS.some(item => pathname.startsWith(item.href))) setHrmOpen(true);
   }, [pathname]);
 
@@ -269,20 +273,45 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
 
         {/* CRM GROUP */}
         <div className={styles.navSection}>
-          <button 
-            className={styles.groupHeader} 
+          <button
+            className={styles.groupHeader}
             onClick={() => setCrmOpen(!crmOpen)}
           >
             <div className="flex items-center gap-3">
               <Database size={18} />
-              <span>CRM</span>
+              <div>
+                <div>CRM</div>
+                <div className={styles.groupSubtitle}>Quy trình bán hàng</div>
+              </div>
             </div>
             <ChevronDown size={14} className={`${styles.chevron} ${crmOpen ? styles.open : ''}`} />
           </button>
-          
+
           <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
-            {CRM_ITEMS.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+            {/* Bước quy trình tuần tự */}
+            {CRM_STEPS.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
+                  title={`Bước ${item.step}: ${item.label}`}
+                >
+                  <span className={styles.stepBadge}>{item.step}</span>
+                  <Icon size={16} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+
+            {/* Danh mục tham chiếu */}
+            <div className={styles.catalogDivider}>
+              <span>Danh mục</span>
+            </div>
+            {CRM_CATALOG.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href);
               const Icon = item.icon;
               return (
                 <Link
