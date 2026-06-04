@@ -756,24 +756,24 @@ export async function addKhachHang(kh: KhachHang): Promise<void> {
     ...(hKH.includes('du_an') ? { du_an: kh.du_an || '' } : {}),
   });
 
-  // 2. AUTO tạo pipeline
+  // 2. AUTO tạo pipeline — ghi theo TÊN CỘT để không bị lệch khi sheet có thêm cột
   const sheetPL = await getSheet(doc, SHEETS.PIPELINE);
-  const hPL = sheetPL.headerValues;
 
   const id_pipeline = `PL_${Date.now()}`;
+  const plNow = new Date().toISOString();
 
   await sheetPL.addRow({
-    [hPL[0]]: id_pipeline,
-    [hPL[1]]: kh.id_khach_hang,
-    [hPL[2]]: 'Mới',
-    [hPL[3]]: 0,
-    [hPL[4]]: kh.sale_phu_trach,
-    [hPL[5]]: '',
-    [hPL[6]]: '',
-    [hPL[7]]: 0,
-    [hPL[8]]: 0,
-    [hPL[9]]: new Date().toISOString(),
-    [hPL[10]]: toMonthKey(new Date().toISOString()),
+    id_pipeline,
+    id_khach_hang:   kh.id_khach_hang,
+    giai_doan:       'Mới',
+    gia_tri_thuc_te: 0,
+    hoa_hong:        0,
+    tien_hoa_hong:   0,
+    sale_phu_trach:  kh.sale_phu_trach,
+    id_du_an:        '',
+    ten_du_an:       '',
+    ngay_cap_nhat:   plNow,
+    thang:           toMonthKey(plNow),
   });
 
   // 3. AUTO tạo chuỗi công việc chăm sóc (giống CRM thật)
@@ -810,7 +810,6 @@ export async function addKhachHangBatch(khs: KhachHang[]): Promise<void> {
   ]);
 
   const hKH = sheetKH.headerValues;
-  const hPL = sheetPL.headerValues;
   const hCV = sheetCV.headerValues;
 
   const now     = new Date().toISOString();
@@ -837,18 +836,19 @@ export async function addKhachHangBatch(khs: KhachHang[]): Promise<void> {
     ...(hasDuAn ? { du_an: kh.du_an || '' } : {}),
   }));
 
+  // Ghi theo TÊN CỘT để không bị lệch khi sheet có thêm cột mới
   const plRows = khs.map((kh, i) => ({
-    [hPL[0]]:  pipelineIds[i],
-    [hPL[1]]:  kh.id_khach_hang,
-    [hPL[2]]:  'Mới',
-    [hPL[3]]:  0,
-    [hPL[4]]:  kh.sale_phu_trach,
-    [hPL[5]]:  '',
-    [hPL[6]]:  '',
-    [hPL[7]]:  0,
-    [hPL[8]]:  0,
-    [hPL[9]]:  now,
-    [hPL[10]]: thangKey,
+    id_pipeline:     pipelineIds[i],
+    id_khach_hang:   kh.id_khach_hang,
+    giai_doan:       'Mới',
+    gia_tri_thuc_te: 0,
+    hoa_hong:        0,
+    tien_hoa_hong:   0,
+    sale_phu_trach:  kh.sale_phu_trach,
+    id_du_an:        '',
+    ten_du_an:       '',
+    ngay_cap_nhat:   now,
+    thang:           thangKey,
   }));
 
   const cvRows = khs.map((kh, i) => ({
