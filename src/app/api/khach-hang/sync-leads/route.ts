@@ -28,7 +28,20 @@ function normalizePhone(raw: string): string {
   let s = String(raw ?? '').trim();
   if (s.startsWith('p:')) s = s.slice(2);
   if (s.startsWith('+84')) s = '0' + s.slice(3);
-  return s.replace(/\s+/g, '');
+  s = s.replace(/\D/g, ''); // bỏ tất cả ký tự không phải số
+  if (s.startsWith('84') && s.length === 11) s = '0' + s.slice(2); // 84XXXXXXXXX → 0XXXXXXXXX
+  if (s.length === 9) s = '0' + s; // 9 chữ số thiếu đầu 0
+  return s;
+}
+
+/**
+ * Lấy 9 chữ số cuối để so sánh trùng lặp.
+ * Tránh lỗi Google Sheets bỏ số 0 đầu khi lưu số nguyên:
+ *   "0962974252" → Sheets lưu 962974252 → đọc lại "962974252"
+ *   phoneKey("0962974252") = phoneKey("962974252") = "962974252" ✓
+ */
+function phoneKey(phone: string): string {
+  return String(phone).replace(/\D/g, '').slice(-9);
 }
 
 function parseDDMMYYYY(raw: string): string {
@@ -227,7 +240,8 @@ export async function POST(): Promise<NextResponse> {
     const saleList = allEmployees
       .filter(nv => nv.vai_tro === 'Sale' && nv.trang_thai !== 'Nghỉ việc')
       .map(nv => nv.ho_ten);
-    const seenPhones = new Set(existing.map(kh => kh.so_dien_thoai.replace(/\s+/g, '')));
+    // So sánh bằng 9 chữ số cuối — tránh lỗi Google Sheets bỏ số 0 đầu
+    const seenPhones = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
 
     const duplicateList: { ten_KH: string; so_dien_thoai: string; nguon: string }[] = [];
     const bySource: Record<string, { imported: number; duplicates: number }> = {
@@ -238,11 +252,12 @@ export async function POST(): Promise<NextResponse> {
     // 3. Tách mới / trùng
     const newLeads: LeadRow[] = [];
     for (const lead of leads) {
-      if (seenPhones.has(lead.so_dien_thoai)) {
+      const key = phoneKey(lead.so_dien_thoai);
+      if (seenPhones.has(key)) {
         duplicateList.push({ ten_KH: lead.ten_KH, so_dien_thoai: lead.so_dien_thoai, nguon: lead.nguon });
         bySource[lead.nguon].duplicates++;
       } else {
-        seenPhones.add(lead.so_dien_thoai);
+        seenPhones.add(key);
         newLeads.push(lead);
         bySource[lead.nguon].imported++;
       }
