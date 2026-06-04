@@ -815,11 +815,9 @@ export default function BangLuongPage() {
     if (allImported.length === 0) return;
     setChamCong(s => ({ ...s, phase: 'sending', sent: 0, skipped: 0, failed: 0, errors: [] }));
 
-    const ccRows = allImported.map(computeAttendanceRow);
-
-    // 1. Lưu bảng lương chấm công vào hệ thống
+    // 1. Lưu bảng lương chấm công vào hệ thống (dùng số liệu import gốc)
     try {
-      const entries: PayrollEntry[] = ccRows.map(row => ({
+      const entries: PayrollEntry[] = allImported.map(row => ({
         id_nhan_vien: row.id_nhan_vien,
         ho_ten:       row.ho_ten ?? '',
         thang, nam,
@@ -846,8 +844,8 @@ export default function BangLuongPage() {
       console.warn('[ChamCong] Save failed, continuing to email:', e);
     }
 
-    // 2. Gửi email hàng loạt với dữ liệu chấm công
-    const rowsWithEmail = ccRows.map(row => ({
+    // 2. Gửi email hàng loạt với số liệu import gốc
+    const rowsWithEmail = allImported.map(row => ({
       ...row,
       email: nvMap.get(row.id_nhan_vien)?.email || '',
     }));
@@ -2326,11 +2324,7 @@ export default function BangLuongPage() {
 
       {/* ===== MODAL LƯƠNG CHẤM CÔNG ===== */}
       {chamCong.open && (() => {
-        const ccRows = allImported.map(computeAttendanceRow);
-        const totalCCGross = ccRows.reduce((s, r) => s + (r.tong_thu_nhap ?? 0), 0);
-        const totalCCNet   = ccRows.reduce((s, r) => s + r.thuc_linh, 0);
-        const totalCCThue  = ccRows.reduce((s, r) => s + (r.thue_tncn ?? 0), 0);
-        const hasEmailCount = ccRows.filter(r => !!nvMap.get(r.id_nhan_vien)?.email).length;
+        const hasEmailCount = allImported.filter(r => !!nvMap.get(r.id_nhan_vien)?.email).length;
         return (
           <div className="modal-overlay open"
             onClick={() => {
@@ -2354,27 +2348,9 @@ export default function BangLuongPage() {
               {/* Phase: Preview */}
               {chamCong.phase === 'preview' && (
                 <>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-body)', background: 'var(--info-bg)', border: '1px solid var(--info-border)', borderRadius: 'var(--radius-md)', padding: '10px 14px', marginBottom: 16, lineHeight: 1.6 }}>
-                    <strong>Hoa hồng BĐS & KPI doanh thu đã được tách riêng.</strong><br />
-                    Phiếu lương gửi đi chỉ bao gồm: lương chấm công, BHXH và thuế TNCN tính lại trên cơ sở lương chấm công.
-                  </div>
-
-                  {/* Tóm tắt số liệu */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 20 }}>
-                    {[
-                      { label: 'Lương chấm công', value: fmt(totalCCGross) + ' đ', color: 'var(--primary)' },
-                      { label: 'Thuế TNCN (tính lại)', value: totalCCThue > 0 ? fmt(totalCCThue) + ' đ' : 'Miễn thuế', color: 'var(--danger-text)' },
-                      { label: 'Thực lĩnh (CĐ)', value: fmt(totalCCNet) + ' đ', color: 'var(--success-text)' },
-                    ].map(k => (
-                      <div key={k.label} style={{ background: 'var(--bg-page)', borderRadius: 'var(--radius-md)', padding: '10px 12px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1rem', fontWeight: 700, color: k.color }}>{k.value}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{k.label}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 20 }}>
-                    {allImported.length} nhân viên · {hasEmailCount} có email sẽ nhận phiếu · {allImported.length - hasEmailCount} bỏ qua (thiếu email)
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-body)', background: 'var(--info-bg)', border: '1px solid var(--info-border)', borderRadius: 'var(--radius-md)', padding: '10px 14px', marginBottom: 20, lineHeight: 1.6 }}>
+                    Gửi phiếu lương theo đúng số liệu đã import ({allImported.length} nhân viên).
+                    <br />{hasEmailCount} người có email sẽ nhận phiếu · {allImported.length - hasEmailCount} bỏ qua (thiếu email).
                   </div>
 
                   <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
