@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { Pipeline, KhachHang, DuAn, NhanVien, CongViec } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { GIAI_DOAN_PIPELINE, GIAI_DOAN_ACTIVE, GIAI_DOAN_COLORS, SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
+import { GIAI_DOAN_PIPELINE, GIAI_DOAN_COLORS, SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
 const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> = {
   'Chưa xử lý': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
@@ -335,64 +335,11 @@ function PipelineContent() {
     return <div className="loading-spinner"><div className="spinner" /></div>;
   }
 
-  // ── Dual-role detection ───────────────────────────────────────────────────
-  // Mở rộng column visibility dựa trên vai trò THỰC TẾ trong dữ liệu.
-  // Kiểm tra cả toàn bộ pipelines (không lọc) lẫn filteredPipelines để đảm bảo
-  // cột hiển thị đúng khi admin lọc theo tên hoặc khi user xem chính mình.
-  if (!isAllVisible && user?.ho_ten) {
-    const checkIn = (arr: typeof pipelines) => {
-      if (arr.some(pl => pl.sale_phu_trach === user.ho_ten)) { showPhiTraSale = true; showThuongNong = true; }
-      if (arr.some(pl => (pl.gdda || '') === user.ho_ten)) showPhiTraGDDA = true;
-      if (arr.some(pl => (pl.gdkd || '') === user.ho_ten)) showPhiTraGDKD = true;
-    };
-    checkIn(pipelines);           // toàn bộ dữ liệu
-    checkIn(filteredPipelines);   // dữ liệu đang lọc (bao gồm cả vai trò GDDA/GĐKD)
-  }
-
-  // Summary stats for active stages
-  const activeDeals = filteredPipelines.filter(pl => GIAI_DOAN_ACTIVE.includes(pl.giai_doan as typeof GIAI_DOAN_ACTIVE[number]));
-  // Tổng giá trị: chỉ tính deals mà nhân viên là sale chính (sale_phu_trach)
-  // Deals có vai trò GDDA/GDKD không cộng vào giá trị giao dịch của nhân viên đó
-  const totalValue = activeDeals.reduce((s, pl) => {
-    if (isAllVisible) {
-      // Admin: lọc theo filterSale nếu có chọn
-      if (filterSale && pl.sale_phu_trach !== filterSale) return s;
-    } else {
-      // Non-admin: chỉ tính deals mà user là sale_phu_trach
-      if (pl.sale_phu_trach !== user?.ho_ten) return s;
-    }
-    return s + pl.gia_tri_thuc_te;
-  }, 0);
-  const totalProfit = activeDeals.reduce((s, pl) => s + (pl.loi_nhuan || 0), 0);
-
-  // ── Hoa hồng cá nhân: cộng TẤT CẢ phí theo vai trò thực tế trên từng deal ──
-  // VD: vừa là Sale vừa là GĐKD → cộng phi_tra_sale + phi_tra_gdkd
-  const personalCommission = activeDeals.reduce((s, pl) => {
-    if (isAllVisible) return s + (pl.phi_tra_sale || 0);
-    let earned = 0;
-    if (pl.sale_phu_trach === user?.ho_ten) earned += (pl.phi_tra_sale  || 0);
-    if (pl.gdda            === user?.ho_ten) earned += (pl.phi_tra_gdda || 0);
-    if (pl.gdkd            === user?.ho_ten) earned += (pl.phi_tra_gdkd || 0);
-    return s + earned;
-  }, 0);
-
-  const personalHotBonus = activeDeals.reduce((s, pl) => {
-    if (isAllVisible) return s + (pl.thuong_nong || 0);
-    if (pl.sale_phu_trach === user?.ho_ten) return s + (pl.thuong_nong || 0);
-    return s;
-  }, 0);
-
-  const personalPhiTKKD = activeDeals.reduce((s, pl) => {
-    if (isAllVisible) return s + (pl.phi_tkkd || 0);
-    if (user?.employee_type === 'TKKD' && pl.tkkd === user.ho_ten) return s + (pl.phi_tkkd || 0);
-    return s;
-  }, 0);
-
-  // Admin/CEO totals — chi phí phân bổ
-  const totalPhiTraKH   = activeDeals.reduce((s, pl) => s + (pl.phi_tra_kh   || 0), 0);
-  const totalPhiTraGDDA = activeDeals.reduce((s, pl) => s + (pl.phi_tra_gdda || 0), 0);
-  const totalPhiTraGDKD = activeDeals.reduce((s, pl) => s + (pl.phi_tra_gdkd || 0), 0);
-  const totalPhiTraMKT  = activeDeals.reduce((s, pl) => s + (pl.phi_tra_mkt  || 0), 0);
+  // Stage funnel counts — dùng cho header chips
+  const stageCounts = filteredPipelines.reduce((acc, pl) => {
+    acc[pl.giai_doan] = (acc[pl.giai_doan] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   const openView = (pl: Pipeline) => {
     setViewingItem(pl);
@@ -405,19 +352,8 @@ function PipelineContent() {
     return +pct.toFixed(4); // loại bỏ số 0 thừa
   };
 
-  // Cột trong TABLE — Admin/CEO dùng view gọn (chi tiết phí xem qua nút View)
-  // TKKD & Phí TKKD đã bỏ khỏi bảng — xem qua nút "Xem chi tiết"
-  const tablePhiGDDA  = showPhiTraGDDA && !isAllVisible;
-  const tablePhiGDKD  = showPhiTraGDKD && !isAllVisible;
-  const tableMaCan    = filteredPipelines.some(pl => pl.ma_can);
-
-  let colSpan = 6; // #, Giai đoạn, Dự án, Giá trị, Sale, Thao tác
-  if (showKhachHang) colSpan++;
-  if (tableMaCan)    colSpan++;
-  if (showPhiTraSale) colSpan++;
-  if (tablePhiGDDA)  colSpan++;
-  if (tablePhiGDKD)  colSpan++;
-  if (showThuongNong) colSpan++;
+  const tableMaCan = filteredPipelines.some(pl => pl.ma_can);
+  const colSpan = 5 + (showKhachHang ? 1 : 0) + (tableMaCan ? 1 : 0);
 
   return (
     <div>
@@ -425,166 +361,21 @@ function PipelineContent() {
       <div className="page-header">
         <div className="page-header-left">
           <h1>Pipeline</h1>
-          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <span style={{ 
-              background: '#f1f5f9', 
-              color: '#334155', 
-              padding: '6px 14px', 
-              borderRadius: '14px', 
-              fontWeight: 700, 
-              fontSize: '0.88rem', 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '6px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-            }}>
-              <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>📊</span> {filteredPipelines.length} deal
+          {/* Stage funnel chips */}
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ background: '#f1f5f9', color: '#334155', padding: '5px 13px', borderRadius: 14, fontWeight: 700, fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              📊 {filteredPipelines.length} deal
             </span>
-            <span style={{ 
-              background: 'rgba(99, 102, 241, 0.08)', 
-              color: '#4f46e5', 
-              padding: '6px 15px', 
-              borderRadius: '14px', 
-              fontWeight: 700, 
-              fontSize: '0.88rem', 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '6px',
-              border: '1px solid rgba(99, 102, 241, 0.15)',
-              boxShadow: '0 1px 2px rgba(99, 102, 241, 0.05)'
-            }}>
-              <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💰</span> Tổng giá trị: <span style={{ color: '#4f46e5', fontWeight: 850 }}>{formatCurrency(totalValue, false)}</span>
-            </span>
-
-            {/* Personal or administrative Commission stats */}
-            {(showPhiTraSale || showPhiTraGDDA || showPhiTraGDKD) && (
-              <span style={{ 
-                background: 'rgba(16, 185, 129, 0.08)', 
-                color: '#059669', 
-                padding: '6px 15px', 
-                borderRadius: '14px', 
-                fontWeight: 700, 
-                fontSize: '0.88rem', 
-                display: 'inline-flex', 
-                alignItems: 'center', 
-                gap: '6px',
-                border: '1px solid rgba(16, 185, 129, 0.15)',
-                boxShadow: '0 1px 2px rgba(16, 185, 129, 0.05)'
-              }}>
-                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💵</span> {isAllVisible ? 'Tổng hoa hồng' : 'Hoa hồng cá nhân'}: <span style={{ color: '#059669', fontWeight: 850 }}>{formatCurrency(personalCommission, false)}</span>
-                {!isAllVisible && (() => {
-                  const parts: string[] = [];
-                  if (showPhiTraSale) parts.push('MG');
-                  if (showPhiTraGDDA) parts.push('GDDA');
-                  if (showPhiTraGDKD) parts.push('GĐKD');
-                  return parts.length > 1
-                    ? <span style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.75, marginLeft: 2 }}>({parts.join(' + ')})</span>
-                    : null;
-                })()}
-              </span>
-            )}
-
-            {/* Personal or administrative Hot Bonus stats */}
-            {showThuongNong && (
-              <span style={{ 
-                background: 'rgba(239, 68, 68, 0.08)', 
-                color: '#dc2626', 
-                padding: '6px 15px', 
-                borderRadius: '14px', 
-                fontWeight: 700, 
-                fontSize: '0.88rem', 
-                display: 'inline-flex', 
-                alignItems: 'center', 
-                gap: '6px',
-                border: '1px solid rgba(239, 68, 68, 0.15)',
-                boxShadow: '0 1px 2px rgba(239, 68, 68, 0.05)'
-              }}>
-                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>🔥</span> {isAllVisible ? 'Tổng thưởng nóng' : 'Thưởng nóng cá nhân'}: <span style={{ color: '#dc2626', fontWeight: 850 }}>{formatCurrency(personalHotBonus, false)}</span>
-              </span>
-            )}
-
-            {/* Phí TKKD stats */}
-            {showPhiTKKD && (
-              <span style={{ 
-                background: 'rgba(139, 92, 246, 0.08)', 
-                color: '#7c3aed', 
-                padding: '6px 15px', 
-                borderRadius: '14px', 
-                fontWeight: 700, 
-                fontSize: '0.88rem', 
-                display: 'inline-flex', 
-                alignItems: 'center', 
-                gap: '6px',
-                border: '1px solid rgba(139, 92, 246, 0.15)',
-                boxShadow: '0 1px 2px rgba(139, 92, 246, 0.05)'
-              }}>
-                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💜</span> {isAllVisible ? 'Tổng phí TKKD' : 'Phí TKKD cá nhân'}: <span style={{ color: '#7c3aed', fontWeight: 850 }}>{formatCurrency(personalPhiTKKD, false)}</span>
-              </span>
-            )}
-
-            {canViewProfit && (
-              <span style={{ 
-                background: 'rgba(212, 175, 55, 0.15)', 
-                color: '#b45309', 
-                padding: '6px 16px', 
-                borderRadius: '14px', 
-                fontWeight: 800, 
-                fontSize: '0.88rem',
-                border: '1.5px solid rgba(212, 175, 55, 0.45)',
-                boxShadow: '0 2px 6px rgba(212,175,55,0.18)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>💎</span> Tổng lợi nhuận: <span style={{ color: '#d97706', fontWeight: 950 }}>{formatCurrency(totalProfit, false)}</span>
-              </span>
-            )}
-
-            {/* Admin/CEO cost breakdown totals */}
-            {canViewProfit && (
-              <>
-                {totalPhiTraKH > 0 && (
-                  <span style={{
-                    background: 'rgba(139,92,246,0.08)', color: '#6d28d9',
-                    padding: '6px 14px', borderRadius: '14px', fontWeight: 700,
-                    fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                    border: '1px solid rgba(139,92,246,0.18)',
-                  }}>
-                    🏷️ Phí trả KH: <strong style={{ marginLeft: 3 }}>{formatCurrency(totalPhiTraKH, false)}</strong>
-                  </span>
-                )}
-                {totalPhiTraGDDA > 0 && (
-                  <span style={{
-                    background: 'rgba(59,130,246,0.08)', color: '#1d4ed8',
-                    padding: '6px 14px', borderRadius: '14px', fontWeight: 700,
-                    fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                    border: '1px solid rgba(59,130,246,0.18)',
-                  }}>
-                    🏗️ Phí GDDA: <strong style={{ marginLeft: 3 }}>{formatCurrency(totalPhiTraGDDA, false)}</strong>
-                  </span>
-                )}
-                {totalPhiTraGDKD > 0 && (
-                  <span style={{
-                    background: 'rgba(245,158,11,0.08)', color: '#b45309',
-                    padding: '6px 14px', borderRadius: '14px', fontWeight: 700,
-                    fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                    border: '1px solid rgba(245,158,11,0.18)',
-                  }}>
-                    👔 Phí GĐKD: <strong style={{ marginLeft: 3 }}>{formatCurrency(totalPhiTraGDKD, false)}</strong>
-                  </span>
-                )}
-                {totalPhiTraMKT > 0 && (
-                  <span style={{
-                    background: 'rgba(236,72,153,0.08)', color: '#be185d',
-                    padding: '6px 14px', borderRadius: '14px', fontWeight: 700,
-                    fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                    border: '1px solid rgba(236,72,153,0.18)',
-                  }}>
-                    📣 Phí MKT: <strong style={{ marginLeft: 3 }}>{formatCurrency(totalPhiTraMKT, false)}</strong>
-                  </span>
-                )}
-              </>
-            )}
+            {GIAI_DOAN_PIPELINE.map(gd => {
+              const cnt = stageCounts[gd];
+              if (!cnt) return null;
+              const colors = GIAI_DOAN_COLORS[gd] || { bg: '#f1f5f9', text: '#475569' };
+              return (
+                <span key={gd} style={{ background: colors.bg, color: colors.text, padding: '4px 11px', borderRadius: 14, fontWeight: 600, fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${colors.text}22` }}>
+                  {gd}: <strong>{cnt}</strong>
+                </span>
+              );
+            })}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -612,18 +403,9 @@ function PipelineContent() {
           {projects.map(da => <option key={da.id_du_an} value={da.id_du_an}>{da.ten_du_an}</option>)}
         </select>
         {filterKHName && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            background: 'rgba(99,102,241,0.1)', color: '#4f46e5',
-            border: '1px solid rgba(99,102,241,0.25)',
-            borderRadius: 20, padding: '4px 10px 4px 12px',
-            fontSize: '0.8125rem', fontWeight: 600,
-          }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 20, padding: '4px 10px 4px 12px', fontSize: '0.8125rem', fontWeight: 600 }}>
             👤 {filterKHName}
-            <button
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: '#4f46e5' }}
-              onClick={() => { setFilterKH(''); router.replace('/pipeline'); }}
-            >
+            <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: '#4f46e5' }} onClick={() => { setFilterKH(''); router.replace('/pipeline'); }}>
               <X size={13} />
             </button>
           </span>
@@ -635,10 +417,10 @@ function PipelineContent() {
         )}
       </div>
 
-      {/* Table View */}
-      <div className="card" style={{ padding: 0 }}>
-        <div className="table-wrapper" style={{ borderRadius: 'var(--radius-xl)', overflow: 'visible' }}>
-          <table className="data-table" style={{ minWidth: '850px' }}>
+      {/* ── Desktop Table (ẩn trên mobile) ── */}
+      <div className="card pipeline-table-desktop" style={{ padding: 0 }}>
+        <div className="table-wrapper">
+          <table className="data-table" style={{ minWidth: '640px' }}>
             <thead>
               <tr>
                 <th>#</th>
@@ -646,11 +428,6 @@ function PipelineContent() {
                 {tableMaCan && <th>Mã căn</th>}
                 <th>Giai đoạn</th>
                 <th>Dự án</th>
-                <th style={{ textAlign: 'right' }}>Giá trị</th>
-                {showPhiTraSale && <th style={{ textAlign: 'right' }}>Phí trả sale</th>}
-                {tablePhiGDDA  && <th style={{ textAlign: 'right' }}>Phí trả GDDA</th>}
-                {tablePhiGDKD  && <th style={{ textAlign: 'right' }}>Phí trả GĐKD</th>}
-                {showThuongNong && <th style={{ textAlign: 'right' }}>Thưởng nóng</th>}
                 <th>Sale</th>
                 <th style={{ width: 110, textAlign: 'center' }}>Thao tác</th>
               </tr>
@@ -677,59 +454,15 @@ function PipelineContent() {
                       </span>
                     </td>
                     <td>{pl.ten_du_an || '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                      {formatCurrency(pl.gia_tri_thuc_te)}
-                    </td>
-
-                    {showPhiTraSale && (
-                      <td style={{ textAlign: 'right', color: 'var(--success-text)', fontWeight: 600 }}>
-                        {isAllVisible || pl.sale_phu_trach === user?.ho_ten
-                          ? formatCurrency(pl.phi_tra_sale || 0)
-                          : '—'}
-                      </td>
-                    )}
-
-                    {tablePhiGDDA && (
-                      <td style={{ textAlign: 'right', color: 'var(--primary-text)', fontWeight: 600 }}>
-                        {pl.gdda === user?.ho_ten
-                          ? formatCurrency(pl.phi_tra_gdda || 0)
-                          : '—'}
-                      </td>
-                    )}
-
-                    {tablePhiGDKD && (
-                      <td style={{ textAlign: 'right', color: '#b45309', fontWeight: 600 }}>
-                        {pl.gdkd === user?.ho_ten
-                          ? formatCurrency(pl.phi_tra_gdkd || 0)
-                          : '—'}
-                      </td>
-                    )}
-
-                    {showThuongNong && (
-                      <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>
-                        {isAllVisible || pl.sale_phu_trach === user?.ho_ten
-                          ? formatCurrency(pl.thuong_nong || 0)
-                          : '—'}
-                      </td>
-                    )}
-
                     <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.sale_phu_trach || '—'}</td>
                     <td>
                       <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
-                        <button
-                          className="btn btn-ghost btn-icon btn-sm"
-                          title="Xem chi tiết"
-                          style={{ color: 'var(--primary)' }}
-                          onClick={() => openView(pl)}
-                        >
+                        <button className="btn btn-ghost btn-icon btn-sm" title="Xem chi tiết" style={{ color: 'var(--primary)' }} onClick={() => openView(pl)}>
                           <Eye size={15} />
                         </button>
-                        <button
-                          className="btn btn-ghost btn-icon btn-sm"
-                          title="Công việc"
+                        <button className="btn btn-ghost btn-icon btn-sm" title="Công việc"
                           style={{ color: selectedDeal?.id_pipeline === pl.id_pipeline ? 'var(--primary)' : undefined }}
-                          onClick={() => selectedDeal?.id_pipeline === pl.id_pipeline ? closeTaskPanel() : openTaskPanel(pl)}
-                        >
+                          onClick={() => selectedDeal?.id_pipeline === pl.id_pipeline ? closeTaskPanel() : openTaskPanel(pl)}>
                           <ClipboardList size={15} />
                         </button>
                         <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(pl)}><Edit3 size={15} /></button>
@@ -741,15 +474,63 @@ function PipelineContent() {
                 );
               })}
               {filteredPipelines.length === 0 && (
-                <tr>
-                  <td colSpan={colSpan} className="empty-state">
-                    <h3>Chưa có deal nào</h3>
-                  </td>
-                </tr>
+                <tr><td colSpan={colSpan} className="empty-state"><h3>Chưa có deal nào</h3></td></tr>
               )}
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── Mobile Card List (ẩn trên desktop) ── */}
+      <div className="pipeline-cards-mobile">
+        {filteredPipelines.length === 0 && (
+          <div className="empty-state" style={{ padding: '40px 0' }}><h3>Chưa có deal nào</h3></div>
+        )}
+        {filteredPipelines.map((pl) => {
+          const colors = GIAI_DOAN_COLORS[pl.giai_doan] || { bg: '#f1f5f9', text: '#475569' };
+          const khName = pl.ho_ten_kh || getCustomerName(pl.id_khach_hang) || '—';
+          return (
+            <div key={pl.id_pipeline} className="pipeline-mob-card">
+              {/* Row 1: Tên KH + Badge giai đoạn */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-title)', flex: 1, minWidth: 0 }}>
+                  {khName}
+                </span>
+                <span className="badge" style={{ background: colors.bg, color: colors.text, flexShrink: 0 }}>
+                  {pl.giai_doan}
+                </span>
+              </div>
+              {/* Row 2: Dự án + Mã căn */}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
+                {pl.ten_du_an && (
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-body)' }}>📍 {pl.ten_du_an}</span>
+                )}
+                {pl.ma_can && (
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>🏠 {pl.ma_can}</span>
+                )}
+              </div>
+              {/* Row 3: Sale + Actions */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--primary-text)', fontWeight: 500 }}>
+                  👤 {pl.sale_phu_trach || '—'}
+                </span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button className="btn btn-ghost btn-icon btn-sm" title="Xem chi tiết" style={{ color: 'var(--primary)' }} onClick={() => openView(pl)}>
+                    <Eye size={16} />
+                  </button>
+                  <button className="btn btn-ghost btn-icon btn-sm" title="Công việc"
+                    style={{ color: selectedDeal?.id_pipeline === pl.id_pipeline ? 'var(--primary)' : undefined }}
+                    onClick={() => selectedDeal?.id_pipeline === pl.id_pipeline ? closeTaskPanel() : openTaskPanel(pl)}>
+                    <ClipboardList size={16} />
+                  </button>
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(pl)}><Edit3 size={16} /></button>
+                  <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}
+                    onClick={() => { setDeletingId(pl.id_pipeline); setShowConfirm(true); }}><Trash2 size={16} /></button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Create/Edit Modal */}
