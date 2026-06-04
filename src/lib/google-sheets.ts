@@ -788,6 +788,74 @@ export async function addKhachHang(kh: KhachHang): Promise<void> {
   await addLog(doc, 'CREATE_KH_FULL_FLOW', kh.id_khach_hang, id_pipeline, '');
 }
 
+// Batch-insert nhiều KH cùng lúc: 3 addRows thay vì 3×N addRow riêng lẻ.
+// Dùng cho import/sync hàng loạt để tránh timeout Vercel.
+export async function addKhachHangBatch(khs: KhachHang[]): Promise<void> {
+  if (khs.length === 0) return;
+
+  const doc = await getDoc();
+  const [sheetKH, sheetPL, sheetCV] = await Promise.all([
+    getSheet(doc, SHEETS.KHACH_HANG),
+    getSheet(doc, SHEETS.PIPELINE),
+    getSheet(doc, SHEETS.CONG_VIEC),
+  ]);
+
+  const hKH = sheetKH.headerValues;
+  const hPL = sheetPL.headerValues;
+  const hCV = sheetCV.headerValues;
+
+  const now     = new Date().toISOString();
+  const ngayHen = new Date();
+  ngayHen.setDate(ngayHen.getDate() + 1);
+  const ngayHenISO = ngayHen.toISOString();
+  const thangKey   = toMonthKey(now);
+
+  // Tạo pipeline ID trước để CONG_VIEC có thể tham chiếu đúng
+  const pipelineIds = khs.map((_, i) => `PL_${Date.now()}_${i}`);
+
+  const khRows = khs.map(kh => ({
+    [hKH[0]]: kh.id_khach_hang,
+    [hKH[1]]: kh.ngay_tao,
+    [hKH[2]]: kh.ten_KH,
+    [hKH[3]]: kh.so_dien_thoai,
+    [hKH[4]]: kh.email,
+    [hKH[5]]: kh.nguon,
+    [hKH[6]]: kh.nhu_cau,
+    [hKH[7]]: kh.ghi_chu,
+    [hKH[8]]: kh.sale_phu_trach,
+    [hKH[9]]: `${kh.ten_KH} - ${kh.so_dien_thoai}`,
+  }));
+
+  const plRows = khs.map((kh, i) => ({
+    [hPL[0]]:  pipelineIds[i],
+    [hPL[1]]:  kh.id_khach_hang,
+    [hPL[2]]:  'Mới',
+    [hPL[3]]:  0,
+    [hPL[4]]:  kh.sale_phu_trach,
+    [hPL[5]]:  '',
+    [hPL[6]]:  '',
+    [hPL[7]]:  0,
+    [hPL[8]]:  0,
+    [hPL[9]]:  now,
+    [hPL[10]]: thangKey,
+  }));
+
+  const cvRows = khs.map((kh, i) => ({
+    [hCV[0]]: `CV_${Date.now()}_${i}`,
+    [hCV[1]]: now,
+    [hCV[2]]: 'Gọi khách lần đầu',
+    [hCV[3]]: pipelineIds[i],
+    [hCV[4]]: 'Chưa xử lý',
+    [hCV[5]]: ngayHenISO,
+    [hCV[6]]: kh.sale_phu_trach,
+    [hCV[7]]: '',
+  }));
+
+  await sheetKH.addRows(khRows);
+  await sheetPL.addRows(plRows);
+  await sheetCV.addRows(cvRows);
+}
+
 export async function updateKhachHang(kh: KhachHang): Promise<boolean> {
   const doc = await getDoc();
   const sheet = await getSheet(doc, SHEETS.KHACH_HANG);

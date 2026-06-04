@@ -29,7 +29,9 @@
       "WebFetch(domain:doc-10-40-sheets.googleusercontent.com)",
       "Bash(python scripts/extract-text \"C:\\\\Users\\\\Admin\\\\Downloads\\\\khach-hang-2026-06-04 \\(1\\).xlsx\")",
       "WebFetch(domain:doc-0o-b0-sheets.googleusercontent.com)",
-      "WebFetch(domain:doc-04-b0-sheets.googleusercontent.com)"
+      "WebFetch(domain:doc-04-b0-sheets.googleusercontent.com)",
+      "Bash(node -e \"const p = require\\('./node_modules/google-spreadsheet/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"const lib = require\\('./node_modules/google-spreadsheet'\\); const sheet = lib.GoogleSpreadsheetWorksheet; console.log\\(Object.getOwnPropertyNames\\(sheet.prototype\\).filter\\(m => m.toLowerCase\\(\\).includes\\('row'\\)\\)\\)\")"
     ]
   }
 }
