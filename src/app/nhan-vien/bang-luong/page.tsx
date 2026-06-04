@@ -300,6 +300,13 @@ export default function BangLuongPage() {
     sent: number; skipped: number; failed: number; errors: string[];
   }>({ open: false, phase: 'preview', sent: 0, skipped: 0, failed: 0, errors: [] });
 
+  // Modal lưu lương chấm công + gửi email (tách riêng hoa hồng)
+  const [chamCong, setChamCong] = useState<{
+    open: boolean;
+    phase: 'preview' | 'sending' | 'done';
+    sent: number; skipped: number; failed: number; errors: string[];
+  }>({ open: false, phase: 'preview', sent: 0, skipped: 0, failed: 0, errors: [] });
+
   // --- Tính ngày công chuẩn (Trừ T7 nửa buổi, CN nghỉ, Trừ Lễ VN) ---
   const getVietnameseHolidays = (year: number) => {
     return [
@@ -803,6 +810,73 @@ export default function BangLuongPage() {
     }
   };
 
+  // ── Lưu bảng lương chấm công + Gửi email hàng loạt (tách hoa hồng) ──
+  const handleChamCong = async () => {
+    if (allImported.length === 0) return;
+    setChamCong(s => ({ ...s, phase: 'sending', sent: 0, skipped: 0, failed: 0, errors: [] }));
+
+    const ccRows = allImported.map(computeAttendanceRow);
+
+    // 1. Lưu bảng lương chấm công vào hệ thống
+    try {
+      const entries: PayrollEntry[] = ccRows.map(row => ({
+        id_nhan_vien: row.id_nhan_vien,
+        ho_ten:       row.ho_ten ?? '',
+        thang, nam,
+        luong_co_ban:             row.loai === 'KD' ? (row.lcb_theo_ngay_cong ?? 0) : (row.luong_cong ?? 0),
+        doanh_thu: 0, hoa_hong: 0, thuong: 0, phat: 0,
+        so_ngay_cong_chuan:       row.cong_tinh_luong ?? 0,
+        so_ngay_lam_viec_thuc_te: row.cong_thuc_te   ?? 0,
+        so_ngay_nghi_khong_luong: 0, so_gio_ot: 0,
+        salary_by_day: row.loai === 'KD' ? (row.lcb_theo_ngay_cong ?? 0) : (row.luong_cong ?? 0),
+        ot_pay: 0,
+        bao_hiem:   row.bhxh_nld  ?? 0,
+        bh_company: 0,
+        thue:       row.thue_tncn ?? 0,
+        gross:      row.tong_thu_nhap ?? 0,
+        tong_luong: row.thuc_linh,
+        trang_thai: 'draft' as const,
+      }));
+      await fetch('/api/payroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thang, nam, entries }),
+      });
+    } catch (e) {
+      console.warn('[ChamCong] Save failed, continuing to email:', e);
+    }
+
+    // 2. Gửi email hàng loạt với dữ liệu chấm công
+    const rowsWithEmail = ccRows.map(row => ({
+      ...row,
+      email: nvMap.get(row.id_nhan_vien)?.email || '',
+    }));
+
+    try {
+      const res = await fetch('/api/email/salary-slip/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thang, nam, rows: rowsWithEmail }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChamCong(s => ({
+          ...s, phase: 'done',
+          sent: data.sent, skipped: data.skipped, failed: data.failed, errors: data.errors ?? [],
+        }));
+        showToast(`Đã gửi ${data.sent} phiếu lương chấm công`);
+        setTab('saved');
+        await loadSaved();
+      } else {
+        showToast('Lỗi: ' + data.error, false);
+        setChamCong(s => ({ ...s, phase: 'preview' }));
+      }
+    } catch (e: any) {
+      showToast('Lỗi kết nối khi gửi email', false);
+      setChamCong(s => ({ ...s, phase: 'preview' }));
+    }
+  };
+
   // ── Tính lương (preview) ──
   const handleCalculate = useCallback(async () => {
     if (!canEditHRM) return;
@@ -855,6 +929,39 @@ export default function BangLuongPage() {
   const allImported = [...importedKD, ...importedBO];
   const totalThucLinh  = allImported.reduce((s, r) => s + r.thuc_linh, 0);
   const totalThueTNCN  = allImported.reduce((s, r) => s + (r.thue_tncn ?? 0), 0);
+
+  // ── Tách lương chấm công: bỏ hoa hồng/KPI doanh thu, tính lại thuế TNCN ──
+  function computeAttendanceRow(row: SalaryImportRow): SalaryImportRow {
+    // Lương căn cứ theo chấm công (không bao gồm hoa hồng, KPI doanh thu)
+    const chamCongGross = row.loai === 'KD'
+      ? (row.lcb_theo_ngay_cong ?? 0)   // KD: LCB theo ngày công (cột R)
+      : (row.luong_cong ?? 0);           // BO: Lương Công (cột AG)
+
+    // BHXH giữ nguyên (tính dựa trên luong_dong_bhxh, không liên quan hoa hồng)
+    const bhxh = row.bhxh_nld ?? 0;
+
+    // Tính lại thuế TNCN chỉ trên lương chấm công
+    const giam_tru = (row.giam_tru_ban_than ?? 0) + (row.so_tien_giam_tru ?? 0);
+    const thu_nhap_tinh_thue_cc = Math.max(0, chamCongGross - bhxh - giam_tru);
+    const thue_cc = Math.round(calculateTaxMonthly(thu_nhap_tinh_thue_cc));
+    const tong_khau_tru_cc = bhxh + thue_cc;
+
+    return {
+      ...row,
+      // Xoá toàn bộ KPI doanh thu & hoa hồng môi giới
+      kpi_quy_mo: 0, kpi_hieu_qua_van_hanh: 0, kpi_chat_luong_quan_ly: 0,
+      kpi_doanh_thu_gdkd: 0, kpi_doanh_thu_nvkd: 0,
+      dieu_chinh_ky_truoc: 0,
+      thuong_tkkd: 0, thuong_thang_13: 0,
+      // Chỉ giữ KPI Plus (hiệu quả công việc — không phải hoa hồng BĐS)
+      // Cập nhật các giá trị tính lại
+      tong_thu_nhap:         chamCongGross,
+      thu_nhap_tinh_thue:    thu_nhap_tinh_thue_cc,
+      thue_tncn:             thue_cc,
+      tong_khau_tru:         tong_khau_tru_cc,
+      thuc_linh:             chamCongGross - tong_khau_tru_cc,
+    };
+  }
 
   // ── Inline edit fields ──
   function updateField(idx: number, field: 'thuong' | 'phat' | 'so_ngay_nghi_khong_luong' | 'so_gio_ot' | 'so_nguoi_phu_thuoc', val: string) {
@@ -1088,14 +1195,21 @@ export default function BangLuongPage() {
           <p>Import từ file Excel KD/BO hoặc tính từ HOP_DONG + PIPELINE</p>
         </div>
         {canEditHRM && tab === 'import' && allImported.length > 0 && (
-          <button
-            className="btn btn-primary"
-            onClick={handleSaveImport}
-            disabled={saving}
-          >
-            <Save size={16} />
-            {saving ? 'Đang lưu...' : `Lưu ${allImported.length} bản ghi`}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={handleSaveImport} disabled={saving}>
+              <Save size={16} />
+              {saving ? 'Đang lưu...' : `Lưu đầy đủ (${allImported.length})`}
+            </button>
+            <button
+              className="btn btn-primary"
+              style={{ background: '#059669', borderColor: '#059669' }}
+              onClick={() => setChamCong({ open: true, phase: 'preview', sent: 0, skipped: 0, failed: 0, errors: [] })}
+              disabled={saving}
+            >
+              <Mail size={16} />
+              Lương chấm công &amp; Email
+            </button>
+          </div>
         )}
         {canEditHRM && tab === 'preview' && preview.length > 0 && (
           <button
@@ -2201,6 +2315,114 @@ export default function BangLuongPage() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ===== MODAL LƯƠNG CHẤM CÔNG ===== */}
+      {chamCong.open && (() => {
+        const ccRows = allImported.map(computeAttendanceRow);
+        const totalCCGross = ccRows.reduce((s, r) => s + (r.tong_thu_nhap ?? 0), 0);
+        const totalCCNet   = ccRows.reduce((s, r) => s + r.thuc_linh, 0);
+        const totalCCThue  = ccRows.reduce((s, r) => s + (r.thue_tncn ?? 0), 0);
+        const hasEmailCount = ccRows.filter(r => !!nvMap.get(r.id_nhan_vien)?.email).length;
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
+            onClick={() => chamCong.phase !== 'sending' && setChamCong(s => ({ ...s, open: false }))}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-xl)', padding: 28, width: 500, maxWidth: '94vw', boxShadow: 'var(--shadow-xl)' }}
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header modal */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                  📋 Lương chấm công — Tháng {thang}/{nam}
+                </div>
+                {chamCong.phase !== 'sending' && (
+                  <button className="btn-icon" onClick={() => setChamCong(s => ({ ...s, open: false }))}><X size={18} /></button>
+                )}
+              </div>
+
+              {/* Phase: Preview */}
+              {chamCong.phase === 'preview' && (
+                <>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-body)', background: 'var(--info-bg)', border: '1px solid var(--info-border)', borderRadius: 'var(--radius-md)', padding: '10px 14px', marginBottom: 16, lineHeight: 1.6 }}>
+                    <strong>Hoa hồng BĐS & KPI doanh thu đã được tách riêng.</strong><br />
+                    Phiếu lương gửi đi chỉ bao gồm: lương chấm công, BHXH và thuế TNCN tính lại trên cơ sở lương chấm công.
+                  </div>
+
+                  {/* Tóm tắt số liệu */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 20 }}>
+                    {[
+                      { label: 'Lương chấm công', value: fmt(totalCCGross) + ' đ', color: 'var(--primary)' },
+                      { label: 'Thuế TNCN (tính lại)', value: totalCCThue > 0 ? fmt(totalCCThue) + ' đ' : 'Miễn thuế', color: 'var(--danger-text)' },
+                      { label: 'Thực lĩnh (CĐ)', value: fmt(totalCCNet) + ' đ', color: 'var(--success-text)' },
+                    ].map(k => (
+                      <div key={k.label} style={{ background: 'var(--bg-page)', borderRadius: 'var(--radius-md)', padding: '10px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1rem', fontWeight: 700, color: k.color }}>{k.value}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{k.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 20 }}>
+                    {allImported.length} nhân viên · {hasEmailCount} có email sẽ nhận phiếu · {allImported.length - hasEmailCount} bỏ qua (thiếu email)
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button className="btn btn-secondary" onClick={() => setChamCong(s => ({ ...s, open: false }))}>Huỷ</button>
+                    <button
+                      className="btn btn-primary"
+                      style={{ background: '#059669', borderColor: '#059669' }}
+                      disabled={hasEmailCount === 0}
+                      onClick={handleChamCong}
+                    >
+                      <Mail size={15} />
+                      Lưu &amp; Gửi {hasEmailCount} email
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Phase: Sending */}
+              {chamCong.phase === 'sending' && (
+                <div style={{ textAlign: 'center', padding: '28px 0' }}>
+                  <div className="spinner" style={{ margin: '0 auto 16px' }} />
+                  <div style={{ fontWeight: 500, color: 'var(--text-body)' }}>Đang lưu &amp; gửi phiếu lương chấm công...</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 6 }}>Vui lòng không đóng trang</div>
+                </div>
+              )}
+
+              {/* Phase: Done */}
+              {chamCong.phase === 'done' && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
+                    {[
+                      { label: 'Đã gửi', value: chamCong.sent,    color: 'var(--success-text)', bg: 'var(--success-bg)' },
+                      { label: 'Bỏ qua', value: chamCong.skipped, color: 'var(--text-muted)',   bg: 'var(--bg-page)' },
+                      { label: 'Lỗi',    value: chamCong.failed,  color: 'var(--danger-text)',  bg: 'var(--danger-bg)' },
+                    ].map(k => (
+                      <div key={k.label} style={{ background: k.bg, borderRadius: 'var(--radius-md)', padding: '12px 8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: k.color }}>{k.value}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {chamCong.errors.length > 0 && (
+                    <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', borderRadius: 'var(--radius-md)', padding: '10px 14px', fontSize: '0.78rem', marginBottom: 16 }}>
+                      <div style={{ fontWeight: 600, color: 'var(--danger-text)', marginBottom: 4 }}>Chi tiết lỗi:</div>
+                      {chamCong.errors.slice(0, 4).map((e, i) => <div key={i} style={{ color: 'var(--danger-text)', marginTop: 2 }}>• {e}</div>)}
+                      {chamCong.errors.length > 4 && <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>...và {chamCong.errors.length - 4} lỗi khác</div>}
+                    </div>
+                  )}
+                  <div style={{ textAlign: 'right' }}>
+                    <button className="btn btn-primary" onClick={() => setChamCong(s => ({ ...s, open: false }))}>
+                      <CheckCircle2 size={15} /> Đóng
+                    </button>
+                  </div>
+                </>
+              )}
+
             </div>
           </div>
         );
