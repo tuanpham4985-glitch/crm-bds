@@ -2332,7 +2332,7 @@ export default function BangLuongPage() {
               setChamCong(s => ({ ...s, open: false }));
               if (chamCong.phase === 'done') { setImportedKD([]); setImportedBO([]); setTab('saved'); }
             }}>
-            <div className="modal" style={{ width: 500, maxWidth: '94vw' }}
+            <div className="modal-content" style={{ width: 500, maxWidth: '94vw' }}
               onClick={e => e.stopPropagation()}>
 
               {/* Header modal */}
