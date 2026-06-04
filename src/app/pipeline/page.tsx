@@ -19,6 +19,51 @@ const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> 
   'Huỷ':         { bg: '#f1f5f9', text: '#64748b', border: '#cbd5e1' },
 };
 
+/** Nút sửa dữ liệu lệch cột — chỉ hiện cho Admin, dùng 1 lần sau khi deploy fix */
+function RepairButton() {
+  const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [result, setResult] = useState('');
+
+  const run = async () => {
+    if (!confirm('Chạy sửa dữ liệu Pipeline bị lệch cột?\nThao tác này an toàn và có thể chạy lại nhiều lần.')) return;
+    setStatus('running');
+    setResult('');
+    try {
+      const res = await fetch('/api/pipeline/repair', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setStatus('done');
+        setResult(`✅ Đã sửa ${data.fixed} dòng (bỏ qua ${data.skipped} dòng đúng)`);
+      } else {
+        setStatus('error');
+        setResult('❌ ' + (data.error || 'Lỗi không xác định'));
+      }
+    } catch {
+      setStatus('error');
+      setResult('❌ Không kết nối được server');
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+        className="btn btn-secondary"
+        onClick={run}
+        disabled={status === 'running'}
+        title="Sửa dữ liệu Pipeline bị lệch cột (chỉ Admin)"
+        style={{ fontSize: '0.8rem', padding: '6px 12px', opacity: status === 'done' ? 0.6 : 1 }}
+      >
+        {status === 'running' ? '⏳ Đang sửa...' : '🔧 Sửa dữ liệu'}
+      </button>
+      {result && (
+        <span style={{ fontSize: '0.8rem', color: status === 'done' ? 'var(--success-text)' : 'var(--danger-text)', fontWeight: 500 }}>
+          {result}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Chuyển tỷ lệ thập phân (0.04) thành % (4) để hiển thị trong input
 function toPercent(v: number | undefined | string): number {
   const n = Number(v) || 0;
@@ -379,6 +424,7 @@ function PipelineContent() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {isAllVisible && <RepairButton />}
           <button className="btn btn-primary" onClick={openCreate}>
             <Plus size={18} />
             Thêm deal
