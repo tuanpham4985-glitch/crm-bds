@@ -2328,9 +2328,9 @@ export default function BangLuongPage() {
         const totalCCThue  = ccRows.reduce((s, r) => s + (r.thue_tncn ?? 0), 0);
         const hasEmailCount = ccRows.filter(r => !!nvMap.get(r.id_nhan_vien)?.email).length;
         return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
+          <div className="modal-overlay open"
             onClick={() => chamCong.phase !== 'sending' && setChamCong(s => ({ ...s, open: false }))}>
-            <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-xl)', padding: 28, width: 500, maxWidth: '94vw', boxShadow: 'var(--shadow-xl)' }}
+            <div className="modal" style={{ width: 500, maxWidth: '94vw' }}
               onClick={e => e.stopPropagation()}>
 
               {/* Header modal */}
