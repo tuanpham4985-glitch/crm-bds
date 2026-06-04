@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Database, Briefcase
+  ChevronDown, Database, Briefcase, BarChart3
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -326,6 +326,18 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
               );
             })}
           </div>
+        </div>
+
+        {/* BÁO CÁO — standalone link */}
+        <div className={styles.navSection}>
+          <Link
+            href="/bao-cao-ban-hang"
+            className={`${styles.navItem} ${pathname.startsWith('/bao-cao-ban-hang') ? styles.active : ''}`}
+            title="Báo cáo bán hàng"
+          >
+            <BarChart3 size={20} />
+            <span>Báo cáo bán hàng</span>
+          </Link>
         </div>
 
         {/* HRM GROUP */}
