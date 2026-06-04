@@ -49,7 +49,7 @@ function buildHtml(row: RowWithEmail, thang: number, nam: number): string {
   const rowDed  = (l:string,v:string) => `<tr><td style="${S.ded}">${l}</td><td style="${S.ded}text-align:right;">${v}</td></tr>`;
 
   // ── Info cell helper (2-col table) ──
-  const cell = (lbl:string, val:string, borderRight=true) =>
+  const cell = (lbl:string, val:string|undefined, borderRight=true) =>
     `<td style="padding:10px 14px;width:50%;vertical-align:top;border-bottom:1px solid #f0f0f0;${borderRight?'border-right:1px solid #e5e7eb;':''}">
       <div style="color:#9ca3af;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px;">${lbl}</div>
       <strong style="font-size:13px;color:#1f2937;">${val || '—'}</strong>
