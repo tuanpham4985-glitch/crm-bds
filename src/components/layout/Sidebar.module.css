@@ -16,25 +16,18 @@
 
 /* Logo */
 .logo {
-  padding: 12px 10px;
+  padding: 0;
   border-bottom: 1px solid var(--border-lighter);
   margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .logoIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 100%;
-  min-height: 56px;
-  background: transparent;
-  color: var(--primary);
-  border-radius: 0;
   cursor: pointer;
   transition: opacity 0.2s ease-in-out;
+  overflow: hidden;
+  color: var(--primary);
 }
 
 .logoIcon:hover {
@@ -44,9 +37,7 @@
 .logoIcon img {
   width: 100%;
   height: auto;
-  max-height: 110px;
   display: block;
-  object-fit: contain;
 }
 
 .logoTitle {
