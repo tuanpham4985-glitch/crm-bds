@@ -931,11 +931,18 @@ export default function BangLuongPage() {
 
   // ── Tách lương chấm công: bỏ hoa hồng/KPI doanh thu, tính lại thuế TNCN ──
   function computeAttendanceRow(row: SalaryImportRow): SalaryImportRow {
-    // Lương căn cứ theo chấm công (không bao gồm hoa hồng, KPI doanh thu)
-    // Giữ KPI Plus (hiệu quả công việc) vì không phải hoa hồng BĐS
+    // KD: LCB theo ngày công + các KPI vận hành GĐDA (không phải hoa hồng) + KPI Plus
+    //     Loại bỏ: kpi_doanh_thu_gdkd, kpi_doanh_thu_nvkd (hoa hồng doanh thu BĐS)
+    // BO: Không có hoa hồng → dùng toàn bộ tong_thu_nhap, chỉ trừ bonus giao dịch/tháng 13
     const chamCongGross = row.loai === 'KD'
-      ? (row.lcb_theo_ngay_cong ?? 0) + (row.kpi_plus ?? 0)  // KD: LCB (cột R) + KPI Plus (cột X)
-      : (row.luong_cong ?? 0) + (row.kpi_plus ?? 0);          // BO: Lương Công (cột AG) + KPI Hiệu quả (cột AK)
+      ? (row.lcb_theo_ngay_cong    ?? 0)
+        + (row.kpi_quy_mo          ?? 0)   // GĐDA: quy mô & duy trì (không phải hoa hồng)
+        + (row.kpi_hieu_qua_van_hanh ?? 0) // GĐDA: hiệu quả vận hành (không phải hoa hồng)
+        + (row.kpi_chat_luong_quan_ly ?? 0)// GĐDA: chất lượng quản lý (không phải hoa hồng)
+        + (row.kpi_plus            ?? 0)   // KPI Plus hiệu quả công việc (không phải hoa hồng)
+      : (row.tong_thu_nhap         ?? 0)   // BO không có hoa hồng → lấy toàn bộ gross
+        - (row.thuong_tkkd         ?? 0)   // trừ thưởng TKKD theo giao dịch
+        - (row.thuong_thang_13     ?? 0);  // trừ thưởng tháng 13
 
     // BHXH giữ nguyên (tính dựa trên luong_dong_bhxh, không liên quan hoa hồng)
     const bhxh = row.bhxh_nld ?? 0;
@@ -948,13 +955,10 @@ export default function BangLuongPage() {
 
     return {
       ...row,
-      // Xoá toàn bộ KPI doanh thu & hoa hồng môi giới
-      kpi_quy_mo: 0, kpi_hieu_qua_van_hanh: 0, kpi_chat_luong_quan_ly: 0,
+      // Chỉ xoá hoa hồng doanh thu BĐS; giữ nguyên KPI vận hành GĐDA và KPI Plus
       kpi_doanh_thu_gdkd: 0, kpi_doanh_thu_nvkd: 0,
       dieu_chinh_ky_truoc: 0,
       thuong_tkkd: 0, thuong_thang_13: 0,
-      // Chỉ giữ KPI Plus (hiệu quả công việc — không phải hoa hồng BĐS)
-      // Cập nhật các giá trị tính lại
       tong_thu_nhap:         chamCongGross,
       thu_nhap_tinh_thue:    thu_nhap_tinh_thue_cc,
       thue_tncn:             thue_cc,
