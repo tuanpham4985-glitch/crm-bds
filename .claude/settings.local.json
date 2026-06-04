@@ -26,7 +26,10 @@
       "Bash(cat src/middleware.ts)",
       "Bash(cat src/middleware.js)",
       "WebFetch(domain:docs.google.com)",
-      "WebFetch(domain:doc-10-40-sheets.googleusercontent.com)"
+      "WebFetch(domain:doc-10-40-sheets.googleusercontent.com)",
+      "Bash(python scripts/extract-text \"C:\\\\Users\\\\Admin\\\\Downloads\\\\khach-hang-2026-06-04 \\(1\\).xlsx\")",
+      "WebFetch(domain:doc-0o-b0-sheets.googleusercontent.com)",
+      "WebFetch(domain:doc-04-b0-sheets.googleusercontent.com)"
     ]
   }
 }

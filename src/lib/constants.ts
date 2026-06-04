@@ -35,6 +35,7 @@ export const TRANG_THAI_CONG_VIEC = [
 
 export const NGUON = [
   'Facebook',
+  'TikTok',
   'Zalo',
   'Ads',
   'Telesale',

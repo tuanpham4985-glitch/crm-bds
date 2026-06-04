@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search, Plus, Edit3, Trash2, X, ChevronLeft, ChevronRight,
-  Users, Phone, Mail, GitBranch
+  Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle
 } from 'lucide-react';
 import type { KhachHang, NhanVien, Pipeline } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
@@ -33,6 +33,15 @@ export default function KhachHangPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Sync từ phễu
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    imported: number; duplicates: number; errors: number;
+    duplicateList: { ten_KH: string; so_dien_thoai: string; nguon: string }[];
+    errorList: { ten_KH: string; nguon: string; error: string }[];
+    bySource: Record<string, { imported: number; duplicates: number }>;
+  } | null>(null);
 
   // Form
   const [form, setForm] = useState({
@@ -98,6 +107,26 @@ export default function KhachHangPage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch('/api/khach-hang/sync-leads', { method: 'POST' });
+      const result = await res.json();
+      if (result.success) {
+        setSyncResult(result);
+        if (result.imported > 0) fetchData();
+      } else {
+        alert('Sync thất bại: ' + result.error);
+      }
+    } catch (err) {
+      console.error('Sync error:', err);
+      alert('Lỗi kết nối khi sync');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const openCreate = () => {
     setEditingItem(null);
@@ -180,10 +209,20 @@ export default function KhachHangPage() {
           <h1>Khách hàng</h1>
           <p>Quản lý thông tin khách hàng ({total} khách hàng)</p>
         </div>
-        <button className="btn btn-primary" onClick={openCreate}>
-          <Plus size={18} />
-          Thêm khách hàng
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-secondary"
+            onClick={handleSync}
+            disabled={syncing}
+          >
+            <RefreshCw size={16} style={syncing ? { animation: 'spin 1s linear infinite' } : {}} />
+            {syncing ? 'Đang sync...' : 'Sync từ phễu'}
+          </button>
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Plus size={18} />
+            Thêm khách hàng
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -422,6 +461,101 @@ export default function KhachHangPage() {
               <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.ten_KH.trim()}>
                 {saving ? 'Đang lưu...' : (editingItem ? 'Cập nhật' : 'Thêm mới')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync Result Modal */}
+      {syncResult && (
+        <div className="modal-overlay" onClick={() => setSyncResult(null)}>
+          <div className="modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Kết quả Sync từ phễu</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setSyncResult(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Tổng kết */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f0fdf4', borderRadius: 8 }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#16a34a' }}>{syncResult.imported}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-label)', marginTop: 2 }}>Đã thêm mới</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fffbeb', borderRadius: 8 }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#d97706' }}>{syncResult.duplicates}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-label)', marginTop: 2 }}>Trùng SĐT</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fef2f2', borderRadius: 8 }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#dc2626' }}>{syncResult.errors}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-label)', marginTop: 2 }}>Lỗi</div>
+                </div>
+              </div>
+
+              {/* Breakdown theo nguồn */}
+              {syncResult.bySource && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {Object.entries(syncResult.bySource).map(([src, stat]) => (
+                    <div key={src} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: 'var(--bg-subtle, #f8fafc)', border: '1px solid var(--border)', borderRadius: 20, fontSize: '0.82rem' }}>
+                      <span style={{ fontWeight: 600 }}>{src}</span>
+                      <span style={{ color: '#16a34a' }}>+{stat.imported}</span>
+                      {stat.duplicates > 0 && <span style={{ color: '#d97706' }}>/ {stat.duplicates} trùng</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {syncResult.duplicateList.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: '#d97706', fontWeight: 600, fontSize: '0.85rem' }}>
+                    <AlertCircle size={15} />
+                    Bỏ qua (đã tồn tại trong CRM)
+                  </div>
+                  <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                    {syncResult.duplicateList.map((d, i) => (
+                      <div key={i} style={{ padding: '6px 12px', fontSize: '0.82rem', borderBottom: i < syncResult.duplicateList.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{d.ten_KH}</span>
+                        <span style={{ color: 'var(--text-label)' }}>{d.so_dien_thoai}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {syncResult.errorList.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>
+                    <AlertCircle size={15} />
+                    Lỗi khi ghi dữ liệu
+                  </div>
+                  <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                    {syncResult.errorList.map((e, i) => (
+                      <div key={i} style={{ padding: '6px 12px', fontSize: '0.82rem', borderBottom: i < syncResult.errorList.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <span style={{ fontWeight: 500 }}>{e.ten_KH}</span>
+                        <span style={{ color: 'var(--text-label)', marginLeft: 8 }}>{e.error}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {syncResult.imported > 0 && syncResult.errors === 0 && syncResult.duplicates === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a', fontSize: '0.9rem' }}>
+                  <CheckCircle size={18} />
+                  Sync thành công {syncResult.imported} khách hàng mới!
+                </div>
+              )}
+
+              {syncResult.imported === 0 && syncResult.errors === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-label)', fontSize: '0.9rem' }}>
+                  <CheckCircle size={18} />
+                  Tất cả lead trong phễu đã có trong CRM.
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setSyncResult(null)}>Đóng</button>
             </div>
           </div>
         </div>
