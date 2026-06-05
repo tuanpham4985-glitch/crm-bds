@@ -1938,28 +1938,43 @@ export async function deleteStackingConfig(id: string): Promise<boolean> {
 
 // --- Tower / unit access (sheetId-parameterised) ---
 
-const TOWER_TAB_PATTERN = /^(MCCN|MCC|MPP)\s+(.+)$/;
-
-export async function getStackingSheetList(sheetId: string): Promise<StackingSheetMeta[]> {
-  const doc = await getDocBySheetId(sheetId);
-  return doc.sheetsByIndex
-    .filter(s => TOWER_TAB_PATTERN.test(s.title))
-    .map(s => {
-      const m = s.title.match(TOWER_TAB_PATTERN)!;
-      return { project: m[1], tower: m[2], sheetName: s.title };
-    })
-    .sort((a, b) => a.project.localeCompare(b.project) || a.tower.localeCompare(b.tower));
+// Tower tab pattern: "{PROJECT_CODE} {tower}" — project_code is dynamic from config
+function towerPattern(projectCode: string) {
+  const escaped = projectCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped}\\s+(.+)$`);
 }
 
-// Probe a sheet ID and return detected towers (used for "Test kết nối" in UI)
+// Fallback broad pattern if no project_code provided
+const FALLBACK_PATTERN = /^([A-Z0-9]+)\s+(.+)$/;
+
+export async function getStackingSheetList(sheetId: string, projectCode?: string): Promise<StackingSheetMeta[]> {
+  const doc = await getDocBySheetId(sheetId);
+  const results: StackingSheetMeta[] = [];
+
+  for (const s of doc.sheetsByIndex) {
+    if (projectCode) {
+      const m = s.title.match(towerPattern(projectCode));
+      if (m) results.push({ project: projectCode, tower: m[1], sheetName: s.title });
+    } else {
+      const m = s.title.match(FALLBACK_PATTERN);
+      if (m) results.push({ project: m[1], tower: m[2], sheetName: s.title });
+    }
+  }
+
+  return results.sort((a, b) => a.project.localeCompare(b.project) || a.tower.localeCompare(b.tower));
+}
+
+// Probe a sheet ID: auto-detect project codes and towers
 export async function probeStackingSheet(
   rawInput: string
-): Promise<{ ok: true; sheets: StackingSheetMeta[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; sheets: StackingSheetMeta[]; allTabs: string[] } | { ok: false; error: string }> {
   try {
     const sheetId = extractSheetId(rawInput);
     if (!sheetId) return { ok: false, error: 'Sheet ID không hợp lệ' };
-    const sheets = await getStackingSheetList(sheetId);
-    return { ok: true, sheets };
+    const doc = await getDocBySheetId(sheetId);
+    const allTabs = doc.sheetsByIndex.map(s => s.title);
+    const sheets  = await getStackingSheetList(sheetId);
+    return { ok: true, sheets, allTabs };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

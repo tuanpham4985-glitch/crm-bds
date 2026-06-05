@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
       const raw = searchParams.get('sheet_id') || '';
       const result = await probeStackingSheet(raw);
       return NextResponse.json(result.ok
-        ? { success: true, data: result.sheets }
+        ? { success: true, data: result.sheets, allTabs: result.allTabs }
         : { success: false, error: result.error }
       );
     }
@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
 
     // --- List towers ---
     if (searchParams.get('sheets') === '1') {
-      const sheets = await getStackingSheetList(sheetId);
+      const projectCode = searchParams.get('project_code')?.trim() || undefined;
+      const sheets = await getStackingSheetList(sheetId, projectCode);
       return NextResponse.json({ success: true, data: sheets });
     }
 
