@@ -36,11 +36,12 @@ function fmtGiaFull(gia: number) { return gia ? gia.toLocaleString('vi-VN') + ' 
 
 // ─── Manage panel ─────────────────────────────────────────────────────────────
 
-function ManagePanel({ configs, onClose, onAdd, onDelete }: {
+function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   configs: StackingConfig[];
   onClose: () => void;
   onAdd: (c: StackingConfig) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, project_code: string) => void;
 }) {
   const [form, setForm] = useState({ ten_hien_thi: '', sheet_id: '', project_code: '' });
   const [probeResult, setProbeResult] = useState<{
@@ -50,6 +51,9 @@ function ManagePanel({ configs, onClose, onAdd, onDelete }: {
   const [probing, setProbing]   = useState(false);
   const [saving, setSaving]     = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCode, setEditCode]   = useState('');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [saEmail, setSaEmail]   = useState('');
   const [copied, setCopied]     = useState(false);
 
@@ -99,6 +103,23 @@ function ManagePanel({ configs, onClose, onAdd, onDelete }: {
         setProbeResult(null);
       } else { alert(d.error || 'Lỗi thêm nguồn'); }
     } finally { setSaving(false); }
+  }
+
+  async function handleUpdateCode(id: string) {
+    if (!editCode.trim()) return;
+    setUpdatingId(id);
+    try {
+      const r = await fetch('/api/stacking/configs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, project_code: editCode.trim().toUpperCase() }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        onUpdate(id, editCode.trim().toUpperCase());
+        setEditingId(null);
+      } else { alert(d.error || 'Lỗi cập nhật'); }
+    } finally { setUpdatingId(null); }
   }
 
   async function handleDelete(id: string) {
@@ -237,18 +258,54 @@ function ManagePanel({ configs, onClose, onAdd, onDelete }: {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {configs.map(c => (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.ten_hien_thi}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', gap: 6, marginTop: 3, alignItems: 'center' }}>
-                      <span style={{ background: 'var(--primary)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.65rem' }}>{c.project_code}</span>
-                      <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sheet_id.substring(0, 28)}…</span>
+                <div key={c.id} style={{ borderRadius: 8, border: `1.5px solid ${editingId === c.id ? 'var(--primary)' : 'var(--border)'}`, background: 'var(--bg-card)', overflow: 'hidden' }}>
+                  {/* Main row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.ten_hien_thi}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', gap: 6, marginTop: 3, alignItems: 'center' }}>
+                        <span style={{ background: 'var(--primary)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.65rem' }}>{c.project_code}</span>
+                        <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sheet_id.substring(0, 24)}…</span>
+                      </div>
                     </div>
+                    {/* Edit button */}
+                    <button
+                      onClick={() => { setEditingId(editingId === c.id ? null : c.id); setEditCode(c.project_code); }}
+                      title="Sửa mã dự án"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: editingId === c.id ? 'var(--primary)' : 'var(--text-muted)', flexShrink: 0, fontSize: '0.7rem', fontWeight: 600 }}>
+                      Sửa
+                    </button>
+                    <button onClick={() => handleDelete(c.id)} disabled={deleting === c.id}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#ef4444', flexShrink: 0 }}>
+                      {deleting === c.id ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={15} />}
+                    </button>
                   </div>
-                  <button onClick={() => handleDelete(c.id)} disabled={deleting === c.id}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#ef4444', flexShrink: 0 }}>
-                    {deleting === c.id ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={15} />}
-                  </button>
+
+                  {/* Inline edit panel */}
+                  {editingId === c.id && (
+                    <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }}>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                        Mã dự án = tên tab master (chỉ nhập phần mã, vd: <strong>MPP</strong>, không phải MPP A1)
+                      </p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          value={editCode}
+                          onChange={e => setEditCode(e.target.value.toUpperCase())}
+                          placeholder="VD: MPP"
+                          style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: '0.82rem' }}
+                          onKeyDown={e => { if (e.key === 'Enter') handleUpdateCode(c.id); if (e.key === 'Escape') setEditingId(null); }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleUpdateCode(c.id)}
+                          disabled={updatingId === c.id || !editCode.trim()}
+                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: !editCode.trim() ? 0.6 : 1 }}>
+                          {updatingId === c.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : 'Lưu'}
+                        </button>
+                        <button onClick={() => setEditingId(null)} style={{ padding: '6px 10px', borderRadius: 8, fontSize: '0.8rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}>Hủy</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -608,6 +665,10 @@ export default function StackingPage() {
         <ManagePanel configs={configs} onClose={() => setShowManage(false)}
           onAdd={c => { setConfigs(prev => [...prev, c]); if (!selectedConfig) setSelectedConfig(c); }}
           onDelete={id => { setConfigs(prev => prev.filter(c => c.id !== id)); if (selectedConfig?.id === id) setSelectedConfig(null); }}
+          onUpdate={(id, project_code) => {
+            setConfigs(prev => prev.map(c => c.id === id ? { ...c, project_code } : c));
+            if (selectedConfig?.id === id) setSelectedConfig(sc => sc ? { ...sc, project_code } : sc);
+          }}
         />
       )}
 

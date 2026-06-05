@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStackingConfigs, addStackingConfig, deleteStackingConfig } from '@/lib/google-sheets';
+import { getStackingConfigs, addStackingConfig, updateStackingConfig, deleteStackingConfig } from '@/lib/google-sheets';
 
 // GET  /api/stacking/configs          — danh sách configs
 // POST /api/stacking/configs          — thêm config mới
@@ -32,6 +32,20 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[API /stacking/configs POST]', msg);
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { id, project_code } = await req.json();
+    if (!id || !project_code) {
+      return NextResponse.json({ success: false, error: 'Thiếu id hoặc project_code' }, { status: 400 });
+    }
+    const ok = await updateStackingConfig(id, project_code);
+    return NextResponse.json({ success: ok });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

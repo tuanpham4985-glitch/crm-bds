@@ -1926,6 +1926,17 @@ export async function addStackingConfig(
   return { ...newRow, trang_thai: 'active' };
 }
 
+export async function updateStackingConfig(id: string, project_code: string): Promise<boolean> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateStackingConfigSheet(doc);
+  const rows = await sheet.getRows();
+  const row = rows.find(r => str(r.toObject()['id']) === id);
+  if (!row) return false;
+  row.set('project_code', project_code.trim().toUpperCase());
+  await row.save();
+  return true;
+}
+
 export async function deleteStackingConfig(id: string): Promise<boolean> {
   const doc = await getDoc();
   const sheet = await getOrCreateStackingConfigSheet(doc);
