@@ -46,16 +46,6 @@ export default function DuAnPage() {
     try { return JSON.parse(config); } catch { return []; }
   };
 
-  useEffect(() => {
-    if (!openStackingId) return;
-    const close = () => { setOpenStackingId(null); setStackingAnchor(null); };
-    document.addEventListener('click', close);
-    window.addEventListener('scroll', close, true);
-    return () => {
-      document.removeEventListener('click', close);
-      window.removeEventListener('scroll', close, true);
-    };
-  }, [openStackingId]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -447,7 +437,6 @@ export default function DuAnPage() {
                                     <button
                                       className="btn btn-secondary btn-sm"
                                       onClick={(e) => {
-                                        e.stopPropagation();
                                         if (openStackingId === da.id_du_an) {
                                           setOpenStackingId(null);
                                           setStackingAnchor(null);
@@ -466,52 +455,6 @@ export default function DuAnPage() {
                                         transform: openStackingId === da.id_du_an ? 'rotate(180deg)' : 'none',
                                       }} />
                                     </button>
-                                    {openStackingId === da.id_du_an && stackingAnchor && (
-                                      <div
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{
-                                          position: 'fixed',
-                                          top: stackingAnchor.top,
-                                          left: stackingAnchor.left,
-                                          zIndex: 9999,
-                                          backgroundColor: '#ffffff',
-                                          border: '1px solid #e2e8f0',
-                                          borderRadius: 8,
-                                          boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                                          minWidth: 170, padding: '4px 0',
-                                          maxHeight: 320, overflowY: 'auto',
-                                        }}
-                                      >
-                                        <div style={{
-                                          padding: '6px 14px 4px',
-                                          fontSize: '0.7rem', fontWeight: 600,
-                                          color: '#64748b', textTransform: 'uppercase',
-                                          letterSpacing: '0.05em',
-                                        }}>
-                                          Phân khu Stacking
-                                        </div>
-                                        {stackingList.map(s => (
-                                          <a
-                                            key={s.name}
-                                            href={s.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{
-                                              display: 'flex', alignItems: 'center', gap: 8,
-                                              padding: '7px 14px',
-                                              fontSize: '0.8125rem', color: '#1e293b',
-                                              textDecoration: 'none',
-                                              backgroundColor: 'transparent',
-                                            }}
-                                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-                                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-                                          >
-                                            <LayoutGrid size={12} color="#6366f1" style={{ flexShrink: 0 }} />
-                                            <span style={{ fontWeight: 500 }}>{s.name}</span>
-                                          </a>
-                                        ))}
-                                      </div>
-                                    )}
                                   </div>
                                 )}
                                 {isAdmin && (
@@ -666,6 +609,64 @@ export default function DuAnPage() {
           </div>
         </div>
       )}
+
+      {/* ── Stacking Dropdown (page-level, thoát khỏi card overflow) ── */}
+      {openStackingId && stackingAnchor && (() => {
+        const proj = projects.find(p => p.id_du_an === openStackingId);
+        const list = parseStacking(proj?.stacking_config);
+        if (!list.length) return null;
+        return (
+          <>
+            {/* Backdrop — click ngoài để đóng */}
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+              onClick={() => { setOpenStackingId(null); setStackingAnchor(null); }}
+            />
+            {/* Dropdown */}
+            <div style={{
+              position: 'fixed',
+              top: stackingAnchor.top,
+              left: stackingAnchor.left,
+              zIndex: 9999,
+              backgroundColor: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+              minWidth: 170, padding: '4px 0',
+              maxHeight: 320, overflowY: 'auto',
+            }}>
+              <div style={{
+                padding: '6px 14px 4px',
+                fontSize: '0.7rem', fontWeight: 600,
+                color: '#64748b', textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Phân khu Stacking
+              </div>
+              {list.map(s => (
+                <a
+                  key={s.name}
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => { setOpenStackingId(null); setStackingAnchor(null); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '7px 14px',
+                    fontSize: '0.8125rem', color: '#1e293b',
+                    textDecoration: 'none', backgroundColor: 'transparent',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <LayoutGrid size={12} color="#6366f1" style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 500 }}>{s.name}</span>
+                </a>
+              ))}
+            </div>
+          </>
+        );
+      })()}
 
       {/* ── Confirm Delete ── */}
       {showConfirm && (
