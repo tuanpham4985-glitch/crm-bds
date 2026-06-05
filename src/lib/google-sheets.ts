@@ -1995,82 +1995,191 @@ export async function probeStackingSheet(
   }
 }
 
-// Master sheet columns (0-indexed) — matches GAS script convention
-const COL_MA_CAN        = 1;
-const COL_LOAI_CAN      = 5;
-const COL_DT_TIM        = 6;
-const COL_DT_THONG_THUY = 7;
-const COL_HUONG         = 8;
-const COL_VIEW          = 9;
-const COL_GIA_KS        = 10;
 const MAX_STACKING_ROWS = 500;
+const MAX_STACKING_COLS = 60;
 
-export async function getStackingUnits(sheetId: string, project: string, tower: string): Promise<StackingUnit[]> {
-  const doc = await getDocBySheetId(sheetId);
+// Convert 1-based column index to spreadsheet letter(s): 1→A, 26→Z, 27→AA, 28→AB...
+function colLetter(n: number): string {
+  let s = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
 
-  // Preferred: individual tower tab e.g. "MPP A1"
-  const towerTabName = `${project} ${tower}`;
-  let sheet = doc.sheetsByTitle[towerTabName];
-  let filterByPrefix = false;
+// Whether a cell value looks like a floor identifier (e.g. "35", "B1", "TB", "TM")
+function isFloorLabel(v: string): boolean {
+  if (!v) return false;
+  const s = v.trim().toUpperCase();
+  if (/^\d+$/.test(s)) return true;           // "1", "35"
+  if (/^\d+[A-Z]$/.test(s)) return true;      // "35A", "22B"
+  if (/^B\d*G?$/.test(s)) return true;        // "B1", "B2", "BG", "B"
+  if (/^T[BMLKR]$/.test(s)) return true;      // "TB", "TM", "TL", "TK", "TR"
+  if (/^L\d+$/.test(s)) return true;          // "L1", "L2" (lobby)
+  if (/^P\d+$/.test(s)) return true;          // "P1" (podium)
+  return false;
+}
 
-  if (!sheet) {
-    // Fallback: master tab named by project code e.g. "MPP" (older layout)
-    sheet = doc.sheetsByTitle[project];
-    if (!sheet) {
-      throw new Error(
-        `[Stacking] Tab "${towerTabName}" không tồn tại trong file. ` +
-        `Cũng không tìm thấy tab master "${project}". (sheetId: ${sheetId})`
-      );
+// Scale raw price to VND: values <100,000 are assumed to be in triệu (millions)
+function scalePrice(raw: unknown): number {
+  const v = num(raw);
+  if (v <= 0) return 0;
+  if (v < 100_000) return v * 1_000_000; // triệu → đồng  (e.g. 15979 → 15,979,000,000)
+  return v;                               // already in đồng
+}
+
+// ─── GRID PARSER ───────────────────────────────────────────────────────────────
+// Handles the visual stacking board layout used in tower tabs:
+//   Row 0  : [label] | canSo_1 | canSo_2 | … | canSo_N      ← unit column headers
+//   Row 1  : [label] | loaiCan_1 | loaiCan_2 | …            ← loại căn
+//   Row 2  : [label] | dtTim_1   | dtTim_2   | …            ← DT tim (m²)
+//   Row 3  : [label] | dtTT_1    | dtTT_2    | …            ← DT thông thuỷ
+//   Row 4  : [label] | huong_1   | huong_2   | …            ← hướng
+//   Row 5  : [label] | view_1    | view_2    | …            ← view
+//   Row 6+ : floor   | price_1   | price_2   | …            ← giá KS theo tầng
+function parseGridTab(
+  sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
+  tower: string,
+  rowLimit: number,
+  colLimit: number,
+): StackingUnit[] {
+  // Row 0: collect unit columns (skip col 0 = floor label column)
+  const unitCols: Array<{ colIdx: number; canSo: string }> = [];
+  for (let col = 1; col < colLimit; col++) {
+    const val = str(sheet.getCell(0, col).value).trim();
+    if (val) unitCols.push({ colIdx: col, canSo: val });
+  }
+  if (unitCols.length === 0) return [];
+
+  // Find first floor row (col A looks like a floor identifier)
+  let firstFloorRow = -1;
+  for (let row = 1; row < Math.min(rowLimit, 20); row++) {
+    if (isFloorLabel(str(sheet.getCell(row, 0).value))) {
+      firstFloorRow = row;
+      break;
     }
-    filterByPrefix = true; // master tab contains all towers → filter by maCan prefix
+  }
+  if (firstFloorRow === -1) return [];
+
+  const numMeta = firstFloorRow - 1; // metadata rows: 1 … firstFloorRow-1
+
+  // Read metadata per unit column (rows 1..numMeta in order: loaiCan, dtTim, dtTT, huong, view)
+  const getMStr = (col: number, offset: number) =>
+    offset < numMeta ? str(sheet.getCell(1 + offset, col).value).trim() : '';
+  const getMNum = (col: number, offset: number) =>
+    offset < numMeta ? num(sheet.getCell(1 + offset, col).value) : 0;
+
+  type UnitMeta = { loaiCan: string; dtTim: number; dtThongThuy: number; huong: string; view: string };
+  const meta: Record<number, UnitMeta> = {};
+  for (const { colIdx } of unitCols) {
+    meta[colIdx] = {
+      loaiCan:     getMStr(colIdx, 0),
+      dtTim:       getMNum(colIdx, 1),
+      dtThongThuy: getMNum(colIdx, 2),
+      huong:       getMStr(colIdx, 3),
+      view:        getMStr(colIdx, 4),
+    };
   }
 
-  // Respect actual sheet dimensions to avoid "out of bounds" error
-  const rowLimit = Math.min(sheet.rowCount, MAX_STACKING_ROWS);
-  const colLimit = Math.min(sheet.columnCount, COL_GIA_KS + 1);
-  const lastCol  = String.fromCharCode(64 + colLimit); // 1-based → 'A'=65
-  await sheet.loadCells(`A1:${lastCol}${rowLimit}`);
+  // Read floor rows → one StackingUnit per (floor, unit column)
+  const units: StackingUnit[] = [];
+  for (let row = firstFloorRow; row < rowLimit; row++) {
+    const tang = str(sheet.getCell(row, 0).value).trim();
+    if (!isFloorLabel(tang)) continue; // skip separator / empty rows
 
+    for (const { colIdx, canSo } of unitCols) {
+      const raw = sheet.getCell(row, colIdx).value;
+      if (raw === null || raw === undefined || raw === '') continue;
+
+      const giaKS = scalePrice(raw);
+      const m = meta[colIdx] ?? { loaiCan: '', dtTim: 0, dtThongThuy: 0, huong: '', view: '' };
+
+      units.push({
+        maCan:       `${tower}-${tang}-${canSo}`,
+        tower, tang, canSo,
+        loaiCan:     m.loaiCan,
+        dtTim:       m.dtTim,
+        dtThongThuy: m.dtThongThuy,
+        huong:       m.huong,
+        view:        m.view,
+        giaKS,
+        trangThai:   'con_hang',
+      });
+    }
+  }
+  return units;
+}
+
+// ─── LIST PARSER (fallback for master tabs with flat-list layout) ───────────────
+// Each row = one unit; maCan in col B; loaiCan/dtTim/etc. in further columns.
+const LIST_COL_MA_CAN        = 1;
+const LIST_COL_LOAI_CAN      = 5;
+const LIST_COL_DT_TIM        = 6;
+const LIST_COL_DT_THONG_THUY = 7;
+const LIST_COL_HUONG         = 8;
+const LIST_COL_VIEW          = 9;
+const LIST_COL_GIA_KS        = 10;
+
+function parseListTab(
+  sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
+  tower: string,
+  rowLimit: number,
+): StackingUnit[] {
   const prefix = tower + '-';
   const units: StackingUnit[] = [];
 
   for (let rowIdx = 1; rowIdx < rowLimit; rowIdx++) {
-    const maCanVal = sheet.getCell(rowIdx, COL_MA_CAN).value;
-    if (!maCanVal) continue;
+    const maCan = str(sheet.getCell(rowIdx, LIST_COL_MA_CAN).value);
+    if (!maCan || !maCan.startsWith(prefix)) continue;
 
-    const maCan = str(maCanVal);
-    if (!maCan) continue;
-
-    // In master-tab mode filter rows belonging to this tower
-    if (filterByPrefix && !maCan.startsWith(prefix)) continue;
-
-    // Parse tang + canSo from maCan: format {tower}-{tang}-{canSo}
-    // In tower-tab mode maCan might already start with the tower prefix or not include it
-    let tang = '', canSo = '';
-    const full = maCan.startsWith(prefix) ? maCan.substring(prefix.length) : maCan;
-    const dashIdx = full.indexOf('-');
-    if (dashIdx >= 0) {
-      tang  = full.substring(0, dashIdx);
-      canSo = full.substring(dashIdx + 1);
-    } else {
-      tang  = full;
-      canSo = full;
-    }
+    const rest     = maCan.substring(prefix.length);
+    const dashIdx  = rest.indexOf('-');
+    const tang     = dashIdx >= 0 ? rest.substring(0, dashIdx) : rest;
+    const canSo    = dashIdx >= 0 ? rest.substring(dashIdx + 1) : '';
 
     units.push({
-      maCan,
-      tower,
-      tang,
-      canSo,
-      loaiCan:     str(sheet.getCell(rowIdx, COL_LOAI_CAN).value),
-      dtTim:       num(sheet.getCell(rowIdx, COL_DT_TIM).value),
-      dtThongThuy: num(sheet.getCell(rowIdx, COL_DT_THONG_THUY).value),
-      huong:       str(sheet.getCell(rowIdx, COL_HUONG).value),
-      view:        str(sheet.getCell(rowIdx, COL_VIEW).value),
-      giaKS:       num(sheet.getCell(rowIdx, COL_GIA_KS).value),
+      maCan, tower, tang, canSo,
+      loaiCan:     str(sheet.getCell(rowIdx, LIST_COL_LOAI_CAN).value),
+      dtTim:       num(sheet.getCell(rowIdx, LIST_COL_DT_TIM).value),
+      dtThongThuy: num(sheet.getCell(rowIdx, LIST_COL_DT_THONG_THUY).value),
+      huong:       str(sheet.getCell(rowIdx, LIST_COL_HUONG).value),
+      view:        str(sheet.getCell(rowIdx, LIST_COL_VIEW).value),
+      giaKS:       scalePrice(sheet.getCell(rowIdx, LIST_COL_GIA_KS).value),
       trangThai:   'con_hang',
     });
   }
-
   return units;
 }
+
+export async function getStackingUnits(sheetId: string, project: string, tower: string): Promise<StackingUnit[]> {
+  const doc = await getDocBySheetId(sheetId);
+
+  // Prefer individual tower tab ("MPP A1"), fall back to master tab ("MPP")
+  const towerTabName = `${project} ${tower}`;
+  const towerSheet   = doc.sheetsByTitle[towerTabName];
+  const masterSheet  = towerSheet ? null : doc.sheetsByTitle[project];
+
+  const sheet = towerSheet ?? masterSheet;
+  if (!sheet) {
+    throw new Error(
+      `[Stacking] Tab "${towerTabName}" không tồn tại trong file. ` +
+      `Cũng không tìm thấy tab master "${project}". (sheetId: ${sheetId})`
+    );
+  }
+
+  const rowLimit = Math.min(sheet.rowCount, MAX_STACKING_ROWS);
+  const colLimit = Math.min(sheet.columnCount, MAX_STACKING_COLS);
+  await sheet.loadCells(`A1:${colLetter(colLimit)}${rowLimit}`);
+
+  if (towerSheet) {
+    // Tower tab → try visual grid first, fall back to list
+    const gridUnits = parseGridTab(sheet, tower, rowLimit, colLimit);
+    if (gridUnits.length > 0) return gridUnits;
+  }
+
+  // Master tab (or tower tab that looks like a list)
+  return parseListTab(sheet, tower, rowLimit);
+}
+
