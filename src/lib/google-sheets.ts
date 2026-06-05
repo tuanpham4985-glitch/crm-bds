@@ -2022,93 +2022,137 @@ function isFloorLabel(v: string): boolean {
   return false;
 }
 
-// Scale raw price to VND: values <100,000 are assumed to be in triệu (millions)
+// Scale raw price value → đồng (VND).
+// File bảng hàng TGC lưu giá theo đơn vị TỶ (e.g. 14.372 hoặc hiển thị "14,372" với dấu phẩy thập phân kiểu VN).
+//   v < 1 000           → đơn vị tỷ  → × 1 000 000 000
+//   1 000 ≤ v < 100 000 → đơn vị triệu → × 1 000 000
+//   v ≥ 100 000         → đã là đồng
 function scalePrice(raw: unknown): number {
   const v = num(raw);
   if (v <= 0) return 0;
-  if (v < 100_000) return v * 1_000_000; // triệu → đồng  (e.g. 15979 → 15,979,000,000)
-  return v;                               // already in đồng
+  if (v < 1_000)    return Math.round(v * 1_000_000_000); // tỷ → đồng
+  if (v < 100_000)  return Math.round(v * 1_000_000);     // triệu → đồng
+  return Math.round(v);
 }
 
-// ─── GRID PARSER ───────────────────────────────────────────────────────────────
-// Handles the visual stacking board layout used in tower tabs:
-//   Row 0  : [label] | canSo_1 | canSo_2 | … | canSo_N      ← unit column headers
-//   Row 1  : [label] | loaiCan_1 | loaiCan_2 | …            ← loại căn
-//   Row 2  : [label] | dtTim_1   | dtTim_2   | …            ← DT tim (m²)
-//   Row 3  : [label] | dtTT_1    | dtTT_2    | …            ← DT thông thuỷ
-//   Row 4  : [label] | huong_1   | huong_2   | …            ← hướng
-//   Row 5  : [label] | view_1    | view_2    | …            ← view
-//   Row 6+ : floor   | price_1   | price_2   | …            ← giá KS theo tầng
+// ─── MULTI-SECTION GRID PARSER ─────────────────────────────────────────────────
+// Handles Vietnamese stacking board layout with repeating section headers.
+// Cột A xác định loại hàng:
+//   "TẦNG/CĂN"  → header căn số, bắt đầu section mới
+//   "LOẠI CĂN"  → loại căn (2BR, 3BR, DULEX...)
+//   "DTTT"       → diện tích thông thuỷ (m²)
+//   "HƯỚNG"      → hướng (ĐB, TN, TB, ĐN...)
+//   "VIEW"        → tầm nhìn
+//   số tầng      → hàng dữ liệu giá (03A, 05, 06...)
+//
+// Sheet có thể có nhiều section lặp lại (tầng đặc biệt, tầng thường, tầng cao DULEX)
+
+type RowKind = 'tang_can' | 'loai_can' | 'dttt' | 'huong' | 'view' | 'floor' | 'skip';
+
+function classifyColA(raw: unknown): RowKind {
+  const s = str(raw).trim();
+  const u = s.toUpperCase();
+  if (!s) return 'skip';
+  // TẦNG/CĂN — nhận cả có và không dấu
+  if ((u.includes('TẦNG') || u.includes('TANG')) && u.includes('/') && (u.includes('CĂN') || u.includes('CAN'))) return 'tang_can';
+  // LOẠI CĂN
+  if (u.startsWith('LOẠI') || u.startsWith('LOAI')) return 'loai_can';
+  // DTTT
+  if (u === 'DTTT' || u === 'DT TT' || u === 'DTTТ') return 'dttt';
+  // HƯỚNG
+  if (u === 'HƯỚNG' || u === 'HUONG' || u === 'HƯỚNG') return 'huong';
+  // VIEW
+  if (u === 'VIEW') return 'view';
+  // Số tầng
+  if (isFloorLabel(s)) return 'floor';
+  return 'skip';
+}
+
+/** Giá trị cell có phải là nhãn section header không (để lọc khỏi canSo) */
+function isSectionLabel(raw: unknown): boolean {
+  const k = classifyColA(raw);
+  return k !== 'floor' && k !== 'skip';
+}
+
 function parseGridTab(
   sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
   tower: string,
   rowLimit: number,
   colLimit: number,
 ): StackingUnit[] {
-  // Row 0: collect unit columns (skip col 0 = floor label column)
-  const unitCols: Array<{ colIdx: number; canSo: string }> = [];
-  for (let col = 1; col < colLimit; col++) {
-    const val = str(sheet.getCell(0, col).value).trim();
-    if (val) unitCols.push({ colIdx: col, canSo: val });
-  }
-  if (unitCols.length === 0) return [];
+  // Mảng section hiện tại — index = col position
+  const canSoArr   = new Array<string | null>(colLimit).fill(null);
+  const loaiCanArr = new Array<string>(colLimit).fill('');
+  const dtttArr    = new Array<number>(colLimit).fill(0);
+  const huongArr   = new Array<string>(colLimit).fill('');
+  const viewArr    = new Array<string>(colLimit).fill('');
+  let hasSect      = false;
 
-  // Find first floor row (col A looks like a floor identifier)
-  let firstFloorRow = -1;
-  for (let row = 1; row < Math.min(rowLimit, 20); row++) {
-    if (isFloorLabel(str(sheet.getCell(row, 0).value))) {
-      firstFloorRow = row;
-      break;
-    }
-  }
-  if (firstFloorRow === -1) return [];
-
-  const numMeta = firstFloorRow - 1; // metadata rows: 1 … firstFloorRow-1
-
-  // Read metadata per unit column (rows 1..numMeta in order: loaiCan, dtTim, dtTT, huong, view)
-  const getMStr = (col: number, offset: number) =>
-    offset < numMeta ? str(sheet.getCell(1 + offset, col).value).trim() : '';
-  const getMNum = (col: number, offset: number) =>
-    offset < numMeta ? num(sheet.getCell(1 + offset, col).value) : 0;
-
-  type UnitMeta = { loaiCan: string; dtTim: number; dtThongThuy: number; huong: string; view: string };
-  const meta: Record<number, UnitMeta> = {};
-  for (const { colIdx } of unitCols) {
-    meta[colIdx] = {
-      loaiCan:     getMStr(colIdx, 0),
-      dtTim:       getMNum(colIdx, 1),
-      dtThongThuy: getMNum(colIdx, 2),
-      huong:       getMStr(colIdx, 3),
-      view:        getMStr(colIdx, 4),
-    };
-  }
-
-  // Read floor rows → one StackingUnit per (floor, unit column)
   const units: StackingUnit[] = [];
-  for (let row = firstFloorRow; row < rowLimit; row++) {
-    const tang = str(sheet.getCell(row, 0).value).trim();
-    if (!isFloorLabel(tang)) continue; // skip separator / empty rows
+  const seen       = new Set<string>(); // dedupe maCan
 
-    for (const { colIdx, canSo } of unitCols) {
-      const raw = sheet.getCell(row, colIdx).value;
-      if (raw === null || raw === undefined || raw === '') continue;
+  for (let row = 0; row < rowLimit; row++) {
+    const kind = classifyColA(sheet.getCell(row, 0).value);
 
-      const giaKS = scalePrice(raw);
-      const m = meta[colIdx] ?? { loaiCan: '', dtTim: 0, dtThongThuy: 0, huong: '', view: '' };
+    if (kind === 'tang_can') {
+      // Bắt đầu section mới → reset metadata, đọc canSo từ hàng này
+      hasSect = true;
+      canSoArr.fill(null);
+      loaiCanArr.fill('');
+      dtttArr.fill(0);
+      huongArr.fill('');
+      viewArr.fill('');
+      for (let col = 1; col < colLimit; col++) {
+        const v = str(sheet.getCell(row, col).value).trim();
+        // Bỏ qua ô cuối lặp lại nhãn (TẦNG/CĂN, LOẠI CĂN...)
+        canSoArr[col] = (v && !isSectionLabel(v)) ? v : null;
+      }
+    } else if (kind === 'loai_can' && hasSect) {
+      for (let col = 1; col < colLimit; col++)
+        loaiCanArr[col] = str(sheet.getCell(row, col).value).trim();
+    } else if (kind === 'dttt' && hasSect) {
+      for (let col = 1; col < colLimit; col++)
+        dtttArr[col] = num(sheet.getCell(row, col).value);
+    } else if (kind === 'huong' && hasSect) {
+      for (let col = 1; col < colLimit; col++)
+        huongArr[col] = str(sheet.getCell(row, col).value).trim();
+    } else if (kind === 'view' && hasSect) {
+      for (let col = 1; col < colLimit; col++)
+        viewArr[col] = str(sheet.getCell(row, col).value).trim();
+    } else if (kind === 'floor' && hasSect) {
+      const tang = str(sheet.getCell(row, 0).value).trim();
 
-      units.push({
-        maCan:       `${tower}-${tang}-${canSo}`,
-        tower, tang, canSo,
-        loaiCan:     m.loaiCan,
-        dtTim:       m.dtTim,
-        dtThongThuy: m.dtThongThuy,
-        huong:       m.huong,
-        view:        m.view,
-        giaKS,
-        trangThai:   'con_hang',
-      });
+      for (let col = 1; col < colLimit; col++) {
+        const cs = canSoArr[col];
+        if (!cs) continue;
+
+        const raw = sheet.getCell(row, col).value;
+        if (raw === null || raw === undefined || raw === '') continue;
+
+        // Chỉ nhận số — bỏ ô chứa text (ví dụ nhãn)
+        const n = typeof raw === 'number'
+          ? raw
+          : parseFloat(str(raw).replace(/[^\d.]/g, ''));
+        if (!n || n <= 0) continue;
+
+        const maCan = `${tower}-${tang}-${cs}`;
+        if (seen.has(maCan)) continue;
+        seen.add(maCan);
+
+        units.push({
+          maCan, tower, tang, canSo: cs,
+          loaiCan:     loaiCanArr[col],
+          dtTim:       dtttArr[col],    // DTTT dùng cho cả dtTim và dtThongThuy
+          dtThongThuy: dtttArr[col],
+          huong:       huongArr[col],
+          view:        viewArr[col],
+          giaKS:       scalePrice(n),
+          trangThai:   'con_hang',
+        });
+      }
     }
   }
+
   return units;
 }
 
