@@ -2075,70 +2075,94 @@ function isSectionLabel(raw: unknown): boolean {
 }
 
 /**
- * Đọc màu nền ô Google Sheets và phân loại:
- *   'xanh' — ô màu xanh lá cây thuần (#00ff00) = HÀNG ĐỘC QUYỀN
- *   'vang'  — ô màu vàng thuần (#ffff00)        = CHECK ADMIN
- *   null   — màu trắng / không format / không xác định
+ * Fetch cell background colors by calling the Google Sheets REST API directly
+ * with an explicit `fields` parameter.  This is more reliable than reading
+ * `_rawData` from the google-spreadsheet library because:
+ *   - The explicit `fields` forces the API to return effectiveFormat even when
+ *     it normally omits "unchanged" values from the response.
+ *   - effectiveFormat is the fully-resolved colour including conditional formats
+ *     and theme-palette fills that don't appear in userEnteredFormat.
  *
- * ⚠ KHÔNG dùng cell.backgroundColor (getter của library) vì nó gọi
- *   `_rawData.userEnteredFormat[param]` mà KHÔNG optional-chain —
- *   throw TypeError với mọi ô chưa được format tường minh.
+ * Returns a Map keyed by "{rowIndex}_{colIndex}" → 'xanh' | 'vang'.
  *
- * Thay vào đó đọc _rawData.userEnteredFormat?.backgroundColor trực tiếp,
- * với try-catch để đảm bảo an toàn tuyệt đối.
- *
- * #00ff00 → {red:0,   green:1, blue:0}
- * #ffff00 → {red:1,   green:1, blue:0}
+ * #00ff00 → xanh (HÀNG ĐỘC QUYỀN)   r≈0, g≈1, b≈0
+ * #ffff00 → vang (CHECK ADMIN)       r≈1, g≈1, b≈0
  */
-function detectCellColor(
-  cell: import('google-spreadsheet').GoogleSpreadsheetCell,
-): 'xanh' | 'vang' | null {
+async function fetchSheetColors(
+  spreadsheetId: string,
+  sheetName: string,
+  rowLimit: number,
+  colLimit: number,
+): Promise<Map<string, 'xanh' | 'vang'>> {
+  const colorMap = new Map<string, 'xanh' | 'vang'>();
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawData = (cell as any)._rawData as {
-      userEnteredFormat?: {
-        backgroundColor?:      { red?: number; green?: number; blue?: number };
-        backgroundColorStyle?: { rgbColor?: { red?: number; green?: number; blue?: number } };
-      };
-      effectiveFormat?: {
-        backgroundColor?: { red?: number; green?: number; blue?: number };
-      };
-    } | null | undefined;
+    const jwt = getJWT();
+    const tokenResp = await jwt.getAccessToken();
+    const token = tokenResp?.token;
+    if (!token) { console.error('[fetchSheetColors] No access token'); return colorMap; }
 
-    // Thứ tự ưu tiên đọc màu nền:
-    //  1. userEnteredFormat.backgroundColorStyle.rgbColor (API v4 mới)
-    //  2. userEnteredFormat.backgroundColor              (API v4 cũ, deprecated)
-    //  3. effectiveFormat.backgroundColor               (fallback: màu thực tế kể cả theme/conditional)
-    //
-    // Lý do cần fallback sang effectiveFormat:
-    //   Ô fill màu qua palette Google Sheets (hoặc conditional format) thường
-    //   KHÔNG có userEnteredFormat; màu thực tế chỉ có trong effectiveFormat.
-    const uf = rawData?.userEnteredFormat;
-    const ef = rawData?.effectiveFormat;
+    const cleanId  = extractSheetId(spreadsheetId);
+    const rangeStr = `${sheetName}!A1:${colLetter(colLimit)}${rowLimit}`;
+    const url      = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${cleanId}`);
+    url.searchParams.set('ranges', rangeStr);
+    url.searchParams.set('includeGridData', 'true');
+    url.searchParams.set(
+      'fields',
+      'sheets(data(rowData(values(effectiveFormat(backgroundColor,backgroundColorStyle)))))',
+    );
 
-    const bg = uf?.backgroundColorStyle?.rgbColor
-      ?? uf?.backgroundColor
-      ?? ef?.backgroundColor;
+    const resp = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-    if (!bg) return null;
+    if (!resp.ok) {
+      console.error(`[fetchSheetColors] HTTP ${resp.status}`, await resp.text());
+      return colorMap;
+    }
 
-    const r = bg.red   ?? 1;
-    const g = bg.green ?? 1;
-    const b = bg.blue  ?? 1;
+    type RGBColor = { red?: number; green?: number; blue?: number };
+    type CellEF   = {
+      backgroundColor?:      RGBColor;
+      backgroundColorStyle?: { rgbColor?: RGBColor; themeColor?: string };
+    };
+    const data = await resp.json() as {
+      sheets?: Array<{
+        data?: Array<{
+          rowData?: Array<{ values?: Array<{ effectiveFormat?: CellEF }> }>;
+        }>;
+      }>;
+    };
 
-    // Trắng / gần trắng → bỏ qua (kể cả nền mặc định của sheet)
-    if (r >= 0.9 && g >= 0.9 && b >= 0.9) return null;
+    const rowData = data.sheets?.[0]?.data?.[0]?.rowData;
+    if (!rowData) return colorMap;
 
-    // VÀNG (#ffff00): R ≈ 1, G ≈ 1, B ≈ 0
-    if (r > 0.85 && g > 0.85 && b < 0.25) return 'vang';
+    rowData.forEach((row, rowIdx) => {
+      row.values?.forEach((cell, colIdx) => {
+        const ef = cell.effectiveFormat;
+        if (!ef) return;
 
-    // XANH LÁ (#00ff00): R ≈ 0, G ≈ 1, B ≈ 0
-    if (r < 0.25 && g > 0.7 && b < 0.25) return 'xanh';
+        // backgroundColorStyle.rgbColor is the v4 preferred field;
+        // backgroundColor is the deprecated fallback.
+        const bg = ef.backgroundColorStyle?.rgbColor ?? ef.backgroundColor;
+        if (!bg) return;
 
-    return null;
-  } catch {
-    return null;
+        const r = bg.red ?? 1, g = bg.green ?? 1, b = bg.blue ?? 1;
+
+        if (r >= 0.9 && g >= 0.9 && b >= 0.9) return; // white/near-white → ignore
+
+        if (r > 0.85 && g > 0.85 && b < 0.25) {
+          colorMap.set(`${rowIdx}_${colIdx}`, 'vang');  // #ffff00
+        } else if (r < 0.25 && g > 0.7 && b < 0.25) {
+          colorMap.set(`${rowIdx}_${colIdx}`, 'xanh');  // #00ff00
+        }
+      });
+    });
+
+    console.log(`[fetchSheetColors] "${sheetName}": ${colorMap.size} colored cell(s)`);
+  } catch (err) {
+    console.error('[fetchSheetColors] Error:', err);
   }
+  return colorMap;
 }
 
 function parseGridTab(
@@ -2146,6 +2170,7 @@ function parseGridTab(
   tower: string,
   rowLimit: number,
   colLimit: number,
+  colorMap: Map<string, 'xanh' | 'vang'> = new Map(),
 ): StackingUnit[] {
   // Mảng section hiện tại — index = col position
   const canSoArr   = new Array<string | null>(colLimit).fill(null);
@@ -2206,7 +2231,7 @@ function parseGridTab(
         if (seen.has(maCan)) continue;
         seen.add(maCan);
 
-        const mauO = detectCellColor(sheet.getCell(row, col));
+        const mauO: 'xanh' | 'vang' | null = colorMap.get(`${row}_${col}`) ?? null;
 
         units.push({
           maCan, tower, tang, canSo: cs,
@@ -2283,13 +2308,24 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
     );
   }
 
-  const rowLimit = Math.min(sheet.rowCount, MAX_STACKING_ROWS);
-  const colLimit = Math.min(sheet.columnCount, MAX_STACKING_COLS);
-  await sheet.loadCells(`A1:${colLetter(colLimit)}${rowLimit}`);
+  const rowLimit  = Math.min(sheet.rowCount,    MAX_STACKING_ROWS);
+  const colLimit  = Math.min(sheet.columnCount, MAX_STACKING_COLS);
+  const rangeA1   = `A1:${colLetter(colLimit)}${rowLimit}`;
+  const sheetName = towerSheet ? towerTabName : project;
+
+  // Load cells and fetch colour data in parallel for performance.
+  // fetchSheetColors makes a direct REST call with explicit fields so that
+  // effectiveFormat (which resolves conditional formatting and theme colours)
+  // is always returned, regardless of what the google-spreadsheet library
+  // does or does not cache in _rawData.
+  const [, colorMap] = await Promise.all([
+    sheet.loadCells(rangeA1),
+    fetchSheetColors(sheetId, sheetName, rowLimit, colLimit),
+  ]);
 
   if (towerSheet) {
     // Tower tab → try visual grid first, fall back to list
-    const gridUnits = parseGridTab(sheet, tower, rowLimit, colLimit);
+    const gridUnits = parseGridTab(sheet, tower, rowLimit, colLimit, colorMap);
     if (gridUnits.length > 0) return gridUnits;
   }
 
