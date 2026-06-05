@@ -2096,15 +2096,28 @@ function detectCellColor(
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawData = (cell as any)._rawData as {
-      userEnteredFormat?: { backgroundColor?: { red?: number; green?: number; blue?: number } };
+      userEnteredFormat?: {
+        backgroundColor?:      { red?: number; green?: number; blue?: number };
+        backgroundColorStyle?: { rgbColor?: { red?: number; green?: number; blue?: number } };
+      };
     } | null | undefined;
 
-    const bg = rawData?.userEnteredFormat?.backgroundColor;
+    const uf = rawData?.userEnteredFormat;
+    if (!uf) return null;
+
+    // Google Sheets API v4: backgroundColorStyle.rgbColor được ưu tiên;
+    // backgroundColor vẫn được trả về nhưng bị deprecated trong một số trường hợp.
+    const bg = uf.backgroundColorStyle?.rgbColor ?? uf.backgroundColor;
     if (!bg) return null;
 
     const r = bg.red   ?? 1;
     const g = bg.green ?? 1;
     const b = bg.blue  ?? 1;
+
+    // DEBUG — ghi log 1 lần cho mỗi ô có fill màu không phải trắng
+    if (!(r >= 0.95 && g >= 0.95 && b >= 0.95)) {
+      console.log(`[CellColor] r${cell.rowIndex}c${cell.columnIndex} rgba(${r.toFixed(3)},${g.toFixed(3)},${b.toFixed(3)}) uf=${JSON.stringify(uf)}`);
+    }
 
     // Trắng / gần trắng → bỏ qua
     if (r >= 0.9 && g >= 0.9 && b >= 0.9) return null;
