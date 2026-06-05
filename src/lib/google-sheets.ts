@@ -2008,13 +2008,16 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
     throw new Error(`[Stacking] Tab master "${project}" không tồn tại trong file (sheetId: ${sheetId}).`);
   }
 
-  const lastCol = String.fromCharCode(65 + COL_GIA_KS); // 'L'
-  await sheet.loadCells(`A1:${lastCol}${MAX_STACKING_ROWS}`);
+  // Respect actual sheet dimensions to avoid "out of bounds" error
+  const rowLimit = Math.min(sheet.rowCount, MAX_STACKING_ROWS);
+  const colLimit = Math.min(sheet.columnCount, COL_GIA_KS + 1); // at least up to GIA_KS col
+  const lastCol  = String.fromCharCode(64 + colLimit); // 1-based → 'A'=65, so 64 + colLimit
+  await sheet.loadCells(`A1:${lastCol}${rowLimit}`);
 
   const prefix = tower + '-';
   const units: StackingUnit[] = [];
 
-  for (let rowIdx = 1; rowIdx < MAX_STACKING_ROWS; rowIdx++) {
+  for (let rowIdx = 1; rowIdx < rowLimit; rowIdx++) {
     const maCanVal = sheet.getCell(rowIdx, COL_MA_CAN).value;
     if (!maCanVal) continue;
 
