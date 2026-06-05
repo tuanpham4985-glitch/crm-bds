@@ -458,13 +458,14 @@ export default function DuAnPage() {
                                       <div
                                         onClick={(e) => e.stopPropagation()}
                                         style={{
-                                          position: 'absolute', bottom: 'calc(100% + 6px)', left: 0,
+                                          position: 'absolute', top: 'calc(100% + 4px)', left: 0,
                                           zIndex: 9999,
                                           backgroundColor: '#ffffff',
                                           border: '1px solid #e2e8f0',
                                           borderRadius: 8,
                                           boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
                                           minWidth: 170, padding: '4px 0',
+                                          maxHeight: 320, overflowY: 'auto',
                                         }}
                                       >
                                         <div style={{
