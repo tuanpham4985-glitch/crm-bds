@@ -1926,13 +1926,17 @@ export async function addStackingConfig(
   return { ...newRow, trang_thai: 'active' };
 }
 
-export async function updateStackingConfig(id: string, project_code: string): Promise<boolean> {
+export async function updateStackingConfig(
+  id: string,
+  updates: { project_code?: string; ten_hien_thi?: string }
+): Promise<boolean> {
   const doc = await getDoc();
   const sheet = await getOrCreateStackingConfigSheet(doc);
   const rows = await sheet.getRows();
   const row = rows.find(r => str(r.toObject()['id']) === id);
   if (!row) return false;
-  row.set('project_code', project_code.trim().toUpperCase());
+  if (updates.project_code !== undefined) row.set('project_code', updates.project_code.trim().toUpperCase());
+  if (updates.ten_hien_thi !== undefined && updates.ten_hien_thi.trim()) row.set('ten_hien_thi', updates.ten_hien_thi.trim());
   await row.save();
   return true;
 }

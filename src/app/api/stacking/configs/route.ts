@@ -38,11 +38,14 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, project_code } = await req.json();
-    if (!id || !project_code) {
-      return NextResponse.json({ success: false, error: 'Thiếu id hoặc project_code' }, { status: 400 });
+    const { id, project_code, ten_hien_thi } = await req.json();
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Thiếu id' }, { status: 400 });
     }
-    const ok = await updateStackingConfig(id, project_code);
+    if (!project_code && !ten_hien_thi) {
+      return NextResponse.json({ success: false, error: 'Cần ít nhất project_code hoặc ten_hien_thi' }, { status: 400 });
+    }
+    const ok = await updateStackingConfig(id, { project_code, ten_hien_thi });
     return NextResponse.json({ success: ok });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

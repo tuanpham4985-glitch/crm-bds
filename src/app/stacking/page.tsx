@@ -41,7 +41,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   onClose: () => void;
   onAdd: (c: StackingConfig) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, project_code: string) => void;
+  onUpdate: (id: string, updates: { project_code?: string; ten_hien_thi?: string }) => void;
 }) {
   const [form, setForm] = useState({ ten_hien_thi: '', sheet_id: '' });
   const [probeResult, setProbeResult] = useState<{
@@ -53,6 +53,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCode, setEditCode]   = useState('');
+  const [editName, setEditName]   = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [saEmail, setSaEmail]   = useState('');
   const [copied, setCopied]     = useState(false);
@@ -105,18 +106,21 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
     } finally { setSaving(false); }
   }
 
-  async function handleUpdateCode(id: string) {
-    if (!editCode.trim()) return;
+  async function handleUpdate(id: string) {
+    if (!editName.trim() && !editCode.trim()) return;
     setUpdatingId(id);
     try {
+      const updates: { project_code?: string; ten_hien_thi?: string } = {};
+      if (editCode.trim()) updates.project_code = editCode.trim().toUpperCase();
+      if (editName.trim()) updates.ten_hien_thi = editName.trim();
       const r = await fetch('/api/stacking/configs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, project_code: editCode.trim().toUpperCase() }),
+        body: JSON.stringify({ id, ...updates }),
       });
       const d = await r.json();
       if (d.success) {
-        onUpdate(id, editCode.trim().toUpperCase());
+        onUpdate(id, updates);
         setEditingId(null);
       } else { alert(d.error || 'Lỗi cập nhật'); }
     } finally { setUpdatingId(null); }
@@ -252,8 +256,13 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                     </div>
                     {/* Edit button */}
                     <button
-                      onClick={() => { setEditingId(editingId === c.id ? null : c.id); setEditCode(c.project_code ?? ''); }}
-                      title="Sửa mã dự án"
+                      onClick={() => {
+                        if (editingId === c.id) { setEditingId(null); return; }
+                        setEditingId(c.id);
+                        setEditCode(c.project_code ?? '');
+                        setEditName(c.ten_hien_thi);
+                      }}
+                      title="Sửa thông tin"
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: editingId === c.id ? 'var(--primary)' : 'var(--text-muted)', flexShrink: 0, fontSize: '0.7rem', fontWeight: 600 }}>
                       Sửa
                     </button>
@@ -266,22 +275,31 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                   {/* Inline edit panel */}
                   {editingId === c.id && (
                     <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }}>
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-                        Mã dự án = tên tab master (chỉ nhập phần mã, vd: <strong>MPP</strong>, không phải MPP A1)
+                      {/* Tên hiển thị */}
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>Tên hiển thị</p>
+                      <input
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        placeholder="VD: Masteri Park Place"
+                        style={{ ...inputStyle, padding: '6px 10px', fontSize: '0.82rem', marginBottom: 8 }}
+                        autoFocus
+                      />
+                      {/* Mã dự án */}
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>
+                        Mã dự án (tùy chọn — chỉ nhập phần mã, vd: <strong>MPP</strong>, để trống = tự nhận diện)
                       </p>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <input
                           value={editCode}
                           onChange={e => setEditCode(e.target.value.toUpperCase())}
-                          placeholder="VD: MPP"
+                          placeholder="VD: MPP  (để trống = auto)"
                           style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: '0.82rem' }}
-                          onKeyDown={e => { if (e.key === 'Enter') handleUpdateCode(c.id); if (e.key === 'Escape') setEditingId(null); }}
-                          autoFocus
+                          onKeyDown={e => { if (e.key === 'Enter') handleUpdate(c.id); if (e.key === 'Escape') setEditingId(null); }}
                         />
                         <button
-                          onClick={() => handleUpdateCode(c.id)}
-                          disabled={updatingId === c.id || !editCode.trim()}
-                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: !editCode.trim() ? 0.6 : 1 }}>
+                          onClick={() => handleUpdate(c.id)}
+                          disabled={updatingId === c.id || (!editName.trim() && !editCode.trim())}
+                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: (!editName.trim() && !editCode.trim()) ? 0.6 : 1 }}>
                           {updatingId === c.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : 'Lưu'}
                         </button>
                         <button onClick={() => setEditingId(null)} style={{ padding: '6px 10px', borderRadius: 8, fontSize: '0.8rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}>Hủy</button>
@@ -646,9 +664,9 @@ export default function StackingPage() {
         <ManagePanel configs={configs} onClose={() => setShowManage(false)}
           onAdd={c => { setConfigs(prev => [...prev, c]); if (!selectedConfig) setSelectedConfig(c); }}
           onDelete={id => { setConfigs(prev => prev.filter(c => c.id !== id)); if (selectedConfig?.id === id) setSelectedConfig(null); }}
-          onUpdate={(id, project_code) => {
-            setConfigs(prev => prev.map(c => c.id === id ? { ...c, project_code } : c));
-            if (selectedConfig?.id === id) setSelectedConfig(sc => sc ? { ...sc, project_code } : sc);
+          onUpdate={(id, updates) => {
+            setConfigs(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+            if (selectedConfig?.id === id) setSelectedConfig(sc => sc ? { ...sc, ...updates } : sc);
           }}
         />
       )}
