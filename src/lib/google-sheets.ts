@@ -2078,41 +2078,47 @@ function isSectionLabel(raw: unknown): boolean {
  * Đọc màu nền ô Google Sheets và phân loại:
  *   'xanh' — ô màu xanh lá cây thuần (#00ff00) = HÀNG ĐỘC QUYỀN
  *   'vang'  — ô màu vàng thuần (#ffff00)        = CHECK ADMIN
- *   null   — màu trắng / không xác định
+ *   null   — màu trắng / không format / không xác định
  *
- * Ngưỡng ĐẶT CHẶT để chỉ match màu CỰC KỲ BÃO HÒA (vivid/saturated),
- * tránh nhận nhầm các ô có nền nhạt/pastel hoặc màu chủ đề của sheet.
+ * ⚠ KHÔNG dùng cell.backgroundColor (getter của library) vì nó gọi
+ *   `_rawData.userEnteredFormat[param]` mà KHÔNG optional-chain —
+ *   throw TypeError với mọi ô chưa được format tường minh.
  *
- * #00ff00 trong API = {red:0, green:1, blue:0}
- * #ffff00 trong API = {red:1, green:1, blue:0}
+ * Thay vào đó đọc _rawData.userEnteredFormat?.backgroundColor trực tiếp,
+ * với try-catch để đảm bảo an toàn tuyệt đối.
  *
- * backgroundColor được populate bởi loadCells() qua includeGridData:true.
- * Mỗi kênh RGB là số thực [0, 1].
+ * #00ff00 → {red:0,   green:1, blue:0}
+ * #ffff00 → {red:1,   green:1, blue:0}
  */
 function detectCellColor(
   cell: import('google-spreadsheet').GoogleSpreadsheetCell,
 ): 'xanh' | 'vang' | null {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bg = (cell as any).backgroundColor as
-    | { red?: number; green?: number; blue?: number }
-    | null
-    | undefined;
-  if (!bg) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawData = (cell as any)._rawData as {
+      userEnteredFormat?: { backgroundColor?: { red?: number; green?: number; blue?: number } };
+    } | null | undefined;
 
-  const r = bg.red   ?? 1;
-  const g = bg.green ?? 1;
-  const b = bg.blue  ?? 1;
+    const bg = rawData?.userEnteredFormat?.backgroundColor;
+    if (!bg) return null;
 
-  // Trắng / gần trắng → bỏ qua
-  if (r >= 0.9 && g >= 0.9 && b >= 0.9) return null;
+    const r = bg.red   ?? 1;
+    const g = bg.green ?? 1;
+    const b = bg.blue  ?? 1;
 
-  // VÀNG (#ffff00): R ≈ 1, G ≈ 1, B ≈ 0 — ngưỡng chặt, không nhận màu vàng nhạt
-  if (r > 0.85 && g > 0.85 && b < 0.25) return 'vang';
+    // Trắng / gần trắng → bỏ qua
+    if (r >= 0.9 && g >= 0.9 && b >= 0.9) return null;
 
-  // XANH LÁ (#00ff00): R ≈ 0, G ≈ 1, B ≈ 0 — ngưỡng chặt, không nhận xanh nhạt
-  if (r < 0.25 && g > 0.7 && b < 0.25) return 'xanh';
+    // VÀNG (#ffff00): R ≈ 1, G ≈ 1, B ≈ 0
+    if (r > 0.85 && g > 0.85 && b < 0.25) return 'vang';
 
-  return null;
+    // XANH LÁ (#00ff00): R ≈ 0, G ≈ 1, B ≈ 0
+    if (r < 0.25 && g > 0.7 && b < 0.25) return 'xanh';
+
+    return null;
+  } catch {
+    return null; // an toàn: mọi lỗi đều bỏ qua, không crash parser
+  }
 }
 
 function parseGridTab(

@@ -456,7 +456,7 @@ export default function StackingPage() {
     }
     return {
       columns: Array.from(colSet).sort(naturalCompare),
-      floors: Array.from(floorSet).sort((a, b) => naturalCompare(b, a)),
+      floors: Array.from(floorSet).sort((a, b) => naturalCompare(a, b)),
       unitMap: map,
     };
   }, [units]);
