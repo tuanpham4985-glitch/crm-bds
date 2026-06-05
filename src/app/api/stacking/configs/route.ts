@@ -20,9 +20,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { ten_hien_thi, sheet_id, project_code } = body;
 
-    if (!ten_hien_thi || !sheet_id || !project_code) {
+    if (!ten_hien_thi || !sheet_id) {
       return NextResponse.json(
-        { success: false, error: 'Thiếu ten_hien_thi, sheet_id hoặc project_code' },
+        { success: false, error: 'Thiếu ten_hien_thi hoặc sheet_id' },
         { status: 400 }
       );
     }

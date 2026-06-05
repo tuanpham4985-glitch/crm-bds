@@ -43,7 +43,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   onDelete: (id: string) => void;
   onUpdate: (id: string, project_code: string) => void;
 }) {
-  const [form, setForm] = useState({ ten_hien_thi: '', sheet_id: '', project_code: '' });
+  const [form, setForm] = useState({ ten_hien_thi: '', sheet_id: '' });
   const [probeResult, setProbeResult] = useState<{
     ok: boolean; msg: string;
     sheets?: StackingSheetMeta[]; allTabs?: string[];
@@ -72,12 +72,12 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
         setProbeResult({
           ok: true,
           msg: d.data.length > 0
-            ? `Kết nối thành công — phát hiện ${d.data.length} tower (${detected.join(', ')}).`
-            : `Kết nối thành công nhưng không tìm thấy tab tower nào. Xem danh sách tab bên dưới để điền đúng mã dự án.`,
+            ? `Kết nối thành công — phát hiện ${d.data.length} tower: ${(d.data as StackingSheetMeta[]).map(s => s.sheetName).join(', ')}.`
+            : `Kết nối thành công nhưng không tìm thấy tab nào dạng "PREFIX TEN". Xem tất cả tab bên dưới.`,
           sheets: d.data,
           allTabs: d.allTabs,
         });
-        if (detected.length === 1) setForm(f => ({ ...f, project_code: detected[0] }));
+        void detected; // auto-detect used at runtime, no need to store in form
       } else {
         setProbeResult({ ok: false, msg: d.error || 'Không kết nối được' });
       }
@@ -89,7 +89,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   }
 
   async function handleAdd() {
-    if (!form.ten_hien_thi.trim() || !form.sheet_id.trim() || !form.project_code.trim()) return;
+    if (!form.ten_hien_thi.trim() || !form.sheet_id.trim()) return;
     setSaving(true);
     try {
       const r = await fetch('/api/stacking/configs', {
@@ -99,7 +99,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
       const d = await r.json();
       if (d.success) {
         onAdd(d.data);
-        setForm({ ten_hien_thi: '', sheet_id: '', project_code: '' });
+        setForm({ ten_hien_thi: '', sheet_id: '' });
         setProbeResult(null);
       } else { alert(d.error || 'Lỗi thêm nguồn'); }
     } finally { setSaving(false); }
@@ -135,7 +135,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
-  const canAdd = form.ten_hien_thi.trim() && form.sheet_id.trim() && form.project_code.trim();
+  const canAdd = form.ten_hien_thi.trim() && form.sheet_id.trim();
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end' }} onClick={onClose}>
@@ -204,39 +204,21 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                 {probeResult.ok ? <CheckCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} /> : <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />}
                 <span>{probeResult.msg}</span>
               </div>
-              {/* Show all tabs when no towers found */}
+              {/* Show all tabs when no towers found — help user understand what's in the file */}
               {probeResult.ok && probeResult.allTabs && probeResult.sheets?.length === 0 && (
                 <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #86efac' }}>
-                  <p style={{ fontSize: '0.72rem', color: '#166534', marginBottom: 4 }}>Tất cả tab trong file này:</p>
+                  <p style={{ fontSize: '0.72rem', color: '#166534', marginBottom: 4 }}>
+                    Tất cả tab trong file ({probeResult.allTabs.length}). Tab stacking cần dạng "KÝ_TỰ TÊN" (chữ hoa + khoảng trắng + tên, vd: "MPP A1"):
+                  </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {probeResult.allTabs.map(t => (
-                      <button key={t} onClick={() => setForm(f => ({ ...f, project_code: t }))}
-                        style={{ padding: '2px 7px', borderRadius: 4, fontSize: '0.7rem', border: '1px solid #86efac', background: '#f0fdf4', color: '#166534', cursor: 'pointer', fontWeight: 500 }}>
-                        {t}
-                      </button>
+                      <span key={t} style={{ padding: '2px 7px', borderRadius: 4, fontSize: '0.7rem', border: '1px solid #86efac', background: '#f0fdf4', color: '#166534', fontWeight: 500 }}>{t}</span>
                     ))}
                   </div>
-                  <p style={{ fontSize: '0.68rem', color: '#166534', marginTop: 4 }}>→ Chọn tab master (tên tab chứa danh sách tất cả căn) để tự điền vào "Mã dự án".</p>
-                </div>
-              )}
-              {/* Show detected towers as clickable project_code shortcuts */}
-              {probeResult.ok && probeResult.sheets && probeResult.sheets.length > 0 && (
-                <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#166534' }}>
-                  Tower: {probeResult.sheets.map(s => s.tower).join(', ')}
                 </div>
               )}
             </div>
           )}
-
-          {/* Project code */}
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-              Mã dự án — tên tab master chứa danh sách căn (vd: MPP, MCC)
-            </label>
-            <input placeholder="MPP" value={form.project_code}
-              onChange={e => setForm(f => ({ ...f, project_code: e.target.value.toUpperCase() }))}
-              style={inputStyle} />
-          </div>
 
           <button onClick={handleAdd} disabled={saving || !canAdd} style={{
             width: '100%', padding: '9px 0', borderRadius: 8, fontWeight: 700, fontSize: '0.875rem',
@@ -270,7 +252,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                     </div>
                     {/* Edit button */}
                     <button
-                      onClick={() => { setEditingId(editingId === c.id ? null : c.id); setEditCode(c.project_code); }}
+                      onClick={() => { setEditingId(editingId === c.id ? null : c.id); setEditCode(c.project_code ?? ''); }}
                       title="Sửa mã dự án"
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: editingId === c.id ? 'var(--primary)' : 'var(--text-muted)', flexShrink: 0, fontSize: '0.7rem', fontWeight: 600 }}>
                       Sửa
@@ -386,11 +368,8 @@ export default function StackingPage() {
     setLoadingTowers(true);
     setTowers([]); setProject(''); setTower(''); setUnits([]); setSelectedUnit(null); setTowersError('');
 
-    const params = new URLSearchParams({
-      sheets: '1',
-      sheet_id: selectedConfig.sheet_id,
-      project_code: selectedConfig.project_code,
-    });
+    const params = new URLSearchParams({ sheets: '1', sheet_id: selectedConfig.sheet_id });
+    if (selectedConfig.project_code) params.set('project_code', selectedConfig.project_code);
 
     fetch(`/api/stacking?${params}`)
       .then(r => r.json())
@@ -398,8 +377,10 @@ export default function StackingPage() {
         if (d.success) {
           if (d.data.length === 0) {
             setTowersError(
-              `Không tìm thấy tower nào. Kiểm tra lại mã dự án "${selectedConfig.project_code}": ` +
-              `file cần có tab tên dạng "${selectedConfig.project_code} A1", "${selectedConfig.project_code} B2", v.v.`
+              'Không tìm thấy tower nào trong file này. ' +
+              'File cần có tab tên dạng "MPP A1", "MPP A2", "MCC B1" v.v. ' +
+              '(chữ hoa + khoảng trắng + tên tower). ' +
+              'Nhấn "Mở Quản lý Sheet" → "Kiểm tra" để xem tất cả tab trong file.'
             );
           } else {
             setTowers(d.data);

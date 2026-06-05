@@ -1909,7 +1909,7 @@ export async function getStackingConfigs(): Promise<import('./types').StackingCo
 }
 
 export async function addStackingConfig(
-  payload: { ten_hien_thi: string; sheet_id: string; project_code: string }
+  payload: { ten_hien_thi: string; sheet_id: string; project_code?: string }
 ): Promise<import('./types').StackingConfig> {
   const doc = await getDoc();
   const sheet = await getOrCreateStackingConfigSheet(doc);
@@ -1918,7 +1918,7 @@ export async function addStackingConfig(
     id,
     ten_hien_thi:  payload.ten_hien_thi,
     sheet_id:      extractSheetId(payload.sheet_id),
-    project_code:  payload.project_code.trim().toUpperCase(),
+    project_code:  payload.project_code?.trim().toUpperCase() || '',
     trang_thai:    'active',
     ngay_tao:      new Date().toISOString(),
   };

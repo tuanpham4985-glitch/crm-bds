@@ -257,9 +257,9 @@ export interface LoginCredentials {
 // === STACKING ===
 export interface StackingConfig {
   id: string;
-  ten_hien_thi: string;  // display name, e.g. "Masteri Park Place"
-  sheet_id: string;      // Google Sheets file ID
-  project_code: string;  // master tab name, e.g. "MPP"
+  ten_hien_thi: string;   // display name, e.g. "Masteri Park Place"
+  sheet_id: string;        // Google Sheets file ID
+  project_code?: string;   // optional filter prefix, e.g. "MPP" — empty = auto-detect all
   trang_thai: 'active' | 'inactive';
   ngay_tao: string;
 }
