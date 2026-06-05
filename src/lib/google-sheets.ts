@@ -2007,15 +2007,28 @@ const MAX_STACKING_ROWS = 500;
 
 export async function getStackingUnits(sheetId: string, project: string, tower: string): Promise<StackingUnit[]> {
   const doc = await getDocBySheetId(sheetId);
-  const sheet = doc.sheetsByTitle[project];
+
+  // Preferred: individual tower tab e.g. "MPP A1"
+  const towerTabName = `${project} ${tower}`;
+  let sheet = doc.sheetsByTitle[towerTabName];
+  let filterByPrefix = false;
+
   if (!sheet) {
-    throw new Error(`[Stacking] Tab master "${project}" không tồn tại trong file (sheetId: ${sheetId}).`);
+    // Fallback: master tab named by project code e.g. "MPP" (older layout)
+    sheet = doc.sheetsByTitle[project];
+    if (!sheet) {
+      throw new Error(
+        `[Stacking] Tab "${towerTabName}" không tồn tại trong file. ` +
+        `Cũng không tìm thấy tab master "${project}". (sheetId: ${sheetId})`
+      );
+    }
+    filterByPrefix = true; // master tab contains all towers → filter by maCan prefix
   }
 
   // Respect actual sheet dimensions to avoid "out of bounds" error
   const rowLimit = Math.min(sheet.rowCount, MAX_STACKING_ROWS);
-  const colLimit = Math.min(sheet.columnCount, COL_GIA_KS + 1); // at least up to GIA_KS col
-  const lastCol  = String.fromCharCode(64 + colLimit); // 1-based → 'A'=65, so 64 + colLimit
+  const colLimit = Math.min(sheet.columnCount, COL_GIA_KS + 1);
+  const lastCol  = String.fromCharCode(64 + colLimit); // 1-based → 'A'=65
   await sheet.loadCells(`A1:${lastCol}${rowLimit}`);
 
   const prefix = tower + '-';
@@ -2026,12 +2039,23 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
     if (!maCanVal) continue;
 
     const maCan = str(maCanVal);
-    if (!maCan.startsWith(prefix)) continue;
+    if (!maCan) continue;
 
-    const rest    = maCan.substring(prefix.length);
-    const dashIdx = rest.indexOf('-');
-    const tang    = dashIdx >= 0 ? rest.substring(0, dashIdx) : rest;
-    const canSo   = dashIdx >= 0 ? rest.substring(dashIdx + 1) : '';
+    // In master-tab mode filter rows belonging to this tower
+    if (filterByPrefix && !maCan.startsWith(prefix)) continue;
+
+    // Parse tang + canSo from maCan: format {tower}-{tang}-{canSo}
+    // In tower-tab mode maCan might already start with the tower prefix or not include it
+    let tang = '', canSo = '';
+    const full = maCan.startsWith(prefix) ? maCan.substring(prefix.length) : maCan;
+    const dashIdx = full.indexOf('-');
+    if (dashIdx >= 0) {
+      tang  = full.substring(0, dashIdx);
+      canSo = full.substring(dashIdx + 1);
+    } else {
+      tang  = full;
+      canSo = full;
+    }
 
     units.push({
       maCan,
