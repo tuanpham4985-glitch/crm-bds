@@ -2100,26 +2100,33 @@ function detectCellColor(
         backgroundColor?:      { red?: number; green?: number; blue?: number };
         backgroundColorStyle?: { rgbColor?: { red?: number; green?: number; blue?: number } };
       };
+      effectiveFormat?: {
+        backgroundColor?: { red?: number; green?: number; blue?: number };
+      };
     } | null | undefined;
 
+    // Thứ tự ưu tiên đọc màu nền:
+    //  1. userEnteredFormat.backgroundColorStyle.rgbColor (API v4 mới)
+    //  2. userEnteredFormat.backgroundColor              (API v4 cũ, deprecated)
+    //  3. effectiveFormat.backgroundColor               (fallback: màu thực tế kể cả theme/conditional)
+    //
+    // Lý do cần fallback sang effectiveFormat:
+    //   Ô fill màu qua palette Google Sheets (hoặc conditional format) thường
+    //   KHÔNG có userEnteredFormat; màu thực tế chỉ có trong effectiveFormat.
     const uf = rawData?.userEnteredFormat;
-    if (!uf) return null;
+    const ef = rawData?.effectiveFormat;
 
-    // Google Sheets API v4: backgroundColorStyle.rgbColor được ưu tiên;
-    // backgroundColor vẫn được trả về nhưng bị deprecated trong một số trường hợp.
-    const bg = uf.backgroundColorStyle?.rgbColor ?? uf.backgroundColor;
+    const bg = uf?.backgroundColorStyle?.rgbColor
+      ?? uf?.backgroundColor
+      ?? ef?.backgroundColor;
+
     if (!bg) return null;
 
     const r = bg.red   ?? 1;
     const g = bg.green ?? 1;
     const b = bg.blue  ?? 1;
 
-    // DEBUG — ghi log 1 lần cho mỗi ô có fill màu không phải trắng
-    if (!(r >= 0.95 && g >= 0.95 && b >= 0.95)) {
-      console.log(`[CellColor] r${cell.rowIndex}c${cell.columnIndex} rgba(${r.toFixed(3)},${g.toFixed(3)},${b.toFixed(3)}) uf=${JSON.stringify(uf)}`);
-    }
-
-    // Trắng / gần trắng → bỏ qua
+    // Trắng / gần trắng → bỏ qua (kể cả nền mặc định của sheet)
     if (r >= 0.9 && g >= 0.9 && b >= 0.9) return null;
 
     // VÀNG (#ffff00): R ≈ 1, G ≈ 1, B ≈ 0
@@ -2130,7 +2137,7 @@ function detectCellColor(
 
     return null;
   } catch {
-    return null; // an toàn: mọi lỗi đều bỏ qua, không crash parser
+    return null;
   }
 }
 
