@@ -328,8 +328,14 @@ export async function getDanhMuc(): Promise<DanhMuc> {
 export async function getDuAn(): Promise<DuAn[]> {
   const doc = await getDoc();
   const sheet = await getSheet(doc, SHEETS.DU_AN);
+  let h = sheet.headerValues;
+
+  if (!h.includes('stacking_config')) {
+    h = [...h, 'stacking_config'];
+    await sheet.setHeaderRow(h);
+  }
+
   const rows = await sheet.getRows();
-  const h = sheet.headerValues;
 
   return rows
     .map(row => {
@@ -345,6 +351,7 @@ export async function getDuAn(): Promise<DuAn[]> {
         link_tai_lieu: str(v[h[5]]),
         chu_dau_tu: str(v[h[6]]),
         link_du_an: str(v[h[7]]),
+        stacking_config: str(v['stacking_config'] ?? ''),
       } as DuAn;
     })
     .filter((x): x is DuAn => x !== null);
@@ -1122,6 +1129,7 @@ export async function addDuAn(da: DuAn): Promise<void> {
     [h[5]]: da.link_tai_lieu || '',
     [h[6]]: da.chu_dau_tu || '',
     [h[7]]: da.link_du_an || '',
+    'stacking_config': da.stacking_config || '',
   });
   await addLog(doc, 'CREATE_DA', da.id_du_an, '', '');
 }
@@ -1140,6 +1148,7 @@ export async function updateDuAn(da: DuAn): Promise<boolean> {
   row.set(h[5], da.link_tai_lieu || '');
   row.set(h[6], da.chu_dau_tu || '');
   row.set(h[7], da.link_du_an || '');
+  row.set('stacking_config', da.stacking_config || '');
   await row.save();
   await addLog(doc, 'UPDATE_DA', da.id_du_an, '', '');
   return true;

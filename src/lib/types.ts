@@ -25,6 +25,7 @@ export interface DuAn {
   link_tai_lieu?: string;
   chu_dau_tu?: string;
   link_du_an?: string;
+  stacking_config?: string; // JSON: [{name, url}]
 }
 
 // === NHÂN VIÊN ===

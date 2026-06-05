@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Edit3, Trash2, X, Building2, Eye, EyeOff,
   ExternalLink, ChevronDown, ChevronRight, Layers,
-  SlidersHorizontal,
+  SlidersHorizontal, LayoutGrid,
 } from 'lucide-react';
 import type { DuAn, Pipeline } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,11 +30,27 @@ export default function DuAnPage() {
   const [deletingId, setDeletingId] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Stacking dropdown
+  const [openStackingId, setOpenStackingId] = useState<string | null>(null);
+
   // Form
   const [form, setForm] = useState({
     ma_du_an: '', ten_du_an: '', hien_thi: 1,
     hoa_hong_mac_dinh: 0, link_tai_lieu: '', chu_dau_tu: '', link_du_an: '',
   });
+  const [stackingSheets, setStackingSheets] = useState<{ name: string; url: string }[]>([]);
+
+  const parseStacking = (config?: string): { name: string; url: string }[] => {
+    if (!config) return [];
+    try { return JSON.parse(config); } catch { return []; }
+  };
+
+  useEffect(() => {
+    if (!openStackingId) return;
+    const handler = () => setOpenStackingId(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [openStackingId]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -143,6 +159,7 @@ export default function DuAnPage() {
   const openCreate = () => {
     setEditingItem(null);
     setForm({ ma_du_an: '', ten_du_an: '', hien_thi: 1, hoa_hong_mac_dinh: 0, link_tai_lieu: '', chu_dau_tu: '', link_du_an: '' });
+    setStackingSheets([]);
     setShowModal(true);
   };
 
@@ -157,6 +174,7 @@ export default function DuAnPage() {
       chu_dau_tu: da.chu_dau_tu || '',
       link_du_an: da.link_du_an || '',
     });
+    setStackingSheets(parseStacking(da.stacking_config));
     setShowModal(true);
   };
 
@@ -165,7 +183,11 @@ export default function DuAnPage() {
     setSaving(true);
     try {
       const method = editingItem ? 'PUT' : 'POST';
-      const body = editingItem ? { ...editingItem, ...form } : form;
+      const validSheets = stackingSheets.filter(s => s.name.trim());
+      const stacking_config = validSheets.length > 0 ? JSON.stringify(validSheets) : '';
+      const body = editingItem
+        ? { ...editingItem, ...form, stacking_config }
+        : { ...form, stacking_config };
       const res = await fetch('/api/du-an', {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -403,27 +425,93 @@ export default function DuAnPage() {
                           )}
 
                           {/* Actions */}
-                          <div className="flex items-center gap-2" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                            {da.link_tai_lieu && (
-                              <a
-                                href={da.link_tai_lieu} target="_blank" rel="noopener noreferrer"
-                                className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}
-                              >
-                                <ExternalLink size={13} />Tài liệu
-                              </a>
-                            )}
-                            {isAdmin && (
-                              <>
-                                <button className="btn btn-secondary btn-sm" onClick={() => openEdit(da)}>
-                                  <Edit3 size={13} />Sửa
-                                </button>
-                                <button className="btn btn-danger btn-sm"
-                                  onClick={() => { setDeletingId(da.id_du_an); setShowConfirm(true); }}>
-                                  <Trash2 size={13} />Xóa
-                                </button>
-                              </>
-                            )}
-                          </div>
+                          {(() => {
+                            const stackingList = parseStacking(da.stacking_config);
+                            return (
+                              <div className="flex items-center gap-2" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                {da.link_tai_lieu && (
+                                  <a
+                                    href={da.link_tai_lieu} target="_blank" rel="noopener noreferrer"
+                                    className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}
+                                  >
+                                    <ExternalLink size={13} />Tài liệu
+                                  </a>
+                                )}
+                                {stackingList.length > 0 && (
+                                  <div style={{ position: 'relative' }}>
+                                    <button
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenStackingId(openStackingId === da.id_du_an ? null : da.id_du_an);
+                                      }}
+                                      style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+                                    >
+                                      <LayoutGrid size={13} />
+                                      Stacking
+                                      <ChevronDown size={11} style={{
+                                        transition: 'transform 0.15s',
+                                        transform: openStackingId === da.id_du_an ? 'rotate(180deg)' : 'none',
+                                      }} />
+                                    </button>
+                                    {openStackingId === da.id_du_an && (
+                                      <div
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{
+                                          position: 'absolute', bottom: 'calc(100% + 6px)', left: 0,
+                                          zIndex: 50, background: 'var(--bg-card)',
+                                          border: '1px solid var(--border)',
+                                          borderRadius: 'var(--radius-md)',
+                                          boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
+                                          minWidth: 170, padding: '4px 0',
+                                        }}
+                                      >
+                                        <div style={{
+                                          padding: '6px 14px 4px',
+                                          fontSize: '0.7rem', fontWeight: 600,
+                                          color: 'var(--text-muted)', textTransform: 'uppercase',
+                                          letterSpacing: '0.05em',
+                                        }}>
+                                          Phân khu Stacking
+                                        </div>
+                                        {stackingList.map(s => (
+                                          <a
+                                            key={s.name}
+                                            href={s.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                              display: 'flex', alignItems: 'center', gap: 8,
+                                              padding: '7px 14px',
+                                              fontSize: '0.8125rem', color: 'var(--text-body)',
+                                              textDecoration: 'none',
+                                            }}
+                                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                          >
+                                            <LayoutGrid size={12} color="var(--primary)" style={{ flexShrink: 0 }} />
+                                            <span style={{ fontWeight: 500 }}>{s.name}</span>
+                                          </a>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {isAdmin && (
+                                  <>
+                                    <button className="btn btn-secondary btn-sm" onClick={() => openEdit(da)}>
+                                      <Edit3 size={13} />Sửa
+                                    </button>
+                                    <button className="btn btn-danger btn-sm"
+                                      onClick={() => { setDeletingId(da.id_du_an); setShowConfirm(true); }}>
+                                      <Trash2 size={13} />Xóa
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })()}
+
                         </div>
                       );
                     })}
@@ -496,6 +584,59 @@ export default function DuAnPage() {
                 <input className="form-input" value={form.link_tai_lieu}
                   onChange={(e) => setForm({ ...form, link_tai_lieu: e.target.value })}
                   placeholder="https://drive.google.com/..." />
+              </div>
+
+              {/* Stacking config */}
+              <div className="form-group">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <LayoutGrid size={14} color="var(--primary)" />
+                  Phân khu Stacking
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {stackingSheets.map((s, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input
+                        className="form-input"
+                        style={{ width: 90, flexShrink: 0 }}
+                        placeholder="Tên PK"
+                        value={s.name}
+                        onChange={(e) => {
+                          const next = [...stackingSheets];
+                          next[i] = { ...next[i], name: e.target.value };
+                          setStackingSheets(next);
+                        }}
+                      />
+                      <input
+                        className="form-input"
+                        style={{ flex: 1 }}
+                        placeholder="URL Google Sheet (có gid)"
+                        value={s.url}
+                        onChange={(e) => {
+                          const next = [...stackingSheets];
+                          next[i] = { ...next[i], url: e.target.value };
+                          setStackingSheets(next);
+                        }}
+                      />
+                      <button
+                        className="btn btn-ghost btn-icon"
+                        type="button"
+                        onClick={() => setStackingSheets(stackingSheets.filter((_, idx) => idx !== i))}
+                        style={{ flexShrink: 0 }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    type="button"
+                    onClick={() => setStackingSheets([...stackingSheets, { name: '', url: '' }])}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    <Plus size={13} />
+                    Thêm phân khu
+                  </button>
+                </div>
               </div>
             </div>
             <div className="modal-footer">
