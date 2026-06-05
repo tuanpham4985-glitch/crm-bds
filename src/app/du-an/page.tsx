@@ -30,8 +30,9 @@ export default function DuAnPage() {
   const [deletingId, setDeletingId] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Stacking dropdown
+  // Stacking dropdown — dùng fixed positioning để thoát khỏi card overflow:hidden
   const [openStackingId, setOpenStackingId] = useState<string | null>(null);
+  const [stackingAnchor, setStackingAnchor] = useState<{ top: number; left: number } | null>(null);
 
   // Form
   const [form, setForm] = useState({
@@ -47,9 +48,13 @@ export default function DuAnPage() {
 
   useEffect(() => {
     if (!openStackingId) return;
-    const handler = () => setOpenStackingId(null);
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
+    const close = () => { setOpenStackingId(null); setStackingAnchor(null); };
+    document.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+    };
   }, [openStackingId]);
 
   const fetchAll = useCallback(async () => {
@@ -438,12 +443,19 @@ export default function DuAnPage() {
                                   </a>
                                 )}
                                 {stackingList.length > 0 && (
-                                  <div style={{ position: 'relative' }}>
+                                  <div>
                                     <button
                                       className="btn btn-secondary btn-sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setOpenStackingId(openStackingId === da.id_du_an ? null : da.id_du_an);
+                                        if (openStackingId === da.id_du_an) {
+                                          setOpenStackingId(null);
+                                          setStackingAnchor(null);
+                                        } else {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setStackingAnchor({ top: rect.bottom + 4, left: rect.left });
+                                          setOpenStackingId(da.id_du_an);
+                                        }
                                       }}
                                       style={{ display: 'flex', alignItems: 'center', gap: 5 }}
                                     >
@@ -454,11 +466,13 @@ export default function DuAnPage() {
                                         transform: openStackingId === da.id_du_an ? 'rotate(180deg)' : 'none',
                                       }} />
                                     </button>
-                                    {openStackingId === da.id_du_an && (
+                                    {openStackingId === da.id_du_an && stackingAnchor && (
                                       <div
                                         onClick={(e) => e.stopPropagation()}
                                         style={{
-                                          position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+                                          position: 'fixed',
+                                          top: stackingAnchor.top,
+                                          left: stackingAnchor.left,
                                           zIndex: 9999,
                                           backgroundColor: '#ffffff',
                                           border: '1px solid #e2e8f0',
