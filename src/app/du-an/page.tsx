@@ -437,7 +437,7 @@ export default function DuAnPage() {
                                     <ExternalLink size={13} />Tài liệu
                                   </a>
                                 )}
-                                {stackingList.length > 0 && (
+                                {isAdmin && stackingList.length > 0 && (
                                   <div style={{ position: 'relative' }}>
                                     <button
                                       className="btn btn-secondary btn-sm"
@@ -459,17 +459,18 @@ export default function DuAnPage() {
                                         onClick={(e) => e.stopPropagation()}
                                         style={{
                                           position: 'absolute', bottom: 'calc(100% + 6px)', left: 0,
-                                          zIndex: 50, background: 'var(--bg-card)',
-                                          border: '1px solid var(--border)',
-                                          borderRadius: 'var(--radius-md)',
-                                          boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
+                                          zIndex: 9999,
+                                          backgroundColor: '#ffffff',
+                                          border: '1px solid #e2e8f0',
+                                          borderRadius: 8,
+                                          boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
                                           minWidth: 170, padding: '4px 0',
                                         }}
                                       >
                                         <div style={{
                                           padding: '6px 14px 4px',
                                           fontSize: '0.7rem', fontWeight: 600,
-                                          color: 'var(--text-muted)', textTransform: 'uppercase',
+                                          color: '#64748b', textTransform: 'uppercase',
                                           letterSpacing: '0.05em',
                                         }}>
                                           Phân khu Stacking
@@ -483,13 +484,14 @@ export default function DuAnPage() {
                                             style={{
                                               display: 'flex', alignItems: 'center', gap: 8,
                                               padding: '7px 14px',
-                                              fontSize: '0.8125rem', color: 'var(--text-body)',
+                                              fontSize: '0.8125rem', color: '#1e293b',
                                               textDecoration: 'none',
+                                              backgroundColor: 'transparent',
                                             }}
-                                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
-                                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                                           >
-                                            <LayoutGrid size={12} color="var(--primary)" style={{ flexShrink: 0 }} />
+                                            <LayoutGrid size={12} color="#6366f1" style={{ flexShrink: 0 }} />
                                             <span style={{ fontWeight: 500 }}>{s.name}</span>
                                           </a>
                                         ))}
