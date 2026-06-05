@@ -254,6 +254,36 @@ export interface LoginCredentials {
   mat_khau: string;
 }
 
+// === STACKING ===
+export interface StackingConfig {
+  id: string;
+  ten_hien_thi: string;  // display name, e.g. "Masteri Park Place"
+  sheet_id: string;      // Google Sheets file ID
+  project_code: string;  // master tab name, e.g. "MPP"
+  trang_thai: 'active' | 'inactive';
+  ngay_tao: string;
+}
+
+export interface StackingSheetMeta {
+  project: string;   // "MPP" | "MCC" | "MCCN"
+  tower: string;     // "A1", "B2", ...
+  sheetName: string; // "MPP A1"
+}
+
+export interface StackingUnit {
+  maCan: string;
+  tower: string;
+  tang: string;         // floor code, e.g. "03", "03A"
+  canSo: string;        // unit code, e.g. "15", "12A"
+  loaiCan: string;      // "1BR", "1BR+", "2BR", "2BR+", "3BR", "Studio"
+  dtTim: number;        // gross area m²
+  dtThongThuy: number;  // net area m²
+  huong: string;
+  view: string;
+  giaKS: number;        // price in VND
+  trangThai: 'con_hang' | 'dang_xem' | 'da_ban';
+}
+
 // === API Response ===
 export interface ApiResponse<T> {
   success: boolean;

@@ -4,7 +4,7 @@
 // ============================================================
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord } from './types';
+import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord, StackingSheetMeta, StackingUnit } from './types';
 
 // ---- Environment Variable Validation ----
 function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
@@ -1851,4 +1851,169 @@ export async function getPayrollAdjustments(thang: number, nam: number): Promise
       };
     })
     .filter(adj => adj.thang === thang && adj.nam === nam);
+}
+
+// ============================================================
+// STACKING BOARD
+// ============================================================
+
+// --- Per-sheetId doc cache (supports multiple stacking files) ---
+const stackingDocCache = new Map<string, { doc: GoogleSpreadsheet; time: number }>();
+
+async function getDocBySheetId(sheetId: string): Promise<GoogleSpreadsheet> {
+  const cached = stackingDocCache.get(sheetId);
+  if (cached && Date.now() - cached.time < CACHE_DURATION) return cached.doc;
+  const doc = new GoogleSpreadsheet(sheetId, getJWT());
+  await doc.loadInfo();
+  stackingDocCache.set(sheetId, { doc, time: Date.now() });
+  return doc;
+}
+
+// Extract Sheet ID from either raw ID or full Google Sheets URL
+function extractSheetId(input: string): string {
+  const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : input.trim();
+}
+
+// --- STACKING_CONFIG: stored as a tab in the main CRM spreadsheet ---
+
+const STACKING_CONFIG_HEADERS = ['id', 'ten_hien_thi', 'sheet_id', 'project_code', 'trang_thai', 'ngay_tao'];
+
+async function getOrCreateStackingConfigSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
+  let sheet = doc.sheetsByTitle['STACKING_CONFIG'];
+  if (!sheet) {
+    sheet = await doc.addSheet({ title: 'STACKING_CONFIG', headerValues: STACKING_CONFIG_HEADERS });
+  } else {
+    await sheet.loadHeaderRow();
+  }
+  return sheet;
+}
+
+export async function getStackingConfigs(): Promise<import('./types').StackingConfig[]> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateStackingConfigSheet(doc);
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id:            str(v['id']),
+        ten_hien_thi:  str(v['ten_hien_thi']),
+        sheet_id:      str(v['sheet_id']),
+        project_code:  str(v['project_code']),
+        trang_thai:    (str(v['trang_thai']) || 'active') as 'active' | 'inactive',
+        ngay_tao:      str(v['ngay_tao']),
+      };
+    })
+    .filter(c => c.id && c.sheet_id);
+}
+
+export async function addStackingConfig(
+  payload: { ten_hien_thi: string; sheet_id: string; project_code: string }
+): Promise<import('./types').StackingConfig> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateStackingConfigSheet(doc);
+  const id = 'SC_' + Date.now();
+  const newRow = {
+    id,
+    ten_hien_thi:  payload.ten_hien_thi,
+    sheet_id:      extractSheetId(payload.sheet_id),
+    project_code:  payload.project_code.trim().toUpperCase(),
+    trang_thai:    'active',
+    ngay_tao:      new Date().toISOString(),
+  };
+  await sheet.addRow(newRow);
+  return { ...newRow, trang_thai: 'active' };
+}
+
+export async function deleteStackingConfig(id: string): Promise<boolean> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateStackingConfigSheet(doc);
+  const rows = await sheet.getRows();
+  const row = rows.find(r => str(r.toObject()['id']) === id);
+  if (!row) return false;
+  await row.delete();
+  return true;
+}
+
+// --- Tower / unit access (sheetId-parameterised) ---
+
+const TOWER_TAB_PATTERN = /^(MCCN|MCC|MPP)\s+(.+)$/;
+
+export async function getStackingSheetList(sheetId: string): Promise<StackingSheetMeta[]> {
+  const doc = await getDocBySheetId(sheetId);
+  return doc.sheetsByIndex
+    .filter(s => TOWER_TAB_PATTERN.test(s.title))
+    .map(s => {
+      const m = s.title.match(TOWER_TAB_PATTERN)!;
+      return { project: m[1], tower: m[2], sheetName: s.title };
+    })
+    .sort((a, b) => a.project.localeCompare(b.project) || a.tower.localeCompare(b.tower));
+}
+
+// Probe a sheet ID and return detected towers (used for "Test kết nối" in UI)
+export async function probeStackingSheet(
+  rawInput: string
+): Promise<{ ok: true; sheets: StackingSheetMeta[] } | { ok: false; error: string }> {
+  try {
+    const sheetId = extractSheetId(rawInput);
+    if (!sheetId) return { ok: false, error: 'Sheet ID không hợp lệ' };
+    const sheets = await getStackingSheetList(sheetId);
+    return { ok: true, sheets };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Master sheet columns (0-indexed) — matches GAS script convention
+const COL_MA_CAN        = 1;
+const COL_LOAI_CAN      = 5;
+const COL_DT_TIM        = 6;
+const COL_DT_THONG_THUY = 7;
+const COL_HUONG         = 8;
+const COL_VIEW          = 9;
+const COL_GIA_KS        = 10;
+const MAX_STACKING_ROWS = 500;
+
+export async function getStackingUnits(sheetId: string, project: string, tower: string): Promise<StackingUnit[]> {
+  const doc = await getDocBySheetId(sheetId);
+  const sheet = doc.sheetsByTitle[project];
+  if (!sheet) {
+    throw new Error(`[Stacking] Tab master "${project}" không tồn tại trong file (sheetId: ${sheetId}).`);
+  }
+
+  const lastCol = String.fromCharCode(65 + COL_GIA_KS); // 'L'
+  await sheet.loadCells(`A1:${lastCol}${MAX_STACKING_ROWS}`);
+
+  const prefix = tower + '-';
+  const units: StackingUnit[] = [];
+
+  for (let rowIdx = 1; rowIdx < MAX_STACKING_ROWS; rowIdx++) {
+    const maCanVal = sheet.getCell(rowIdx, COL_MA_CAN).value;
+    if (!maCanVal) continue;
+
+    const maCan = str(maCanVal);
+    if (!maCan.startsWith(prefix)) continue;
+
+    const rest    = maCan.substring(prefix.length);
+    const dashIdx = rest.indexOf('-');
+    const tang    = dashIdx >= 0 ? rest.substring(0, dashIdx) : rest;
+    const canSo   = dashIdx >= 0 ? rest.substring(dashIdx + 1) : '';
+
+    units.push({
+      maCan,
+      tower,
+      tang,
+      canSo,
+      loaiCan:     str(sheet.getCell(rowIdx, COL_LOAI_CAN).value),
+      dtTim:       num(sheet.getCell(rowIdx, COL_DT_TIM).value),
+      dtThongThuy: num(sheet.getCell(rowIdx, COL_DT_THONG_THUY).value),
+      huong:       str(sheet.getCell(rowIdx, COL_HUONG).value),
+      view:        str(sheet.getCell(rowIdx, COL_VIEW).value),
+      giaKS:       num(sheet.getCell(rowIdx, COL_GIA_KS).value),
+      trangThai:   'con_hang',
+    });
+  }
+
+  return units;
 }

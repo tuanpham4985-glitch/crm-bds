@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Database, Briefcase, BarChart3
+  ChevronDown, Database, Briefcase, BarChart3, LayoutList
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,7 +27,8 @@ const CRM_STEPS = [
 ];
 
 const CRM_CATALOG = [
-  { href: '/du-an', label: 'Dự án', icon: Building2 },
+  { href: '/du-an',     label: 'Dự án',        icon: Building2 },
+  { href: '/stacking',  label: 'Bảng hàng',    icon: LayoutList },
 ];
 
 const HRM_ITEMS = [
