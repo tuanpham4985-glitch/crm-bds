@@ -437,7 +437,7 @@ export default function DuAnPage() {
                                     <ExternalLink size={13} />Tài liệu
                                   </a>
                                 )}
-                                {isAdmin && stackingList.length > 0 && (
+                                {stackingList.length > 0 && (
                                   <div style={{ position: 'relative' }}>
                                     <button
                                       className="btn btn-secondary btn-sm"
@@ -475,26 +475,38 @@ export default function DuAnPage() {
                                         }}>
                                           Phân khu Stacking
                                         </div>
-                                        {stackingList.map(s => (
-                                          <a
-                                            key={s.name}
-                                            href={s.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{
-                                              display: 'flex', alignItems: 'center', gap: 8,
-                                              padding: '7px 14px',
-                                              fontSize: '0.8125rem', color: '#1e293b',
-                                              textDecoration: 'none',
-                                              backgroundColor: 'transparent',
-                                            }}
-                                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-                                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-                                          >
-                                            <LayoutGrid size={12} color="#6366f1" style={{ flexShrink: 0 }} />
-                                            <span style={{ fontWeight: 500 }}>{s.name}</span>
-                                          </a>
-                                        ))}
+                                        {stackingList.map(s => {
+                                          // Admin: edit URL (thấy tất cả tab)
+                                          // User thường: pubhtml single=true (chỉ thấy đúng tab này)
+                                          let href = s.url;
+                                          if (!isAdmin) {
+                                            const idMatch = s.url.match(/\/spreadsheets\/d\/([^/?#]+)/);
+                                            const gidMatch = s.url.match(/[?&#]gid=(\d+)/);
+                                            if (idMatch && gidMatch) {
+                                              href = `https://docs.google.com/spreadsheets/d/${idMatch[1]}/pubhtml?gid=${gidMatch[1]}&single=true`;
+                                            }
+                                          }
+                                          return (
+                                            <a
+                                              key={s.name}
+                                              href={href}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              style={{
+                                                display: 'flex', alignItems: 'center', gap: 8,
+                                                padding: '7px 14px',
+                                                fontSize: '0.8125rem', color: '#1e293b',
+                                                textDecoration: 'none',
+                                                backgroundColor: 'transparent',
+                                              }}
+                                              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                                              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                                            >
+                                              <LayoutGrid size={12} color="#6366f1" style={{ flexShrink: 0 }} />
+                                              <span style={{ fontWeight: 500 }}>{s.name}</span>
+                                            </a>
+                                          );
+                                        })}
                                       </div>
                                     )}
                                   </div>
