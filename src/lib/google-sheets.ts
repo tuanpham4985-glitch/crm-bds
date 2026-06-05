@@ -2106,9 +2106,12 @@ async function fetchSheetColors(
     const url      = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${cleanId}`);
     url.searchParams.set('ranges', rangeStr);
     url.searchParams.set('includeGridData', 'true');
+    // NOTE: 'fields' causes includeGridData to be ignored by the API.
+    // We must include properties(title) so we can find the correct sheet tab
+    // from the response (API returns ALL sheets; sheets[0] may not be our tab).
     url.searchParams.set(
       'fields',
-      'sheets(data(rowData(values(effectiveFormat(backgroundColor,backgroundColorStyle)))))',
+      'sheets(properties(title),data(rowData(values(effectiveFormat(backgroundColor,backgroundColorStyle)))))',
     );
 
     const resp = await fetch(url.toString(), {
@@ -2127,15 +2130,20 @@ async function fetchSheetColors(
     };
     const data = await resp.json() as {
       sheets?: Array<{
+        properties?: { title?: string };
         data?: Array<{
           rowData?: Array<{ values?: Array<{ effectiveFormat?: CellEF }> }>;
         }>;
       }>;
     };
 
-    const rowData = data.sheets?.[0]?.data?.[0]?.rowData;
+    // The API response contains ALL sheets in the spreadsheet; we must find
+    // the one matching our tab name rather than blindly taking sheets[0].
+    const targetSheet = data.sheets?.find(s => s.properties?.title === sheetName);
+    const rowData = targetSheet?.data?.[0]?.rowData;
     if (!rowData) {
-      console.log(`[fetchSheetColors] "${sheetName}": NO rowData — sheets=${data.sheets?.length} data=${data.sheets?.[0]?.data?.length}`);
+      const titles = data.sheets?.map(s => s.properties?.title).join(', ') ?? '(none)';
+      console.log(`[fetchSheetColors] "${sheetName}": NOT FOUND — available: ${titles}`);
       return colorMap;
     }
 
