@@ -333,17 +333,21 @@ const MAU_O_COLOR: Record<'xanh' | 'vang', { bg: string; text: string; border: s
 };
 
 function UnitCell({ unit, onClick, isSelected }: { unit: StackingUnit; onClick: () => void; isSelected: boolean }) {
-  const loaiColor = typeColor(unit.loaiCan);
-  const mauColor  = unit.mauO ? MAU_O_COLOR[unit.mauO] : null;
-  const c         = mauColor ?? loaiColor; // màu GSheets có ưu tiên cao hơn loaiCan
-  const sold      = unit.trangThai === 'da_ban';
-  const inPr      = unit.trangThai === 'dang_xem';
+  const mauColor = unit.mauO ? MAU_O_COLOR[unit.mauO] : null;
+  const sold     = unit.trangThai === 'da_ban';
+  const inPr     = unit.trangThai === 'dang_xem';
+
+  // Chỉ tô màu khi có mauO từ GSheets; còn lại để trắng/neutral
+  const bg     = sold ? '#f3f4f6' : (mauColor?.bg     ?? 'var(--bg-card)');
+  const text   = sold ? '#9ca3af' : (mauColor?.text   ?? 'var(--text-body)');
+  const border = isSelected ? 'var(--primary)' : (mauColor?.border ?? 'var(--border)');
+
   return (
     <td style={{ padding: '3px 4px', minWidth: 78 }}>
       <button onClick={onClick} style={{
         width: '100%', padding: '5px 6px', borderRadius: 6,
-        border: `1.5px solid ${isSelected ? 'var(--primary)' : c.border}`,
-        background: sold ? '#f3f4f6' : c.bg, color: sold ? '#9ca3af' : c.text,
+        border: `1.5px solid ${border}`,
+        background: bg, color: text,
         fontSize: 11, fontWeight: 600, cursor: 'pointer',
         textDecoration: sold ? 'line-through' : 'none',
         opacity: sold ? 0.5 : inPr ? 0.78 : 1,
@@ -594,14 +598,9 @@ export default function StackingPage() {
           {!loadingUnits && units.length > 0 && (
             <>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                {Object.entries(TYPE_COLOR).map(([type, c]) => (
-                  <span key={type} style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{type}</span>
-                ))}
-                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', textDecoration: 'line-through' }}>Đã bán</span>
-                {/* Ownership colour legend */}
-                <span style={{ width: 1, background: 'var(--border)', borderRadius: 1, margin: '0 2px' }} />
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.xanh.bg, color: MAU_O_COLOR.xanh.text, border: `1px solid ${MAU_O_COLOR.xanh.border}` }}>Độc quyền</span>
-                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>Cty khác ⚠</span>
+                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>Check Admin</span>
+                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', textDecoration: 'line-through' }}>Đã bán</span>
               </div>
 
               <div style={{ overflowX: 'auto' }}>
@@ -665,7 +664,7 @@ export default function StackingPage() {
               )}
               {selectedUnit.mauO === 'vang' && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>
-                  ⚠ Cần Admin kiểm tra
+                  Check Admin
                 </span>
               )}
             </div>
