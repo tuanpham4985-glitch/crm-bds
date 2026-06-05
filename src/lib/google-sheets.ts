@@ -2076,12 +2076,18 @@ function isSectionLabel(raw: unknown): boolean {
 
 /**
  * Đọc màu nền ô Google Sheets và phân loại:
- *   'xanh' — ô màu xanh lá = căn độc quyền của công ty
- *   'vang'  — ô màu vàng   = căn công ty khác, cần Admin kiểm tra
+ *   'xanh' — ô màu xanh lá cây thuần (#00ff00) = HÀNG ĐỘC QUYỀN
+ *   'vang'  — ô màu vàng thuần (#ffff00)        = CHECK ADMIN
  *   null   — màu trắng / không xác định
  *
- * backgroundColor được trả về sau loadCells() từ effectiveFormat.
- * Mỗi kênh RGB là số thực [0, 1]. Trắng = {r:1, g:1, b:1}.
+ * Ngưỡng ĐẶT CHẶT để chỉ match màu CỰC KỲ BÃO HÒA (vivid/saturated),
+ * tránh nhận nhầm các ô có nền nhạt/pastel hoặc màu chủ đề của sheet.
+ *
+ * #00ff00 trong API = {red:0, green:1, blue:0}
+ * #ffff00 trong API = {red:1, green:1, blue:0}
+ *
+ * backgroundColor được populate bởi loadCells() qua includeGridData:true.
+ * Mỗi kênh RGB là số thực [0, 1].
  */
 function detectCellColor(
   cell: import('google-spreadsheet').GoogleSpreadsheetCell,
@@ -2098,13 +2104,13 @@ function detectCellColor(
   const b = bg.blue  ?? 1;
 
   // Trắng / gần trắng → bỏ qua
-  if (r >= 0.95 && g >= 0.95 && b >= 0.95) return null;
+  if (r >= 0.9 && g >= 0.9 && b >= 0.9) return null;
 
-  // Vàng: R cao + G cao + B thấp (ưu tiên check trước green vì yellow cũng có G cao)
-  if (r > 0.65 && g > 0.65 && b < 0.5) return 'vang';
+  // VÀNG (#ffff00): R ≈ 1, G ≈ 1, B ≈ 0 — ngưỡng chặt, không nhận màu vàng nhạt
+  if (r > 0.85 && g > 0.85 && b < 0.25) return 'vang';
 
-  // Xanh lá: G trội hơn R và B một cách rõ ràng
-  if (g > 0.45 && g > r + 0.05 && g > b + 0.05) return 'xanh';
+  // XANH LÁ (#00ff00): R ≈ 0, G ≈ 1, B ≈ 0 — ngưỡng chặt, không nhận xanh nhạt
+  if (r < 0.25 && g > 0.7 && b < 0.25) return 'xanh';
 
   return null;
 }

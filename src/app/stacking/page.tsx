@@ -325,10 +325,11 @@ const inputStyle: React.CSSProperties = {
 
 // ─── Unit cell ────────────────────────────────────────────────────────────────
 
-// Màu nền / chữ / viền theo mauO (màu từ Google Sheets)
+// Màu nền / chữ / viền theo mauO — khớp chính xác màu trong Google Sheets
+// Sheet dùng: #00ff00 (độc quyền) và #ffff00 (check Admin)
 const MAU_O_COLOR: Record<'xanh' | 'vang', { bg: string; text: string; border: string }> = {
-  xanh: { bg: '#6aa84f', text: '#ffffff', border: '#4a7c35' }, // green — độc quyền
-  vang: { bg: '#ffd966', text: '#4a3900', border: '#d4a800' }, // yellow — công ty khác
+  xanh: { bg: '#00ff00', text: '#004d00', border: '#00bb00' }, // #00ff00 — HÀNG ĐỘC QUYỀN
+  vang: { bg: '#ffff00', text: '#5c3d00', border: '#ccaa00' }, // #ffff00 — CHECK ADMIN
 };
 
 function UnitCell({ unit, onClick, isSelected }: { unit: StackingUnit; onClick: () => void; isSelected: boolean }) {
