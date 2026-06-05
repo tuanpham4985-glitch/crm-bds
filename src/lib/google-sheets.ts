@@ -2134,7 +2134,30 @@ async function fetchSheetColors(
     };
 
     const rowData = data.sheets?.[0]?.data?.[0]?.rowData;
-    if (!rowData) return colorMap;
+    if (!rowData) {
+      console.log(`[fetchSheetColors] "${sheetName}": NO rowData — sheets=${data.sheets?.length} data=${data.sheets?.[0]?.data?.length}`);
+      return colorMap;
+    }
+
+    // ── TEMP DEBUG ─────────────────────────────────────────────────────────
+    // Count cells by format type and show first few non-empty effectiveFormat
+    // objects so we can see exactly what the API is returning.
+    let nEF = 0, nBG = 0, nTheme = 0, nRGB = 0;
+    rowData.forEach((row, rowIdx) => {
+      row.values?.forEach((cell, colIdx) => {
+        const ef = cell.effectiveFormat;
+        if (!ef || Object.keys(ef).length === 0) return;
+        nEF++;
+        if (ef.backgroundColor && Object.keys(ef.backgroundColor).length > 0) nBG++;
+        if (ef.backgroundColorStyle?.themeColor) nTheme++;
+        if (ef.backgroundColorStyle?.rgbColor)   nRGB++;
+        if (nEF <= 6) {
+          console.log(`[D] r${rowIdx}c${colIdx} ${JSON.stringify(ef)}`);
+        }
+      });
+    });
+    console.log(`[fetchSheetColors] "${sheetName}": rows=${rowData.length} nEF=${nEF} nBG=${nBG} nTheme=${nTheme} nRGB=${nRGB}`);
+    // ── END TEMP DEBUG ──────────────────────────────────────────────────────
 
     rowData.forEach((row, rowIdx) => {
       row.values?.forEach((cell, colIdx) => {
@@ -2158,7 +2181,7 @@ async function fetchSheetColors(
       });
     });
 
-    console.log(`[fetchSheetColors] "${sheetName}": ${colorMap.size} colored cell(s)`);
+    console.log(`[fetchSheetColors] "${sheetName}": ${colorMap.size} colored cell(s) found`);
   } catch (err) {
     console.error('[fetchSheetColors] Error:', err);
   }
