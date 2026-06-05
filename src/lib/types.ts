@@ -282,6 +282,12 @@ export interface StackingUnit {
   view: string;
   giaKS: number;        // price in VND
   trangThai: 'con_hang' | 'dang_xem' | 'da_ban';
+  /** Màu nền từ Google Sheets:
+   *  'xanh' = độc quyền của công ty  (green cell)
+   *  'vang'  = căn của công ty khác — cần Admin kiểm tra  (yellow cell)
+   *  null   = bình thường
+   */
+  mauO?: 'xanh' | 'vang' | null;
 }
 
 // === API Response ===

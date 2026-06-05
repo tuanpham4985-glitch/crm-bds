@@ -2074,6 +2074,41 @@ function isSectionLabel(raw: unknown): boolean {
   return k !== 'floor' && k !== 'skip';
 }
 
+/**
+ * Đọc màu nền ô Google Sheets và phân loại:
+ *   'xanh' — ô màu xanh lá = căn độc quyền của công ty
+ *   'vang'  — ô màu vàng   = căn công ty khác, cần Admin kiểm tra
+ *   null   — màu trắng / không xác định
+ *
+ * backgroundColor được trả về sau loadCells() từ effectiveFormat.
+ * Mỗi kênh RGB là số thực [0, 1]. Trắng = {r:1, g:1, b:1}.
+ */
+function detectCellColor(
+  cell: import('google-spreadsheet').GoogleSpreadsheetCell,
+): 'xanh' | 'vang' | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bg = (cell as any).backgroundColor as
+    | { red?: number; green?: number; blue?: number }
+    | null
+    | undefined;
+  if (!bg) return null;
+
+  const r = bg.red   ?? 1;
+  const g = bg.green ?? 1;
+  const b = bg.blue  ?? 1;
+
+  // Trắng / gần trắng → bỏ qua
+  if (r >= 0.95 && g >= 0.95 && b >= 0.95) return null;
+
+  // Vàng: R cao + G cao + B thấp (ưu tiên check trước green vì yellow cũng có G cao)
+  if (r > 0.65 && g > 0.65 && b < 0.5) return 'vang';
+
+  // Xanh lá: G trội hơn R và B một cách rõ ràng
+  if (g > 0.45 && g > r + 0.05 && g > b + 0.05) return 'xanh';
+
+  return null;
+}
+
 function parseGridTab(
   sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
   tower: string,
@@ -2139,6 +2174,8 @@ function parseGridTab(
         if (seen.has(maCan)) continue;
         seen.add(maCan);
 
+        const mauO = detectCellColor(sheet.getCell(row, col));
+
         units.push({
           maCan, tower, tang, canSo: cs,
           loaiCan:     loaiCanArr[col],
@@ -2148,6 +2185,7 @@ function parseGridTab(
           view:        viewArr[col],
           giaKS:       scalePrice(n),
           trangThai:   'con_hang',
+          mauO,
         });
       }
     }

@@ -325,10 +325,18 @@ const inputStyle: React.CSSProperties = {
 
 // ─── Unit cell ────────────────────────────────────────────────────────────────
 
+// Màu nền / chữ / viền theo mauO (màu từ Google Sheets)
+const MAU_O_COLOR: Record<'xanh' | 'vang', { bg: string; text: string; border: string }> = {
+  xanh: { bg: '#6aa84f', text: '#ffffff', border: '#4a7c35' }, // green — độc quyền
+  vang: { bg: '#ffd966', text: '#4a3900', border: '#d4a800' }, // yellow — công ty khác
+};
+
 function UnitCell({ unit, onClick, isSelected }: { unit: StackingUnit; onClick: () => void; isSelected: boolean }) {
-  const c = typeColor(unit.loaiCan);
-  const sold = unit.trangThai === 'da_ban';
-  const inPr = unit.trangThai === 'dang_xem';
+  const loaiColor = typeColor(unit.loaiCan);
+  const mauColor  = unit.mauO ? MAU_O_COLOR[unit.mauO] : null;
+  const c         = mauColor ?? loaiColor; // màu GSheets có ưu tiên cao hơn loaiCan
+  const sold      = unit.trangThai === 'da_ban';
+  const inPr      = unit.trangThai === 'dang_xem';
   return (
     <td style={{ padding: '3px 4px', minWidth: 78 }}>
       <button onClick={onClick} style={{
@@ -589,6 +597,10 @@ export default function StackingPage() {
                   <span key={type} style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{type}</span>
                 ))}
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', textDecoration: 'line-through' }}>Đã bán</span>
+                {/* Ownership colour legend */}
+                <span style={{ width: 1, background: 'var(--border)', borderRadius: 1, margin: '0 2px' }} />
+                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.xanh.bg, color: MAU_O_COLOR.xanh.text, border: `1px solid ${MAU_O_COLOR.xanh.border}` }}>Độc quyền</span>
+                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>Cty khác ⚠</span>
               </div>
 
               <div style={{ overflowX: 'auto' }}>
@@ -640,10 +652,22 @@ export default function StackingPage() {
               </div>
               <button onClick={() => setSelectedUnit(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }}><X size={16} /></button>
             </div>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 14, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: selectedUnit.trangThai === 'con_hang' ? '#dcfce7' : selectedUnit.trangThai === 'da_ban' ? '#fee2e2' : '#fef3c7', color: selectedUnit.trangThai === 'con_hang' ? '#15803d' : selectedUnit.trangThai === 'da_ban' ? '#dc2626' : '#92400e' }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[selectedUnit.trangThai] }} />
-              {STATUS_LABEL[selectedUnit.trangThai]}
-            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: selectedUnit.trangThai === 'con_hang' ? '#dcfce7' : selectedUnit.trangThai === 'da_ban' ? '#fee2e2' : '#fef3c7', color: selectedUnit.trangThai === 'con_hang' ? '#15803d' : selectedUnit.trangThai === 'da_ban' ? '#dc2626' : '#92400e' }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[selectedUnit.trangThai] }} />
+                {STATUS_LABEL[selectedUnit.trangThai]}
+              </span>
+              {selectedUnit.mauO === 'xanh' && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: MAU_O_COLOR.xanh.bg, color: MAU_O_COLOR.xanh.text, border: `1px solid ${MAU_O_COLOR.xanh.border}` }}>
+                  Độc quyền
+                </span>
+              )}
+              {selectedUnit.mauO === 'vang' && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>
+                  ⚠ Cần Admin kiểm tra
+                </span>
+              )}
+            </div>
             {[['Loại căn', selectedUnit.loaiCan], ['DT Tim', fmtArea(selectedUnit.dtTim)], ['DT Thông thuỷ', fmtArea(selectedUnit.dtThongThuy)], ['Hướng', selectedUnit.huong], ['View', selectedUnit.view]].map(([label, value]) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: '0.85rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>{label}</span>
