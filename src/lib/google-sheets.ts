@@ -2320,6 +2320,48 @@ function parseListTab(
   return units;
 }
 
+/**
+ * Đọc màu ô từ tab "MÀU_DATA" do GAS script xuất ra.
+ * GAS script (chạy trong Google Sheet) đọc màu nền mỗi cell và ghi vào:
+ *   sheet | row | col | mau   (row/col là 0-based index)
+ *
+ * Trả về Map keyed "{row}_{col}" → 'xanh' | 'vang'
+ * cho đúng sheet tab đang cần.
+ *
+ * Nếu tab MÀU_DATA chưa tồn tại → trả về Map rỗng (không lỗi).
+ */
+async function getMauDataColors(
+  doc: GoogleSpreadsheet,
+  sheetName: string,
+): Promise<Map<string, 'xanh' | 'vang'>> {
+  const colorMap = new Map<string, 'xanh' | 'vang'>();
+  try {
+    const mauSheet = doc.sheetsByTitle['MÀU_DATA'];
+    if (!mauSheet) return colorMap;
+
+    await mauSheet.loadHeaderRow();
+    const rows = await mauSheet.getRows<Record<string, string>>();
+
+    for (const row of rows) {
+      if (row.get('sheet') !== sheetName) continue;
+      const r = parseInt(row.get('row') ?? '');
+      const c = parseInt(row.get('col') ?? '');
+      const m = row.get('mau');
+      if (isNaN(r) || isNaN(c)) continue;
+      if (m === 'xanh' || m === 'vang') {
+        colorMap.set(`${r}_${c}`, m);
+      }
+    }
+
+    if (colorMap.size > 0) {
+      console.log(`[getMauDataColors] "${sheetName}": ${colorMap.size} colored cell(s)`);
+    }
+  } catch {
+    // Tab MÀU_DATA chưa được tạo hoặc có lỗi → tiếp tục không có màu
+  }
+  return colorMap;
+}
+
 export async function getStackingUnits(sheetId: string, project: string, tower: string): Promise<StackingUnit[]> {
   const doc = await getDocBySheetId(sheetId);
 
@@ -2341,14 +2383,11 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
   const rangeA1   = `A1:${colLetter(colLimit)}${rowLimit}`;
   const sheetName = towerSheet ? towerTabName : project;
 
-  // Load cells and fetch colour data in parallel for performance.
-  // fetchSheetColors makes a direct REST call with explicit fields so that
-  // effectiveFormat (which resolves conditional formatting and theme colours)
-  // is always returned, regardless of what the google-spreadsheet library
-  // does or does not cache in _rawData.
+  // Load cells + đọc MÀU_DATA tab (do GAS script xuất ra) song song.
+  // MÀU_DATA chứa: sheet | row | col | mau — per-cell color mapping.
   const [, colorMap] = await Promise.all([
     sheet.loadCells(rangeA1),
-    fetchSheetColors(sheetId, sheetName, rowLimit, colLimit),
+    getMauDataColors(doc, sheetName),
   ]);
 
   if (towerSheet) {
