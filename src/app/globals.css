@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap');
+
 /* ============================================================
    CRM BĐS — Design System
    Modern Light CRM — Calm, Professional, Premium
@@ -433,32 +435,54 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   border-spacing: 0;
 }
 
-/* Header row: sticky theo chiều dọc */
+/* Header row: sticky theo chiều dọc — trục CĂN (ghi xám đậm) */
 .stacking-table thead th {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: #f8fafc;
-  border-bottom: 2px solid #e2e8f0;
+  background: #475569;           /* slate-600 — dark gray axis */
+  color: #ffffff;
+  border-bottom: 2px solid #334155;
   white-space: nowrap;
 }
 
-/* Corner cell TẦNG: freeze cả top + left */
+/* Corner cell TẦNG: freeze cả top + left — hơi tối hơn để phân biệt góc */
 .stacking-table thead th:first-child {
   left: 0;
   z-index: 101;
-  background: #f8fafc;
-  border-right: 2px solid #e2e8f0;
+  background: #334155;           /* slate-700 — góc tối nhất */
+  border-right: 2px solid #263445;
 }
 
-/* Cột TẦNG body: sticky theo chiều ngang — background solid che nội dung cuộn phía sau */
+/* Cột TẦNG body: sticky theo chiều ngang — trục TẦNG (ghi xám đậm) */
 .stacking-table tbody td:first-child {
   position: sticky;
   left: 0;
   z-index: 50;
-  background: #ffffff;           /* fallback; inline style alternating row ghi đè */
-  border-right: 2px solid #e2e8f0;
+  background: #475569;           /* slate-600 — inline style crosshair ghi đè */
+  color: #ffffff;
+  border-right: 2px solid #334155;
 }
+
+/* Scrollbar stacking — hiện mũi tên ghi xám để dễ scroll */
+.stacking-scroll::-webkit-scrollbar            { width: 9px; height: 9px; }
+.stacking-scroll::-webkit-scrollbar-track      { background: #f1f5f9; border-radius: 4px; }
+.stacking-scroll::-webkit-scrollbar-thumb      { background: #94a3b8; border-radius: 4px; border: 2px solid #f1f5f9; }
+.stacking-scroll::-webkit-scrollbar-thumb:hover{ background: #64748b; }
+.stacking-scroll::-webkit-scrollbar-corner     { background: #f1f5f9; }
+/* Arrow buttons (webkit only) */
+.stacking-scroll::-webkit-scrollbar-button:single-button {
+  background: #e2e8f0; display: block; height: 9px; width: 9px;
+}
+.stacking-scroll::-webkit-scrollbar-button:single-button:hover { background: #94a3b8; }
+/* Horizontal left arrow */
+.stacking-scroll::-webkit-scrollbar-button:horizontal:decrement:before { content: '◄'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
+/* Horizontal right arrow */
+.stacking-scroll::-webkit-scrollbar-button:horizontal:increment:before { content: '►'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
+/* Vertical up arrow */
+.stacking-scroll::-webkit-scrollbar-button:vertical:decrement:before { content: '▲'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
+/* Vertical down arrow */
+.stacking-scroll::-webkit-scrollbar-button:vertical:increment:before { content: '▼'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
 
 /* === Badge === */
 .badge {

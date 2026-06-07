@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Grid3x3, RefreshCw, X, Settings, Plus, Trash2,
   CheckCircle, AlertCircle, ChevronDown, Loader2, Copy,
@@ -358,6 +358,7 @@ function UnitCell({ unit, onClick, isSelected, hlBg }: {
         border: `1.5px solid ${border}`,
         background: btnBg, color: text,
         fontSize: 11, fontWeight: 600, cursor: 'pointer',
+        fontFamily: '"Be Vietnam Pro", system-ui, -apple-system, sans-serif',
         textDecoration: sold ? 'line-through' : 'none',
         opacity: sold ? 0.5 : inPr ? 0.78 : 1,
         outline: isSelected ? '2px solid var(--primary)' : 'none', outlineOffset: 1,
@@ -399,6 +400,7 @@ export default function StackingPage() {
   const [loadingTowers, setLoadingTowers]   = useState(false);
   const [loadingUnits, setLoadingUnits]     = useState(false);
   const [unitsError, setUnitsError]         = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // 1. Load config list on mount
   useEffect(() => {
@@ -536,6 +538,8 @@ export default function StackingPage() {
     : selectedUnit.mauO === 'xanh' ? '#dcfce7'
     : selectedUnit.mauO === 'vang' ? '#fef9c3'
     : '#eef2ff';
+  // Crosshair trên axis tối (TẦNG/CĂN): tô sáng hơn nền slate-600 → slate-400
+  const hlAxisSticky = selectedUnit ? '#64748b' : undefined;
 
   if (loadingConfigs) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Đang khởi tạo...</div>;
 
@@ -608,7 +612,7 @@ export default function StackingPage() {
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '0 12px 14px' }}>
+        <div ref={scrollRef} className="stacking-scroll" style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '0 12px 14px' }}>
 
           {/* Empty state: no configs */}
           {configs.length === 0 && (
@@ -658,22 +662,30 @@ export default function StackingPage() {
           {/* Grid */}
           {!loadingUnits && units.length > 0 && (
             <>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, paddingTop: 14 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, paddingTop: 14 }}>
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.xanh.bg, color: MAU_O_COLOR.xanh.text, border: `1px solid ${MAU_O_COLOR.xanh.border}` }}>Độc quyền</span>
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>Check Admin</span>
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', textDecoration: 'line-through' }}>Đã bán</span>
+                {/* Scroll arrow buttons */}
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
+                  <button title="Cuộn lên" onClick={() => scrollRef.current?.scrollBy({ top: -180, behavior: 'smooth' })} style={{ padding: '3px 7px', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'pointer', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>▲</button>
+                  <button title="Cuộn xuống" onClick={() => scrollRef.current?.scrollBy({ top: 180, behavior: 'smooth' })} style={{ padding: '3px 7px', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'pointer', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>▼</button>
+                  <div style={{ width: 1, background: '#e2e8f0', margin: '0 2px' }} />
+                  <button title="Cuộn trái" onClick={() => scrollRef.current?.scrollBy({ left: -200, behavior: 'smooth' })} style={{ padding: '3px 7px', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'pointer', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>◄</button>
+                  <button title="Cuộn phải" onClick={() => scrollRef.current?.scrollBy({ left: 200, behavior: 'smooth' })} style={{ padding: '3px 7px', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'pointer', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>►</button>
+                </div>
               </div>
 
                 <table className="stacking-table">
                   <thead>
                     <tr>
                       {/* Corner: CSS class xử lý sticky top+left+z-index+background */}
-                      <th style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-title)' }}>TẦNG</th>
+                      <th style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: '#ffffff' }}>TẦNG</th>
                       {columns.map((canSo, ci) => {
                         const isHlTh = xColIdx >= 0 && ci === xColIdx;
                         return (
-                          <th key={canSo} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 82, ...(isHlTh ? { background: hlSticky } : {}) }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-title)' }}>{canSo}</div>
+                          <th key={canSo} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 82, ...(isHlTh ? { background: hlAxisSticky } : {}) }}>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ffffff' }}>{canSo}</div>
                           </th>
                         );
                       })}
@@ -684,8 +696,8 @@ export default function StackingPage() {
                       const isHlRow = xFloorIdx >= 0 && fi === xFloorIdx;
                       return (
                         <tr key={tang} style={{ background: fi % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
-                          {/* Cột TẦNG: CSS class xử lý sticky left+z-index; background theo crosshair hoặc alternating */}
-                          <td style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-title)', background: isHlRow ? hlSticky : fi % 2 === 0 ? '#ffffff' : '#f9fafb', borderTop: '1px solid #e2e8f0' }}>{tang}</td>
+                          {/* Cột TẦNG: CSS sets dark gray base; inline chỉ ghi đè khi crosshair */}
+                          <td style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: '#ffffff', background: isHlRow ? hlAxisSticky : undefined, borderTop: '1px solid #334155' }}>{tang}</td>
                           {columns.map((canSo, ci) => {
                             const unit = unitMap[tang]?.[canSo];
                             // Hàng: cùng tầng, cột từ 0 đến xColIdx (tức từ ô đó hất sang trái)
