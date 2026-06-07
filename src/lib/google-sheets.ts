@@ -2224,11 +2224,23 @@ function parseGridTab(
       for (let col = 1; col < colLimit; col++)
         dtttArr[col] = num(sheet.getCell(row, col).value);
     } else if (kind === 'huong' && hasSect) {
-      for (let col = 1; col < colLimit; col++)
-        huongArr[col] = str(sheet.getCell(row, col).value).trim();
+      // Forward-fill để xử lý merged cells: cell đầu của vùng merge có giá trị,
+      // các cell còn lại trả về null → kéo giá trị sang phải cho đến khi gặp giá trị mới
+      let lastHuong = '';
+      for (let col = 1; col < colLimit; col++) {
+        const v = str(sheet.getCell(row, col).value).trim();
+        if (v) lastHuong = v;
+        huongArr[col] = lastHuong;
+      }
     } else if (kind === 'view' && hasSect) {
-      for (let col = 1; col < colLimit; col++)
-        viewArr[col] = str(sheet.getCell(row, col).value).trim();
+      // Forward-fill: dòng VIEW thường dùng merged cells ("Sông", "Nội khu", "Nhạc nước"...)
+      // Chỉ cell đầu vùng merge có giá trị; forward-fill để lan sang các cột bên phải
+      let lastView = '';
+      for (let col = 1; col < colLimit; col++) {
+        const v = str(sheet.getCell(row, col).value).trim();
+        if (v) lastView = v;
+        viewArr[col] = lastView;
+      }
     } else if (kind === 'mau_o' && hasSect) {
       // Hàng "MÀU": mỗi cột ghi "ĐQ" (độc quyền) hoặc "CA" (check admin)
       for (let col = 1; col < colLimit; col++) {
