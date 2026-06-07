@@ -17,8 +17,12 @@
 /* Logo */
 .logo {
   padding: 0;
-  border-bottom: 1px solid var(--border-lighter);
+  border-bottom: 2px solid var(--border-light);
   margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
+  /* Drop shadow tạo chiều sâu — tách logo khỏi nav */
+  box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.12);
 }
 
 .logoIcon {
@@ -93,12 +97,22 @@
   color: var(--text-body);
   text-decoration: none;
   letter-spacing: -0.005em;
-  transition: all var(--transition-fast);
+  /* background/color fast; transform dùng spring easing — hơi vọt qua rồi về */
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .navItem:hover {
   background: var(--bg-page);
   color: var(--text-title);
+  transform: translateX(4px);
+}
+
+.navItem.active {
+  /* active item không cần slide */
+  transform: translateX(0) !important;
 }
 
 .navItem.active {
@@ -127,12 +141,16 @@
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  transition: all var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .groupHeader:hover {
   background: var(--bg-page);
   color: var(--text-title);
+  transform: translateX(3px);
 }
 
 .chevron {
@@ -354,12 +372,16 @@
   cursor: pointer;
   font-family: var(--font-family);
   letter-spacing: -0.005em;
-  transition: all var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .logoutBtn:hover {
   background: var(--danger-bg);
   color: var(--danger-text);
+  transform: translateX(3px);
 }
 
 .installBtn {
