@@ -643,34 +643,32 @@ export default function StackingPage() {
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', textDecoration: 'line-through' }}>Đã bán</span>
               </div>
 
-              <div style={{ overflowX: 'auto' }}>
                 <table style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                   <thead>
                     <tr>
-                      <th style={thFloorStyle}>TẦNG</th>
-                      {columns.map(canSo => {
-                        return (
-                          <th key={canSo} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 82, borderBottom: '2px solid var(--border)', background: 'var(--bg-card)' }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-title)' }}>{canSo}</div>
-                          </th>
-                        );
-                      })}
+                      {/* Corner cell: sticky cả top lẫn left → không bị che khi scroll 2 chiều */}
+                      <th style={{ ...thFloorStyle, position: 'sticky', top: 0, left: 0, zIndex: 30, background: 'var(--bg-card)', boxShadow: '1px 2px 0 var(--border)' }}>TẦNG</th>
+                      {columns.map(canSo => (
+                        <th key={canSo} style={{ position: 'sticky', top: 0, zIndex: 20, padding: '6px 4px', textAlign: 'center', minWidth: 82, background: 'var(--bg-card)', borderBottom: '2px solid var(--border)', boxShadow: '0 2px 0 var(--border)' }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-title)' }}>{canSo}</div>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {floors.map((tang, fi) => (
                       <tr key={tang} style={{ background: fi % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
-                        <td style={{ ...thFloorStyle, background: fi % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-secondary, #f9fafb)', borderTop: '1px solid var(--border)' }}>{tang}</td>
+                        {/* Cột TẦNG: sticky left → hiển thị khi scroll ngang */}
+                        <td style={{ ...thFloorStyle, position: 'sticky', left: 0, zIndex: 10, background: fi % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-secondary, #f9fafb)', borderTop: '1px solid var(--border)' }}>{tang}</td>
                         {columns.map(canSo => {
                           const unit = unitMap[tang]?.[canSo];
-                          if (!unit) return <td key={canSo} style={{ padding: '3px 4px', minWidth: 78 }}><div style={{ height: 38, borderRadius: 6, border: '1px dashed #e5e7eb' }} /></td>;
+                          if (!unit) return <td key={canSo} style={{ padding: '3px 4px', minWidth: 82 }}><div style={{ height: 46, borderRadius: 6, border: '1px dashed #e5e7eb' }} /></td>;
                           return <UnitCell key={canSo} unit={unit} isSelected={selectedUnit?.maCan === unit.maCan} onClick={() => setSelectedUnit(u => u?.maCan === unit.maCan ? null : unit)} />;
                         })}
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
             </>
           )}
         </div>
