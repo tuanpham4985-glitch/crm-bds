@@ -587,7 +587,7 @@ export default function StackingPage() {
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflow: 'auto', padding: '14px 12px' }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px' }}>
 
           {/* Empty state: no configs */}
           {configs.length === 0 && (
@@ -637,7 +637,7 @@ export default function StackingPage() {
           {/* Grid */}
           {!loadingUnits && units.length > 0 && (
             <>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, paddingTop: 14 }}>
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.xanh.bg, color: MAU_O_COLOR.xanh.text, border: `1px solid ${MAU_O_COLOR.xanh.border}` }}>Độc quyền</span>
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>Check Admin</span>
                 <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', textDecoration: 'line-through' }}>Đã bán</span>
