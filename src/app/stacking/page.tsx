@@ -342,10 +342,13 @@ function UnitCell({ unit, onClick, isSelected }: { unit: StackingUnit; onClick: 
   const text   = sold ? '#9ca3af' : (mauColor?.text   ?? 'var(--text-body)');
   const border = isSelected ? 'var(--primary)' : (mauColor?.border ?? 'var(--border)');
 
+  // Màu badge loaiCan — dùng typeColor của unit chính nó (đúng theo section)
+  const tc = typeColor(unit.loaiCan);
+
   return (
-    <td style={{ padding: '3px 4px', minWidth: 78 }}>
+    <td style={{ padding: '3px 4px', minWidth: 82 }}>
       <button onClick={onClick} style={{
-        width: '100%', padding: '5px 6px', borderRadius: 6,
+        width: '100%', padding: '4px 6px', borderRadius: 6,
         border: `1.5px solid ${border}`,
         background: bg, color: text,
         fontSize: 11, fontWeight: 600, cursor: 'pointer',
@@ -355,6 +358,18 @@ function UnitCell({ unit, onClick, isSelected }: { unit: StackingUnit; onClick: 
         position: 'relative', textAlign: 'center', lineHeight: 1.3,
       }}>
         {inPr && <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: '#f59e0b' }} />}
+        {/* Badge loaiCan — mỗi ô tự hiện loại CĂN đúng theo section của tầng đó */}
+        {unit.loaiCan && !sold && (
+          <span style={{
+            display: 'block', fontSize: 8, fontWeight: 700, lineHeight: 1.4,
+            padding: '0 3px', borderRadius: 3, marginBottom: 2,
+            background: mauColor ? 'rgba(255,255,255,0.35)' : tc.bg,
+            color: mauColor ? text : tc.text,
+            border: `1px solid ${mauColor ? 'rgba(0,0,0,0.12)' : tc.border}`,
+          }}>
+            {unit.loaiCan}
+          </span>
+        )}
         {fmtGia(unit.giaKS)}
         <span style={{ display: 'block', fontSize: 9, opacity: 0.7, fontWeight: 400 }}>tỷ</span>
       </button>
@@ -462,8 +477,33 @@ export default function StackingPage() {
   }, [units]);
 
   const colMeta = useMemo(() => {
+    // Mỗi cột (canSo) có thể chứa nhiều section với loaiCan/dtTim KHÁC NHAU
+    // (vd: cột 16 → section 1 = "1BR" 51m², section 2 = "3BR" 95m², section 3 = "DUPLEX")
+    // → Thu thập TẤT CẢ giá trị unique để hiện đầy đủ trong header
+    const firstUnit: Record<string, StackingUnit> = {};
+    const loaiCanSets: Record<string, Set<string>> = {};
+    const dtTimSets: Record<string, Set<number>> = {};
+
+    for (const u of units) {
+      if (!firstUnit[u.canSo]) firstUnit[u.canSo] = u;
+      if (!loaiCanSets[u.canSo]) loaiCanSets[u.canSo] = new Set();
+      if (!dtTimSets[u.canSo]) dtTimSets[u.canSo] = new Set();
+      if (u.loaiCan) loaiCanSets[u.canSo].add(u.loaiCan);
+      if (u.dtTim > 0) dtTimSets[u.canSo].add(Math.round(u.dtTim * 10)); // tránh float dupe
+    }
+
     const m: Record<string, { loaiCan: string; dtTim: number; huong: string; view: string }> = {};
-    for (const u of units) if (!m[u.canSo]) m[u.canSo] = { loaiCan: u.loaiCan, dtTim: u.dtTim, huong: u.huong, view: u.view };
+    for (const canSo of Object.keys(firstUnit)) {
+      const u = firstUnit[canSo];
+      m[canSo] = {
+        // Nếu nhiều loại → hiện tất cả, vd "1BR / 3BR / DUPLEX"
+        loaiCan: Array.from(loaiCanSets[canSo]).join(' / '),
+        // Chỉ hiện dtTim nếu tất cả unit trong cột có cùng giá trị
+        dtTim: dtTimSets[canSo].size === 1 ? u.dtTim : 0,
+        huong: u.huong,
+        view: u.view,
+      };
+    }
     return m;
   }, [units]);
 
@@ -612,11 +652,13 @@ export default function StackingPage() {
                         const m = colMeta[canSo];
                         const c = typeColor(m?.loaiCan || '');
                         return (
-                          <th key={canSo} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 78, borderBottom: '2px solid var(--border)', background: 'var(--bg-card)' }}>
+                          <th key={canSo} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 82, borderBottom: '2px solid var(--border)', background: 'var(--bg-card)' }}>
                             <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-title)' }}>{canSo}</div>
                             {m && <>
-                              <div style={{ display: 'inline-block', marginTop: 2, padding: '1px 5px', borderRadius: 4, fontSize: '0.63rem', background: c.bg, color: c.text, fontWeight: 600 }}>{m.loaiCan}</div>
-                              <div style={{ fontSize: '0.63rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtArea(m.dtTim)}</div>
+                              {/* Badge loaiCan: nếu nhiều loại → tô neutral, nếu 1 loại → tô màu */}
+                              <div style={{ display: 'inline-block', marginTop: 2, padding: '1px 5px', borderRadius: 4, fontSize: '0.63rem', background: c.bg, color: c.text, fontWeight: 600, maxWidth: 76, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.loaiCan}>{m.loaiCan}</div>
+                              {/* DTTT chỉ hiện khi tất cả tầng trong cột này có cùng diện tích */}
+                              {m.dtTim > 0 && <div style={{ fontSize: '0.63rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtArea(m.dtTim)}</div>}
                               <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{m.huong}{m.view ? ` · ${m.view}` : ''}</div>
                             </>}
                           </th>
