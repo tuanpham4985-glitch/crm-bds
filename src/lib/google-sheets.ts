@@ -2047,7 +2047,7 @@ function scalePrice(raw: unknown): number {
 //
 // Sheet có thể có nhiều section lặp lại (tầng đặc biệt, tầng thường, tầng cao DULEX)
 
-type RowKind = 'tang_can' | 'loai_can' | 'dttt' | 'huong' | 'view' | 'floor' | 'skip';
+type RowKind = 'tang_can' | 'loai_can' | 'dttt' | 'huong' | 'view' | 'mau_o' | 'floor' | 'skip';
 
 function classifyColA(raw: unknown): RowKind {
   const s = str(raw).trim();
@@ -2063,6 +2063,9 @@ function classifyColA(raw: unknown): RowKind {
   if (u === 'HƯỚNG' || u === 'HUONG' || u === 'HƯỚNG') return 'huong';
   // VIEW
   if (u === 'VIEW') return 'view';
+  // MÀU — hàng đánh dấu loại đặc biệt: "ĐQ" = độc quyền, "CA" = check admin
+  // Nhận cả dạng có dấu và không dấu
+  if (u === 'MÀU' || u === 'MAU' || u === 'MÀUO' || u === 'MAUO') return 'mau_o';
   // Số tầng
   if (isFloorLabel(s)) return 'floor';
   return 'skip';
@@ -2141,31 +2144,7 @@ async function fetchSheetColors(
     // the one matching our tab name rather than blindly taking sheets[0].
     const targetSheet = data.sheets?.find(s => s.properties?.title === sheetName);
     const rowData = targetSheet?.data?.[0]?.rowData;
-    if (!rowData) {
-      const titles = data.sheets?.map(s => s.properties?.title).join(', ') ?? '(none)';
-      console.log(`[fetchSheetColors] "${sheetName}": NOT FOUND — available: ${titles}`);
-      return colorMap;
-    }
-
-    // ── TEMP DEBUG ─────────────────────────────────────────────────────────
-    // Count cells by format type and show first few non-empty effectiveFormat
-    // objects so we can see exactly what the API is returning.
-    let nEF = 0, nBG = 0, nTheme = 0, nRGB = 0;
-    rowData.forEach((row, rowIdx) => {
-      row.values?.forEach((cell, colIdx) => {
-        const ef = cell.effectiveFormat;
-        if (!ef || Object.keys(ef).length === 0) return;
-        nEF++;
-        if (ef.backgroundColor && Object.keys(ef.backgroundColor).length > 0) nBG++;
-        if (ef.backgroundColorStyle?.themeColor) nTheme++;
-        if (ef.backgroundColorStyle?.rgbColor)   nRGB++;
-        if (nEF <= 6) {
-          console.log(`[D] r${rowIdx}c${colIdx} ${JSON.stringify(ef)}`);
-        }
-      });
-    });
-    console.log(`[fetchSheetColors] "${sheetName}": rows=${rowData.length} nEF=${nEF} nBG=${nBG} nTheme=${nTheme} nRGB=${nRGB}`);
-    // ── END TEMP DEBUG ──────────────────────────────────────────────────────
+    if (!rowData) return colorMap;
 
     rowData.forEach((row, rowIdx) => {
       row.values?.forEach((cell, colIdx) => {
@@ -2189,7 +2168,9 @@ async function fetchSheetColors(
       });
     });
 
-    console.log(`[fetchSheetColors] "${sheetName}": ${colorMap.size} colored cell(s) found`);
+    if (colorMap.size > 0) {
+      console.log(`[fetchSheetColors] "${sheetName}": ${colorMap.size} color(s) from API`);
+    }
   } catch (err) {
     console.error('[fetchSheetColors] Error:', err);
   }
@@ -2209,6 +2190,11 @@ function parseGridTab(
   const dtttArr    = new Array<number>(colLimit).fill(0);
   const huongArr   = new Array<string>(colLimit).fill('');
   const viewArr    = new Array<string>(colLimit).fill('');
+  // mauOArr: đọc từ hàng "MÀU" trong sheet
+  //   'xanh' = "ĐQ" / "DQ"  → Hàng Độc Quyền  (màu xanh #00ff00)
+  //   'vang'  = "CA"          → Check Admin      (màu vàng #ffff00)
+  //   null   = không đánh dấu
+  const mauOArr = new Array<'xanh' | 'vang' | null>(colLimit).fill(null);
   let hasSect      = false;
 
   const units: StackingUnit[] = [];
@@ -2225,6 +2211,7 @@ function parseGridTab(
       dtttArr.fill(0);
       huongArr.fill('');
       viewArr.fill('');
+      mauOArr.fill(null);
       for (let col = 1; col < colLimit; col++) {
         const v = str(sheet.getCell(row, col).value).trim();
         // Bỏ qua ô cuối lặp lại nhãn (TẦNG/CĂN, LOẠI CĂN...)
@@ -2242,6 +2229,15 @@ function parseGridTab(
     } else if (kind === 'view' && hasSect) {
       for (let col = 1; col < colLimit; col++)
         viewArr[col] = str(sheet.getCell(row, col).value).trim();
+    } else if (kind === 'mau_o' && hasSect) {
+      // Hàng "MÀU": mỗi cột ghi "ĐQ" (độc quyền) hoặc "CA" (check admin)
+      for (let col = 1; col < colLimit; col++) {
+        const v = str(sheet.getCell(row, col).value).trim().toUpperCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, ''); // bỏ dấu để so sánh
+        mauOArr[col] = (v === 'DQ' || v === 'DOC QUYEN') ? 'xanh'
+                     : (v === 'CA' || v === 'CHECK ADMIN') ? 'vang'
+                     : null;
+      }
     } else if (kind === 'floor' && hasSect) {
       const tang = str(sheet.getCell(row, 0).value).trim();
 
@@ -2262,7 +2258,8 @@ function parseGridTab(
         if (seen.has(maCan)) continue;
         seen.add(maCan);
 
-        const mauO: 'xanh' | 'vang' | null = colorMap.get(`${row}_${col}`) ?? null;
+        // Ưu tiên hàng "MÀU" trong sheet; fallback sang colorMap từ API (nếu có)
+        const mauO: 'xanh' | 'vang' | null = mauOArr[col] ?? colorMap.get(`${row}_${col}`) ?? null;
 
         units.push({
           maCan, tower, tang, canSo: cs,
