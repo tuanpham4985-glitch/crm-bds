@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Geist } from "next/font/google";
+import { Inter, Geist, Be_Vietnam_Pro } from "next/font/google";
 import AppShell from "@/components/layout/AppShell";
 import "./globals.css";
 
@@ -14,6 +14,13 @@ const geist = Geist({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
   variable: "--font-geist",
+  display: "swap",
+});
+
+const beVietnamPro = Be_Vietnam_Pro({
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-be-vietnam",
   display: "swap",
 });
 
@@ -45,7 +52,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi" className={`${inter.variable} ${geist.variable}`}>
+    <html lang="vi" className={`${inter.variable} ${geist.variable} ${beVietnamPro.variable}`}>
       <body>
         <AppShell>{children}</AppShell>
       </body>

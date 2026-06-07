@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Grid3x3, RefreshCw, X, Settings, Plus, Trash2,
   CheckCircle, AlertCircle, ChevronDown, Loader2, Copy,
@@ -400,7 +400,6 @@ export default function StackingPage() {
   const [loadingTowers, setLoadingTowers]   = useState(false);
   const [loadingUnits, setLoadingUnits]     = useState(false);
   const [unitsError, setUnitsError]         = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   // 1. Load config list on mount
   useEffect(() => {
@@ -612,7 +611,7 @@ export default function StackingPage() {
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div ref={scrollRef} className="stacking-scroll" style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '0 12px 14px' }}>
+        <div className="stacking-scroll" style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '0 12px 14px 0' }}>
 
           {/* Empty state: no configs */}
           {configs.length === 0 && (
@@ -662,18 +661,14 @@ export default function StackingPage() {
           {/* Grid */}
           {!loadingUnits && units.length > 0 && (
             <>
+              {/* Legend: 3 badge cùng minWidth để cân xứng */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, paddingTop: 14 }}>
-                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.xanh.bg, color: MAU_O_COLOR.xanh.text, border: `1px solid ${MAU_O_COLOR.xanh.border}` }}>Độc quyền</span>
-                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>Check Admin</span>
-                <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', textDecoration: 'line-through' }}>Đã bán</span>
-                {/* Scroll arrow buttons */}
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
-                  <button title="Cuộn lên" onClick={() => scrollRef.current?.scrollBy({ top: -180, behavior: 'smooth' })} style={{ padding: '3px 7px', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'pointer', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>▲</button>
-                  <button title="Cuộn xuống" onClick={() => scrollRef.current?.scrollBy({ top: 180, behavior: 'smooth' })} style={{ padding: '3px 7px', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'pointer', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>▼</button>
-                  <div style={{ width: 1, background: '#e2e8f0', margin: '0 2px' }} />
-                  <button title="Cuộn trái" onClick={() => scrollRef.current?.scrollBy({ left: -200, behavior: 'smooth' })} style={{ padding: '3px 7px', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'pointer', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>◄</button>
-                  <button title="Cuộn phải" onClick={() => scrollRef.current?.scrollBy({ left: 200, behavior: 'smooth' })} style={{ padding: '3px 7px', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'pointer', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>►</button>
-                </div>
+                {(['xanh', 'vang'] as const).map(mau => (
+                  <span key={mau} style={{ display: 'inline-flex', justifyContent: 'center', minWidth: 92, padding: '3px 10px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR[mau].bg, color: MAU_O_COLOR[mau].text, border: `1px solid ${MAU_O_COLOR[mau].border}` }}>
+                    {mau === 'xanh' ? 'Độc quyền' : 'Check Admin'}
+                  </span>
+                ))}
+                <span style={{ display: 'inline-flex', justifyContent: 'center', minWidth: 92, padding: '3px 10px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#ef4444', color: '#ffffff', border: '1px solid #dc2626', textDecoration: 'line-through' }}>Đã bán</span>
               </div>
 
                 <table className="stacking-table">
@@ -733,7 +728,7 @@ export default function StackingPage() {
               <button onClick={() => setSelectedUnit(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }}><X size={16} /></button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: selectedUnit.trangThai === 'con_hang' ? '#dcfce7' : selectedUnit.trangThai === 'da_ban' ? '#fee2e2' : '#fef3c7', color: selectedUnit.trangThai === 'con_hang' ? '#15803d' : selectedUnit.trangThai === 'da_ban' ? '#dc2626' : '#92400e' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: selectedUnit.trangThai === 'con_hang' ? '#dcfce7' : selectedUnit.trangThai === 'da_ban' ? '#ef4444' : '#fef3c7', color: selectedUnit.trangThai === 'con_hang' ? '#15803d' : selectedUnit.trangThai === 'da_ban' ? '#ffffff' : '#92400e' }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[selectedUnit.trangThai] }} />
                 {STATUS_LABEL[selectedUnit.trangThai]}
               </span>
@@ -781,9 +776,10 @@ export default function StackingPage() {
 }
 
 const selectStyle: React.CSSProperties = {
-  padding: '6px 26px 6px 10px', borderRadius: 6, fontSize: '0.82rem',
-  border: '1px solid var(--border)', background: 'var(--bg-card)',
+  padding: '6px 30px 6px 11px', borderRadius: 10, fontSize: '0.8125rem',
+  border: '1.5px solid #e2e8f0', background: 'var(--bg-card)',
   color: 'var(--text-body)', cursor: 'pointer', appearance: 'none',
+  fontFamily: 'var(--font-family)',
 };
 const chevronStyle: React.CSSProperties = {
   position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
