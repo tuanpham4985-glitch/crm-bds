@@ -649,18 +649,9 @@ export default function StackingPage() {
                     <tr>
                       <th style={thFloorStyle}>TẦNG</th>
                       {columns.map(canSo => {
-                        const m = colMeta[canSo];
-                        const c = typeColor(m?.loaiCan || '');
                         return (
                           <th key={canSo} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 82, borderBottom: '2px solid var(--border)', background: 'var(--bg-card)' }}>
                             <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-title)' }}>{canSo}</div>
-                            {m && <>
-                              {/* Badge loaiCan: nếu nhiều loại → tô neutral, nếu 1 loại → tô màu */}
-                              <div style={{ display: 'inline-block', marginTop: 2, padding: '1px 5px', borderRadius: 4, fontSize: '0.63rem', background: c.bg, color: c.text, fontWeight: 600, maxWidth: 76, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.loaiCan}>{m.loaiCan}</div>
-                              {/* DTTT chỉ hiện khi tất cả tầng trong cột này có cùng diện tích */}
-                              {m.dtTim > 0 && <div style={{ fontSize: '0.63rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtArea(m.dtTim)}</div>}
-                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{m.huong}{m.view ? ` · ${m.view}` : ''}</div>
-                            </>}
                           </th>
                         );
                       })}
@@ -710,7 +701,7 @@ export default function StackingPage() {
                 </span>
               )}
             </div>
-            {[['Loại căn', selectedUnit.loaiCan], ['DT Tim', fmtArea(selectedUnit.dtTim)], ['DT Thông thuỷ', fmtArea(selectedUnit.dtThongThuy)], ['Hướng', selectedUnit.huong], ['View', selectedUnit.view]].map(([label, value]) => (
+            {[['Loại căn', selectedUnit.loaiCan], ['DT Thông thuỷ', fmtArea(selectedUnit.dtThongThuy)], ['Hướng', selectedUnit.huong], ['View', selectedUnit.view]].map(([label, value]) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: '0.85rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>{label}</span>
                 <span style={{ fontWeight: 600, color: 'var(--text-body)' }}>{value || '—'}</span>
