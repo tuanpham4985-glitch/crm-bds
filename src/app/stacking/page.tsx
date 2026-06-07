@@ -338,9 +338,9 @@ function UnitCell({ unit, onClick, isSelected }: { unit: StackingUnit; onClick: 
   const inPr     = unit.trangThai === 'dang_xem';
 
   // Chỉ tô màu khi có mauO từ GSheets; còn lại để trắng/neutral
-  const bg     = sold ? '#f3f4f6' : (mauColor?.bg     ?? 'var(--bg-card)');
-  const text   = sold ? '#9ca3af' : (mauColor?.text   ?? 'var(--text-body)');
-  const border = isSelected ? 'var(--primary)' : (mauColor?.border ?? 'var(--border)');
+  const bg     = sold ? '#f3f4f6' : (mauColor?.bg     ?? '#ffffff');
+  const text   = sold ? '#9ca3af' : (mauColor?.text   ?? '#475569');
+  const border = isSelected ? '#6366f1' : (mauColor?.border ?? '#e2e8f0');
 
   // Màu badge loaiCan — dùng typeColor của unit chính nó (đúng theo section)
   const tc = typeColor(unit.loaiCan);
@@ -587,7 +587,7 @@ export default function StackingPage() {
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '0 12px 14px' }}>
 
           {/* Empty state: no configs */}
           {configs.length === 0 && (

@@ -7,6 +7,7 @@
 :root {
   /* Page backgrounds */
   --bg-page: #f8fafc;
+  --bg-card: #ffffff;        /* card / panel / input background */
   --bg-surface: #ffffff;
   --bg-surface-hover: #fafbfd;
   --border-light: #e2e8f0;
@@ -421,34 +422,42 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
 }
 
 /* === Stacking Board Table (freeze header + first column) === */
+/*
+ * Yêu cầu bắt buộc để freeze pane hoạt động trên mọi dự án:
+ *   - Scroll container bọc table: overflow:auto + min-width:0 (khi là flex item)
+ *   - Table: border-collapse:separate (bắt buộc để sticky trên td/th hoạt động)
+ *   - Sticky cells: background solid hardcode (không dùng CSS var → tránh transparent)
+ */
 .stacking-table {
   border-collapse: separate;
   border-spacing: 0;
 }
 
-/* Header row: sticky top, nền solid (không dùng CSS variable để tránh transparent) */
+/* Header row: sticky theo chiều dọc */
 .stacking-table thead th {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: #f8fafc;           /* giống .data-table thead th */
+  background: #f8fafc;
   border-bottom: 2px solid #e2e8f0;
   white-space: nowrap;
 }
 
-/* Corner cell TẦNG: freeze cả 2 chiều */
+/* Corner cell TẦNG: freeze cả top + left */
 .stacking-table thead th:first-child {
   left: 0;
-  z-index: 101;                  /* cao hơn các th thông thường */
-  border-right: 1px solid #e2e8f0;
+  z-index: 101;
+  background: #f8fafc;
+  border-right: 2px solid #e2e8f0;
 }
 
-/* Cột TẦNG trong data rows: sticky left */
+/* Cột TẦNG body: sticky theo chiều ngang — background solid che nội dung cuộn phía sau */
 .stacking-table tbody td:first-child {
   position: sticky;
   left: 0;
   z-index: 50;
-  border-right: 1px solid #e2e8f0;
+  background: #ffffff;           /* fallback; inline style alternating row ghi đè */
+  border-right: 2px solid #e2e8f0;
 }
 
 /* === Badge === */
