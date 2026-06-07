@@ -332,7 +332,10 @@ const MAU_O_COLOR: Record<'xanh' | 'vang', { bg: string; text: string; border: s
   vang: { bg: '#ffff00', text: '#5c3d00', border: '#ccaa00' }, // #ffff00 — CHECK ADMIN
 };
 
-function UnitCell({ unit, onClick, isSelected }: { unit: StackingUnit; onClick: () => void; isSelected: boolean }) {
+function UnitCell({ unit, onClick, isSelected, hlBg }: {
+  unit: StackingUnit; onClick: () => void; isSelected: boolean;
+  hlBg?: string; // crosshair highlight background
+}) {
   const mauColor = unit.mauO ? MAU_O_COLOR[unit.mauO] : null;
   const sold     = unit.trangThai === 'da_ban';
   const inPr     = unit.trangThai === 'dang_xem';
@@ -345,12 +348,15 @@ function UnitCell({ unit, onClick, isSelected }: { unit: StackingUnit; onClick: 
   // Màu badge loaiCan — dùng typeColor của unit chính nó (đúng theo section)
   const tc = typeColor(unit.loaiCan);
 
+  // Crosshair: ô không có màu riêng → tô hlBg lên cả button; ô có màu (xanh/vàng) → chỉ tô viền td
+  const btnBg = (!isSelected && hlBg && !mauColor && !sold) ? hlBg : bg;
+
   return (
-    <td style={{ padding: '3px 4px', minWidth: 82 }}>
+    <td style={{ padding: '3px 4px', minWidth: 82, background: !isSelected && hlBg ? hlBg : undefined }}>
       <button onClick={onClick} style={{
         width: '100%', padding: '4px 6px', borderRadius: 6,
         border: `1.5px solid ${border}`,
-        background: bg, color: text,
+        background: btnBg, color: text,
         fontSize: 11, fontWeight: 600, cursor: 'pointer',
         textDecoration: sold ? 'line-through' : 'none',
         opacity: sold ? 0.5 : inPr ? 0.78 : 1,
@@ -516,6 +522,21 @@ export default function StackingPage() {
   const projects = useMemo(() => [...new Set(towers.map(t => t.project))].sort(), [towers]);
   const towersForProject = useMemo(() => towers.filter(t => t.project === project).map(t => t.tower), [towers, project]);
 
+  // ── Crosshair highlight ───────────────────────────────────────────────────
+  // Khi click 1 ô: tô màu nhạt sang trái (cùng hàng, từ ô đó về TẦNG)
+  //                              và lên trên (cùng cột, từ ô đó lên header)
+  const xFloorIdx = selectedUnit ? floors.indexOf(selectedUnit.tang)   : -1;
+  const xColIdx   = selectedUnit ? columns.indexOf(selectedUnit.canSo) : -1;
+  // Màu cell (semi-transparent) và màu sticky (solid) — theo mauO của unit đang chọn
+  const hlCell   = !selectedUnit ? ''
+    : selectedUnit.mauO === 'xanh' ? 'rgba(0,220,80,0.09)'
+    : selectedUnit.mauO === 'vang' ? 'rgba(255,220,0,0.11)'
+    : 'rgba(99,102,241,0.07)';
+  const hlSticky = !selectedUnit ? ''
+    : selectedUnit.mauO === 'xanh' ? '#dcfce7'
+    : selectedUnit.mauO === 'vang' ? '#fef9c3'
+    : '#eef2ff';
+
   if (loadingConfigs) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Đang khởi tạo...</div>;
 
   return (
@@ -648,25 +669,41 @@ export default function StackingPage() {
                     <tr>
                       {/* Corner: CSS class xử lý sticky top+left+z-index+background */}
                       <th style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-title)' }}>TẦNG</th>
-                      {columns.map(canSo => (
-                        <th key={canSo} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 82 }}>
-                          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-title)' }}>{canSo}</div>
-                        </th>
-                      ))}
+                      {columns.map((canSo, ci) => {
+                        const isHlTh = xColIdx >= 0 && ci === xColIdx;
+                        return (
+                          <th key={canSo} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 82, ...(isHlTh ? { background: hlSticky } : {}) }}>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-title)' }}>{canSo}</div>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
-                    {floors.map((tang, fi) => (
-                      <tr key={tang} style={{ background: fi % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
-                        {/* Cột TẦNG: CSS class xử lý sticky left+z-index; background inline vì alternating */}
-                        <td style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-title)', background: fi % 2 === 0 ? '#ffffff' : '#f9fafb', borderTop: '1px solid #e2e8f0' }}>{tang}</td>
-                        {columns.map(canSo => {
-                          const unit = unitMap[tang]?.[canSo];
-                          if (!unit) return <td key={canSo} style={{ padding: '3px 4px', minWidth: 82 }}><div style={{ height: 46, borderRadius: 6, border: '1px dashed #e5e7eb' }} /></td>;
-                          return <UnitCell key={canSo} unit={unit} isSelected={selectedUnit?.maCan === unit.maCan} onClick={() => setSelectedUnit(u => u?.maCan === unit.maCan ? null : unit)} />;
-                        })}
-                      </tr>
-                    ))}
+                    {floors.map((tang, fi) => {
+                      const isHlRow = xFloorIdx >= 0 && fi === xFloorIdx;
+                      return (
+                        <tr key={tang} style={{ background: fi % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
+                          {/* Cột TẦNG: CSS class xử lý sticky left+z-index; background theo crosshair hoặc alternating */}
+                          <td style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-title)', background: isHlRow ? hlSticky : fi % 2 === 0 ? '#ffffff' : '#f9fafb', borderTop: '1px solid #e2e8f0' }}>{tang}</td>
+                          {columns.map((canSo, ci) => {
+                            const unit = unitMap[tang]?.[canSo];
+                            // Hàng: cùng tầng, cột từ 0 đến xColIdx (tức từ ô đó hất sang trái)
+                            const isRowHl = isHlRow && ci <= xColIdx;
+                            // Cột: cùng canSo, tầng từ 0 đến xFloorIdx (tức từ ô đó hất lên trên)
+                            const isColHl = xColIdx >= 0 && ci === xColIdx && fi <= xFloorIdx;
+                            const isHl    = isRowHl || isColHl;
+                            if (!unit) return (
+                              <td key={canSo} style={{ padding: '3px 4px', minWidth: 82, background: isHl ? hlCell : undefined }}>
+                                <div style={{ height: 46, borderRadius: 6, border: '1px dashed #e5e7eb' }} />
+                              </td>
+                            );
+                            const isSel = selectedUnit?.maCan === unit.maCan;
+                            return <UnitCell key={canSo} unit={unit} isSelected={isSel} hlBg={isHl && !isSel ? hlCell : undefined} onClick={() => setSelectedUnit(u => u?.maCan === unit.maCan ? null : unit)} />;
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
             </>
