@@ -420,6 +420,37 @@ h4 { font-size: var(--text-base); letter-spacing: -0.01em; }
   border-bottom: none;
 }
 
+/* === Stacking Board Table (freeze header + first column) === */
+.stacking-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* Header row: sticky top, nền solid (không dùng CSS variable để tránh transparent) */
+.stacking-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #f8fafc;           /* giống .data-table thead th */
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+/* Corner cell TẦNG: freeze cả 2 chiều */
+.stacking-table thead th:first-child {
+  left: 0;
+  z-index: 101;                  /* cao hơn các th thông thường */
+  border-right: 1px solid #e2e8f0;
+}
+
+/* Cột TẦNG trong data rows: sticky left */
+.stacking-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 50;
+  border-right: 1px solid #e2e8f0;
+}
+
 /* === Badge === */
 .badge {
   display: inline-flex;
