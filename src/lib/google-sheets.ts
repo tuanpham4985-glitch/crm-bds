@@ -2341,22 +2341,36 @@ function parseListTab(
 }
 
 /** Đọc bảng giá chi tiết từ master tab (list format), keyed by maCan.
- *  Dùng để augment grid-tab units với TTS / TT Chuẩn / Vay NH / Link PTG. */
+ *  Dùng để augment grid-tab units với dtTim, TTS / TT Chuẩn / Vay NH / Link PTG.
+ *  Grid tab chỉ có DTTT, không có DT Tim tường riêng — master tab có cả hai. */
+type PriceExtra = {
+  dtTim?: number;
+  ttsTamTinh?: number;
+  ttChuanTamTinh?: number;
+  vayNhTamTinh?: number;
+  linkPTG?: string;
+};
+
 function buildPriceMap(
   sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
   rowLimit: number,
-): Map<string, Pick<StackingUnit, 'ttsTamTinh' | 'ttChuanTamTinh' | 'vayNhTamTinh' | 'linkPTG'>> {
-  const map = new Map<string, Pick<StackingUnit, 'ttsTamTinh' | 'ttChuanTamTinh' | 'vayNhTamTinh' | 'linkPTG'>>();
+): Map<string, PriceExtra> {
+  const map = new Map<string, PriceExtra>();
   for (let rowIdx = 1; rowIdx < rowLimit; rowIdx++) {
     const maCan = str(sheet.getCell(rowIdx, LIST_COL_MA_CAN).value);
     if (!maCan) continue;
-    const tts      = scalePrice(sheet.getCell(rowIdx, LIST_COL_TTS).value);
-    const ttChuan  = scalePrice(sheet.getCell(rowIdx, LIST_COL_TT_CHUAN).value);
-    const vayNh    = scalePrice(sheet.getCell(rowIdx, LIST_COL_VAY_NH).value);
-    const linkPTG  = str(sheet.getCell(rowIdx, LIST_COL_LINK_PTG).value);
-    if (tts || ttChuan || vayNh || linkPTG) {
-      map.set(maCan, { ttsTamTinh: tts || undefined, ttChuanTamTinh: ttChuan || undefined, vayNhTamTinh: vayNh || undefined, linkPTG: linkPTG || undefined });
-    }
+    const dtTim   = num(sheet.getCell(rowIdx, LIST_COL_DT_TIM).value);
+    const tts     = scalePrice(sheet.getCell(rowIdx, LIST_COL_TTS).value);
+    const ttChuan = scalePrice(sheet.getCell(rowIdx, LIST_COL_TT_CHUAN).value);
+    const vayNh   = scalePrice(sheet.getCell(rowIdx, LIST_COL_VAY_NH).value);
+    const linkPTG = str(sheet.getCell(rowIdx, LIST_COL_LINK_PTG).value);
+    const entry: PriceExtra = {};
+    if (dtTim)   entry.dtTim            = dtTim;
+    if (tts)     entry.ttsTamTinh       = tts;
+    if (ttChuan) entry.ttChuanTamTinh   = ttChuan;
+    if (vayNh)   entry.vayNhTamTinh     = vayNh;
+    if (linkPTG) entry.linkPTG          = linkPTG;
+    map.set(maCan, entry);
   }
   return map;
 }
