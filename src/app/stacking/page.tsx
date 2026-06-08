@@ -36,6 +36,14 @@ function naturalCompare(a: string, b: string) {
   return a.localeCompare(b, 'vi', { numeric: true, sensitivity: 'base' });
 }
 
+const TOWER_DISPLAY: Record<string, string> = {
+  'HH-A': 'HH-A (L1)',
+  'HH-B': 'HH-B (L2)',
+};
+function towerLabel(tower: string) {
+  return TOWER_DISPLAY[tower] ?? tower;
+}
+
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -608,7 +616,7 @@ export default function StackingPage() {
             </div>
             <div style={{ position: 'relative' }}>
               <select value={tower} onChange={e => { setTower(e.target.value); setFilterType(null); }} style={selectStyle}>
-                {towersForProject.map(t => <option key={t} value={t}>Tower {t}</option>)}
+                {towersForProject.map(t => <option key={t} value={t}>Tower {towerLabel(t)}</option>)}
               </select>
               <ChevronDown size={13} style={chevronStyle} />
             </div>

@@ -2442,6 +2442,9 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
   }
 
   // Grid tab dùng MAX_STACKING_ROWS (compact); list tab dùng MAX_LIST_ROWS (nhiều row hơn)
+  // Bỏ phần alias trong ngoặc để dùng làm mã căn: "HH-A (L1)" → "HH-A"
+  const towerCode = tower.replace(/\s*\(.*\)\s*$/, '').trim() || tower;
+
   const rowLimit  = Math.min(sheet.rowCount, towerSheet ? MAX_STACKING_ROWS : MAX_LIST_ROWS);
   const colLimit  = Math.min(sheet.columnCount, MAX_STACKING_COLS);
   const rangeA1   = `A1:${colLetter(colLimit)}${rowLimit}`;
@@ -2456,7 +2459,7 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
 
   if (towerSheet) {
     // Tower tab → try visual grid first, fall back to list
-    const gridUnits = parseGridTab(sheet, tower, rowLimit, colLimit, colorMap);
+    const gridUnits = parseGridTab(sheet, towerCode, rowLimit, colLimit, colorMap);
     if (gridUnits.length > 0) {
       // Cross-reference master tab để lấy TTS / TT Chuẩn / Vay NH / Link PTG
       try {
