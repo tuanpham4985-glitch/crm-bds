@@ -47,13 +47,7 @@
   display: block;
 }
 
-/* Mobile only: logo nền trong suốt, hiển thị đủ logo không bị crop */
-@media (max-width: 768px) {
-  .logoIcon img {
-    object-fit: contain;
-    background: transparent;
-  }
-}
+/* Mobile: logo phủ full-width sidebar giống desktop (cover + center) */
 
 .logoTitle {
   font-family: var(--font-heading);
