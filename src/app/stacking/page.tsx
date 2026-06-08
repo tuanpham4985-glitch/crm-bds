@@ -11,13 +11,17 @@ import type { StackingUnit, StackingSheetMeta, StackingConfig } from '@/lib/type
 
 const TYPE_COLOR: Record<string, { bg: string; text: string; border: string }> = {
   'Studio':    { bg: '#e2e8f0', text: '#334155', border: '#94a3b8' },
-  '1BR':       { bg: '#bfdbfe', text: '#1e40af', border: '#60a5fa' },
-  '1BR+':      { bg: '#c4b5fd', text: '#4c1d95', border: '#8b5cf6' },
-  '2BR':       { bg: '#86efac', text: '#14532d', border: '#22c55e' },
-  '2BR+':      { bg: '#6ee7b7', text: '#064e3b', border: '#10b981' },
-  '3BR':       { bg: '#fdba74', text: '#7c2d12', border: '#f97316' },
-  '4BR':       { bg: '#fca5a5', text: '#7f1d1d', border: '#ef4444' },
-  'Penthouse': { bg: '#fcd34d', text: '#713f12', border: '#f59e0b' },
+  '1BR':       { bg: '#bfdbfe', text: '#1e40af', border: '#60a5fa' },   // xanh dương
+  '1BR+':      { bg: '#c4b5fd', text: '#4c1d95', border: '#8b5cf6' },   // tím
+  '1BR+1MR':   { bg: '#7dd3fc', text: '#0c4a6e', border: '#38bdf8' },   // sky
+  '2BR':       { bg: '#86efac', text: '#14532d', border: '#22c55e' },   // xanh lá
+  '2BR+':      { bg: '#6ee7b7', text: '#064e3b', border: '#10b981' },   // emerald
+  '2BR+1MR':   { bg: '#5eead4', text: '#134e4a', border: '#14b8a6' },   // teal
+  '2BR+1MMR':  { bg: '#a5f3fc', text: '#164e63', border: '#22d3ee' },   // cyan
+  '3BR':       { bg: '#fdba74', text: '#7c2d12', border: '#f97316' },   // cam
+  '3BR+1MR':   { bg: '#d9f99d', text: '#365314', border: '#84cc16' },   // lime
+  '4BR':       { bg: '#fca5a5', text: '#7f1d1d', border: '#ef4444' },   // đỏ
+  'Penthouse': { bg: '#fcd34d', text: '#713f12', border: '#f59e0b' },   // vàng gold
 };
 
 function typeColor(loaiCan: string) {
@@ -333,7 +337,7 @@ const MAU_O_COLOR: Record<'xanh' | 'vang', { bg: string; text: string; border: s
   vang: { bg: '#ffff00', text: '#5c3d00', border: '#ccaa00' }, // #ffff00 — CHECK ADMIN
 };
 
-const TYPE_ORDER = ['Studio', '1BR', '1BR+', '2BR', '2BR+', '3BR', '4BR', 'Penthouse'];
+const TYPE_ORDER = ['Studio', '1BR', '1BR+', '1BR+1MR', '2BR', '2BR+', '2BR+1MR', '2BR+1MMR', '3BR', '3BR+1MR', '4BR', 'Penthouse'];
 
 function UnitCell({ unit, onClick, isSelected, hlBg, dimmed }: {
   unit: StackingUnit; onClick: () => void; isSelected: boolean;
