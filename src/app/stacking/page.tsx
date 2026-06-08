@@ -739,18 +739,9 @@ export default function StackingPage() {
                 <table className="stacking-table" onMouseLeave={() => setHoverPos(null)}>
                   <thead>
                     <tr>
-                      {/* Corner: diagonal split TẦNG / CĂN
-                           ⚠ KHÔNG đặt position:'relative' trên <th> — sẽ override position:sticky từ CSS class
-                           → dùng <div> bên trong làm container relative thay thế */}
-                      <th style={{ padding: 0, minWidth: 68 }}>
-                        <div style={{ position: 'relative', width: '100%', minHeight: 52 }}>
-                          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-                               viewBox="0 0 100 100" preserveAspectRatio="none">
-                            <line x1="2" y1="2" x2="98" y2="98" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-                          </svg>
-                          <span style={{ position: 'absolute', top: 6, right: 8, fontSize: '0.7rem', fontWeight: 700, color: '#fff', lineHeight: 1, userSelect: 'none' }}>CĂN</span>
-                          <span style={{ position: 'absolute', bottom: 6, left: 8, fontSize: '0.7rem', fontWeight: 700, color: '#fff', lineHeight: 1, userSelect: 'none' }}>TẦNG</span>
-                        </div>
+                      {/* Corner: label TẦNG — đơn giản, đồng nhất với các header căn khác */}
+                      <th style={{ padding: '6px 4px', minWidth: 56, textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ffffff' }}>TẦNG</div>
                       </th>
                       {columns.map((canSo, ci) => {
                         const isHlTh = xColIdx >= 0 && ci === xColIdx;
@@ -768,7 +759,7 @@ export default function StackingPage() {
                       return (
                         <tr key={tang} style={{ background: fi % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
                           {/* Cột TẦNG: CSS sets dark gray base; inline chỉ ghi đè khi crosshair */}
-                          <td style={{ padding: '5px 10px', textAlign: 'center', minWidth: 68, fontWeight: 700, fontSize: '0.8rem', color: '#ffffff', background: isHlRow ? hlAxisSticky : undefined, borderTop: '1px solid #334155' }}>{tang}</td>
+                          <td style={{ padding: '5px 6px', textAlign: 'center', minWidth: 56, fontWeight: 700, fontSize: '0.8rem', color: '#ffffff', background: isHlRow ? hlAxisSticky : undefined, borderTop: '1px solid #334155' }}>{tang}</td>
                           {columns.map((canSo, ci) => {
                             const unit = unitMap[tang]?.[canSo];
                             // Hàng: cùng tầng, cột từ 0 đến xColIdx (tức từ ô đó hất sang trái)
