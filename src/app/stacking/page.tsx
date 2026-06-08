@@ -619,8 +619,8 @@ export default function StackingPage() {
       </div>
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div className="stacking-scroll" style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '0 12px 14px 12px' }}>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div className="stacking-scroll" style={{ height: '100%', overflow: 'auto', padding: '0 12px 14px 12px' }}>
 
           {/* Empty state: no configs */}
           {configs.length === 0 && (
@@ -749,46 +749,82 @@ export default function StackingPage() {
           )}
         </div>
 
-        {/* Detail panel */}
-        {selectedUnit && (
-          <div style={{ width: 272, flexShrink: 0, borderLeft: '1px solid var(--border)', background: 'var(--bg-card)', overflowY: 'auto', padding: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-              <div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 2 }}>Mã căn</div>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-title)' }}>{selectedUnit.maCan}</div>
+      </div>
+
+      {/* ── Detail modal ──────────────────────────────────────────────────── */}
+      {selectedUnit && (() => {
+        const tc = typeColor(selectedUnit.loaiCan);
+        return (
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+            onClick={() => setSelectedUnit(null)}
+          >
+            <div
+              style={{ width: '100%', maxWidth: 460, background: 'var(--bg-card)', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.28)', overflow: 'hidden' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mã căn</div>
+                  <div style={{ fontWeight: 800, fontSize: '1.3rem', color: 'var(--text-title)', letterSpacing: '-0.01em' }}>{selectedUnit.maCan}</div>
+                </div>
+                <button onClick={() => setSelectedUnit(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: 'var(--text-muted)', borderRadius: 8, display: 'flex' }}>
+                  <X size={18} />
+                </button>
               </div>
-              <button onClick={() => setSelectedUnit(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }}><X size={16} /></button>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: selectedUnit.trangThai === 'con_hang' ? '#dcfce7' : selectedUnit.trangThai === 'da_ban' ? '#ef4444' : '#fef3c7', color: selectedUnit.trangThai === 'con_hang' ? '#15803d' : selectedUnit.trangThai === 'da_ban' ? '#ffffff' : '#92400e' }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[selectedUnit.trangThai] }} />
-                {STATUS_LABEL[selectedUnit.trangThai]}
-              </span>
-              {selectedUnit.mauO === 'xanh' && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: MAU_O_COLOR.xanh.bg, color: MAU_O_COLOR.xanh.text, border: `1px solid ${MAU_O_COLOR.xanh.border}` }}>
-                  Độc quyền
+
+              {/* Status badges */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 600, background: selectedUnit.trangThai === 'con_hang' ? '#dcfce7' : selectedUnit.trangThai === 'da_ban' ? '#fee2e2' : '#fef3c7', color: selectedUnit.trangThai === 'con_hang' ? '#15803d' : selectedUnit.trangThai === 'da_ban' ? '#dc2626' : '#92400e' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[selectedUnit.trangThai], flexShrink: 0 }} />
+                  {STATUS_LABEL[selectedUnit.trangThai]}
                 </span>
-              )}
-              {selectedUnit.mauO === 'vang' && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600, background: MAU_O_COLOR.vang.bg, color: MAU_O_COLOR.vang.text, border: `1px solid ${MAU_O_COLOR.vang.border}` }}>
-                  Check Admin
-                </span>
-              )}
-            </div>
-            {[['Loại căn', selectedUnit.loaiCan], ['DT Thông thuỷ', fmtArea(selectedUnit.dtThongThuy)], ['Hướng', selectedUnit.huong], ['View', selectedUnit.view]].map(([label, value]) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: '0.85rem' }}>
-                <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-body)' }}>{value || '—'}</span>
+                {selectedUnit.mauO === 'xanh' && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 600, background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                    Độc quyền
+                  </span>
+                )}
+                {selectedUnit.mauO === 'vang' && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 600, background: '#fef9c3', color: '#854d0e', border: '1px solid #fcd34d' }}>
+                    Check Admin
+                  </span>
+                )}
               </div>
-            ))}
-            <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 8, background: '#fef3c7', border: '1px solid #fcd34d' }}>
-              <div style={{ fontSize: '0.72rem', color: '#92400e', marginBottom: 4 }}>Giá KS</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#92400e' }}>{fmtGiaFull(selectedUnit.giaKS)}</div>
-              <div style={{ fontSize: '0.78rem', color: '#b45309', marginTop: 2 }}>≈ {fmtGia(selectedUnit.giaKS)} tỷ</div>
+
+              {/* Info rows */}
+              <div style={{ padding: '4px 20px' }}>
+                {/* Loại căn — với color swatch */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)', fontSize: '0.875rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Loại căn</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, color: tc.text }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: tc.bg, border: `1.5px solid ${tc.border}`, flexShrink: 0 }} />
+                    {selectedUnit.loaiCan || '—'}
+                  </span>
+                </div>
+                {[
+                  ['DT Thông thuỷ', fmtArea(selectedUnit.dtThongThuy)],
+                  ['Hướng',         selectedUnit.huong],
+                  ['View',          selectedUnit.view],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)', fontSize: '0.875rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-body)' }}>{value || '—'}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Price */}
+              <div style={{ margin: '16px 20px 20px', padding: '16px 18px', borderRadius: 12, background: 'linear-gradient(135deg,#fefce8,#fef3c7)', border: '1px solid #fcd34d' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#92400e', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Giá KS</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#78350f', lineHeight: 1 }}>{fmtGiaFull(selectedUnit.giaKS)}</div>
+                <div style={{ fontSize: '0.82rem', color: '#b45309', marginTop: 5 }}>≈ {fmtGia(selectedUnit.giaKS)} tỷ</div>
+              </div>
             </div>
           </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* Manage panel */}
       {showManage && (
