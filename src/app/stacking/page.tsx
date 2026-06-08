@@ -35,6 +35,13 @@ function naturalCompare(a: string, b: string) {
   return a.localeCompare(b, 'vi', { numeric: true, sensitivity: 'base' });
 }
 
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function fmtGia(gia: number) { return gia ? (gia / 1e9).toFixed(3).replace(/\.?0+$/, '') : '—'; }
 function fmtArea(area: number) { return area ? area.toFixed(1) + ' m²' : '—'; }
 function fmtGiaFull(gia: number) { return gia ? gia.toLocaleString('vi-VN') + ' đ' : '—'; }
@@ -538,8 +545,8 @@ export default function StackingPage() {
   //                              và lên trên (cùng cột, từ ô đó lên header)
   const xFloorIdx = selectedUnit ? floors.indexOf(selectedUnit.tang)   : -1;
   const xColIdx   = selectedUnit ? columns.indexOf(selectedUnit.canSo) : -1;
-  // Crosshair highlight — xám nhạt đủ nổi trên mọi màu loại căn
-  const hlCell      = selectedUnit ? 'rgba(100,116,139,0.22)' : '';
+  // Crosshair highlight — dùng màu border của loại căn đang chọn, opacity 20%
+  const hlCell      = selectedUnit ? hexToRgba(typeColor(selectedUnit.loaiCan).border, 0.20) : '';
   const hlAxisSticky = selectedUnit ? '#64748b' : undefined;
 
   if (loadingConfigs) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Đang khởi tạo...</div>;
