@@ -538,16 +538,8 @@ export default function StackingPage() {
   //                              và lên trên (cùng cột, từ ô đó lên header)
   const xFloorIdx = selectedUnit ? floors.indexOf(selectedUnit.tang)   : -1;
   const xColIdx   = selectedUnit ? columns.indexOf(selectedUnit.canSo) : -1;
-  // Màu cell (semi-transparent) và màu sticky (solid) — theo mauO của unit đang chọn
-  const hlCell   = !selectedUnit ? ''
-    : selectedUnit.mauO === 'xanh' ? 'rgba(0,220,80,0.09)'
-    : selectedUnit.mauO === 'vang' ? 'rgba(255,220,0,0.11)'
-    : 'rgba(99,102,241,0.07)';
-  const hlSticky = !selectedUnit ? ''
-    : selectedUnit.mauO === 'xanh' ? '#dcfce7'
-    : selectedUnit.mauO === 'vang' ? '#fef9c3'
-    : '#eef2ff';
-  // Crosshair trên axis tối (TẦNG/CĂN): tô sáng hơn nền slate-600 → slate-400
+  // Crosshair highlight — xám nhạt đủ nổi trên mọi màu loại căn
+  const hlCell      = selectedUnit ? 'rgba(100,116,139,0.22)' : '';
   const hlAxisSticky = selectedUnit ? '#64748b' : undefined;
 
   if (loadingConfigs) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Đang khởi tạo...</div>;
