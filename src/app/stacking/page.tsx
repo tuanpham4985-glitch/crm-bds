@@ -340,18 +340,16 @@ function UnitCell({ unit, onClick, isSelected, hlBg, dimmed }: {
   hlBg?: string; // crosshair highlight background
   dimmed?: boolean; // faded when type filter is active and this unit doesn't match
 }) {
-  // Độc quyền (xanh) → type color + green dot; Check Admin (vang) → yellow bg
-  const mauColor = unit.mauO === 'vang' ? MAU_O_COLOR.vang : null;
-  const sold     = unit.trangThai === 'da_ban';
-  const inPr     = unit.trangThai === 'dang_xem';
-  const tc = typeColor(unit.loaiCan);
+  // All cells use type color; green dot marks Độc quyền; sold = gray
+  const sold = unit.trangThai === 'da_ban';
+  const inPr = unit.trangThai === 'dang_xem';
+  const tc   = typeColor(unit.loaiCan);
 
-  // Cell bg = type color by default; yellow overrides for check admin; gray for sold
-  const bg     = sold ? '#f3f4f6' : (mauColor?.bg ?? tc.bg);
-  const text   = sold ? '#9ca3af' : (mauColor?.text ?? tc.text);
-  const border = isSelected ? '#6366f1' : (mauColor?.border ?? tc.border);
+  const bg     = sold ? '#f3f4f6' : tc.bg;
+  const text   = sold ? '#9ca3af' : tc.text;
+  const border = isSelected ? '#6366f1' : tc.border;
 
-  const btnBg = (!isSelected && hlBg && !mauColor && !sold) ? hlBg : bg;
+  const btnBg = (!isSelected && hlBg && !sold) ? hlBg : bg;
 
   return (
     <td style={{ padding: '3px 4px', minWidth: 82, background: !isSelected && hlBg ? hlBg : undefined }}>
@@ -619,7 +617,7 @@ export default function StackingPage() {
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div className="stacking-scroll" style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '0 12px 14px 0' }}>
+        <div className="stacking-scroll" style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '0 12px 14px 12px' }}>
 
           {/* Empty state: no configs */}
           {configs.length === 0 && (
