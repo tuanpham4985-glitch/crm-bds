@@ -279,28 +279,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           </button>
 
           <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
-            {/* Bước quy trình tuần tự */}
-            {CRM_STEPS.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
-                  title={`Bước ${item.step}: ${item.label}`}
-                >
-                  <span className={styles.stepBadge}>{item.step}</span>
-                  <Icon size={16} />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-
-            {/* Danh mục tham chiếu */}
-            <div className={styles.catalogDivider}>
-              <span>Danh mục</span>
-            </div>
             {CRM_CATALOG.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href);
               const Icon = item.icon;
