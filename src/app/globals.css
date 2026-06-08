@@ -469,12 +469,12 @@ select:focus {
   white-space: nowrap;
 }
 
-/* Corner cell TẦNG: freeze cả top + left — hơi tối hơn để phân biệt góc */
+/* Corner cell TẦNG/CĂN: freeze cả top + left — cùng màu với header row */
 .stacking-table thead th:first-child {
   left: 0;
   z-index: 13;                   /* 1 bậc cao hơn header thường, vẫn < sidebar */
-  background: #334155;           /* slate-700 — góc tối nhất */
-  border-right: 2px solid #263445;
+  background: #475569;           /* slate-600 — đồng màu với header row */
+  border-right: 2px solid #334155;
 }
 
 /* Cột TẦNG body: sticky theo chiều ngang — trục TẦNG (ghi xám đậm) */

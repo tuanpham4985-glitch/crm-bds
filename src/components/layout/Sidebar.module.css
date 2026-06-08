@@ -42,12 +42,17 @@
 .logoIcon img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   object-position: center;
   display: block;
-  background: #ffffff;           /* nền trắng đảm bảo logo hiển thị đúng trên mọi thiết bị */
-  padding: 6px;
-  box-sizing: border-box;
+}
+
+/* Mobile only: logo nền trong suốt, hiển thị đủ logo không bị crop */
+@media (max-width: 768px) {
+  .logoIcon img {
+    object-fit: contain;
+    background: transparent;
+  }
 }
 
 .logoTitle {
