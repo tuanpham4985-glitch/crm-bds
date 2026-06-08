@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Grid3x3, RefreshCw, X, Settings, Plus, Trash2,
   CheckCircle, AlertCircle, ChevronDown, Loader2, Copy,
@@ -406,6 +406,9 @@ export default function StackingPage() {
   const [loadingTowers, setLoadingTowers]   = useState(false);
   const [loadingUnits, setLoadingUnits]     = useState(false);
   const [unitsError, setUnitsError]         = useState('');
+  // Tracks which configId has finished loading towers — prevents stale fetchUnits
+  // firing with old project/tower when config switches (race condition guard)
+  const towersReadyForRef = useRef<string | null>(null);
 
   // 1. Load config list on mount
   useEffect(() => {
@@ -423,7 +426,8 @@ export default function StackingPage() {
 
   // 2. Load towers when selected config changes
   useEffect(() => {
-    if (!selectedConfig) { setTowers([]); setTowersError(''); return; }
+    if (!selectedConfig) { setTowers([]); setTowersError(''); towersReadyForRef.current = null; return; }
+    towersReadyForRef.current = null; // invalidate gate until towers are loaded
     setLoadingTowers(true);
     setTowers([]); setProject(''); setTower(''); setUnits([]); setSelectedUnit(null); setTowersError(''); setFilterType(null);
 
@@ -444,6 +448,7 @@ export default function StackingPage() {
           } else {
             setTowers(d.data);
             const first = d.data[0];
+            towersReadyForRef.current = selectedConfig.id; // open gate only now
             setProject(first.project);
             setTower(first.tower);
           }
@@ -458,6 +463,9 @@ export default function StackingPage() {
   // 3. Load units when tower changes
   const fetchUnits = useCallback(() => {
     if (!selectedConfig || !project || !tower) return;
+    // Guard: towers must have finished loading for THIS config before fetching units.
+    // Prevents a stale call with old project/tower when config just switched.
+    if (towersReadyForRef.current !== selectedConfig.id) return;
     setLoadingUnits(true); setSelectedUnit(null); setUnitsError('');
 
     const params = new URLSearchParams({ sheet_id: selectedConfig.sheet_id, project, tower });
