@@ -486,10 +486,11 @@ export default function StackingPage() {
   useEffect(() => { fetchUnits(); }, [fetchUnits]);
 
   const fitToView = useCallback(() => {
-    const wrapper = zoomWrapperRef.current;
     const container = scrollContainerRef.current;
-    if (!wrapper || !container) return;
-    const naturalW = wrapper.getBoundingClientRect().width / zoom;
+    if (!container) return;
+    // scrollWidth = tổng chiều rộng có thể cuộn = natural_width * zoom
+    // (getBoundingClientRect bị clip theo viewport nên không dùng được ở đây)
+    const naturalW = container.scrollWidth / zoom;
     if (!naturalW) return;
     const fitZoom = Math.min(container.clientWidth / naturalW, 1);
     setZoom(Math.max(0.3, +fitZoom.toFixed(1)));
