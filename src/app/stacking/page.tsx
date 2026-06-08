@@ -489,14 +489,9 @@ export default function StackingPage() {
     const wrapper = zoomWrapperRef.current;
     const container = scrollContainerRef.current;
     if (!wrapper || !container) return;
-    // getBoundingClientRect gives the visual (zoomed) size on screen
-    const rect = wrapper.getBoundingClientRect();
-    const naturalW = rect.width / zoom;
-    const naturalH = rect.height / zoom;
-    if (!naturalW || !naturalH) return;
-    const availW = container.clientWidth;
-    const availH = container.clientHeight;
-    const fitZoom = Math.min(availW / naturalW, availH / naturalH, 1);
+    const naturalW = wrapper.getBoundingClientRect().width / zoom;
+    if (!naturalW) return;
+    const fitZoom = Math.min(container.clientWidth / naturalW, 1);
     setZoom(Math.max(0.3, +fitZoom.toFixed(1)));
   }, [zoom]);
 
