@@ -921,7 +921,7 @@ export default function StackingPage() {
                       textDecoration: 'none', border: 'none', cursor: 'pointer',
                     }}
                   >
-                    Xem Phiếu tính giá ↗
+                    Xem Phiếu tính giá & Chỉ căn ↗
                   </a>
                 )}
               </div>
