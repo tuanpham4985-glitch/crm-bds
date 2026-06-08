@@ -1995,7 +1995,8 @@ export async function probeStackingSheet(
   }
 }
 
-const MAX_STACKING_ROWS = 500;
+const MAX_STACKING_ROWS = 500;   // grid tabs (visual stacking) — compact, ~40 rows/tower
+const MAX_LIST_ROWS     = 3000;  // list tabs (bảng hàng flat) — 1 row/unit, cần đủ lớn
 const MAX_STACKING_COLS = 60;
 
 // Convert 1-based column index to spreadsheet letter(s): 1→A, 26→Z, 27→AA, 28→AB...
@@ -2047,18 +2048,20 @@ function scalePrice(raw: unknown): number {
 //
 // Sheet có thể có nhiều section lặp lại (tầng đặc biệt, tầng thường, tầng cao DULEX)
 
-type RowKind = 'tang_can' | 'loai_can' | 'dttt' | 'huong' | 'view' | 'mau_o' | 'floor' | 'skip';
+type RowKind = 'tang_can' | 'loai_can' | 'dt_tim' | 'dttt' | 'huong' | 'view' | 'mau_o' | 'floor' | 'skip';
 
 function classifyColA(raw: unknown): RowKind {
   const s = str(raw).trim();
-  const u = s.toUpperCase();
+  const u = s.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); // bỏ dấu để so sánh
   if (!s) return 'skip';
   // TẦNG/CĂN — nhận cả có và không dấu
-  if ((u.includes('TẦNG') || u.includes('TANG')) && u.includes('/') && (u.includes('CĂN') || u.includes('CAN'))) return 'tang_can';
+  if ((u.includes('TANG') || u.includes('TẦNG')) && u.includes('/') && (u.includes('CAN') || u.includes('CĂN'))) return 'tang_can';
   // LOẠI CĂN
-  if (u.startsWith('LOẠI') || u.startsWith('LOAI')) return 'loai_can';
-  // DTTT
-  if (u === 'DTTT' || u === 'DT TT' || u === 'DTTТ') return 'dttt';
+  if (u.startsWith('LOAI') || u.startsWith('LOẠI')) return 'loai_can';
+  // DT TIM TƯỜNG — phải kiểm tra TRƯỚC DTTT để không nhầm
+  if (u.includes('TIM') && (u.includes('DT') || u.includes('DIEN TICH'))) return 'dt_tim';
+  // DTTT (DT Thông thủy)
+  if (u === 'DTTT' || u === 'DT TT' || u.includes('THONG THUY') || u.includes('THÔNG THỦY')) return 'dttt';
   // HƯỚNG
   if (u === 'HƯỚNG' || u === 'HUONG' || u === 'HƯỚNG') return 'huong';
   // VIEW
@@ -2187,7 +2190,8 @@ function parseGridTab(
   // Mảng section hiện tại — index = col position
   const canSoArr   = new Array<string | null>(colLimit).fill(null);
   const loaiCanArr = new Array<string>(colLimit).fill('');
-  const dtttArr    = new Array<number>(colLimit).fill(0);
+  const dtTimArr   = new Array<number>(colLimit).fill(0);  // DT Tim tường (nếu grid có hàng riêng)
+  const dtttArr    = new Array<number>(colLimit).fill(0);  // DT Thông thủy
   const huongArr   = new Array<string>(colLimit).fill('');
   const viewArr    = new Array<string>(colLimit).fill('');
   // mauOArr: đọc từ hàng "MÀU" trong sheet
@@ -2208,6 +2212,7 @@ function parseGridTab(
       hasSect = true;
       canSoArr.fill(null);
       loaiCanArr.fill('');
+      dtTimArr.fill(0);
       dtttArr.fill(0);
       huongArr.fill('');
       viewArr.fill('');
@@ -2220,6 +2225,9 @@ function parseGridTab(
     } else if (kind === 'loai_can' && hasSect) {
       for (let col = 1; col < colLimit; col++)
         loaiCanArr[col] = str(sheet.getCell(row, col).value).trim();
+    } else if (kind === 'dt_tim' && hasSect) {
+      for (let col = 1; col < colLimit; col++)
+        dtTimArr[col] = num(sheet.getCell(row, col).value);
     } else if (kind === 'dttt' && hasSect) {
       for (let col = 1; col < colLimit; col++)
         dtttArr[col] = num(sheet.getCell(row, col).value);
@@ -2276,7 +2284,7 @@ function parseGridTab(
         units.push({
           maCan, tower, tang, canSo: cs,
           loaiCan:     loaiCanArr[col],
-          dtTim:       dtttArr[col],    // DTTT dùng cho cả dtTim và dtThongThuy
+          dtTim:       dtTimArr[col] || dtttArr[col],  // dùng hàng DT TIM nếu có, fallback DTTT
           dtThongThuy: dtttArr[col],
           huong:       huongArr[col],
           view:        viewArr[col],
@@ -2433,7 +2441,8 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
     );
   }
 
-  const rowLimit  = Math.min(sheet.rowCount,    MAX_STACKING_ROWS);
+  // Grid tab dùng MAX_STACKING_ROWS (compact); list tab dùng MAX_LIST_ROWS (nhiều row hơn)
+  const rowLimit  = Math.min(sheet.rowCount, towerSheet ? MAX_STACKING_ROWS : MAX_LIST_ROWS);
   const colLimit  = Math.min(sheet.columnCount, MAX_STACKING_COLS);
   const rangeA1   = `A1:${colLetter(colLimit)}${rowLimit}`;
   const sheetName = towerSheet ? towerTabName : project;
@@ -2453,7 +2462,7 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
       try {
         const masterSheet = doc.sheetsByTitle[project];
         if (masterSheet) {
-          const mr = Math.min(masterSheet.rowCount, MAX_STACKING_ROWS);
+          const mr = Math.min(masterSheet.rowCount, MAX_LIST_ROWS);
           const mc = Math.min(masterSheet.columnCount, LIST_COL_LINK_PTG + 1);
           await masterSheet.loadCells(`A1:${colLetter(mc)}${mr}`);
           const priceMap = buildPriceMap(masterSheet, mr);
