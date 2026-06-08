@@ -402,6 +402,7 @@ export default function StackingPage() {
   const [selectedUnit, setSelectedUnit]     = useState<StackingUnit | null>(null);
   const [showManage, setShowManage]         = useState(false);
   const [filterType, setFilterType]         = useState<string | null>(null);
+  const [zoom, setZoom]                     = useState(1);
   const [loadingConfigs, setLoadingConfigs] = useState(true);
   const [loadingTowers, setLoadingTowers]   = useState(false);
   const [loadingUnits, setLoadingUnits]     = useState(false);
@@ -605,6 +606,27 @@ export default function StackingPage() {
           Làm mới
         </button>
 
+        {/* Zoom control */}
+        <div style={{ display: 'flex', alignItems: 'center', borderRadius: 7, border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0 }}>
+          <button
+            onClick={() => setZoom(z => Math.max(0.4, Math.round((z - 0.1) * 10) / 10))}
+            disabled={zoom <= 0.4}
+            title="Thu nhỏ"
+            style={{ padding: '5px 10px', background: 'var(--bg-card)', border: 'none', borderRight: '1px solid var(--border)', cursor: zoom <= 0.4 ? 'default' : 'pointer', fontSize: '1rem', lineHeight: 1, color: 'var(--text-muted)', opacity: zoom <= 0.4 ? 0.35 : 1 }}
+          >−</button>
+          <button
+            onClick={() => setZoom(1)}
+            title="Đặt lại 100%"
+            style={{ padding: '5px 8px', background: 'var(--bg-card)', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: zoom === 1 ? 'var(--text-muted)' : 'var(--primary)', minWidth: 44, textAlign: 'center' }}
+          >{Math.round(zoom * 100)}%</button>
+          <button
+            onClick={() => setZoom(z => Math.min(1, Math.round((z + 0.1) * 10) / 10))}
+            disabled={zoom >= 1}
+            title="Phóng to"
+            style={{ padding: '5px 10px', background: 'var(--bg-card)', border: 'none', borderLeft: '1px solid var(--border)', cursor: zoom >= 1 ? 'default' : 'pointer', fontSize: '1rem', lineHeight: 1, color: 'var(--text-muted)', opacity: zoom >= 1 ? 0.35 : 1 }}
+          >+</button>
+        </div>
+
         {/* Status counts */}
         {units.length > 0 && (
           <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -677,7 +699,7 @@ export default function StackingPage() {
 
           {/* Grid */}
           {!loadingUnits && units.length > 0 && (
-            <>
+            <div style={{ zoom: zoom } as React.CSSProperties}>
               {/* Legend: loại căn clickable filter + chú thích Độc quyền */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, paddingTop: 14 }}>
                 {unitTypes.map(type => {
@@ -753,7 +775,7 @@ export default function StackingPage() {
                     })}
                   </tbody>
                 </table>
-            </>
+            </div>
           )}
         </div>
 
