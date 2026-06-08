@@ -861,6 +861,7 @@ export default function StackingPage() {
                   </span>
                 </div>
                 {[
+                  ['DT Tim tường', fmtArea(selectedUnit.dtTim)],
                   ['DT Thông thuỷ', fmtArea(selectedUnit.dtThongThuy)],
                   ['Hướng',         selectedUnit.huong],
                   ['View',          selectedUnit.view],
@@ -872,11 +873,57 @@ export default function StackingPage() {
                 ))}
               </div>
 
-              {/* Price */}
-              <div style={{ margin: '16px 20px 20px', padding: '16px 18px', borderRadius: 12, background: 'linear-gradient(135deg,#fefce8,#fef3c7)', border: '1px solid #fcd34d' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#92400e', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Giá KS</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#78350f', lineHeight: 1 }}>{fmtGiaFull(selectedUnit.giaKS)}</div>
-                <div style={{ fontSize: '0.82rem', color: '#b45309', marginTop: 5 }}>≈ {fmtGia(selectedUnit.giaKS)} tỷ</div>
+              {/* Giá — card chia cột */}
+              <div style={{ margin: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Giá KS — nổi bật */}
+                <div style={{ padding: '14px 16px', borderRadius: 12, background: 'linear-gradient(135deg,#fefce8,#fef3c7)', border: '1px solid #fcd34d' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#92400e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Giá KS (chưa VAT & KPBT)
+                  </div>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#78350f', lineHeight: 1 }}>{fmtGiaFull(selectedUnit.giaKS)}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#b45309', marginTop: 4 }}>≈ {fmtGia(selectedUnit.giaKS)} tỷ</div>
+                </div>
+
+                {/* TTS / TT Chuẩn / Vay NH — chỉ hiện nếu có dữ liệu */}
+                {(selectedUnit.ttsTamTinh || selectedUnit.ttChuanTamTinh || selectedUnit.vayNhTamTinh) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                    {[
+                      { label: 'TTS', value: selectedUnit.ttsTamTinh, color: '#6366f1' },
+                      { label: 'TT Chuẩn', value: selectedUnit.ttChuanTamTinh, color: '#0891b2' },
+                      { label: 'Vay NH', value: selectedUnit.vayNhTamTinh, color: '#059669' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} style={{ padding: '10px 10px', borderRadius: 10, background: 'var(--bg-secondary, #f9fafb)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+                        {value ? (
+                          <>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color }}>{fmtGia(value)} tỷ</div>
+                            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>Tạm tính</div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>—</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Link PTG */}
+                {selectedUnit.linkPTG && (
+                  <a
+                    href={selectedUnit.linkPTG}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      padding: '10px 16px', borderRadius: 10,
+                      background: 'var(--primary)', color: '#fff',
+                      fontWeight: 700, fontSize: '0.875rem',
+                      textDecoration: 'none', border: 'none', cursor: 'pointer',
+                    }}
+                  >
+                    Xem Phiếu tính giá ↗
+                  </a>
+                )}
               </div>
             </div>
           </div>

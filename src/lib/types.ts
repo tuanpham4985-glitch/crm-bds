@@ -280,7 +280,11 @@ export interface StackingUnit {
   dtThongThuy: number;  // net area m²
   huong: string;
   view: string;
-  giaKS: number;        // price in VND
+  giaKS: number;        // GIÁ KHẢO SÁT CHƯA VAT & KPBT (VND)
+  ttsTamTinh?: number;      // TTS Tạm tính (VND)
+  ttChuanTamTinh?: number;  // TT CHUẨN Tạm tính (VND)
+  vayNhTamTinh?: number;    // Vay NH Tạm tính (VND)
+  linkPTG?: string;          // Link Phiếu tính giá
   trangThai: 'con_hang' | 'dang_xem' | 'da_ban';
   /** Màu nền từ Google Sheets:
    *  'xanh' = độc quyền của công ty  (green cell)

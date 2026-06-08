@@ -2300,6 +2300,10 @@ const LIST_COL_DT_THONG_THUY = 7;
 const LIST_COL_HUONG         = 8;
 const LIST_COL_VIEW          = 9;
 const LIST_COL_GIA_KS        = 10;
+const LIST_COL_TTS           = 11;  // TTS Tạm tính
+const LIST_COL_TT_CHUAN      = 12;  // TT CHUẨN Tạm tính
+const LIST_COL_VAY_NH        = 13;  // Vay NH Tạm tính
+const LIST_COL_LINK_PTG      = 14;  // Link Phiếu tính giá
 
 function parseListTab(
   sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
@@ -2320,16 +2324,41 @@ function parseListTab(
 
     units.push({
       maCan, tower, tang, canSo,
-      loaiCan:     str(sheet.getCell(rowIdx, LIST_COL_LOAI_CAN).value),
-      dtTim:       num(sheet.getCell(rowIdx, LIST_COL_DT_TIM).value),
-      dtThongThuy: num(sheet.getCell(rowIdx, LIST_COL_DT_THONG_THUY).value),
-      huong:       str(sheet.getCell(rowIdx, LIST_COL_HUONG).value),
-      view:        str(sheet.getCell(rowIdx, LIST_COL_VIEW).value),
-      giaKS:       scalePrice(sheet.getCell(rowIdx, LIST_COL_GIA_KS).value),
-      trangThai:   'con_hang',
+      loaiCan:          str(sheet.getCell(rowIdx, LIST_COL_LOAI_CAN).value),
+      dtTim:            num(sheet.getCell(rowIdx, LIST_COL_DT_TIM).value),
+      dtThongThuy:      num(sheet.getCell(rowIdx, LIST_COL_DT_THONG_THUY).value),
+      huong:            str(sheet.getCell(rowIdx, LIST_COL_HUONG).value),
+      view:             str(sheet.getCell(rowIdx, LIST_COL_VIEW).value),
+      giaKS:            scalePrice(sheet.getCell(rowIdx, LIST_COL_GIA_KS).value),
+      ttsTamTinh:       scalePrice(sheet.getCell(rowIdx, LIST_COL_TTS).value),
+      ttChuanTamTinh:   scalePrice(sheet.getCell(rowIdx, LIST_COL_TT_CHUAN).value),
+      vayNhTamTinh:     scalePrice(sheet.getCell(rowIdx, LIST_COL_VAY_NH).value),
+      linkPTG:          str(sheet.getCell(rowIdx, LIST_COL_LINK_PTG).value),
+      trangThai:        'con_hang',
     });
   }
   return units;
+}
+
+/** Đọc bảng giá chi tiết từ master tab (list format), keyed by maCan.
+ *  Dùng để augment grid-tab units với TTS / TT Chuẩn / Vay NH / Link PTG. */
+function buildPriceMap(
+  sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
+  rowLimit: number,
+): Map<string, Pick<StackingUnit, 'ttsTamTinh' | 'ttChuanTamTinh' | 'vayNhTamTinh' | 'linkPTG'>> {
+  const map = new Map<string, Pick<StackingUnit, 'ttsTamTinh' | 'ttChuanTamTinh' | 'vayNhTamTinh' | 'linkPTG'>>();
+  for (let rowIdx = 1; rowIdx < rowLimit; rowIdx++) {
+    const maCan = str(sheet.getCell(rowIdx, LIST_COL_MA_CAN).value);
+    if (!maCan) continue;
+    const tts      = scalePrice(sheet.getCell(rowIdx, LIST_COL_TTS).value);
+    const ttChuan  = scalePrice(sheet.getCell(rowIdx, LIST_COL_TT_CHUAN).value);
+    const vayNh    = scalePrice(sheet.getCell(rowIdx, LIST_COL_VAY_NH).value);
+    const linkPTG  = str(sheet.getCell(rowIdx, LIST_COL_LINK_PTG).value);
+    if (tts || ttChuan || vayNh || linkPTG) {
+      map.set(maCan, { ttsTamTinh: tts || undefined, ttChuanTamTinh: ttChuan || undefined, vayNhTamTinh: vayNh || undefined, linkPTG: linkPTG || undefined });
+    }
+  }
+  return map;
 }
 
 /**
@@ -2405,7 +2434,27 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
   if (towerSheet) {
     // Tower tab → try visual grid first, fall back to list
     const gridUnits = parseGridTab(sheet, tower, rowLimit, colLimit, colorMap);
-    if (gridUnits.length > 0) return gridUnits;
+    if (gridUnits.length > 0) {
+      // Cross-reference master tab để lấy TTS / TT Chuẩn / Vay NH / Link PTG
+      try {
+        const masterSheet = doc.sheetsByTitle[project];
+        if (masterSheet) {
+          const mr = Math.min(masterSheet.rowCount, MAX_STACKING_ROWS);
+          const mc = Math.min(masterSheet.columnCount, LIST_COL_LINK_PTG + 1);
+          await masterSheet.loadCells(`A1:${colLetter(mc)}${mr}`);
+          const priceMap = buildPriceMap(masterSheet, mr);
+          if (priceMap.size > 0) {
+            return gridUnits.map(u => {
+              const extra = priceMap.get(u.maCan);
+              return extra ? { ...u, ...extra } : u;
+            });
+          }
+        }
+      } catch {
+        // Master tab không tồn tại hoặc lỗi → trả grid units bình thường
+      }
+      return gridUnits;
+    }
   }
 
   // Master tab (or tower tab that looks like a list)
