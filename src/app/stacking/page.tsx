@@ -10,13 +10,14 @@ import type { StackingUnit, StackingSheetMeta, StackingConfig } from '@/lib/type
 // ─── Color map by loaiCan ────────────────────────────────────────────────────
 
 const TYPE_COLOR: Record<string, { bg: string; text: string; border: string }> = {
-  'Studio':    { bg: '#f3f4f6', text: '#4b5563', border: '#d1d5db' },
-  '1BR':       { bg: '#dbeafe', text: '#1d4ed8', border: '#93c5fd' },
-  '1BR+':      { bg: '#ede9fe', text: '#5b21b6', border: '#c4b5fd' },
-  '2BR':       { bg: '#dcfce7', text: '#15803d', border: '#86efac' },
-  '2BR+':      { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
-  '3BR':       { bg: '#ffedd5', text: '#9a3412', border: '#fdba74' },
-  'Penthouse': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+  'Studio':    { bg: '#e2e8f0', text: '#334155', border: '#94a3b8' },
+  '1BR':       { bg: '#bfdbfe', text: '#1e40af', border: '#60a5fa' },
+  '1BR+':      { bg: '#c4b5fd', text: '#4c1d95', border: '#8b5cf6' },
+  '2BR':       { bg: '#86efac', text: '#14532d', border: '#22c55e' },
+  '2BR+':      { bg: '#6ee7b7', text: '#064e3b', border: '#10b981' },
+  '3BR':       { bg: '#fdba74', text: '#7c2d12', border: '#f97316' },
+  '4BR':       { bg: '#fca5a5', text: '#7f1d1d', border: '#ef4444' },
+  'Penthouse': { bg: '#fcd34d', text: '#713f12', border: '#f59e0b' },
 };
 
 function typeColor(loaiCan: string) {
@@ -332,23 +333,23 @@ const MAU_O_COLOR: Record<'xanh' | 'vang', { bg: string; text: string; border: s
   vang: { bg: '#ffff00', text: '#5c3d00', border: '#ccaa00' }, // #ffff00 — CHECK ADMIN
 };
 
-const TYPE_ORDER = ['Studio', '1BR', '1BR+', '2BR', '2BR+', '3BR', 'Penthouse'];
+const TYPE_ORDER = ['Studio', '1BR', '1BR+', '2BR', '2BR+', '3BR', '4BR', 'Penthouse'];
 
 function UnitCell({ unit, onClick, isSelected, hlBg, dimmed }: {
   unit: StackingUnit; onClick: () => void; isSelected: boolean;
   hlBg?: string; // crosshair highlight background
   dimmed?: boolean; // faded when type filter is active and this unit doesn't match
 }) {
-  // Độc quyền (xanh) now shown via green dot only; only vang (Check Admin) keeps yellow bg
+  // Độc quyền (xanh) → type color + green dot; Check Admin (vang) → yellow bg
   const mauColor = unit.mauO === 'vang' ? MAU_O_COLOR.vang : null;
   const sold     = unit.trangThai === 'da_ban';
   const inPr     = unit.trangThai === 'dang_xem';
-
-  const bg     = sold ? '#f3f4f6' : (mauColor?.bg ?? '#ffffff');
-  const text   = sold ? '#9ca3af' : (mauColor?.text ?? '#475569');
-  const border = isSelected ? '#6366f1' : (mauColor?.border ?? '#e2e8f0');
-
   const tc = typeColor(unit.loaiCan);
+
+  // Cell bg = type color by default; yellow overrides for check admin; gray for sold
+  const bg     = sold ? '#f3f4f6' : (mauColor?.bg ?? tc.bg);
+  const text   = sold ? '#9ca3af' : (mauColor?.text ?? tc.text);
+  const border = isSelected ? '#6366f1' : (mauColor?.border ?? tc.border);
 
   const btnBg = (!isSelected && hlBg && !mauColor && !sold) ? hlBg : bg;
 
@@ -372,17 +373,6 @@ function UnitCell({ unit, onClick, isSelected, hlBg, dimmed }: {
         )}
         {/* Orange dot top-right = Đang xem */}
         {inPr && <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: '#f59e0b' }} />}
-        {unit.loaiCan && !sold && (
-          <span style={{
-            display: 'block', fontSize: 8, fontWeight: 700, lineHeight: 1.4,
-            padding: '0 3px', borderRadius: 3, marginBottom: 2,
-            background: mauColor ? 'rgba(255,255,255,0.35)' : tc.bg,
-            color: mauColor ? text : tc.text,
-            border: `1px solid ${mauColor ? 'rgba(0,0,0,0.12)' : tc.border}`,
-          }}>
-            {unit.loaiCan}
-          </span>
-        )}
         {fmtGia(unit.giaKS)}
         <span style={{ display: 'block', fontSize: 9, opacity: 0.7, fontWeight: 400 }}>tỷ</span>
       </button>
