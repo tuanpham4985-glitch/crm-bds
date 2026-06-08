@@ -462,7 +462,7 @@ select:focus {
 .stacking-table thead th {
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 12;                   /* < 100 để không đè lên sidebar/overlay */
   background: #475569;           /* slate-600 — dark gray axis */
   color: #ffffff;
   border-bottom: 2px solid #334155;
@@ -472,7 +472,7 @@ select:focus {
 /* Corner cell TẦNG: freeze cả top + left — hơi tối hơn để phân biệt góc */
 .stacking-table thead th:first-child {
   left: 0;
-  z-index: 101;
+  z-index: 13;                   /* 1 bậc cao hơn header thường, vẫn < sidebar */
   background: #334155;           /* slate-700 — góc tối nhất */
   border-right: 2px solid #263445;
 }
@@ -481,7 +481,7 @@ select:focus {
 .stacking-table tbody td:first-child {
   position: sticky;
   left: 0;
-  z-index: 50;
+  z-index: 5;                    /* thấp nhất trong bảng */
   background: #475569;           /* slate-600 — inline style crosshair ghi đè */
   color: #ffffff;
   border-right: 2px solid #334155;

@@ -740,8 +740,8 @@ export default function StackingPage() {
                   <thead>
                     <tr>
                       {/* Corner: diagonal split TẦNG / CĂN */}
-                      <th style={{ padding: 0, minWidth: 60, position: 'relative' }}>
-                        <div style={{ position: 'relative', minWidth: 60, minHeight: 44 }}>
+                      <th style={{ padding: 0, minWidth: 52, position: 'relative' }}>
+                        <div style={{ position: 'relative', minWidth: 52, minHeight: 44 }}>
                           <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                                viewBox="0 0 100 100" preserveAspectRatio="none">
                             <line x1="2" y1="2" x2="98" y2="98" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
