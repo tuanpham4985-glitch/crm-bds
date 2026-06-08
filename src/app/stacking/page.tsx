@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Grid3x3, RefreshCw, X, Settings, Plus, Trash2,
   CheckCircle, AlertCircle, ChevronDown, Loader2, Copy,
+  Minus, Maximize2,
 } from 'lucide-react';
 import type { StackingUnit, StackingSheetMeta, StackingConfig } from '@/lib/types';
 
@@ -410,6 +411,8 @@ export default function StackingPage() {
   // Tracks which configId has finished loading towers — prevents stale fetchUnits
   // firing with old project/tower when config switches (race condition guard)
   const towersReadyForRef = useRef<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const zoomWrapperRef     = useRef<HTMLDivElement>(null);
 
   // 1. Load config list on mount
   useEffect(() => {
@@ -481,6 +484,21 @@ export default function StackingPage() {
   }, [selectedConfig, project, tower]);
 
   useEffect(() => { fetchUnits(); }, [fetchUnits]);
+
+  const fitToView = useCallback(() => {
+    const wrapper = zoomWrapperRef.current;
+    const container = scrollContainerRef.current;
+    if (!wrapper || !container) return;
+    // getBoundingClientRect gives the visual (zoomed) size on screen
+    const rect = wrapper.getBoundingClientRect();
+    const naturalW = rect.width / zoom;
+    const naturalH = rect.height / zoom;
+    if (!naturalW || !naturalH) return;
+    const availW = container.clientWidth;
+    const availH = container.clientHeight;
+    const fitZoom = Math.min(availW / naturalW, availH / naturalH, 1);
+    setZoom(Math.max(0.3, +fitZoom.toFixed(1)));
+  }, [zoom]);
 
   // Grid structure
   const { columns, floors, unitMap } = useMemo(() => {
@@ -606,27 +624,6 @@ export default function StackingPage() {
           Làm mới
         </button>
 
-        {/* Zoom control */}
-        <div style={{ display: 'flex', alignItems: 'center', borderRadius: 7, border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0 }}>
-          <button
-            onClick={() => setZoom(z => Math.max(0.4, Math.round((z - 0.1) * 10) / 10))}
-            disabled={zoom <= 0.4}
-            title="Thu nhỏ"
-            style={{ padding: '5px 10px', background: 'var(--bg-card)', border: 'none', borderRight: '1px solid var(--border)', cursor: zoom <= 0.4 ? 'default' : 'pointer', fontSize: '1rem', lineHeight: 1, color: 'var(--text-muted)', opacity: zoom <= 0.4 ? 0.35 : 1 }}
-          >−</button>
-          <button
-            onClick={() => setZoom(1)}
-            title="Đặt lại 100%"
-            style={{ padding: '5px 8px', background: 'var(--bg-card)', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: zoom === 1 ? 'var(--text-muted)' : 'var(--primary)', minWidth: 44, textAlign: 'center' }}
-          >{Math.round(zoom * 100)}%</button>
-          <button
-            onClick={() => setZoom(z => Math.min(1, Math.round((z + 0.1) * 10) / 10))}
-            disabled={zoom >= 1}
-            title="Phóng to"
-            style={{ padding: '5px 10px', background: 'var(--bg-card)', border: 'none', borderLeft: '1px solid var(--border)', cursor: zoom >= 1 ? 'default' : 'pointer', fontSize: '1rem', lineHeight: 1, color: 'var(--text-muted)', opacity: zoom >= 1 ? 0.35 : 1 }}
-          >+</button>
-        </div>
-
         {/* Status counts */}
         {units.length > 0 && (
           <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -649,8 +646,8 @@ export default function StackingPage() {
       </div>
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        <div className="stacking-scroll" style={{ height: '100%', overflow: 'auto', padding: '0 12px 14px 12px' }}>
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <div ref={scrollContainerRef} className="stacking-scroll" style={{ height: '100%', overflow: 'auto', padding: '0 12px 14px 12px' }}>
 
           {/* Empty state: no configs */}
           {configs.length === 0 && (
@@ -699,7 +696,7 @@ export default function StackingPage() {
 
           {/* Grid */}
           {!loadingUnits && units.length > 0 && (
-            <div style={{ zoom: zoom } as React.CSSProperties}>
+            <div ref={zoomWrapperRef} style={{ zoom: zoom } as React.CSSProperties}>
               {/* Legend: loại căn clickable filter + chú thích Độc quyền */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, paddingTop: 14 }}>
                 {unitTypes.map(type => {
@@ -779,6 +776,36 @@ export default function StackingPage() {
           )}
         </div>
 
+        {/* ── Floating zoom controls ────────────────────────────────────────── */}
+        {units.length > 0 && (
+          <div style={{
+            position: 'absolute', bottom: 20, right: 20, zIndex: 50,
+            display: 'flex', flexDirection: 'column',
+            background: 'var(--bg-card)', borderRadius: 10,
+            border: '1px solid var(--border)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.13)',
+            overflow: 'hidden',
+          }}>
+            <button onClick={() => setZoom(z => Math.min(1, Math.round((z + 0.1) * 10) / 10))}
+              disabled={zoom >= 1} title="Phóng to" style={zoomFloatBtn(zoom >= 1)}>
+              <Plus size={15} />
+            </button>
+            <div style={{ height: 1, background: 'var(--border)' }} />
+            <button onClick={() => setZoom(z => Math.max(0.3, Math.round((z - 0.1) * 10) / 10))}
+              disabled={zoom <= 0.3} title="Thu nhỏ" style={zoomFloatBtn(zoom <= 0.3)}>
+              <Minus size={15} />
+            </button>
+            <div style={{ height: 1, background: 'var(--border)' }} />
+            <button onClick={() => setZoom(1)} title="Đặt lại 100%"
+              style={{ ...zoomFloatBtn(false), fontSize: '0.65rem', fontWeight: 700, color: zoom !== 1 ? 'var(--primary)' : 'var(--text-muted)' }}>
+              {Math.round(zoom * 100)}%
+            </button>
+            <div style={{ height: 1, background: 'var(--border)' }} />
+            <button onClick={fitToView} title="Vừa khung nhìn" style={zoomFloatBtn(false)}>
+              <Maximize2 size={15} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Detail modal ──────────────────────────────────────────────────── */}
@@ -871,6 +898,16 @@ export default function StackingPage() {
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
+}
+
+function zoomFloatBtn(disabled: boolean): React.CSSProperties {
+  return {
+    width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'var(--bg-card)', border: 'none', cursor: disabled ? 'default' : 'pointer',
+    color: disabled ? 'var(--text-muted)' : 'var(--text-body)',
+    opacity: disabled ? 0.35 : 1,
+    transition: 'background 0.1s',
+  };
 }
 
 const selectStyle: React.CSSProperties = {
