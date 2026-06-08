@@ -332,23 +332,24 @@ const MAU_O_COLOR: Record<'xanh' | 'vang', { bg: string; text: string; border: s
   vang: { bg: '#ffff00', text: '#5c3d00', border: '#ccaa00' }, // #ffff00 — CHECK ADMIN
 };
 
-function UnitCell({ unit, onClick, isSelected, hlBg }: {
+const TYPE_ORDER = ['Studio', '1BR', '1BR+', '2BR', '2BR+', '3BR', 'Penthouse'];
+
+function UnitCell({ unit, onClick, isSelected, hlBg, dimmed }: {
   unit: StackingUnit; onClick: () => void; isSelected: boolean;
   hlBg?: string; // crosshair highlight background
+  dimmed?: boolean; // faded when type filter is active and this unit doesn't match
 }) {
-  const mauColor = unit.mauO ? MAU_O_COLOR[unit.mauO] : null;
+  // Độc quyền (xanh) now shown via green dot only; only vang (Check Admin) keeps yellow bg
+  const mauColor = unit.mauO === 'vang' ? MAU_O_COLOR.vang : null;
   const sold     = unit.trangThai === 'da_ban';
   const inPr     = unit.trangThai === 'dang_xem';
 
-  // Chỉ tô màu khi có mauO từ GSheets; còn lại để trắng/neutral
-  const bg     = sold ? '#f3f4f6' : (mauColor?.bg     ?? '#ffffff');
-  const text   = sold ? '#9ca3af' : (mauColor?.text   ?? '#475569');
+  const bg     = sold ? '#f3f4f6' : (mauColor?.bg ?? '#ffffff');
+  const text   = sold ? '#9ca3af' : (mauColor?.text ?? '#475569');
   const border = isSelected ? '#6366f1' : (mauColor?.border ?? '#e2e8f0');
 
-  // Màu badge loaiCan — dùng typeColor của unit chính nó (đúng theo section)
   const tc = typeColor(unit.loaiCan);
 
-  // Crosshair: ô không có màu riêng → tô hlBg lên cả button; ô có màu (xanh/vàng) → chỉ tô viền td
   const btnBg = (!isSelected && hlBg && !mauColor && !sold) ? hlBg : bg;
 
   return (
@@ -360,12 +361,17 @@ function UnitCell({ unit, onClick, isSelected, hlBg }: {
         fontSize: 11, fontWeight: 600, cursor: 'pointer',
         fontFamily: '"Be Vietnam Pro", system-ui, -apple-system, sans-serif',
         textDecoration: sold ? 'line-through' : 'none',
-        opacity: sold ? 0.5 : inPr ? 0.78 : 1,
+        opacity: dimmed ? 0.12 : sold ? 0.5 : inPr ? 0.78 : 1,
         outline: isSelected ? '2px solid var(--primary)' : 'none', outlineOffset: 1,
         position: 'relative', textAlign: 'center', lineHeight: 1.3,
+        transition: 'opacity 0.15s',
       }}>
+        {/* Green dot top-left = Độc quyền */}
+        {unit.mauO === 'xanh' && !sold && (
+          <span style={{ position: 'absolute', top: 3, left: 3, width: 6, height: 6, borderRadius: '50%', background: '#22c55e', border: '1.5px solid #15803d' }} />
+        )}
+        {/* Orange dot top-right = Đang xem */}
         {inPr && <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: '#f59e0b' }} />}
-        {/* Badge loaiCan — mỗi ô tự hiện loại CĂN đúng theo section của tầng đó */}
         {unit.loaiCan && !sold && (
           <span style={{
             display: 'block', fontSize: 8, fontWeight: 700, lineHeight: 1.4,
@@ -396,6 +402,7 @@ export default function StackingPage() {
   const [units, setUnits]                   = useState<StackingUnit[]>([]);
   const [selectedUnit, setSelectedUnit]     = useState<StackingUnit | null>(null);
   const [showManage, setShowManage]         = useState(false);
+  const [filterType, setFilterType]         = useState<string | null>(null);
   const [loadingConfigs, setLoadingConfigs] = useState(true);
   const [loadingTowers, setLoadingTowers]   = useState(false);
   const [loadingUnits, setLoadingUnits]     = useState(false);
@@ -419,7 +426,7 @@ export default function StackingPage() {
   useEffect(() => {
     if (!selectedConfig) { setTowers([]); setTowersError(''); return; }
     setLoadingTowers(true);
-    setTowers([]); setProject(''); setTower(''); setUnits([]); setSelectedUnit(null); setTowersError('');
+    setTowers([]); setProject(''); setTower(''); setUnits([]); setSelectedUnit(null); setTowersError(''); setFilterType(null);
 
     const params = new URLSearchParams({ sheets: '1', sheet_id: selectedConfig.sheet_id });
     if (selectedConfig.project_code) params.set('project_code', selectedConfig.project_code);
@@ -520,6 +527,17 @@ export default function StackingPage() {
     return c;
   }, [units]);
 
+  const unitTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const u of units) { if (u.loaiCan) types.add(u.loaiCan); }
+    return Array.from(types).sort((a, b) => {
+      const ia = TYPE_ORDER.indexOf(a), ib = TYPE_ORDER.indexOf(b);
+      if (ia === -1 && ib === -1) return a.localeCompare(b);
+      if (ia === -1) return 1; if (ib === -1) return -1;
+      return ia - ib;
+    });
+  }, [units]);
+
   const projects = useMemo(() => [...new Set(towers.map(t => t.project))].sort(), [towers]);
   const towersForProject = useMemo(() => towers.filter(t => t.project === project).map(t => t.tower), [towers, project]);
 
@@ -548,7 +566,7 @@ export default function StackingPage() {
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
         <Grid3x3 size={18} color="var(--primary)" />
-        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-title)' }}>Bảng hàng Stacking</span>
+        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-title)' }}>Bảng hàng</span>
 
         {/* Config selector */}
         {configs.length > 0 ? (
@@ -566,13 +584,13 @@ export default function StackingPage() {
         {towers.length > 0 && (
           <>
             <div style={{ position: 'relative' }}>
-              <select value={project} onChange={e => { setProject(e.target.value); setTower(towers.find(t => t.project === e.target.value)?.tower || ''); }} style={selectStyle}>
+              <select value={project} onChange={e => { setProject(e.target.value); setTower(towers.find(t => t.project === e.target.value)?.tower || ''); setFilterType(null); }} style={selectStyle}>
                 {projects.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
               <ChevronDown size={13} style={chevronStyle} />
             </div>
             <div style={{ position: 'relative' }}>
-              <select value={tower} onChange={e => setTower(e.target.value)} style={selectStyle}>
+              <select value={tower} onChange={e => { setTower(e.target.value); setFilterType(null); }} style={selectStyle}>
                 {towersForProject.map(t => <option key={t} value={t}>Tower {t}</option>)}
               </select>
               <ChevronDown size={13} style={chevronStyle} />
@@ -661,14 +679,36 @@ export default function StackingPage() {
           {/* Grid */}
           {!loadingUnits && units.length > 0 && (
             <>
-              {/* Legend: 3 badge cùng minWidth để cân xứng */}
+              {/* Legend: loại căn clickable filter + chú thích Độc quyền */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, paddingTop: 14 }}>
-                {(['xanh', 'vang'] as const).map(mau => (
-                  <span key={mau} style={{ display: 'inline-flex', justifyContent: 'center', minWidth: 92, padding: '3px 10px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: MAU_O_COLOR[mau].bg, color: MAU_O_COLOR[mau].text, border: `1px solid ${MAU_O_COLOR[mau].border}` }}>
-                    {mau === 'xanh' ? 'Độc quyền' : 'Check Admin'}
-                  </span>
-                ))}
-                <span style={{ display: 'inline-flex', justifyContent: 'center', minWidth: 92, padding: '3px 10px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: '#ef4444', color: '#ffffff', border: '1px solid #dc2626', textDecoration: 'line-through' }}>Đã bán</span>
+                {unitTypes.map(type => {
+                  const tc = typeColor(type);
+                  const isActive = filterType === type;
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setFilterType(f => f === type ? null : type)}
+                      title={`Lọc căn ${type}`}
+                      style={{
+                        display: 'inline-flex', justifyContent: 'center', alignItems: 'center',
+                        minWidth: 64, padding: '3px 12px', borderRadius: 999,
+                        fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                        background: isActive ? tc.bg : 'transparent',
+                        color: tc.text,
+                        border: `1.5px solid ${tc.border}`,
+                        boxShadow: isActive ? `0 0 0 2px ${tc.border}` : 'none',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {type}
+                    </button>
+                  );
+                })}
+                {/* Chú thích chấm xanh = Độc quyền */}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: 'var(--text-muted)', paddingLeft: 8, borderLeft: '1px solid var(--border)', marginLeft: 2 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', border: '1.5px solid #15803d', display: 'inline-block', flexShrink: 0 }} />
+                  Độc quyền
+                </span>
               </div>
 
                 <table className="stacking-table">
@@ -706,7 +746,8 @@ export default function StackingPage() {
                               </td>
                             );
                             const isSel = selectedUnit?.maCan === unit.maCan;
-                            return <UnitCell key={canSo} unit={unit} isSelected={isSel} hlBg={isHl && !isSel ? hlCell : undefined} onClick={() => setSelectedUnit(u => u?.maCan === unit.maCan ? null : unit)} />;
+                            const isDimmed = filterType !== null && unit.loaiCan !== filterType;
+                            return <UnitCell key={canSo} unit={unit} isSelected={isSel} hlBg={isHl && !isSel ? hlCell : undefined} dimmed={isDimmed} onClick={() => setSelectedUnit(u => u?.maCan === unit.maCan ? null : unit)} />;
                           })}
                         </tr>
                       );
