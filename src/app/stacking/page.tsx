@@ -739,8 +739,17 @@ export default function StackingPage() {
                 <table className="stacking-table" onMouseLeave={() => setHoverPos(null)}>
                   <thead>
                     <tr>
-                      {/* Corner: CSS class xử lý sticky top+left+z-index+background */}
-                      <th style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: '#ffffff' }}>TẦNG</th>
+                      {/* Corner: diagonal split TẦNG / CĂN */}
+                      <th style={{ padding: 0, minWidth: 60, position: 'relative' }}>
+                        <div style={{ position: 'relative', minWidth: 60, minHeight: 44 }}>
+                          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                               viewBox="0 0 100 100" preserveAspectRatio="none">
+                            <line x1="2" y1="2" x2="98" y2="98" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                          </svg>
+                          <span style={{ position: 'absolute', top: 5, right: 7, fontSize: '0.68rem', fontWeight: 700, color: '#fff', lineHeight: 1, userSelect: 'none' }}>CĂN</span>
+                          <span style={{ position: 'absolute', bottom: 5, left: 7, fontSize: '0.68rem', fontWeight: 700, color: '#fff', lineHeight: 1, userSelect: 'none' }}>TẦNG</span>
+                        </div>
+                      </th>
                       {columns.map((canSo, ci) => {
                         const isHlTh = xColIdx >= 0 && ci === xColIdx;
                         return (
