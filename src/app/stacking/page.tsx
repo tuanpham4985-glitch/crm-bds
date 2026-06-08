@@ -7,6 +7,7 @@ import {
   Minus, Maximize2,
 } from 'lucide-react';
 import type { StackingUnit, StackingSheetMeta, StackingConfig } from '@/lib/types';
+import { useAuth } from '@/hooks/useAuth';
 
 // ─── Color map by loaiCan ────────────────────────────────────────────────────
 
@@ -401,6 +402,8 @@ function UnitCell({ unit, onClick, onMouseEnter, isSelected, hlBg, dimmed }: {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function StackingPage() {
+  const { isAdmin } = useAuth();
+
   const [configs, setConfigs]               = useState<StackingConfig[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<StackingConfig | null>(null);
   const [towers, setTowers]                 = useState<StackingSheetMeta[]>([]);
@@ -643,13 +646,15 @@ export default function StackingPage() {
           </div>
         )}
 
-        <button onClick={() => setShowManage(true)} style={{
-          display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
-          fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
-          background: 'transparent', color: 'var(--primary)', cursor: 'pointer', marginLeft: configs.length === 0 ? 0 : 'auto',
-        }}>
-          <Settings size={14} /> Quản lý Sheet
-        </button>
+        {isAdmin && (
+          <button onClick={() => setShowManage(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
+            fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
+            background: 'transparent', color: 'var(--primary)', cursor: 'pointer', marginLeft: configs.length === 0 ? 0 : 'auto',
+          }}>
+            <Settings size={14} /> Quản lý Sheet
+          </button>
+        )}
       </div>
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
@@ -661,12 +666,20 @@ export default function StackingPage() {
             <div style={{ textAlign: 'center', paddingTop: 80 }}>
               <Grid3x3 size={48} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.2 }} />
               <p style={{ color: 'var(--text-title)', fontWeight: 600, marginBottom: 6 }}>Chưa có nguồn bảng hàng nào</p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 20 }}>
-                Nhấn "Quản lý Sheet" → thêm Sheet ID của file bảng hàng
-              </p>
-              <button onClick={() => setShowManage(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, fontWeight: 600, fontSize: '0.875rem', border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer' }}>
-                <Plus size={15} /> Thêm nguồn đầu tiên
-              </button>
+              {isAdmin ? (
+                <>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 20 }}>
+                    Nhấn "Quản lý Sheet" → thêm Sheet ID của file bảng hàng
+                  </p>
+                  <button onClick={() => setShowManage(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, fontWeight: 600, fontSize: '0.875rem', border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer' }}>
+                    <Plus size={15} /> Thêm nguồn đầu tiên
+                  </button>
+                </>
+              ) : (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                  Liên hệ Admin để cấu hình nguồn bảng hàng.
+                </p>
+              )}
             </div>
           )}
 
@@ -944,8 +957,8 @@ export default function StackingPage() {
         );
       })()}
 
-      {/* Manage panel */}
-      {showManage && (
+      {/* Manage panel — chỉ Admin mới được mở */}
+      {showManage && isAdmin && (
         <ManagePanel configs={configs} onClose={() => setShowManage(false)}
           onAdd={c => { setConfigs(prev => [...prev, c]); if (!selectedConfig) setSelectedConfig(c); }}
           onDelete={id => { setConfigs(prev => prev.filter(c => c.id !== id)); if (selectedConfig?.id === id) setSelectedConfig(null); }}
