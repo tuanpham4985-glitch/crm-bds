@@ -2349,35 +2349,110 @@ function parseListTab(
 }
 
 /** Đọc bảng giá chi tiết từ master tab (list format), keyed by maCan.
- *  Dùng để augment grid-tab units với dtTim, TTS / TT Chuẩn / Vay NH / Link PTG.
+ *  Dùng để augment grid-tab units với dtTim, huong, view, TTS / TT Chuẩn / Vay NH / Link PTG.
  *  Grid tab chỉ có DTTT, không có DT Tim tường riêng — master tab có cả hai. */
 type PriceExtra = {
   dtTim?: number;
+  huong?: string;
+  view?: string;
   ttsTamTinh?: number;
   ttChuanTamTinh?: number;
   vayNhTamTinh?: number;
   linkPTG?: string;
 };
 
+/** Số cột tối đa quét header để auto-detect layout */
+const LIST_SCAN_COLS = 30;
+
+/** Chuẩn hoá chuỗi header: uppercase, bỏ dấu, bỏ khoảng trắng thừa */
+function normHeader(raw: unknown): string {
+  return str(raw).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+/**
+ * Tự động detect vị trí các cột quan trọng từ header row của master sheet.
+ * Trả về map tên trường → column index (0-based).
+ * Fallback về DEFAULT_LIST_COLS nếu không tìm thấy header.
+ */
+const DEFAULT_LIST_COLS = {
+  maCan:   LIST_COL_MA_CAN,        // 1  (B)
+  dtTim:   LIST_COL_DT_TIM,        // 6  (G)
+  dttt:    LIST_COL_DT_THONG_THUY, // 7  (H)
+  huong:   LIST_COL_HUONG,         // 8  (I)
+  view:    LIST_COL_VIEW,           // 9  (J)
+  giaKS:   LIST_COL_GIA_KS,        // 10 (K)
+  tts:     LIST_COL_TTS,           // 11 (L)
+  ttChuan: LIST_COL_TT_CHUAN,      // 12 (M)
+  vayNh:   LIST_COL_VAY_NH,        // 13 (N)
+  linkPTG: LIST_COL_LINK_PTG,      // 14 (O)
+};
+
+function detectListCols(
+  sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
+): typeof DEFAULT_LIST_COLS {
+  const cols = { ...DEFAULT_LIST_COLS };
+  const maxC = Math.min(sheet.columnCount, LIST_SCAN_COLS);
+  let found = 0;
+
+  for (let c = 0; c < maxC; c++) {
+    const h = normHeader(sheet.getCell(0, c).value);
+    if (!h) continue;
+
+    if (h.includes('MA CAN') || h === 'MACAN' || h === 'MA_CAN') {
+      cols.maCan = c; found++;
+    } else if ((h.includes('TIM') || h.includes('TUONG')) && (h.includes('DT') || h.includes('DIEN TICH'))) {
+      cols.dtTim = c; found++;
+    } else if (h === 'DTTT' || h === 'DT TT' || h.includes('THONG THUY')) {
+      cols.dttt = c; found++;
+    } else if (h === 'HUONG' || h.startsWith('HUONG')) {
+      cols.huong = c; found++;
+    } else if (h === 'VIEW') {
+      cols.view = c; found++;
+    } else if ((h.includes('GIA') && h.includes('KS')) || h.includes('GIA KHAO SAT')) {
+      cols.giaKS = c; found++;
+    } else if (h.includes('TTS') && !h.includes('CHUAN') && !h.includes('VAY')) {
+      cols.tts = c; found++;
+    } else if ((h.includes('TT') && h.includes('CHUAN')) || (h.includes('CHUAN') && h.includes('TAM TINH'))) {
+      cols.ttChuan = c; found++;
+    } else if (h.includes('VAY') && (h.includes('NH') || h.includes('NGAN HANG'))) {
+      cols.vayNh = c; found++;
+    } else if (h.includes('PTG') || (h.includes('PHIEU') && h.includes('TINH')) || h === 'LINK PTG') {
+      cols.linkPTG = c; found++;
+    }
+
+    if (found >= 8) break; // đủ rồi — không cần quét tiếp
+  }
+
+  return cols;
+}
+
 function buildPriceMap(
   sheet: import('google-spreadsheet').GoogleSpreadsheetWorksheet,
   rowLimit: number,
 ): Map<string, PriceExtra> {
+  const c   = detectListCols(sheet);
   const map = new Map<string, PriceExtra>();
+
   for (let rowIdx = 1; rowIdx < rowLimit; rowIdx++) {
-    const maCan = str(sheet.getCell(rowIdx, LIST_COL_MA_CAN).value);
+    const maCan = str(sheet.getCell(rowIdx, c.maCan).value);
     if (!maCan) continue;
-    const dtTim   = num(sheet.getCell(rowIdx, LIST_COL_DT_TIM).value);
-    const tts     = scalePrice(sheet.getCell(rowIdx, LIST_COL_TTS).value);
-    const ttChuan = scalePrice(sheet.getCell(rowIdx, LIST_COL_TT_CHUAN).value);
-    const vayNh   = scalePrice(sheet.getCell(rowIdx, LIST_COL_VAY_NH).value);
-    const linkPTG = str(sheet.getCell(rowIdx, LIST_COL_LINK_PTG).value);
+
+    const dtTim   = num(sheet.getCell(rowIdx, c.dtTim).value);
+    const huong   = str(sheet.getCell(rowIdx, c.huong).value);
+    const view    = str(sheet.getCell(rowIdx, c.view).value);
+    const tts     = scalePrice(sheet.getCell(rowIdx, c.tts).value);
+    const ttChuan = scalePrice(sheet.getCell(rowIdx, c.ttChuan).value);
+    const vayNh   = scalePrice(sheet.getCell(rowIdx, c.vayNh).value);
+    const linkPTG = str(sheet.getCell(rowIdx, c.linkPTG).value);
+
     const entry: PriceExtra = {};
-    if (dtTim)   entry.dtTim            = dtTim;
-    if (tts)     entry.ttsTamTinh       = tts;
-    if (ttChuan) entry.ttChuanTamTinh   = ttChuan;
-    if (vayNh)   entry.vayNhTamTinh     = vayNh;
-    if (linkPTG) entry.linkPTG          = linkPTG;
+    if (dtTim)   entry.dtTim           = dtTim;
+    if (huong)   entry.huong           = huong;
+    if (view)    entry.view            = view;
+    if (tts)     entry.ttsTamTinh      = tts;
+    if (ttChuan) entry.ttChuanTamTinh  = ttChuan;
+    if (vayNh)   entry.vayNhTamTinh    = vayNh;
+    if (linkPTG) entry.linkPTG         = linkPTG;
     map.set(maCan, entry);
   }
   return map;
@@ -2466,7 +2541,7 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
         const masterSheet = doc.sheetsByTitle[project];
         if (masterSheet) {
           const mr = Math.min(masterSheet.rowCount, MAX_LIST_ROWS);
-          const mc = Math.min(masterSheet.columnCount, LIST_COL_LINK_PTG + 1);
+          const mc = Math.min(masterSheet.columnCount, LIST_SCAN_COLS);
           await masterSheet.loadCells(`A1:${colLetter(mc)}${mr}`);
           const priceMap = buildPriceMap(masterSheet, mr);
           if (priceMap.size > 0) {
