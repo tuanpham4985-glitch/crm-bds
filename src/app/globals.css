@@ -2066,6 +2066,18 @@ select:focus {
     gap: 8px;
     flex-wrap: wrap;
   }
+
+  /* Stacking full-height page: absorb main-content padding (16px) to maximise
+     the grid area on mobile. The negative margins pull the container flush with
+     the viewport edges; width compensates so no horizontal gap appears.
+     height: calc(100vh - 60px) then correctly fills from the mobile header
+     straight down to the bottom of the viewport. */
+  .stacking-root {
+    margin-top: -16px;
+    margin-left: -16px;
+    margin-right: -16px;
+    width: calc(100% + 32px);
+  }
 }
 
 /* ============================================================

@@ -586,7 +586,7 @@ export default function StackingPage() {
   if (loadingConfigs) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Đang khởi tạo...</div>;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden' }}>
+    <div className="stacking-root" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden' }}>
 
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
@@ -739,15 +739,17 @@ export default function StackingPage() {
                 <table className="stacking-table" onMouseLeave={() => setHoverPos(null)}>
                   <thead>
                     <tr>
-                      {/* Corner: diagonal split TẦNG / CĂN */}
-                      <th style={{ padding: 0, minWidth: 52, position: 'relative' }}>
-                        <div style={{ position: 'relative', minWidth: 52, minHeight: 44 }}>
+                      {/* Corner: diagonal split TẦNG / CĂN
+                           ⚠ KHÔNG đặt position:'relative' trên <th> — sẽ override position:sticky từ CSS class
+                           → dùng <div> bên trong làm container relative thay thế */}
+                      <th style={{ padding: 0, minWidth: 68 }}>
+                        <div style={{ position: 'relative', width: '100%', minHeight: 52 }}>
                           <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                                viewBox="0 0 100 100" preserveAspectRatio="none">
-                            <line x1="2" y1="2" x2="98" y2="98" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                            <line x1="2" y1="2" x2="98" y2="98" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
                           </svg>
-                          <span style={{ position: 'absolute', top: 5, right: 7, fontSize: '0.68rem', fontWeight: 700, color: '#fff', lineHeight: 1, userSelect: 'none' }}>CĂN</span>
-                          <span style={{ position: 'absolute', bottom: 5, left: 7, fontSize: '0.68rem', fontWeight: 700, color: '#fff', lineHeight: 1, userSelect: 'none' }}>TẦNG</span>
+                          <span style={{ position: 'absolute', top: 6, right: 8, fontSize: '0.7rem', fontWeight: 700, color: '#fff', lineHeight: 1, userSelect: 'none' }}>CĂN</span>
+                          <span style={{ position: 'absolute', bottom: 6, left: 8, fontSize: '0.7rem', fontWeight: 700, color: '#fff', lineHeight: 1, userSelect: 'none' }}>TẦNG</span>
                         </div>
                       </th>
                       {columns.map((canSo, ci) => {
@@ -766,7 +768,7 @@ export default function StackingPage() {
                       return (
                         <tr key={tang} style={{ background: fi % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
                           {/* Cột TẦNG: CSS sets dark gray base; inline chỉ ghi đè khi crosshair */}
-                          <td style={{ padding: '5px 10px', textAlign: 'center', minWidth: 52, fontWeight: 700, fontSize: '0.8rem', color: '#ffffff', background: isHlRow ? hlAxisSticky : undefined, borderTop: '1px solid #334155' }}>{tang}</td>
+                          <td style={{ padding: '5px 10px', textAlign: 'center', minWidth: 68, fontWeight: 700, fontSize: '0.8rem', color: '#ffffff', background: isHlRow ? hlAxisSticky : undefined, borderTop: '1px solid #334155' }}>{tang}</td>
                           {columns.map((canSo, ci) => {
                             const unit = unitMap[tang]?.[canSo];
                             // Hàng: cùng tầng, cột từ 0 đến xColIdx (tức từ ô đó hất sang trái)
@@ -834,7 +836,7 @@ export default function StackingPage() {
             onClick={() => setSelectedUnit(null)}
           >
             <div
-              style={{ width: '100%', maxWidth: 460, background: 'var(--bg-card)', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.28)', overflow: 'hidden' }}
+              style={{ width: '100%', maxWidth: 460, maxHeight: 'calc(100vh - 32px)', background: 'var(--bg-card)', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.28)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
@@ -847,6 +849,9 @@ export default function StackingPage() {
                   <X size={18} />
                 </button>
               </div>
+
+              {/* Scrollable body — flex:1 so it fills remaining modal height and enables scroll on small screens */}
+              <div style={{ flex: 1, overflowY: 'auto' }}>
 
               {/* Status badges */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }}>
@@ -942,6 +947,7 @@ export default function StackingPage() {
                   </a>
                 )}
               </div>
+              </div>{/* /scrollable body */}
             </div>
           </div>
         );
