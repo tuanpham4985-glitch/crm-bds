@@ -347,10 +347,10 @@ const MAU_O_COLOR: Record<'xanh' | 'vang', { bg: string; text: string; border: s
 
 const TYPE_ORDER = ['Studio', '1BR', '1BR+', '1BR+1MR', '2BR', '2BR+', '2BR+1MR', '2BR+1MMR', '3BR', '3BR+1MR', '4BR', 'Penthouse'];
 
-function UnitCell({ unit, onClick, isSelected, hlBg, dimmed }: {
-  unit: StackingUnit; onClick: () => void; isSelected: boolean;
-  hlBg?: string; // crosshair highlight background
-  dimmed?: boolean; // faded when type filter is active and this unit doesn't match
+function UnitCell({ unit, onClick, onMouseEnter, isSelected, hlBg, dimmed }: {
+  unit: StackingUnit; onClick: () => void; onMouseEnter: () => void; isSelected: boolean;
+  hlBg?: string;
+  dimmed?: boolean;
 }) {
   // All cells use type color; green dot marks Độc quyền; sold = gray
   const sold = unit.trangThai === 'da_ban';
@@ -364,7 +364,7 @@ function UnitCell({ unit, onClick, isSelected, hlBg, dimmed }: {
   const btnBg = (!isSelected && hlBg && !sold) ? hlBg : bg;
 
   return (
-    <td style={{ padding: '3px 4px', minWidth: 82, background: !isSelected && hlBg ? hlBg : undefined }}>
+    <td onMouseEnter={onMouseEnter} style={{ padding: '3px 4px', minWidth: 82, background: !isSelected && hlBg ? hlBg : undefined }}>
       <button onClick={onClick} style={{
         width: '100%', padding: '4px 6px', borderRadius: 6,
         border: `1.5px solid ${border}`,
@@ -404,6 +404,7 @@ export default function StackingPage() {
   const [showManage, setShowManage]         = useState(false);
   const [filterType, setFilterType]         = useState<string | null>(null);
   const [zoom, setZoom]                     = useState(1);
+  const [hoverPos, setHoverPos]             = useState<{ fi: number; ci: number } | null>(null);
   const [loadingConfigs, setLoadingConfigs] = useState(true);
   const [loadingTowers, setLoadingTowers]   = useState(false);
   const [loadingUnits, setLoadingUnits]     = useState(false);
@@ -564,13 +565,15 @@ export default function StackingPage() {
   const towersForProject = useMemo(() => towers.filter(t => t.project === project).map(t => t.tower), [towers, project]);
 
   // ── Crosshair highlight ───────────────────────────────────────────────────
-  // Khi click 1 ô: tô màu nhạt sang trái (cùng hàng, từ ô đó về TẦNG)
-  //                              và lên trên (cùng cột, từ ô đó lên header)
-  const xFloorIdx = selectedUnit ? floors.indexOf(selectedUnit.tang)   : -1;
-  const xColIdx   = selectedUnit ? columns.indexOf(selectedUnit.canSo) : -1;
-  // Crosshair highlight — dùng màu border của loại căn đang chọn, opacity 20%
-  const hlCell      = selectedUnit ? hexToRgba(typeColor(selectedUnit.loaiCan).border, 0.20) : '';
-  const hlAxisSticky = selectedUnit ? '#64748b' : undefined;
+  // Hover có ưu tiên hơn click — khi chuột rời bảng thì fallback về selectedUnit
+  const xFloorIdx = hoverPos ? hoverPos.fi : (selectedUnit ? floors.indexOf(selectedUnit.tang)   : -1);
+  const xColIdx   = hoverPos ? hoverPos.ci : (selectedUnit ? columns.indexOf(selectedUnit.canSo) : -1);
+  const hoveredUnit    = hoverPos ? (unitMap[floors[hoverPos.fi]]?.[columns[hoverPos.ci]] ?? null) : null;
+  const hlSourceUnit   = hoveredUnit ?? selectedUnit;
+  const hlCell         = xFloorIdx >= 0
+    ? (hlSourceUnit ? hexToRgba(typeColor(hlSourceUnit.loaiCan).border, 0.20) : 'rgba(100,116,139,0.15)')
+    : '';
+  const hlAxisSticky   = xFloorIdx >= 0 ? '#64748b' : undefined;
 
   if (loadingConfigs) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Đang khởi tạo...</div>;
 
@@ -725,7 +728,7 @@ export default function StackingPage() {
                 </span>
               </div>
 
-                <table className="stacking-table">
+                <table className="stacking-table" onMouseLeave={() => setHoverPos(null)}>
                   <thead>
                     <tr>
                       {/* Corner: CSS class xử lý sticky top+left+z-index+background */}
@@ -754,14 +757,15 @@ export default function StackingPage() {
                             // Cột: cùng canSo, tầng từ 0 đến xFloorIdx (tức từ ô đó hất lên trên)
                             const isColHl = xColIdx >= 0 && ci === xColIdx && fi <= xFloorIdx;
                             const isHl    = isRowHl || isColHl;
+                            const handleHover = () => setHoverPos({ fi, ci });
                             if (!unit) return (
-                              <td key={canSo} style={{ padding: '3px 4px', minWidth: 82, background: isHl ? hlCell : undefined }}>
+                              <td key={canSo} onMouseEnter={handleHover} style={{ padding: '3px 4px', minWidth: 82, background: isHl ? hlCell : undefined }}>
                                 <div style={{ height: 46, borderRadius: 6, border: '1px dashed #e5e7eb' }} />
                               </td>
                             );
                             const isSel = selectedUnit?.maCan === unit.maCan;
                             const isDimmed = filterType !== null && unit.loaiCan !== filterType;
-                            return <UnitCell key={canSo} unit={unit} isSelected={isSel} hlBg={isHl && !isSel ? hlCell : undefined} dimmed={isDimmed} onClick={() => setSelectedUnit(u => u?.maCan === unit.maCan ? null : unit)} />;
+                            return <UnitCell key={canSo} unit={unit} isSelected={isSel} hlBg={isHl && !isSel ? hlCell : undefined} dimmed={isDimmed} onMouseEnter={handleHover} onClick={() => setSelectedUnit(u => u?.maCan === unit.maCan ? null : unit)} />;
                           })}
                         </tr>
                       );
