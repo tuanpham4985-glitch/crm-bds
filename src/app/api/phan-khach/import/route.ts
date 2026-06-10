@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await importFromPhanKhachConfig(config.sheet_id, du_an ?? '');
-    console.log(`[Import] sheet=${config.sheet_id} → imported=${result.imported}, duplicates=${result.duplicates}`);
+    console.log(`[Import] sheet=${config.sheet_id} → imported=${result.imported}, duplicates=${result.duplicates}, updated=${result.updated}`);
     return NextResponse.json({ success: true, ...result });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

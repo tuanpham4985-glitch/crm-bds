@@ -46,7 +46,8 @@ export default function KhachHangPage() {
   const [savingConfig, setSavingConfig] = useState(false);
   const [deletingConfigId, setDeletingConfigId] = useState<string | null>(null);
   const [importingId, setImportingId] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<Record<string, { imported: number; duplicates: number }>>({});
+  const [importResult, setImportResult] = useState<Record<string, { imported: number; duplicates: number; updated: number }>>({});
+  const [importDuAn, setImportDuAn] = useState('');;
   const [saEmail, setSaEmail] = useState('');
   const [copied, setCopied] = useState(false);
 
@@ -225,11 +226,11 @@ export default function KhachHangPage() {
       const res = await fetch('/api/phan-khach/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config_id: config.id, du_an: '' }),
+        body: JSON.stringify({ config_id: config.id, du_an: importDuAn }),
       });
       const data = await res.json();
       if (data.success) {
-        setImportResult(prev => ({ ...prev, [config.id]: { imported: data.imported ?? 0, duplicates: data.duplicates ?? 0 } }));
+        setImportResult(prev => ({ ...prev, [config.id]: { imported: data.imported ?? 0, duplicates: data.duplicates ?? 0, updated: data.updated ?? 0 } }));
         if (data.imported > 0) fetchData();
       } else {
         alert(`Import thất bại: ${data.error ?? 'Lỗi không xác định'}`);
@@ -768,6 +769,21 @@ export default function KhachHangPage() {
                 <p style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: 10, color: 'var(--text-title)' }}>
                   Nguồn đã đăng ký ({loadingConfigs ? '…' : configs.length})
                 </p>
+                {/* Project selector for import */}
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Gán vào dự án khi import</label>
+                  <select
+                    value={importDuAn}
+                    onChange={e => setImportDuAn(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: '0.8rem', background: 'var(--bg-card)', color: 'var(--text-title)' }}
+                  >
+                    <option value=''>-- Chưa chọn dự án --</option>
+                    {duAnList.filter(d => d.hien_thi !== 0).map(d => (
+                      <option key={d.id_du_an} value={d.ten_du_an}>{d.ten_du_an}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {loadingConfigs ? (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
                     <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary)' }} />
@@ -795,8 +811,9 @@ export default function KhachHangPage() {
                             </button>
                           </div>
                           {result && (
-                            <div style={{ padding: '6px 12px 8px', borderTop: '1px solid var(--border)', background: '#f0fdf4', fontSize: '0.75rem', color: '#15803d', display: 'flex', gap: 12 }}>
-                              <span><strong>{result.imported}</strong> khách mới</span>
+                            <div style={{ padding: '6px 12px 8px', borderTop: '1px solid var(--border)', background: '#f0fdf4', fontSize: '0.75rem', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                              <span style={{ color: '#15803d' }}><strong>{result.imported}</strong> khách mới</span>
+                              {result.updated > 0 && <span style={{ color: '#1d4ed8' }}><strong>{result.updated}</strong> đã gán dự án</span>}
                               <span style={{ color: '#92400e' }}><strong>{result.duplicates}</strong> trùng (bỏ qua)</span>
                             </div>
                           )}

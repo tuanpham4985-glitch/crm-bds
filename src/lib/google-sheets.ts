@@ -2747,21 +2747,54 @@ export async function probePhanKhachSheet(sheetId: string): Promise<{
   }
 }
 
+// Batch-update du_an for customers whose phone matches and du_an is currently empty
+async function batchUpdateKhachHangDuAn(phones: Set<string>, duAn: string): Promise<number> {
+  if (!duAn || phones.size === 0) return 0;
+  const doc = await getDoc();
+  const sheet = doc.sheetsByTitle[SHEETS.KHACH_HANG];
+  if (!sheet) return 0;
+
+  await sheet.loadHeaderRow();
+  const h = sheet.headerValues;
+  const sdtColIdx = h.indexOf('so_dien_thoai');
+  const duAnColIdx = h.indexOf('du_an');
+  if (sdtColIdx < 0 || duAnColIdx < 0) return 0;
+
+  const totalRows = sheet.rowCount || 1;
+  const minCol = Math.min(sdtColIdx, duAnColIdx);
+  const maxCol = Math.max(sdtColIdx, duAnColIdx);
+
+  await sheet.loadCells({ startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: minCol, endColumnIndex: maxCol + 1 });
+
+  function phoneKey(p: string) { return String(p).replace(/\D/g, '').slice(-9); }
+
+  let updated = 0;
+  for (let row = 1; row < totalRows; row++) {
+    const sdtCell = sheet.getCell(row, sdtColIdx);
+    const duAnCell = sheet.getCell(row, duAnColIdx);
+    const existingPhone = phoneKey(String(sdtCell.value ?? ''));
+    const existingDuAn = String(duAnCell.value ?? '').trim();
+    if (existingPhone && phones.has(existingPhone) && !existingDuAn) {
+      duAnCell.value = duAn;
+      updated++;
+    }
+  }
+
+  if (updated > 0) await sheet.saveUpdatedCells();
+  return updated;
+}
+
 export async function importFromPhanKhachConfig(
   sheetId: string,
   duAn: string,
-): Promise<{ imported: number; duplicates: number }> {
+): Promise<{ imported: number; duplicates: number; updated: number }> {
   const rawId = extractSheetId(sheetId);
   const doc = await getDocBySheetId(rawId);
   const firstSheet = doc.sheetsByIndex[0];
 
   const headers = await readSheetHeaders(firstSheet);
-  console.log('[Import] headers read:', JSON.stringify(headers));
-
   const colMap = detectPhanKhachColumns(headers);
-  console.log('[Import] colMap detected:', JSON.stringify(colMap));
 
-  // Map each logical field to its column index
   const colIdx: Record<string, number> = {};
   for (const [field, headerName] of Object.entries(colMap)) {
     if (headerName) {
@@ -2769,17 +2802,19 @@ export async function importFromPhanKhachConfig(
       if (idx >= 0) colIdx[field] = idx;
     }
   }
-  console.log('[Import] colIdx:', JSON.stringify(colIdx));
 
   const totalRows = firstSheet.rowCount || 1;
-  console.log('[Import] totalRows:', totalRows, '| sheet tab:', firstSheet.title);
   const BATCH = 500;
 
   const existing = await getKhachHang();
   function phoneKey(p: string) { return String(p).replace(/\D/g, '').slice(-9); }
-  const seenPhones = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
+
+  // Build map: phoneKey → existing du_an (to detect which duplicates need du_an update)
+  const existingPhoneMap = new Map(existing.map(kh => [phoneKey(kh.so_dien_thoai), kh.du_an ?? '']));
+  const seenPhones = new Set(existingPhoneMap.keys());
 
   const toImport: KhachHang[] = [];
+  const phonesNeedingDuAnUpdate = new Set<string>(); // duplicate phones with empty du_an
   let duplicates = 0;
 
   const cellVal = (row: number, field: string): string => {
@@ -2788,7 +2823,6 @@ export async function importFromPhanKhachConfig(
     return String(firstSheet.getCell(row, idx).value ?? '').trim();
   };
 
-  // Load data in batches to handle large sheets
   for (let startRow = 1; startRow < totalRows; startRow += BATCH) {
     const endRow = Math.min(startRow + BATCH, totalRows);
     await firstSheet.loadCells({
@@ -2809,7 +2843,14 @@ export async function importFromPhanKhachConfig(
       if (sdt.length > 0 && !sdt.startsWith('0')) sdt = '0' + sdt;
 
       const key = phoneKey(sdt);
-      if (seenPhones.has(key)) { duplicates++; continue; }
+      if (seenPhones.has(key)) {
+        duplicates++;
+        // Queue for du_an update if existing customer has no project assigned
+        if (duAn && (existingPhoneMap.get(key) ?? '') === '') {
+          phonesNeedingDuAnUpdate.add(key);
+        }
+        continue;
+      }
       seenPhones.add(key);
 
       toImport.push({
@@ -2828,10 +2869,11 @@ export async function importFromPhanKhachConfig(
     }
   }
 
-  if (toImport.length > 0) {
-    await addKhachHangBatch(toImport);
-  }
+  const [, updated] = await Promise.all([
+    toImport.length > 0 ? addKhachHangBatch(toImport) : Promise.resolve(),
+    batchUpdateKhachHangDuAn(phonesNeedingDuAnUpdate, duAn),
+  ]);
 
-  return { imported: toImport.length, duplicates };
+  return { imported: toImport.length, duplicates, updated };
 }
 
