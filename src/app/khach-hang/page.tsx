@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search, Plus, Edit3, Trash2, X, ChevronLeft, ChevronRight,
-  Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle
+  Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle,
+  Database, Loader2, Copy,
 } from 'lucide-react';
-import type { KhachHang, NhanVien, Pipeline, DuAn } from '@/lib/types';
+import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
 import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
 
@@ -34,6 +35,20 @@ export default function KhachHangPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Quản lý Sheet nguồn
+  const [showPanel, setShowPanel] = useState(false);
+  const [configs, setConfigs] = useState<PhanKhachConfig[]>([]);
+  const [loadingConfigs, setLoadingConfigs] = useState(false);
+  const [addForm, setAddForm] = useState({ ten_hien_thi: '', sheet_id: '' });
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [deletingConfigId, setDeletingConfigId] = useState<string | null>(null);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<Record<string, { imported: number; duplicates: number }>>({});
+  const [saEmail, setSaEmail] = useState('');
+  const [copied, setCopied] = useState(false);
 
   // Sync từ phễu
   const [syncing, setSyncing] = useState(false);
@@ -140,6 +155,94 @@ export default function KhachHangPage() {
     }
   };
 
+  // ── ManagePanel handlers ──────────────────────────────────────
+
+  const openPanel = async () => {
+    setShowPanel(true);
+    setLoadingConfigs(true);
+    try {
+      const [cfgRes, infoRes] = await Promise.all([
+        fetch('/api/phan-khach/configs').then(r => r.json()),
+        fetch('/api/stacking/info').then(r => r.json()),
+      ]);
+      if (cfgRes.success) setConfigs(cfgRes.data);
+      if (infoRes.success) setSaEmail(infoRes.sa_email ?? '');
+    } catch (err) { console.error(err); }
+    finally { setLoadingConfigs(false); }
+  };
+
+  const handleProbe = async () => {
+    if (!addForm.sheet_id) return;
+    setProbing(true);
+    setProbeResult(null);
+    try {
+      const res = await fetch('/api/phan-khach/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheet_id: addForm.sheet_id }),
+      });
+      const data = await res.json();
+      setProbeResult({ ok: data.ok, msg: data.msg });
+    } catch { setProbeResult({ ok: false, msg: 'Lỗi kết nối server' }); }
+    finally { setProbing(false); }
+  };
+
+  const handleAddConfig = async () => {
+    if (!addForm.ten_hien_thi || !addForm.sheet_id) return;
+    setSavingConfig(true);
+    try {
+      const res = await fetch('/api/phan-khach/configs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addForm),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConfigs(prev => [data.data, ...prev]);
+        setAddForm({ ten_hien_thi: '', sheet_id: '' });
+        setProbeResult(null);
+      }
+    } catch (err) { console.error(err); }
+    finally { setSavingConfig(false); }
+  };
+
+  const handleDeleteConfig = async (id: string) => {
+    setDeletingConfigId(id);
+    try {
+      await fetch('/api/phan-khach/configs', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setConfigs(prev => prev.filter(c => c.id !== id));
+    } catch (err) { console.error(err); }
+    finally { setDeletingConfigId(null); }
+  };
+
+  const handleImport = async (config: PhanKhachConfig) => {
+    setImportingId(config.id);
+    try {
+      const res = await fetch('/api/phan-khach/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config_id: config.id, du_an: '' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImportResult(prev => ({ ...prev, [config.id]: { imported: data.imported, duplicates: data.duplicates } }));
+        if (data.imported > 0) fetchData();
+      }
+    } catch (err) { console.error(err); }
+    finally { setImportingId(null); }
+  };
+
+  const copyEmail = () => {
+    navigator.clipboard.writeText(saEmail).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   const openCreate = () => {
     setEditingItem(null);
     setForm({ ten_KH: '', so_dien_thoai: '', email: '', nguon: '', nhu_cau: '', ghi_chu: '', sale_phu_trach: '', du_an: '' });
@@ -223,6 +326,10 @@ export default function KhachHangPage() {
           <p>Quản lý thông tin khách hàng ({total} khách hàng)</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={openPanel}>
+            <Database size={15} />
+            Quản lý Sheet
+          </button>
           <button
             className="btn btn-secondary"
             onClick={handleSync}
@@ -590,6 +697,114 @@ export default function KhachHangPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Manage Sheet Panel ── */}
+      {showPanel && (
+        <>
+          <div onClick={() => setShowPanel(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)', zIndex: 1000 }} />
+          <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 440, background: 'var(--bg-card)', borderLeft: '1px solid var(--border)', zIndex: 1001, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '-4px 0 24px rgba(0,0,0,0.10)' }}>
+            {/* Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Database size={18} color="var(--primary)" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.975rem', color: 'var(--text-title)' }}>Quản lý Sheet nguồn</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Kết nối Google Sheet để import khách hàng</div>
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowPanel(false)}><X size={18} /></button>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+              {/* Service Account email */}
+              {saEmail && (
+                <div style={{ background: 'var(--bg-subtle, #f8fafc)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+                  <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-label)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Service Account Email</p>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0 0 8px' }}>Chia sẻ Google Sheet với email này (quyền Viewer) để hệ thống đọc dữ liệu.</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <code style={{ flex: 1, fontSize: '0.72rem', background: '#fff', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', wordBreak: 'break-all', color: 'var(--text-body)' }}>{saEmail}</code>
+                    <button onClick={copyEmail} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', color: copied ? '#16a34a' : 'var(--text-muted)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}>
+                      {copied ? <><CheckCircle size={13} /> Đã copy</> : <><Copy size={13} /> Copy</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Add form */}
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+                <p style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-title)', margin: '0 0 12px' }}>Thêm nguồn mới</p>
+                <div style={{ marginBottom: 10 }}>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>Tên hiển thị</p>
+                  <input className="form-input" placeholder="VD: Facebook Lead Tháng 6" value={addForm.ten_hien_thi} onChange={e => setAddForm(prev => ({ ...prev, ten_hien_thi: e.target.value }))} style={{ fontSize: '0.875rem' }} />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>Link hoặc Sheet ID</p>
+                  <input className="form-input" placeholder="https://docs.google.com/spreadsheets/d/..." value={addForm.sheet_id} onChange={e => { setAddForm(prev => ({ ...prev, sheet_id: e.target.value })); setProbeResult(null); }} style={{ fontSize: '0.82rem', fontFamily: 'monospace' }} />
+                </div>
+                <button onClick={handleProbe} disabled={!addForm.sheet_id || probing} style={{ width: '100%', padding: '7px 0', borderRadius: 7, fontWeight: 600, fontSize: '0.8rem', border: '1px solid var(--border)', background: 'var(--bg-secondary, #f1f5f9)', color: 'var(--text-body)', cursor: 'pointer', marginBottom: 8, opacity: !addForm.sheet_id || probing ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  {probing ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Đang kiểm tra...</> : <>Kiểm tra kết nối</>}
+                </button>
+                {probeResult && (
+                  <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: probeResult.ok ? '#dcfce7' : '#fee2e2', color: probeResult.ok ? '#15803d' : '#dc2626', fontSize: '0.78rem', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                    {probeResult.ok ? <CheckCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} /> : <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />}
+                    <span>{probeResult.msg}</span>
+                  </div>
+                )}
+                <button onClick={handleAddConfig} disabled={!addForm.ten_hien_thi || !addForm.sheet_id || savingConfig} style={{ width: '100%', padding: '9px 0', borderRadius: 8, fontWeight: 700, fontSize: '0.875rem', border: 'none', cursor: 'pointer', background: 'var(--primary)', color: '#fff', opacity: !addForm.ten_hien_thi || !addForm.sheet_id || savingConfig ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  {savingConfig ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Đang lưu...</> : <><Plus size={15} /> Thêm nguồn</>}
+                </button>
+              </div>
+
+              {/* Source list */}
+              <div>
+                <p style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: 10, color: 'var(--text-title)' }}>
+                  Nguồn đã đăng ký ({loadingConfigs ? '…' : configs.length})
+                </p>
+                {loadingConfigs ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+                    <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary)' }} />
+                  </div>
+                ) : configs.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', padding: '20px 0' }}>Chưa có nguồn nào</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {configs.map(c => {
+                      const result = importResult[c.id];
+                      const isImporting = importingId === c.id;
+                      return (
+                        <div key={c.id} style={{ borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--bg-card)', overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.ten_hien_thi}</div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sheet_id.substring(0, 30)}…</div>
+                            </div>
+                            <button onClick={() => handleImport(c)} disabled={isImporting} title="Import khách từ sheet này" style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, opacity: isImporting ? 0.7 : 1 }}>
+                              {isImporting ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={12} />}
+                              Import
+                            </button>
+                            <button onClick={() => handleDeleteConfig(c.id)} disabled={deletingConfigId === c.id} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#ef4444', flexShrink: 0 }}>
+                              {deletingConfigId === c.id ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={15} />}
+                            </button>
+                          </div>
+                          {result && (
+                            <div style={{ padding: '6px 12px 8px', borderTop: '1px solid var(--border)', background: '#f0fdf4', fontSize: '0.75rem', color: '#15803d', display: 'flex', gap: 12 }}>
+                              <span><strong>{result.imported}</strong> khách mới</span>
+                              <span style={{ color: '#92400e' }}><strong>{result.duplicates}</strong> trùng (bỏ qua)</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </>
       )}
 
       {/* Confirm Delete */}
