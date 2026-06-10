@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
+import { useCrmAccess } from '@/hooks/useCrmAccess';
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -46,6 +47,7 @@ interface SidebarProps {
 export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { user, isAdmin } = useAuth();
+  const { canKH, canPhanKhach } = useCrmAccess();
   const [logo, setLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -277,7 +279,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           </button>
 
           <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
-            {CRM_STEPS.map((item) => {
+            {CRM_STEPS.filter(item => {
+              if (item.href === '/khach-hang') return canKH;
+              if (item.href === '/phan-khach') return canPhanKhach;
+              return true; // Pipeline, Công việc visible to all CRM users
+            }).map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href);
               const Icon = item.icon;
               return (

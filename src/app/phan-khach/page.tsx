@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { DuAn, KhachHang, NhanVien } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
+import { useCrmAccess } from '@/hooks/useCrmAccess';
 
 // Parse ds_sale JSON từ DuAn
 function parseDsSale(raw?: string): string[] {
@@ -25,6 +26,7 @@ function isDirty(original: KhachHang, draft: Partial<KhachHang>): boolean {
 }
 
 export default function PhanKhachPage() {
+  const { phanKhachIds } = useCrmAccess();
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
@@ -213,7 +215,9 @@ export default function PhanKhachPage() {
                 onChange={e => setSelectedProjectId(e.target.value)}
               >
                 <option value="">-- Chọn dự án --</option>
-                {projects.map(p => (
+                {projects
+                  .filter(p => phanKhachIds === null || phanKhachIds === undefined || phanKhachIds.includes(p.id_du_an))
+                  .map(p => (
                   <option key={p.id_du_an} value={p.id_du_an}>{p.ten_du_an}</option>
                 ))}
               </select>
