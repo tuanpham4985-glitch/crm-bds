@@ -2756,7 +2756,10 @@ export async function importFromPhanKhachConfig(
   const firstSheet = doc.sheetsByIndex[0];
 
   const headers = await readSheetHeaders(firstSheet);
+  console.log('[Import] headers read:', JSON.stringify(headers));
+
   const colMap = detectPhanKhachColumns(headers);
+  console.log('[Import] colMap detected:', JSON.stringify(colMap));
 
   // Map each logical field to its column index
   const colIdx: Record<string, number> = {};
@@ -2766,8 +2769,10 @@ export async function importFromPhanKhachConfig(
       if (idx >= 0) colIdx[field] = idx;
     }
   }
+  console.log('[Import] colIdx:', JSON.stringify(colIdx));
 
   const totalRows = firstSheet.rowCount || 1;
+  console.log('[Import] totalRows:', totalRows, '| sheet tab:', firstSheet.title);
   const BATCH = 500;
 
   const existing = await getKhachHang();
