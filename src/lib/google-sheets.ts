@@ -2675,6 +2675,25 @@ function detectPhanKhachColumns(headers: string[]): Record<string, string> {
   };
 }
 
+// Read header row from a sheet using loadCells — tolerates duplicate header names
+// by appending _2, _3 etc. Never calls loadHeaderRow() which throws on duplicates.
+async function readSheetHeaders(sheet: GoogleSpreadsheetWorksheet): Promise<string[]> {
+  const colCount = Math.min(sheet.columnCount || 30, 30);
+  await sheet.loadCells({ startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: colCount });
+  const headers: string[] = [];
+  const seen = new Set<string>();
+  for (let col = 0; col < colCount; col++) {
+    const raw = String(sheet.getCell(0, col).value ?? '').trim();
+    if (!raw) { if (headers.length > 0) break; continue; }
+    let name = raw;
+    let n = 2;
+    while (seen.has(name)) name = `${raw}_${n++}`;
+    seen.add(name);
+    headers.push(name);
+  }
+  return headers;
+}
+
 export async function probePhanKhachSheet(sheetId: string): Promise<{
   ok: boolean;
   msg: string;
@@ -2688,18 +2707,33 @@ export async function probePhanKhachSheet(sheetId: string): Promise<{
     const allTabs = Object.values(doc.sheetsByIndex).map((s: GoogleSpreadsheetWorksheet) => s.title);
 
     const firstSheet = doc.sheetsByIndex[0];
-    await firstSheet.loadHeaderRow();
-    const headers = firstSheet.headerValues ?? [];
+    const headers = await readSheetHeaders(firstSheet);
     const columns = detectPhanKhachColumns(headers);
 
-    const rows = await firstSheet.getRows({ limit: 3 });
-    const preview = rows.map(r => r.toObject() as Record<string, string>);
+    // Load 4 preview rows using cells (safe for any header structure)
+    const previewRowCount = Math.min((firstSheet.rowCount || 2), 5);
+    await firstSheet.loadCells({
+      startRowIndex: 1,
+      endRowIndex: previewRowCount,
+      startColumnIndex: 0,
+      endColumnIndex: headers.length,
+    });
+    const preview: Record<string, string>[] = [];
+    for (let row = 1; row < previewRowCount; row++) {
+      const rowData: Record<string, string> = {};
+      let hasData = false;
+      for (let col = 0; col < headers.length; col++) {
+        const val = String(firstSheet.getCell(row, col).value ?? '').trim();
+        if (val) hasData = true;
+        rowData[headers[col]] = val;
+      }
+      if (hasData) preview.push(rowData);
+    }
 
     const detectedCount = Object.values(columns).filter(Boolean).length;
-
     return {
       ok: true,
-      msg: `Kết nối thành công. ${allTabs.length} tab, nhận diện được ${detectedCount}/5 cột.`,
+      msg: `Kết nối thành công. ${allTabs.length} tab, ${headers.length} cột, nhận diện được ${detectedCount}/5 trường.`,
       tabs: allTabs,
       columns,
       preview,
@@ -2717,48 +2751,73 @@ export async function importFromPhanKhachConfig(
   const rawId = extractSheetId(sheetId);
   const doc = await getDocBySheetId(rawId);
   const firstSheet = doc.sheetsByIndex[0];
-  await firstSheet.loadHeaderRow();
-  const headers = firstSheet.headerValues ?? [];
+
+  const headers = await readSheetHeaders(firstSheet);
   const colMap = detectPhanKhachColumns(headers);
 
-  const rows = await firstSheet.getRows();
-  const existing = await getKhachHang();
+  // Map each logical field to its column index
+  const colIdx: Record<string, number> = {};
+  for (const [field, headerName] of Object.entries(colMap)) {
+    if (headerName) {
+      const idx = headers.indexOf(headerName);
+      if (idx >= 0) colIdx[field] = idx;
+    }
+  }
 
+  const totalRows = firstSheet.rowCount || 1;
+  const BATCH = 500;
+
+  const existing = await getKhachHang();
   function phoneKey(p: string) { return String(p).replace(/\D/g, '').slice(-9); }
   const seenPhones = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
 
   const toImport: KhachHang[] = [];
   let duplicates = 0;
 
-  for (const row of rows) {
-    const obj = row.toObject() as Record<string, string>;
-    const rawTen = (colMap.ten_KH ? obj[colMap.ten_KH] ?? '' : '').trim();
-    const rawSdt = (colMap.so_dien_thoai ? obj[colMap.so_dien_thoai] ?? '' : '').trim();
-    if (!rawTen || !rawSdt) continue;
+  const cellVal = (row: number, field: string): string => {
+    const idx = colIdx[field];
+    if (idx === undefined) return '';
+    return String(firstSheet.getCell(row, idx).value ?? '').trim();
+  };
 
-    // Normalise phone number to Vietnamese format
-    let sdt = rawSdt.replace(/\D/g, '');
-    if (sdt.startsWith('84') && sdt.length === 11) sdt = '0' + sdt.slice(2);
-    if (sdt.length === 9) sdt = '0' + sdt;
-    if (sdt.length > 0 && !sdt.startsWith('0')) sdt = '0' + sdt;
-
-    const key = phoneKey(sdt);
-    if (seenPhones.has(key)) { duplicates++; continue; }
-    seenPhones.add(key);
-
-    toImport.push({
-      id_khach_hang:  `KH_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
-      ngay_tao:       new Date().toISOString(),
-      ten_KH:         rawTen,
-      so_dien_thoai:  sdt,
-      email:          (colMap.email ? obj[colMap.email] ?? '' : '').trim(),
-      nguon:          (colMap.nguon ? obj[colMap.nguon] ?? '' : '').trim(),
-      nhu_cau:        (colMap.nhu_cau ? obj[colMap.nhu_cau] ?? '' : '').trim(),
-      ghi_chu:        '',
-      sale_phu_trach: '',
-      label_khach:    `${rawTen} - ${sdt}`,
-      du_an:          duAn,
+  // Load data in batches to handle large sheets
+  for (let startRow = 1; startRow < totalRows; startRow += BATCH) {
+    const endRow = Math.min(startRow + BATCH, totalRows);
+    await firstSheet.loadCells({
+      startRowIndex: startRow,
+      endRowIndex: endRow,
+      startColumnIndex: 0,
+      endColumnIndex: headers.length,
     });
+
+    for (let row = startRow; row < endRow; row++) {
+      const rawTen = cellVal(row, 'ten_KH');
+      const rawSdt = cellVal(row, 'so_dien_thoai');
+      if (!rawTen || !rawSdt) continue;
+
+      let sdt = rawSdt.replace(/\D/g, '');
+      if (sdt.startsWith('84') && sdt.length === 11) sdt = '0' + sdt.slice(2);
+      if (sdt.length === 9) sdt = '0' + sdt;
+      if (sdt.length > 0 && !sdt.startsWith('0')) sdt = '0' + sdt;
+
+      const key = phoneKey(sdt);
+      if (seenPhones.has(key)) { duplicates++; continue; }
+      seenPhones.add(key);
+
+      toImport.push({
+        id_khach_hang:  `KH_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        ngay_tao:       new Date().toISOString(),
+        ten_KH:         rawTen,
+        so_dien_thoai:  sdt,
+        email:          cellVal(row, 'email'),
+        nguon:          cellVal(row, 'nguon'),
+        nhu_cau:        cellVal(row, 'nhu_cau'),
+        ghi_chu:        '',
+        sale_phu_trach: '',
+        label_khach:    `${rawTen} - ${sdt}`,
+        du_an:          duAn,
+      });
+    }
   }
 
   if (toImport.length > 0) {
