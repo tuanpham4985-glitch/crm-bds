@@ -2671,7 +2671,7 @@ function detectPhanKhachColumns(headers: string[]): Record<string, string> {
   };
   return {
     ten_KH:        find(['họ tên', 'ho ten', 'tên kh', 'ten_kh', 'ten kh', 'fullname', 'full name', 'họ và tên', 'tên khách', 'name']),
-    so_dien_thoai: find(['số điện thoại', 'so dien thoai', 'sdt', 'phone', 'mobile', 'điện thoại', 'so_dt']),
+    so_dien_thoai: find(['số điện thoại', 'so dien thoai', 'sđt', 'sdt', 'phone', 'mobile', 'điện thoại', 'so_dt', 'so dt']),
     email:         find(['email', 'gmail', 'e-mail']),
     nguon:         find(['nguồn', 'nguon', 'source', 'kênh', 'kenh']),
     nhu_cau:       find(['nhu cầu', 'nhu_cau', 'yêu cầu', 'sản phẩm', 'san pham', 'quan tâm', 'mục đích', 'muc dich']),
