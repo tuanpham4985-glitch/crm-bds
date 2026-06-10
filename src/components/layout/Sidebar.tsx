@@ -263,6 +263,38 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           </Link>
         </div>
 
+        {/* CRM GROUP */}
+        <div className={styles.navSection}>
+          <button
+            className={styles.groupHeader}
+            onClick={() => setCrmOpen(!crmOpen)}
+          >
+            <div className="flex items-center gap-3">
+              <Users size={18} />
+              <span>CRM</span>
+            </div>
+            <ChevronDown size={14} className={`${styles.chevron} ${crmOpen ? styles.open : ''}`} />
+          </button>
+
+          <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
+            {CRM_STEPS.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
+                  title={item.label}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Dự án & Bảng hàng — standalone links */}
         {CRM_CATALOG.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href);
