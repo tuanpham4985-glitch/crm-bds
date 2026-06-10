@@ -79,7 +79,12 @@ export default function PhanKhachPage() {
 
   // Update a single cell in drafts
   const setCell = (id: string, field: keyof KhachHang, value: string) => {
-    setDrafts(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+    setDrafts(prev => {
+      const patch: Partial<KhachHang> = { [field]: value };
+      // Keep sale_phu_trach in sync with sale_lan_1
+      if (field === 'sale_lan_1') patch.sale_phu_trach = value;
+      return { ...prev, [id]: { ...prev[id], ...patch } };
+    });
     setSaved(prev => ({ ...prev, [id]: false }));
   };
 
