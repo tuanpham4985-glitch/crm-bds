@@ -175,6 +175,19 @@ function PipelineContent() {
     return kh ? kh.ten_KH : id;
   };
 
+  // Resolve effective project for a deal: use deal's own id_du_an if set,
+  // otherwise fall back to the customer's du_an field (set during import / Phân khách)
+  const getEffectiveDuAn = (pl: Pipeline): { id: string; name: string } => {
+    if (pl.id_du_an) return { id: pl.id_du_an, name: pl.ten_du_an };
+    const kh = customers.find(k => k.id_khach_hang === pl.id_khach_hang);
+    if (kh?.du_an) {
+      const proj = projects.find(p => p.ten_du_an === kh.du_an);
+      if (proj) return { id: proj.id_du_an, name: proj.ten_du_an };
+      return { id: '', name: kh.du_an };
+    }
+    return { id: '', name: '' };
+  };
+
   // Filter pipelines — tất cả deals mà nhân viên tham gia dưới bất kỳ vai trò nào
   const filteredPipelines = pipelines.filter(pl => {
     if (filterSale) {
@@ -185,7 +198,7 @@ function PipelineContent() {
         (pl.tkkd || '')   === filterSale;
       if (!participates) return false;
     }
-    if (filterDuAn && pl.id_du_an !== filterDuAn) return false;
+    if (filterDuAn && getEffectiveDuAn(pl).id !== filterDuAn) return false;
     if (filterKH && pl.id_khach_hang !== filterKH) return false;
     return true;
   });
@@ -523,7 +536,7 @@ function PipelineContent() {
                         {pl.giai_doan}
                       </span>
                     </td>
-                    <td>{pl.ten_du_an || '—'}</td>
+                    <td>{getEffectiveDuAn(pl).name || '—'}</td>
                     <td style={{ color: 'var(--primary-text)', fontWeight: 500 }}>{pl.sale_phu_trach || '—'}</td>
                     <td>
                       <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
@@ -572,8 +585,8 @@ function PipelineContent() {
               </div>
               {/* Row 2: Dự án + Mã căn */}
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
-                {pl.ten_du_an && (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-body)' }}>📍 {pl.ten_du_an}</span>
+                {getEffectiveDuAn(pl).name && (
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-body)' }}>📍 {getEffectiveDuAn(pl).name}</span>
                 )}
                 {pl.ma_can && (
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>🏠 {pl.ma_can}</span>
