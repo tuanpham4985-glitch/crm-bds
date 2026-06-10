@@ -245,6 +245,16 @@ function PipelineContent() {
     });
   };
 
+  const handleCustomerChange = (id: string) => {
+    const kh = customers.find(k => k.id_khach_hang === id);
+    const proj = kh?.du_an ? projects.find(p => p.ten_du_an === kh.du_an) : null;
+    setForm(prev => ({
+      ...prev,
+      id_khach_hang: id,
+      ...(proj ? { id_du_an: proj.id_du_an, ten_du_an: proj.ten_du_an, hoa_hong: toPercent(proj.hoa_hong_mac_dinh) } : {}),
+    }));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -591,7 +601,7 @@ function PipelineContent() {
               <div className="form-group">
                 <label className="form-label">Khách hàng *</label>
                 <select className="form-select" value={form.id_khach_hang}
-                  onChange={(e) => setForm({ ...form, id_khach_hang: e.target.value })}>
+                  onChange={(e) => handleCustomerChange(e.target.value)}>
                   <option value="">Chọn khách hàng</option>
                   {customers.map(kh => (
                     <option key={kh.id_khach_hang} value={kh.id_khach_hang}>{kh.ten_KH}</option>
@@ -617,29 +627,33 @@ function PipelineContent() {
                   </select>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">Giá trị thực tế (VNĐ)</label>
-                  <input className="form-input" type="number" value={form.gia_tri_thuc_te}
-                    onChange={(e) => setForm({ ...form, gia_tri_thuc_te: parseFloat(e.target.value) || 0 })} />
-                  {form.gia_tri_thuc_te > 0 && (
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4f46e5', marginTop: 5 }}>
-                      = {form.gia_tri_thuc_te.toLocaleString('vi-VN')} đ
-                    </div>
-                  )}
+              {isAllVisible && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div className="form-group">
+                    <label className="form-label">Giá trị thực tế (VNĐ)</label>
+                    <input className="form-input" type="number" value={form.gia_tri_thuc_te}
+                      onChange={(e) => setForm({ ...form, gia_tri_thuc_te: parseFloat(e.target.value) || 0 })} />
+                    {form.gia_tri_thuc_te > 0 && (
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4f46e5', marginTop: 5 }}>
+                        = {form.gia_tri_thuc_te.toLocaleString('vi-VN')} đ
+                      </div>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Hoa hồng (%)</label>
+                    <input className="form-input" type="number" step="0.01" min="0" max="100" value={form.hoa_hong}
+                      onChange={(e) => setForm({ ...form, hoa_hong: parseFloat(e.target.value) || 0 })} />
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Hoa hồng (%)</label>
-                  <input className="form-input" type="number" step="0.01" min="0" max="100" value={form.hoa_hong}
-                    onChange={(e) => setForm({ ...form, hoa_hong: parseFloat(e.target.value) || 0 })} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">Thưởng nóng (Gồm VAT)</label>
-                  <input className="form-input" type="number" value={form.thuong_nong}
-                    onChange={(e) => setForm({ ...form, thuong_nong: parseFloat(e.target.value) || 0 })} />
-                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: isAllVisible ? '1fr 1fr' : '1fr', gap: 16 }}>
+                {isAllVisible && (
+                  <div className="form-group">
+                    <label className="form-label">Thưởng nóng (Gồm VAT)</label>
+                    <input className="form-input" type="number" value={form.thuong_nong}
+                      onChange={(e) => setForm({ ...form, thuong_nong: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                )}
                 <div className="form-group">
                   <label className="form-label">Sale phụ trách</label>
                   <select className="form-select" value={form.sale_phu_trach}
@@ -651,27 +665,29 @@ function PipelineContent() {
                   </select>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">Thư ký kinh doanh (TKKD)</label>
-                  <select className="form-select" value={form.tkkd}
-                    onChange={(e) => setForm({ ...form, tkkd: e.target.value })}>
-                    <option value="">Chọn TKKD</option>
-                    {employees.map(nv => (
-                      <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>
-                    ))}
-                  </select>
-                </div>
-                {showPhiTKKD && (
+              {isAllVisible && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   <div className="form-group">
-                    <label className="form-label">Phí TKKD (VNĐ)</label>
-                    <input className="form-input" type="number" value={form.phi_tkkd}
-                      onChange={(e) => setForm({ ...form, phi_tkkd: parseFloat(e.target.value) || 0 })} />
+                    <label className="form-label">Thư ký kinh doanh (TKKD)</label>
+                    <select className="form-select" value={form.tkkd}
+                      onChange={(e) => setForm({ ...form, tkkd: e.target.value })}>
+                      <option value="">Chọn TKKD</option>
+                      {employees.map(nv => (
+                        <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>
+                      ))}
+                    </select>
                   </div>
-                )}
-              </div>
+                  {showPhiTKKD && (
+                    <div className="form-group">
+                      <label className="form-label">Phí TKKD (VNĐ)</label>
+                      <input className="form-input" type="number" value={form.phi_tkkd}
+                        onChange={(e) => setForm({ ...form, phi_tkkd: parseFloat(e.target.value) || 0 })} />
+                    </div>
+                  )}
+                </div>
+              )}
               {/* ── Tỷ lệ & phí hoa hồng ── */}
-              {(showPhiTraSale || showPhiTraGDDA || showPhiTraGDKD || !!isAllVisible) && (() => {
+              {isAllVisible && (() => {
                 // Chuẩn hoá: người dùng có thể nhập 0.06 hoặc 6 (đều hiểu là 6%)
                 const normF = (v: number) => (v > 1 ? v / 100 : v);
                 const hhRate = normF(form.hoa_hong);
