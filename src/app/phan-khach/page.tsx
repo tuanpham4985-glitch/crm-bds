@@ -81,8 +81,13 @@ export default function PhanKhachPage() {
   const setCell = (id: string, field: keyof KhachHang, value: string) => {
     setDrafts(prev => {
       const patch: Partial<KhachHang> = { [field]: value };
-      // Keep sale_phu_trach in sync with sale_lan_1
-      if (field === 'sale_lan_1') patch.sale_phu_trach = value;
+      // sale_phu_trach = latest non-empty sale among lan_1/2/3
+      if (field === 'sale_lan_1' || field === 'sale_lan_2' || field === 'sale_lan_3') {
+        const d = prev[id] ?? {};
+        const kh = customers.find(c => c.id_khach_hang === id);
+        const get = (f: keyof KhachHang) => field === f ? value : ((d[f] ?? kh?.[f] ?? '') as string);
+        patch.sale_phu_trach = get('sale_lan_3') || get('sale_lan_2') || get('sale_lan_1');
+      }
       return { ...prev, [id]: { ...prev[id], ...patch } };
     });
     setSaved(prev => ({ ...prev, [id]: false }));
