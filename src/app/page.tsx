@@ -4,13 +4,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TrendingUp, TrendingDown, BarChart3, Target,
   DollarSign, Handshake, ToggleLeft, ToggleRight, Cake, ChevronDown,
-  AlertTriangle, Users
+  AlertTriangle, Users, GitBranch, CheckSquare, ExternalLink,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import type { DashboardData, SinhNhatNhanVien } from '@/lib/types';
+import type { DashboardData, SinhNhatNhanVien, CrmTotals } from '@/lib/types';
 import { formatCurrency, formatChange, calcChange } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -428,6 +428,11 @@ export default function DashboardPage() {
           {renderKpiCard('Đã ký HĐ', data.kpi.da_ky, data.kpi.da_ky_prev, <Handshake size={20} />)}
           {renderKpiCard('Doanh thu', data.kpi.doanh_thu, data.kpi.doanh_thu_prev, <DollarSign size={20} />, 'currency')}
         </div>
+      )}
+
+      {/* ── CRM Module Health Cards — admin only ── */}
+      {isAdmin && data.crm_totals && (
+        <CrmModuleCards totals={data.crm_totals} />
       )}
 
       {/* Cảnh báo KH chưa assign + Funnel — admin only */}
@@ -1134,6 +1139,145 @@ export default function DashboardPage() {
           <BirthdayWidget employees={data.sinh_nhat_thang_nay} />
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── CRM Module Health Cards ─────────────────────────────────────────────────
+
+function CrmModuleCards({ totals }: { totals: CrmTotals }) {
+  const cards = [
+    {
+      href: '/khach-hang',
+      icon: <Users size={20} />,
+      label: 'Khách hàng',
+      accent: '#6366f1',
+      accentLight: '#eef2ff',
+      primary: totals.kh_total,
+      primaryLabel: 'tổng',
+      badge: `+${totals.kh_moi_thang} tháng này`,
+      badgeColor: '#15803d',
+      badgeBg: '#dcfce7',
+      rows: totals.kh_by_nguon,
+    },
+    {
+      href: '/pipeline',
+      icon: <GitBranch size={20} />,
+      label: 'Pipeline',
+      accent: '#f59e0b',
+      accentLight: '#fffbeb',
+      primary: totals.pipeline_active,
+      primaryLabel: 'đang xử lý',
+      badge: `${totals.pipeline_total} tổng`,
+      badgeColor: '#92400e',
+      badgeBg: '#fef3c7',
+      rows: totals.pipeline_by_stage,
+    },
+    {
+      href: '/cong-viec',
+      icon: <CheckSquare size={20} />,
+      label: 'Công việc',
+      accent: '#10b981',
+      accentLight: '#ecfdf5',
+      primary: totals.cv_total,
+      primaryLabel: 'tổng',
+      badge: (() => {
+        const chua = totals.cv_by_status.find(s => s.label === 'Chưa xử lý')?.count ?? 0;
+        return chua > 0 ? `${chua} chưa xử lý` : 'Tất cả đã xử lý';
+      })(),
+      badgeColor: (() => {
+        const chua = totals.cv_by_status.find(s => s.label === 'Chưa xử lý')?.count ?? 0;
+        return chua > 0 ? '#92400e' : '#15803d';
+      })(),
+      badgeBg: (() => {
+        const chua = totals.cv_by_status.find(s => s.label === 'Chưa xử lý')?.count ?? 0;
+        return chua > 0 ? '#fef3c7' : '#dcfce7';
+      })(),
+      rows: totals.cv_by_status,
+    },
+  ];
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 24 }}>
+      {cards.map(card => (
+        <a key={card.href} href={card.href} style={{ textDecoration: 'none' }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1.5px solid var(--border)',
+            borderRadius: 14,
+            padding: '16px 18px',
+            cursor: 'pointer',
+            transition: 'box-shadow 0.15s, border-color 0.15s',
+          }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLDivElement).style.boxShadow = `0 4px 20px ${card.accent}22`;
+              (e.currentTarget as HTMLDivElement).style.borderColor = card.accent + '55';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLDivElement).style.boxShadow = '';
+              (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)';
+            }}
+          >
+            {/* Card header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: 10,
+                  background: card.accentLight, color: card.accent,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {card.icon}
+                </div>
+                <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-title)' }}>{card.label}</span>
+              </div>
+              <ExternalLink size={14} color="var(--text-muted)" />
+            </div>
+
+            {/* Primary count */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: '2rem', fontWeight: 800, color: card.accent, lineHeight: 1 }}>
+                {card.primary}
+              </span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                {card.primaryLabel}
+              </span>
+              <span style={{
+                marginLeft: 'auto',
+                fontSize: '0.72rem', fontWeight: 600,
+                padding: '2px 8px', borderRadius: 20,
+                background: card.badgeBg, color: card.badgeColor,
+              }}>
+                {card.badge}
+              </span>
+            </div>
+
+            {/* Breakdown rows */}
+            {card.rows.length > 0 && (
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {card.rows.slice(0, 5).map(row => {
+                  const total = card.rows.reduce((s, r) => s + r.count, 0) || 1;
+                  const pct = Math.round((row.count / total) * 100);
+                  return (
+                    <div key={row.label}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-body)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                          {row.label}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: row.color ?? card.accent }}>
+                          {row.count}
+                        </span>
+                      </div>
+                      <div style={{ height: 4, borderRadius: 4, background: 'var(--border)' }}>
+                        <div style={{ height: '100%', borderRadius: 4, width: `${pct}%`, background: row.color ?? card.accent, transition: 'width 0.4s ease' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </a>
+      ))}
     </div>
   );
 }

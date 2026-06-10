@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, getKhachHang, getNhanVien } from '@/lib/google-sheets';
-import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem } from '@/lib/types';
+import { getPipeline, getKhachHang, getNhanVien, getCongViec } from '@/lib/google-sheets';
+import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
@@ -154,10 +154,11 @@ export async function GET(request: NextRequest) {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
 
-    const [allPipelines, allCustomers, allEmployeesRaw] = await Promise.all([
+    const [allPipelines, allCustomers, allEmployeesRaw, allCongViec] = await Promise.all([
       getPipeline(),
       getKhachHang(),
       getNhanVien(),
+      getCongViec(),
     ]);
     // Ẩn nhân viên "Nghỉ việc" khỏi dashboard
     const allEmployees = allEmployeesRaw.filter(nv => nv.trang_thai !== 'Nghỉ việc');
@@ -369,6 +370,48 @@ export async function GET(request: NextRequest) {
 
     const leaderboard = Array.from(saleMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
 
+    // ── CRM module totals (admin verification panel) ──────────────────────────
+    const activeStages = new Set(['Mới', 'Đã liên hệ', 'Hẹn xem', 'Đặt cọc', 'Ký HĐ']);
+    const stageColors: Record<string, string> = {
+      'Mới': '#94a3b8', 'Đã liên hệ': '#60a5fa', 'Hẹn xem': '#fbbf24',
+      'Đặt cọc': '#34d399', 'Ký HĐ': '#22c55e',
+      'Hủy - Không nghe máy': '#fb7185', 'Hủy - Không đủ tiền': '#fb7185', 'Hủy - Không thích': '#fb7185',
+    };
+    const statusColors: Record<string, string> = {
+      'Chưa xử lý': '#fbbf24', 'Đang xử lý': '#60a5fa', 'Hoàn thành': '#34d399', 'Huỷ': '#94a3b8',
+    };
+
+    const pipelineStageMap = new Map<string, number>();
+    allPipelines.forEach(pl => pipelineStageMap.set(pl.giai_doan, (pipelineStageMap.get(pl.giai_doan) || 0) + 1));
+
+    const cvStatusMap = new Map<string, number>();
+    allCongViec.forEach(cv => cvStatusMap.set(cv.trang_thai, (cvStatusMap.get(cv.trang_thai) || 0) + 1));
+
+    const khNguonMap = new Map<string, number>();
+    allCustomers.forEach(kh => { const n = kh.nguon || 'Khác'; khNguonMap.set(n, (khNguonMap.get(n) || 0) + 1); });
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const kh_moi_thang = allCustomers.filter(kh => {
+      const d = safeParseDate(kh.ngay_tao);
+      return d && d >= monthStart;
+    }).length;
+
+    const crm_totals: CrmTotals = {
+      kh_total: allCustomers.length,
+      kh_moi_thang,
+      kh_by_nguon: Array.from(khNguonMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([label, count]) => ({ label, count })),
+      pipeline_total: allPipelines.length,
+      pipeline_active: allPipelines.filter(pl => activeStages.has(pl.giai_doan)).length,
+      pipeline_by_stage: Array.from(pipelineStageMap.entries())
+        .map(([label, count]) => ({ label, count, color: stageColors[label] })),
+      cv_total: allCongViec.length,
+      cv_by_status: Array.from(cvStatusMap.entries())
+        .map(([label, count]) => ({ label, count, color: statusColors[label] })),
+    };
+
     const data: DashboardData = isAdmin ? {
       kpi: {
         tong_deal: currentPipelines.length,
@@ -391,6 +434,7 @@ export async function GET(request: NextRequest) {
       nguon_khach_hang: nguonKhachHang,
       sinh_nhat_thang_nay: sinhNhatThangNay,
       pipeline_funnel,
+      crm_totals,
     } : {
       kpi: { tong_deal: 0, dang_xu_ly: 0, da_ky: 0, doanh_thu: 0, hoa_hong: 0, kh_chua_assign: 0 },
       doanh_thu_theo_sale: leaderboard,

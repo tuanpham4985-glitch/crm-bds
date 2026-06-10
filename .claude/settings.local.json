@@ -34,7 +34,9 @@
       "Bash(node -e \"const lib = require\\('./node_modules/google-spreadsheet'\\); const sheet = lib.GoogleSpreadsheetWorksheet; console.log\\(Object.getOwnPropertyNames\\(sheet.prototype\\).filter\\(m => m.toLowerCase\\(\\).includes\\('row'\\)\\)\\)\")",
       "Bash(git commit -m 'Fix TypeScript type error: cell\\(\\) accepts string|undefined *)",
       "Bash(node -e \"const lib = require\\('google-spreadsheet'\\); const c = lib.GoogleSpreadsheetCell; console.log\\(Object.getOwnPropertyNames\\(c.prototype\\).join\\('\\\\n'\\)\\)\")",
-      "Bash(node -e \"console.log\\(require.resolve\\('google-spreadsheet'\\)\\)\")"
+      "Bash(node -e \"console.log\\(require.resolve\\('google-spreadsheet'\\)\\)\")",
+      "Bash(Get-Content \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\\\\src\\\\lib\\\\google-sheets.ts\")",
+      "Bash(Measure-Object -Line)"
     ]
   }
 }

@@ -4,7 +4,7 @@
 // ============================================================
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord, StackingSheetMeta, StackingUnit } from './types';
+import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord, StackingSheetMeta, StackingUnit, PhanKhachConfig } from './types';
 
 // ---- Environment Variable Validation ----
 function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
@@ -2592,5 +2592,179 @@ export async function getStackingUnits(sheetId: string, project: string, tower: 
 
   // Master tab (or tower tab that looks like a list)
   return parseListTab(sheet, tower, rowLimit);
+}
+
+// ============================================================
+// PHÂN KHÁCH CONFIG
+// ============================================================
+
+const PHAN_KHACH_CONFIG_HEADERS = ['id', 'ten_hien_thi', 'sheet_id', 'trang_thai', 'ngay_tao'];
+
+async function getOrCreatePhanKhachConfigSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
+  let sheet = doc.sheetsByTitle['PHAN_KHACH_CONFIG'];
+  if (!sheet) {
+    sheet = await doc.addSheet({ title: 'PHAN_KHACH_CONFIG', headerValues: PHAN_KHACH_CONFIG_HEADERS });
+  } else {
+    await sheet.loadHeaderRow();
+  }
+  return sheet;
+}
+
+export async function getPhanKhachConfigs(): Promise<PhanKhachConfig[]> {
+  const doc = await getDoc();
+  const sheet = await getOrCreatePhanKhachConfigSheet(doc);
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id:           str(v['id']),
+        ten_hien_thi: str(v['ten_hien_thi']),
+        sheet_id:     str(v['sheet_id']),
+        trang_thai:   (str(v['trang_thai']) || 'active') as 'active' | 'inactive',
+        ngay_tao:     str(v['ngay_tao']),
+      };
+    })
+    .filter(c => c.id && c.sheet_id);
+}
+
+export async function addPhanKhachConfig(
+  payload: { ten_hien_thi: string; sheet_id: string }
+): Promise<PhanKhachConfig> {
+  const doc = await getDoc();
+  const sheet = await getOrCreatePhanKhachConfigSheet(doc);
+  const id = 'PKC_' + Date.now();
+  const newRow = {
+    id,
+    ten_hien_thi: payload.ten_hien_thi,
+    sheet_id:     extractSheetId(payload.sheet_id),
+    trang_thai:   'active',
+    ngay_tao:     new Date().toISOString(),
+  };
+  await sheet.addRow(newRow);
+  return { ...newRow, trang_thai: 'active' };
+}
+
+export async function deletePhanKhachConfig(id: string): Promise<boolean> {
+  const doc = await getDoc();
+  const sheet = await getOrCreatePhanKhachConfigSheet(doc);
+  const rows = await sheet.getRows();
+  const row = rows.find(r => str(r.toObject()['id']) === id);
+  if (!row) return false;
+  await row.delete();
+  return true;
+}
+
+// Detect which spreadsheet column header maps to each KhachHang field
+function detectPhanKhachColumns(headers: string[]): Record<string, string> {
+  const lower = headers.map(h => h.toLowerCase().trim());
+  const find = (patterns: string[]): string => {
+    for (let i = 0; i < lower.length; i++) {
+      for (const p of patterns) {
+        if (lower[i].includes(p)) return headers[i];
+      }
+    }
+    return '';
+  };
+  return {
+    ten_KH:        find(['họ tên', 'ho ten', 'tên kh', 'ten_kh', 'ten kh', 'fullname', 'full name', 'họ và tên', 'tên khách', 'name']),
+    so_dien_thoai: find(['số điện thoại', 'so dien thoai', 'sdt', 'phone', 'mobile', 'điện thoại', 'so_dt']),
+    email:         find(['email', 'gmail', 'e-mail']),
+    nguon:         find(['nguồn', 'nguon', 'source', 'kênh', 'kenh']),
+    nhu_cau:       find(['nhu cầu', 'nhu_cau', 'yêu cầu', 'sản phẩm', 'san pham', 'quan tâm']),
+  };
+}
+
+export async function probePhanKhachSheet(sheetId: string): Promise<{
+  ok: boolean;
+  msg: string;
+  tabs?: string[];
+  columns?: Record<string, string>;
+  preview?: Record<string, string>[];
+}> {
+  try {
+    const rawId = extractSheetId(sheetId);
+    const doc = await getDocBySheetId(rawId);
+    const allTabs = Object.values(doc.sheetsByIndex).map((s: GoogleSpreadsheetWorksheet) => s.title);
+
+    const firstSheet = doc.sheetsByIndex[0];
+    await firstSheet.loadHeaderRow();
+    const headers = firstSheet.headerValues ?? [];
+    const columns = detectPhanKhachColumns(headers);
+
+    const rows = await firstSheet.getRows({ limit: 3 });
+    const preview = rows.map(r => r.toObject() as Record<string, string>);
+
+    const detectedCount = Object.values(columns).filter(Boolean).length;
+
+    return {
+      ok: true,
+      msg: `Kết nối thành công. ${allTabs.length} tab, nhận diện được ${detectedCount}/5 cột.`,
+      tabs: allTabs,
+      columns,
+      preview,
+    };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, msg: `Lỗi kết nối: ${msg}` };
+  }
+}
+
+export async function importFromPhanKhachConfig(
+  sheetId: string,
+  duAn: string,
+): Promise<{ imported: number; duplicates: number }> {
+  const rawId = extractSheetId(sheetId);
+  const doc = await getDocBySheetId(rawId);
+  const firstSheet = doc.sheetsByIndex[0];
+  await firstSheet.loadHeaderRow();
+  const headers = firstSheet.headerValues ?? [];
+  const colMap = detectPhanKhachColumns(headers);
+
+  const rows = await firstSheet.getRows();
+  const existing = await getKhachHang();
+
+  function phoneKey(p: string) { return String(p).replace(/\D/g, '').slice(-9); }
+  const seenPhones = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
+
+  const toImport: KhachHang[] = [];
+  let duplicates = 0;
+
+  for (const row of rows) {
+    const obj = row.toObject() as Record<string, string>;
+    const rawTen = (colMap.ten_KH ? obj[colMap.ten_KH] ?? '' : '').trim();
+    const rawSdt = (colMap.so_dien_thoai ? obj[colMap.so_dien_thoai] ?? '' : '').trim();
+    if (!rawTen || !rawSdt) continue;
+
+    // Normalise phone number to Vietnamese format
+    let sdt = rawSdt.replace(/\D/g, '');
+    if (sdt.startsWith('84') && sdt.length === 11) sdt = '0' + sdt.slice(2);
+    if (sdt.length === 9) sdt = '0' + sdt;
+    if (sdt.length > 0 && !sdt.startsWith('0')) sdt = '0' + sdt;
+
+    const key = phoneKey(sdt);
+    if (seenPhones.has(key)) { duplicates++; continue; }
+    seenPhones.add(key);
+
+    toImport.push({
+      id_khach_hang:  `KH_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+      ngay_tao:       new Date().toISOString(),
+      ten_KH:         rawTen,
+      so_dien_thoai:  sdt,
+      email:          (colMap.email ? obj[colMap.email] ?? '' : '').trim(),
+      nguon:          (colMap.nguon ? obj[colMap.nguon] ?? '' : '').trim(),
+      nhu_cau:        (colMap.nhu_cau ? obj[colMap.nhu_cau] ?? '' : '').trim(),
+      ghi_chu:        '',
+      sale_phu_trach: '',
+      label_khach:    `${rawTen} - ${sdt}`,
+      du_an:          duAn,
+    });
+  }
+
+  if (toImport.length > 0) {
+    await addKhachHangBatch(toImport);
+  }
+
+  return { imported: toImport.length, duplicates };
 }
 

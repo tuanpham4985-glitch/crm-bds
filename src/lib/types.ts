@@ -223,6 +223,23 @@ export interface SinhNhatNhanVien {
   la_hom_nay: boolean; // true if birthday is today
 }
 
+export interface CrmModuleStat {
+  label: string;
+  count: number;
+  color?: string;
+}
+
+export interface CrmTotals {
+  kh_total: number;
+  kh_moi_thang: number;
+  kh_by_nguon: CrmModuleStat[];
+  pipeline_total: number;
+  pipeline_active: number;
+  pipeline_by_stage: CrmModuleStat[];
+  cv_total: number;
+  cv_by_status: CrmModuleStat[];
+}
+
 export interface DashboardData {
   kpi: DashboardKPI;
   doanh_thu_theo_sale: DoanhThuTheoSale[];
@@ -231,6 +248,7 @@ export interface DashboardData {
   nguon_khach_hang: NguonKhachHang[];
   sinh_nhat_thang_nay: SinhNhatNhanVien[];
   pipeline_funnel: PipelineFunnelItem[];
+  crm_totals?: CrmTotals;
 }
 
 // === FILTERS ===
@@ -269,6 +287,14 @@ export interface StackingConfig {
   ten_hien_thi: string;   // display name, e.g. "Masteri Park Place"
   sheet_id: string;        // Google Sheets file ID
   project_code?: string;   // optional filter prefix, e.g. "MPP" — empty = auto-detect all
+  trang_thai: 'active' | 'inactive';
+  ngay_tao: string;
+}
+
+export interface PhanKhachConfig {
+  id: string;
+  ten_hien_thi: string;  // display name for the source sheet
+  sheet_id: string;       // Google Sheets file ID (extracted from URL)
   trang_thai: 'active' | 'inactive';
   ngay_tao: string;
 }
