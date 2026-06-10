@@ -212,14 +212,28 @@ function PipelineContent() {
   const openEdit = (pl: Pipeline) => {
     setEditingItem(pl);
 
+    // Auto-fill project from customer's du_an if deal has none
+    let autoIdDuAn = pl.id_du_an || '';
+    let autoTenDuAn = pl.ten_du_an || '';
+    let autoHoaHong = toPercent(pl.hoa_hong);
+    if (!autoIdDuAn) {
+      const kh = customers.find(k => k.id_khach_hang === pl.id_khach_hang);
+      const proj = kh?.du_an ? projects.find(p => p.ten_du_an === kh.du_an) : null;
+      if (proj) {
+        autoIdDuAn = proj.id_du_an;
+        autoTenDuAn = proj.ten_du_an;
+        autoHoaHong = toPercent(proj.hoa_hong_mac_dinh);
+      }
+    }
+
     setForm({
       id_khach_hang: pl.id_khach_hang,
       giai_doan: pl.giai_doan,
       gia_tri_thuc_te: Number(pl.gia_tri_thuc_te) || 0,
       sale_phu_trach: pl.sale_phu_trach,
-      id_du_an: pl.id_du_an,
-      ten_du_an: pl.ten_du_an,
-      hoa_hong: toPercent(pl.hoa_hong),
+      id_du_an: autoIdDuAn,
+      ten_du_an: autoTenDuAn,
+      hoa_hong: autoHoaHong,
       thang: pl.thang,
       thuong_nong: Number(pl.thuong_nong) || 0,
       tkkd: pl.tkkd || '',

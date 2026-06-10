@@ -938,6 +938,22 @@ export async function updateKhachHang(kh: KhachHang): Promise<boolean> {
 
     plRows.forEach(r => r.set('sale_phu_trach', kh.sale_phu_trach));
     cvRows.forEach(r => r.set('sale_phu_trach', kh.sale_phu_trach));
+
+    // Also fill id_du_an/ten_du_an on pipeline rows that have no project yet
+    if (kh.du_an) {
+      const rowsNeedingProject = plRows.filter(r => !str(r.toObject()['id_du_an']));
+      if (rowsNeedingProject.length > 0) {
+        const duAnList = await getDuAn();
+        const proj = duAnList.find(p => p.ten_du_an === kh.du_an);
+        if (proj) {
+          rowsNeedingProject.forEach(r => {
+            r.set('id_du_an', proj.id_du_an);
+            r.set('ten_du_an', proj.ten_du_an);
+          });
+        }
+      }
+    }
+
     await Promise.all([...plRows.map(r => r.save()), ...cvRows.map(r => r.save())]);
   }
 
