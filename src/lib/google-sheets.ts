@@ -857,12 +857,12 @@ export async function addKhachHangBatch(khs: KhachHang[]): Promise<void> {
     [hKH[8]]: kh.sale_phu_trach,
     [hKH[9]]: `${kh.ten_KH} - ${kh.so_dien_thoai}`,
     ...(hasDuAn ? { du_an: kh.du_an || '' } : {}),
-    ...(hKH.includes('sale_lan_1') ? { sale_lan_1: '' } : {}),
-    ...(hKH.includes('ghi_chu_lan_1') ? { ghi_chu_lan_1: '' } : {}),
-    ...(hKH.includes('sale_lan_2') ? { sale_lan_2: '' } : {}),
-    ...(hKH.includes('ghi_chu_lan_2') ? { ghi_chu_lan_2: '' } : {}),
-    ...(hKH.includes('sale_lan_3') ? { sale_lan_3: '' } : {}),
-    ...(hKH.includes('ghi_chu_lan_3') ? { ghi_chu_lan_3: '' } : {}),
+    ...(hKH.includes('sale_lan_1') ? { sale_lan_1: kh.sale_lan_1 || '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_1') ? { ghi_chu_lan_1: kh.ghi_chu_lan_1 || '' } : {}),
+    ...(hKH.includes('sale_lan_2') ? { sale_lan_2: kh.sale_lan_2 || '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_2') ? { ghi_chu_lan_2: kh.ghi_chu_lan_2 || '' } : {}),
+    ...(hKH.includes('sale_lan_3') ? { sale_lan_3: kh.sale_lan_3 || '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_3') ? { ghi_chu_lan_3: kh.ghi_chu_lan_3 || '' } : {}),
   }));
 
   // Ghi theo TÊN CỘT để không bị lệch khi sheet có thêm cột mới
@@ -2698,6 +2698,12 @@ function detectPhanKhachColumns(headers: string[]): Record<string, string> {
     email:         find(['email', 'gmail', 'e-mail']),
     nguon:         find(['nguồn', 'nguon', 'source', 'kênh', 'kenh']),
     nhu_cau:       find(['nhu cầu', 'nhu_cau', 'yêu cầu', 'sản phẩm', 'san pham', 'quan tâm', 'mục đích', 'muc dich']),
+    sale_lan_1:    find(['người chăm 1', 'nguoi cham 1', 'sale lần 1', 'sale_lan_1', 'sale 1', 'chăm sóc 1']),
+    ghi_chu_lan_1: find(['ghi chú 1', 'ghi chu 1', 'ghi_chu_lan_1', 'note 1', 'ghi chú lần 1']),
+    sale_lan_2:    find(['người chăm 2', 'nguoi cham 2', 'sale lần 2', 'sale_lan_2', 'sale 2', 'chăm sóc 2']),
+    ghi_chu_lan_2: find(['ghi chú 2', 'ghi chu 2', 'ghi_chu_lan_2', 'note 2', 'ghi chú lần 2']),
+    sale_lan_3:    find(['người chăm 3', 'nguoi cham 3', 'sale lần 3', 'sale_lan_3', 'sale 3', 'chăm sóc 3']),
+    ghi_chu_lan_3: find(['ghi chú 3', 'ghi chu 3', 'ghi_chu_lan_3', 'note 3', 'ghi chú lần 3']),
   };
 }
 
@@ -2770,22 +2776,43 @@ export async function probePhanKhachSheet(sheetId: string): Promise<{
   }
 }
 
-// Batch-update du_an for customers whose phone matches and du_an is currently empty
-async function batchUpdateKhachHangDuAn(phones: Set<string>, duAn: string): Promise<number> {
-  if (!duAn || phones.size === 0) return 0;
+type KhachHangFieldUpdate = Partial<Pick<KhachHang,
+  'du_an' | 'sale_phu_trach' |
+  'sale_lan_1' | 'ghi_chu_lan_1' |
+  'sale_lan_2' | 'ghi_chu_lan_2' |
+  'sale_lan_3' | 'ghi_chu_lan_3'
+>>;
+
+// Batch-update multiple fields for customers matched by phone key
+async function batchUpdateKhachHangFields(
+  updates: Map<string, KhachHangFieldUpdate>
+): Promise<number> {
+  if (updates.size === 0) return 0;
   const doc = await getDoc();
   const sheet = doc.sheetsByTitle[SHEETS.KHACH_HANG];
   if (!sheet) return 0;
 
   await sheet.loadHeaderRow();
   const h = sheet.headerValues;
-  const sdtColIdx = h.indexOf('so_dien_thoai');
-  const duAnColIdx = h.indexOf('du_an');
-  if (sdtColIdx < 0 || duAnColIdx < 0) return 0;
+  const sdtIdx = h.indexOf('so_dien_thoai');
+  if (sdtIdx < 0) return 0;
 
+  const updateFields: (keyof KhachHangFieldUpdate)[] = [
+    'du_an', 'sale_phu_trach',
+    'sale_lan_1', 'ghi_chu_lan_1',
+    'sale_lan_2', 'ghi_chu_lan_2',
+    'sale_lan_3', 'ghi_chu_lan_3',
+  ];
+  const fieldCols: Partial<Record<keyof KhachHangFieldUpdate, number>> = {};
+  for (const f of updateFields) {
+    const idx = h.indexOf(f);
+    if (idx >= 0) fieldCols[f] = idx;
+  }
+
+  const allCols = [sdtIdx, ...Object.values(fieldCols) as number[]];
+  const minCol = Math.min(...allCols);
+  const maxCol = Math.max(...allCols);
   const totalRows = sheet.rowCount || 1;
-  const minCol = Math.min(sdtColIdx, duAnColIdx);
-  const maxCol = Math.max(sdtColIdx, duAnColIdx);
 
   await sheet.loadCells({ startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: minCol, endColumnIndex: maxCol + 1 });
 
@@ -2793,14 +2820,18 @@ async function batchUpdateKhachHangDuAn(phones: Set<string>, duAn: string): Prom
 
   let updated = 0;
   for (let row = 1; row < totalRows; row++) {
-    const sdtCell = sheet.getCell(row, sdtColIdx);
-    const duAnCell = sheet.getCell(row, duAnColIdx);
-    const existingPhone = phoneKey(String(sdtCell.value ?? ''));
-    const existingDuAn = String(duAnCell.value ?? '').trim();
-    if (existingPhone && phones.has(existingPhone) && !existingDuAn) {
-      duAnCell.value = duAn;
-      updated++;
+    const key = phoneKey(String(sheet.getCell(row, sdtIdx).value ?? ''));
+    if (!key || !updates.has(key)) continue;
+    const upd = updates.get(key)!;
+    let changed = false;
+    for (const [field, colIdx] of Object.entries(fieldCols) as [keyof KhachHangFieldUpdate, number][]) {
+      const val = upd[field];
+      if (val) {
+        const cell = sheet.getCell(row, colIdx);
+        if (String(cell.value ?? '').trim() !== val) { cell.value = val; changed = true; }
+      }
     }
+    if (changed) updated++;
   }
 
   if (updated > 0) await sheet.saveUpdatedCells();
@@ -2832,12 +2863,11 @@ export async function importFromPhanKhachConfig(
   const existing = await getKhachHang();
   function phoneKey(p: string) { return String(p).replace(/\D/g, '').slice(-9); }
 
-  // Build map: phoneKey → existing du_an (to detect which duplicates need du_an update)
   const existingPhoneMap = new Map(existing.map(kh => [phoneKey(kh.so_dien_thoai), kh.du_an ?? '']));
   const seenPhones = new Set(existingPhoneMap.keys());
 
   const toImport: KhachHang[] = [];
-  const phonesNeedingDuAnUpdate = new Set<string>(); // duplicate phones with empty du_an
+  const fieldUpdates = new Map<string, KhachHangFieldUpdate>();
   let duplicates = 0;
 
   const cellVal = (row: number, field: string): string => {
@@ -2865,13 +2895,28 @@ export async function importFromPhanKhachConfig(
       if (sdt.length === 9) sdt = '0' + sdt;
       if (sdt.length > 0 && !sdt.startsWith('0')) sdt = '0' + sdt;
 
+      const s1 = cellVal(row, 'sale_lan_1');
+      const n1 = cellVal(row, 'ghi_chu_lan_1');
+      const s2 = cellVal(row, 'sale_lan_2');
+      const n2 = cellVal(row, 'ghi_chu_lan_2');
+      const s3 = cellVal(row, 'sale_lan_3');
+      const n3 = cellVal(row, 'ghi_chu_lan_3');
+      const latestSale = s3 || s2 || s1;
+
       const key = phoneKey(sdt);
       if (seenPhones.has(key)) {
         duplicates++;
-        // Queue for du_an update if existing customer has no project assigned
-        if (duAn && (existingPhoneMap.get(key) ?? '') === '') {
-          phonesNeedingDuAnUpdate.add(key);
-        }
+        // Build field update for existing customer
+        const upd: KhachHangFieldUpdate = {};
+        if (duAn && (existingPhoneMap.get(key) ?? '') === '') upd.du_an = duAn;
+        if (s1) upd.sale_lan_1 = s1;
+        if (n1) upd.ghi_chu_lan_1 = n1;
+        if (s2) upd.sale_lan_2 = s2;
+        if (n2) upd.ghi_chu_lan_2 = n2;
+        if (s3) upd.sale_lan_3 = s3;
+        if (n3) upd.ghi_chu_lan_3 = n3;
+        if (latestSale) upd.sale_phu_trach = latestSale;
+        if (Object.keys(upd).length > 0) fieldUpdates.set(key, upd);
         continue;
       }
       seenPhones.add(key);
@@ -2885,7 +2930,13 @@ export async function importFromPhanKhachConfig(
         nguon:          cellVal(row, 'nguon'),
         nhu_cau:        cellVal(row, 'nhu_cau'),
         ghi_chu:        '',
-        sale_phu_trach: '',
+        sale_phu_trach: latestSale,
+        sale_lan_1:     s1,
+        ghi_chu_lan_1:  n1,
+        sale_lan_2:     s2,
+        ghi_chu_lan_2:  n2,
+        sale_lan_3:     s3,
+        ghi_chu_lan_3:  n3,
         label_khach:    `${rawTen} - ${sdt}`,
         du_an:          duAn,
       });
@@ -2894,7 +2945,7 @@ export async function importFromPhanKhachConfig(
 
   const [, updated] = await Promise.all([
     toImport.length > 0 ? addKhachHangBatch(toImport) : Promise.resolve(),
-    batchUpdateKhachHangDuAn(phonesNeedingDuAnUpdate, duAn),
+    batchUpdateKhachHangFields(fieldUpdates),
   ]);
 
   return { imported: toImport.length, duplicates, updated };
