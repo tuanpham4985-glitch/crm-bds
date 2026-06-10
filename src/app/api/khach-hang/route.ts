@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const nguon = searchParams.get('nguon') || '';
     const sale = searchParams.get('sale') || '';
+    const du_an = searchParams.get('du_an') || '';
     const from = searchParams.get('from') || '';
     const to = searchParams.get('to') || '';
     const page = parseInt(searchParams.get('page') || '1');
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     }
     if (nguon) data = data.filter(kh => kh.nguon === nguon);
     if (sale) data = data.filter(kh => kh.sale_phu_trach === sale);
+    if (du_an) data = data.filter(kh => kh.du_an === du_an);
     if (from) data = data.filter(kh => new Date(kh.ngay_tao) >= new Date(from));
     if (to) data = data.filter(kh => new Date(kh.ngay_tao) <= new Date(to + 'T23:59:59'));
 

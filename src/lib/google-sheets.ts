@@ -330,8 +330,9 @@ export async function getDuAn(): Promise<DuAn[]> {
   const sheet = await getSheet(doc, SHEETS.DU_AN);
   let h = sheet.headerValues;
 
-  if (!h.includes('stacking_config')) {
-    h = [...h, 'stacking_config'];
+  const missingDuAnCols = ['stacking_config', 'truong_nhom', 'ds_sale'].filter(c => !h.includes(c));
+  if (missingDuAnCols.length > 0) {
+    h = [...h, ...missingDuAnCols];
     await sheet.setHeaderRow(h);
   }
 
@@ -352,6 +353,8 @@ export async function getDuAn(): Promise<DuAn[]> {
         chu_dau_tu: str(v[h[6]]),
         link_du_an: str(v[h[7]]),
         stacking_config: str(v['stacking_config'] ?? ''),
+        truong_nhom: str(v['truong_nhom'] ?? ''),
+        ds_sale: str(v['ds_sale'] ?? ''),
       } as DuAn;
     })
     .filter((x): x is DuAn => x !== null);
@@ -490,10 +493,11 @@ export async function getKhachHang(): Promise<KhachHang[]> {
   const doc = await getDoc();
   const sheet = await getSheet(doc, SHEETS.KHACH_HANG);
 
-  // Auto-add cột du_an nếu chưa có
   const h = sheet.headerValues;
-  if (!h.includes('du_an')) {
-    await sheet.setHeaderRow([...h, 'du_an']);
+  const missingKHCols = ['du_an', 'sale_lan_1', 'ghi_chu_lan_1', 'sale_lan_2', 'ghi_chu_lan_2', 'sale_lan_3', 'ghi_chu_lan_3']
+    .filter(c => !h.includes(c));
+  if (missingKHCols.length > 0) {
+    await sheet.setHeaderRow([...h, ...missingKHCols]);
   }
 
   const rows = await sheet.getRows();
@@ -518,6 +522,12 @@ export async function getKhachHang(): Promise<KhachHang[]> {
         sale_phu_trach: str(v[headers[8]]),
         label_khach:    str(v[headers[9]]) || `${ten} - ${sdt}`,
         du_an:          str(v['du_an'] || ''),
+        sale_lan_1:     str(v['sale_lan_1'] || ''),
+        ghi_chu_lan_1:  str(v['ghi_chu_lan_1'] || ''),
+        sale_lan_2:     str(v['sale_lan_2'] || ''),
+        ghi_chu_lan_2:  str(v['ghi_chu_lan_2'] || ''),
+        sale_lan_3:     str(v['sale_lan_3'] || ''),
+        ghi_chu_lan_3:  str(v['ghi_chu_lan_3'] || ''),
       } as KhachHang;
     })
     .filter((x): x is KhachHang => x !== null);
@@ -761,6 +771,12 @@ export async function addKhachHang(kh: KhachHang): Promise<void> {
     [hKH[8]]: kh.sale_phu_trach,
     [hKH[9]]: `${kh.ten_KH} - ${kh.so_dien_thoai}`,
     ...(hKH.includes('du_an') ? { du_an: kh.du_an || '' } : {}),
+    ...(hKH.includes('sale_lan_1') ? { sale_lan_1: kh.sale_lan_1 || '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_1') ? { ghi_chu_lan_1: kh.ghi_chu_lan_1 || '' } : {}),
+    ...(hKH.includes('sale_lan_2') ? { sale_lan_2: kh.sale_lan_2 || '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_2') ? { ghi_chu_lan_2: kh.ghi_chu_lan_2 || '' } : {}),
+    ...(hKH.includes('sale_lan_3') ? { sale_lan_3: kh.sale_lan_3 || '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_3') ? { ghi_chu_lan_3: kh.ghi_chu_lan_3 || '' } : {}),
   });
 
   // 2. AUTO tạo pipeline — ghi theo TÊN CỘT để không bị lệch khi sheet có thêm cột
@@ -841,6 +857,12 @@ export async function addKhachHangBatch(khs: KhachHang[]): Promise<void> {
     [hKH[8]]: kh.sale_phu_trach,
     [hKH[9]]: `${kh.ten_KH} - ${kh.so_dien_thoai}`,
     ...(hasDuAn ? { du_an: kh.du_an || '' } : {}),
+    ...(hKH.includes('sale_lan_1') ? { sale_lan_1: '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_1') ? { ghi_chu_lan_1: '' } : {}),
+    ...(hKH.includes('sale_lan_2') ? { sale_lan_2: '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_2') ? { ghi_chu_lan_2: '' } : {}),
+    ...(hKH.includes('sale_lan_3') ? { sale_lan_3: '' } : {}),
+    ...(hKH.includes('ghi_chu_lan_3') ? { ghi_chu_lan_3: '' } : {}),
   }));
 
   // Ghi theo TÊN CỘT để không bị lệch khi sheet có thêm cột mới
@@ -889,6 +911,12 @@ export async function updateKhachHang(kh: KhachHang): Promise<boolean> {
   row.set(h[8], kh.sale_phu_trach);
   row.set(h[9], `${kh.ten_KH} - ${kh.so_dien_thoai}`);
   if (h.includes('du_an')) row.set('du_an', kh.du_an || '');
+  if (h.includes('sale_lan_1')) row.set('sale_lan_1', kh.sale_lan_1 || '');
+  if (h.includes('ghi_chu_lan_1')) row.set('ghi_chu_lan_1', kh.ghi_chu_lan_1 || '');
+  if (h.includes('sale_lan_2')) row.set('sale_lan_2', kh.sale_lan_2 || '');
+  if (h.includes('ghi_chu_lan_2')) row.set('ghi_chu_lan_2', kh.ghi_chu_lan_2 || '');
+  if (h.includes('sale_lan_3')) row.set('sale_lan_3', kh.sale_lan_3 || '');
+  if (h.includes('ghi_chu_lan_3')) row.set('ghi_chu_lan_3', kh.ghi_chu_lan_3 || '');
   await row.save();
   await addLog(doc, 'UPDATE_KH', kh.id_khach_hang, '', '');
   return true;
@@ -1130,6 +1158,8 @@ export async function addDuAn(da: DuAn): Promise<void> {
     [h[6]]: da.chu_dau_tu || '',
     [h[7]]: da.link_du_an || '',
     'stacking_config': da.stacking_config || '',
+    'truong_nhom': da.truong_nhom || '',
+    'ds_sale': da.ds_sale || '',
   });
   await addLog(doc, 'CREATE_DA', da.id_du_an, '', '');
 }
@@ -1149,6 +1179,8 @@ export async function updateDuAn(da: DuAn): Promise<boolean> {
   row.set(h[6], da.chu_dau_tu || '');
   row.set(h[7], da.link_du_an || '');
   row.set('stacking_config', da.stacking_config || '');
+  if (h.includes('truong_nhom')) row.set('truong_nhom', da.truong_nhom || '');
+  if (h.includes('ds_sale')) row.set('ds_sale', da.ds_sale || '');
   await row.save();
   await addLog(doc, 'UPDATE_DA', da.id_du_an, '', '');
   return true;

@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, CheckSquare,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Database, Briefcase, BarChart3, LayoutList
+  ChevronDown, Database, Briefcase, BarChart3, LayoutList, UserCheck
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -22,8 +22,9 @@ interface BeforeInstallPromptEvent extends Event {
 
 const CRM_STEPS = [
   { href: '/khach-hang', label: 'Khách hàng', icon: Users,       step: 1 },
-  { href: '/pipeline',   label: 'Pipeline',   icon: GitBranch,  step: 2 },
-  { href: '/cong-viec',  label: 'Công việc',  icon: CheckSquare, step: 3 },
+  { href: '/phan-khach', label: 'Phân khách', icon: UserCheck,   step: 2 },
+  { href: '/pipeline',   label: 'Pipeline',   icon: GitBranch,   step: 3 },
+  { href: '/cong-viec',  label: 'Công việc',  icon: CheckSquare, step: 4 },
 ];
 
 const CRM_CATALOG = [

@@ -81,6 +81,7 @@ export const ITEMS_PER_PAGE = 20;
 export const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: 'LayoutDashboard' },
   { href: '/khach-hang', label: 'Khách hàng', icon: 'Users' },
+  { href: '/phan-khach', label: 'Phân khách', icon: 'UserCheck' },
   { href: '/pipeline', label: 'Pipeline', icon: 'GitBranch' },
   { href: '/cong-viec', label: 'Công việc', icon: 'CheckSquare' },
   { href: '/du-an', label: 'Dự án', icon: 'Building2' },

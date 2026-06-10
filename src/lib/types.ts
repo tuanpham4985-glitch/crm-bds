@@ -26,6 +26,8 @@ export interface DuAn {
   chu_dau_tu?: string;
   link_du_an?: string;
   stacking_config?: string; // JSON: [{name, url}]
+  truong_nhom?: string;     // Trưởng nhóm / GDDA phụ trách dự án
+  ds_sale?: string;         // JSON: string[] — danh sách tên sale trong team
 }
 
 // === NHÂN VIÊN ===
@@ -92,6 +94,13 @@ export interface KhachHang {
   sale_phu_trach: string;
   label_khach: string;
   du_an?: string;
+  // Phân khách: theo dõi 3 lần chăm sóc
+  sale_lan_1?: string;
+  ghi_chu_lan_1?: string;
+  sale_lan_2?: string;
+  ghi_chu_lan_2?: string;
+  sale_lan_3?: string;
+  ghi_chu_lan_3?: string;
 }
 
 // === PIPELINE ===
