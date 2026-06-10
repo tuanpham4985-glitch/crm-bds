@@ -905,6 +905,8 @@ export async function updateKhachHang(kh: KhachHang): Promise<boolean> {
   const row = rows.find(r => str(r.toObject()[h[0]]) === kh.id_khach_hang);
   if (!row) return false;
 
+  const oldSale = str(row.toObject()[h[8]]);
+
   row.set(h[2], kh.ten_KH); row.set(h[3], kh.so_dien_thoai);
   row.set(h[4], kh.email); row.set(h[5], kh.nguon);
   row.set(h[6], kh.nhu_cau); row.set(h[7], kh.ghi_chu);
@@ -918,6 +920,27 @@ export async function updateKhachHang(kh: KhachHang): Promise<boolean> {
   if (h.includes('sale_lan_3')) row.set('sale_lan_3', kh.sale_lan_3 || '');
   if (h.includes('ghi_chu_lan_3')) row.set('ghi_chu_lan_3', kh.ghi_chu_lan_3 || '');
   await row.save();
+
+  // Cascade sale_phu_trach to Pipeline and Công việc when it changes
+  if (kh.sale_phu_trach && oldSale !== kh.sale_phu_trach) {
+    const [sheetPL, sheetCV] = await Promise.all([
+      getSheet(doc, SHEETS.PIPELINE),
+      getSheet(doc, SHEETS.CONG_VIEC),
+    ]);
+    const [rowsPL, rowsCV] = await Promise.all([
+      sheetPL.getRows(),
+      sheetCV.getRows(),
+    ]);
+
+    const plRows = rowsPL.filter(r => str(r.toObject()['id_khach_hang']) === kh.id_khach_hang);
+    const plIds = new Set(plRows.map(r => str(r.toObject()['id_pipeline'])));
+    const cvRows = rowsCV.filter(r => plIds.has(str(r.toObject()['id_pipeline'])));
+
+    plRows.forEach(r => r.set('sale_phu_trach', kh.sale_phu_trach));
+    cvRows.forEach(r => r.set('sale_phu_trach', kh.sale_phu_trach));
+    await Promise.all([...plRows.map(r => r.save()), ...cvRows.map(r => r.save())]);
+  }
+
   await addLog(doc, 'UPDATE_KH', kh.id_khach_hang, '', '');
   return true;
 }
