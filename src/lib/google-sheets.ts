@@ -2657,10 +2657,13 @@ export async function deletePhanKhachConfig(id: string): Promise<boolean> {
 
 // Detect which spreadsheet column header maps to each KhachHang field
 function detectPhanKhachColumns(headers: string[]): Record<string, string> {
-  const lower = headers.map(h => h.toLowerCase().trim());
+  // Normalize to NFC + lowercase to handle Google Sheets' NFD encoding
+  const norm = (s: string) => s.normalize('NFC').toLowerCase().trim();
+  const lower = headers.map(norm);
   const find = (patterns: string[]): string => {
+    const normPatterns = patterns.map(norm);
     for (let i = 0; i < lower.length; i++) {
-      for (const p of patterns) {
+      for (const p of normPatterns) {
         if (lower[i].includes(p)) return headers[i];
       }
     }
@@ -2671,7 +2674,7 @@ function detectPhanKhachColumns(headers: string[]): Record<string, string> {
     so_dien_thoai: find(['số điện thoại', 'so dien thoai', 'sdt', 'phone', 'mobile', 'điện thoại', 'so_dt']),
     email:         find(['email', 'gmail', 'e-mail']),
     nguon:         find(['nguồn', 'nguon', 'source', 'kênh', 'kenh']),
-    nhu_cau:       find(['nhu cầu', 'nhu_cau', 'yêu cầu', 'sản phẩm', 'san pham', 'quan tâm']),
+    nhu_cau:       find(['nhu cầu', 'nhu_cau', 'yêu cầu', 'sản phẩm', 'san pham', 'quan tâm', 'mục đích', 'muc dich']),
   };
 }
 
@@ -2683,7 +2686,7 @@ async function readSheetHeaders(sheet: GoogleSpreadsheetWorksheet): Promise<stri
   const headers: string[] = [];
   const seen = new Set<string>();
   for (let col = 0; col < colCount; col++) {
-    const raw = String(sheet.getCell(0, col).value ?? '').trim();
+    const raw = String(sheet.getCell(0, col).value ?? '').normalize('NFC').trim();
     if (!raw) { if (headers.length > 0) break; continue; }
     let name = raw;
     let n = 2;

@@ -229,10 +229,15 @@ export default function KhachHangPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setImportResult(prev => ({ ...prev, [config.id]: { imported: data.imported, duplicates: data.duplicates } }));
+        setImportResult(prev => ({ ...prev, [config.id]: { imported: data.imported ?? 0, duplicates: data.duplicates ?? 0 } }));
         if (data.imported > 0) fetchData();
+      } else {
+        alert(`Import thất bại: ${data.error ?? 'Lỗi không xác định'}`);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      alert(`Lỗi kết nối: ${err instanceof Error ? err.message : String(err)}`);
+    }
     finally { setImportingId(null); }
   };
 
