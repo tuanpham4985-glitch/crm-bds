@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   Search, Plus, Edit3, Trash2, X, ChevronLeft, ChevronRight,
   Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle,
@@ -13,7 +13,6 @@ import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
 
 export default function KhachHangPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [data, setData] = useState<KhachHang[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -26,7 +25,7 @@ export default function KhachHangPage() {
   // Filters
   const [search, setSearch] = useState('');
   const [nguon, setNguon] = useState('');
-  const [sale, setSale] = useState(() => searchParams.get('sale') || '');
+  const [sale, setSale] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -107,6 +106,13 @@ export default function KhachHangPage() {
     } catch (err) {
       console.error('Fetch du-an error:', err);
     }
+  }, []);
+
+  // Read ?sale= param from URL on mount (avoids useSearchParams/Suspense requirement)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const s = p.get('sale');
+    if (s) setSale(s);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
