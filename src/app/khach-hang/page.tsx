@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Search, Plus, Edit3, Trash2, X, ChevronLeft, ChevronRight,
   Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle,
@@ -13,6 +13,7 @@ import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
 
 export default function KhachHangPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<KhachHang[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -25,7 +26,7 @@ export default function KhachHangPage() {
   // Filters
   const [search, setSearch] = useState('');
   const [nguon, setNguon] = useState('');
-  const [sale, setSale] = useState('');
+  const [sale, setSale] = useState(() => searchParams.get('sale') || '');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -369,6 +370,7 @@ export default function KhachHangPage() {
           </select>
           <select className="form-select" style={{ width: 'auto', minWidth: 130, flex: '0 0 auto' }} value={sale} onChange={(e) => { setSale(e.target.value); setPage(1); }}>
             <option value="">Tất cả sale</option>
+            <option value="__none__">Chưa assign sale</option>
             {employees.map(nv => <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>)}
           </select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>

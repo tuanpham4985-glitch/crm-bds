@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
       );
     }
     if (nguon) data = data.filter(kh => kh.nguon === nguon);
-    if (sale) data = data.filter(kh => kh.sale_phu_trach === sale);
+    if (sale === '__none__') data = data.filter(kh => !kh.sale_phu_trach);
+    else if (sale) data = data.filter(kh => kh.sale_phu_trach === sale);
     if (du_an) data = data.filter(kh => kh.du_an === du_an);
     if (from) data = data.filter(kh => new Date(kh.ngay_tao) >= new Date(from));
     if (to) data = data.filter(kh => new Date(kh.ngay_tao) <= new Date(to + 'T23:59:59'));

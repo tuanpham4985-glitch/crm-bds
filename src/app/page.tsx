@@ -441,7 +441,7 @@ export default function DashboardPage() {
 
           {/* Alert: KH chưa assign */}
           {data.kpi.kh_chua_assign > 0 && (
-            <a href="/khach-hang" style={{ textDecoration: 'none' }}>
+            <a href="/khach-hang?sale=__none__" style={{ textDecoration: 'none' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px',
                 background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12,
