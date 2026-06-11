@@ -509,7 +509,7 @@ export default function DashboardPage() {
         <div className="chart-card" style={{ overflow: 'hidden' }}>
           <div className="card-header">
             <div>
-              <div className="card-title">🏆 Bảng xếp hạng</div>
+              <div className="card-title" style={{ fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>🏆 Bảng xếp hạng</div>
               <div className="card-subtitle">{periodDateRange}</div>
             </div>
           </div>
@@ -1059,7 +1059,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
       <div className="chart-card" style={{ padding: '18px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           {icon}
-          <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>{title}</span>
+          <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-title)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</span>
         </div>
         <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
           {/* Donut */}
@@ -1172,7 +1172,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
             <div className="chart-card" style={{ padding: '18px 20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, height: 38 }}>
                 <BarChart3 size={16} style={{ color: '#f59e0b' }} />
-                <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>Top 5 Phòng kinh doanh</span>
+                <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-title)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Top 5 Phòng kinh doanh</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {tonghop.top_phong_kd.map((p, i) => (
@@ -1432,7 +1432,7 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
             <Cake size={20} color="#fff" />
           </div>
           <div>
-            <div className="card-title">🎂 Sinh nhật nhân viên</div>
+            <div className="card-title" style={{ fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>🎂 Sinh nhật nhân viên</div>
             <div className="card-subtitle">{monthLabel} — {employees.length} nhân viên</div>
           </div>
         </div>
