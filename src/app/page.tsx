@@ -1115,7 +1115,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
                 <Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius={38} outerRadius={58} strokeWidth={2} stroke="#fff">
                   {pieData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
                 </Pie>
-                <Tooltip formatter={(v: number) => fmtTy(v)} />
+                <Tooltip formatter={(v) => fmtTy(Number(v))} />
               </PieChart>
             </ResponsiveContainer>
           </div>
