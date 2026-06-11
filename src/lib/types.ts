@@ -253,6 +253,12 @@ export interface TongHopPhongKD {
   doanh_so: number;
 }
 
+export interface TongHopDuAn {
+  ten: string;
+  so_can: number;
+  doanh_so: number;
+}
+
 export interface TongHopStats {
   tong_doanh_so: number;
   tong_so_can: number;
@@ -261,6 +267,7 @@ export interface TongHopStats {
   loai_nguon: TongHopCompareItem[];  // Nội bộ vs Đối tác
   top_phong_kd: TongHopPhongKD[];    // Top 5 phòng KD
   khu_vuc: TongHopCompareItem[];     // Hà Nội vs TP.HCM
+  top_du_an: TongHopDuAn[];          // Top dự án theo doanh số
 }
 
 export interface DashboardData {

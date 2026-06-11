@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich } from '@/lib/google-sheets';
-import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopPhongKD } from '@/lib/types';
+import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopPhongKD, TongHopDuAn } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
@@ -463,6 +463,14 @@ export async function GET(request: NextRequest) {
           khuVucMap.set(r.chi_nhanh, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
         });
 
+        // Dự án
+        const topDuAnMap = new Map<string, { so_can: number; doanh_so: number }>();
+        tongHopRows.forEach(r => {
+          if (!r.du_an) return;
+          const cur = topDuAnMap.get(r.du_an) ?? { so_can: 0, doanh_so: 0 };
+          topDuAnMap.set(r.du_an, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
+        });
+
         const toArr = (m: Map<string, { so_can: number; doanh_so: number }>): TongHopCompareItem[] =>
           Array.from(m.entries())
             .map(([loai, v]) => ({ loai, so_can: v.so_can, doanh_so: v.doanh_so }))
@@ -477,6 +485,10 @@ export async function GET(request: NextRequest) {
             .sort((a, b) => b.doanh_so - a.doanh_so)
             .slice(0, 5),
           khu_vuc: toArr(khuVucMap).slice(0, 10),
+          top_du_an: Array.from(topDuAnMap.entries())
+            .map(([ten, v]) => ({ ten, so_can: v.so_can, doanh_so: v.doanh_so } as TongHopDuAn))
+            .sort((a, b) => b.doanh_so - a.doanh_so)
+            .slice(0, 10),
         };
       }
 
@@ -515,6 +527,10 @@ export async function GET(request: NextRequest) {
           .sort((a, b) => b.doanh_so - a.doanh_so)
           .slice(0, 5),
         khu_vuc: [],
+        top_du_an: Array.from(duAnMap.values())
+          .map(d => ({ ten: d.du_an, so_can: d.so_deal, doanh_so: d.doanh_thu } as TongHopDuAn))
+          .sort((a, b) => b.doanh_so - a.doanh_so)
+          .slice(0, 10),
       };
     };
 
