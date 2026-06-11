@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, getKhachHang, getNhanVien, getCongViec } from '@/lib/google-sheets';
-import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals } from '@/lib/types';
+import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich } from '@/lib/google-sheets';
+import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopPhongKD } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
@@ -160,6 +160,9 @@ export async function GET(request: NextRequest) {
       getNhanVien(),
       getCongViec(),
     ]);
+
+    // Fetch external Tổng hợp sheet in parallel (non-blocking if env not set)
+    let tongHopRows: Awaited<ReturnType<typeof getTongHopGiaoDich>> = [];
     // Ẩn nhân viên "Nghỉ việc" khỏi dashboard
     const allEmployees = allEmployeesRaw.filter(nv => nv.trang_thai !== 'Nghỉ việc');
 
@@ -196,6 +199,13 @@ export async function GET(request: NextRequest) {
     if (fromParam && toParam) {
       dateRange.from = new Date(fromParam);
       dateRange.to = new Date(toParam + 'T23:59:59');
+    }
+
+    // Fetch tonghop data with date filter (silent fail if sheet not configured)
+    try {
+      tongHopRows = await getTongHopGiaoDich(dateRange.from, dateRange.to);
+    } catch {
+      tongHopRows = [];
     }
 
     // Debug: log first 3 pipelines to trace what data arrives from Sheets
@@ -412,6 +422,104 @@ export async function GET(request: NextRequest) {
         .map(([label, count]) => ({ label, count, color: statusColors[label] })),
     };
 
+    // ── Tổng hợp giao dịch stats ─────────────────────────────────────────────
+    // Nếu có external sheet → dùng; fallback về pipeline data đã ký
+    const buildTongHopStats = (): TongHopStats => {
+      if (tongHopRows.length > 0) {
+        // Aggregate from external sheet
+        const tong_doanh_so = tongHopRows.reduce((s, r) => s + r.gia_tri, 0);
+        const tong_so_can   = tongHopRows.length;
+        const gia_tri_tb_can = tong_so_can > 0 ? Math.round(tong_doanh_so / tong_so_can) : 0;
+
+        // Loại hình (Cao tầng / Thấp tầng)
+        const loaiHinhMap = new Map<string, { so_can: number; doanh_so: number }>();
+        tongHopRows.forEach(r => {
+          const key = r.loai_hinh || 'Khác';
+          const cur = loaiHinhMap.get(key) ?? { so_can: 0, doanh_so: 0 };
+          loaiHinhMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
+        });
+
+        // Nguồn (Nội bộ / Đối tác)
+        const nguonMap = new Map<string, { so_can: number; doanh_so: number }>();
+        tongHopRows.forEach(r => {
+          const key = r.loai_nguon || 'Khác';
+          const cur = nguonMap.get(key) ?? { so_can: 0, doanh_so: 0 };
+          nguonMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
+        });
+
+        // Phòng KD Top 5
+        const phongKDMap = new Map<string, { so_can: number; doanh_so: number }>();
+        tongHopRows.forEach(r => {
+          if (!r.phong_kd) return;
+          const cur = phongKDMap.get(r.phong_kd) ?? { so_can: 0, doanh_so: 0 };
+          phongKDMap.set(r.phong_kd, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
+        });
+
+        // Khu vực (chi_nhanh grouping)
+        const khuVucMap = new Map<string, { so_can: number; doanh_so: number }>();
+        tongHopRows.forEach(r => {
+          if (!r.chi_nhanh) return;
+          const cur = khuVucMap.get(r.chi_nhanh) ?? { so_can: 0, doanh_so: 0 };
+          khuVucMap.set(r.chi_nhanh, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
+        });
+
+        const toArr = (m: Map<string, { so_can: number; doanh_so: number }>): TongHopCompareItem[] =>
+          Array.from(m.entries())
+            .map(([loai, v]) => ({ loai, so_can: v.so_can, doanh_so: v.doanh_so }))
+            .sort((a, b) => b.doanh_so - a.doanh_so);
+
+        return {
+          tong_doanh_so, tong_so_can, gia_tri_tb_can,
+          loai_hinh: toArr(loaiHinhMap),
+          loai_nguon: toArr(nguonMap),
+          top_phong_kd: Array.from(phongKDMap.entries())
+            .map(([ten, v]) => ({ ten, so_can: v.so_can, doanh_so: v.doanh_so }))
+            .sort((a, b) => b.doanh_so - a.doanh_so)
+            .slice(0, 5),
+          khu_vuc: toArr(khuVucMap).slice(0, 10),
+        };
+      }
+
+      // Fallback: dùng pipeline data
+      const tong_doanh_so  = daKy.reduce((s, pl) => s + pl.gia_tri_thuc_te, 0);
+      const tong_so_can    = daKy.length;
+      const gia_tri_tb_can = tong_so_can > 0 ? Math.round(tong_doanh_so / tong_so_can) : 0;
+
+      // Nội bộ vs Đối tác từ pipeline
+      let noiBoCount = 0, noiBoDS = 0, doiTacCount = 0, doiTacDS = 0;
+      daKy.forEach(pl => {
+        const isDoiTac =
+          (pl.sale_phu_trach || '').toLowerCase().includes('đối tác') ||
+          (pl.phong_kd || '').toLowerCase().includes('đối tác');
+        if (isDoiTac) { doiTacCount++; doiTacDS += pl.gia_tri_thuc_te; }
+        else          { noiBoCount++;  noiBoDS  += pl.gia_tri_thuc_te; }
+      });
+
+      // Top phòng KD từ pipeline
+      const phongMap = new Map<string, { so_can: number; doanh_so: number }>();
+      daKy.forEach(pl => {
+        const key = pl.phong_kd || 'Chưa phân';
+        const cur = phongMap.get(key) ?? { so_can: 0, doanh_so: 0 };
+        phongMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + pl.gia_tri_thuc_te });
+      });
+
+      return {
+        tong_doanh_so, tong_so_can, gia_tri_tb_can,
+        loai_hinh: [],
+        loai_nguon: [
+          { loai: 'Nội bộ',  so_can: noiBoCount,  doanh_so: noiBoDS },
+          { loai: 'Đối tác', so_can: doiTacCount, doanh_so: doiTacDS },
+        ].filter(x => x.so_can > 0),
+        top_phong_kd: Array.from(phongMap.entries())
+          .map(([ten, v]) => ({ ten, so_can: v.so_can, doanh_so: v.doanh_so }))
+          .sort((a, b) => b.doanh_so - a.doanh_so)
+          .slice(0, 5),
+        khu_vuc: [],
+      };
+    };
+
+    const tonghop = isAdmin ? buildTongHopStats() : undefined;
+
     const data: DashboardData = isAdmin ? {
       kpi: {
         tong_deal: currentPipelines.length,
@@ -435,6 +543,7 @@ export async function GET(request: NextRequest) {
       sinh_nhat_thang_nay: sinhNhatThangNay,
       pipeline_funnel,
       crm_totals,
+      tonghop,
     } : {
       kpi: { tong_deal: 0, dang_xu_ly: 0, da_ky: 0, doanh_thu: 0, hoa_hong: 0, kh_chua_assign: 0 },
       doanh_thu_theo_sale: leaderboard,

@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  TrendingUp, TrendingDown, BarChart3, Target,
-  DollarSign, Handshake, ToggleLeft, ToggleRight, Cake, ChevronDown,
+  TrendingUp, TrendingDown, BarChart3,
+  DollarSign, Home, Layers, ToggleLeft, ToggleRight, Cake, ChevronDown,
   Users, GitBranch, CheckSquare, ExternalLink,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import type { DashboardData, SinhNhatNhanVien, CrmTotals } from '@/lib/types';
+import type { DashboardData, SinhNhatNhanVien, CrmTotals, TongHopCompareItem, TongHopPhongKD } from '@/lib/types';
 import { formatCurrency, formatChange, calcChange } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -422,14 +422,35 @@ export default function DashboardPage() {
 
       {/* KPI Grid — admin only */}
       {isAdmin && (
-        <div className="kpi-grid">
-          {renderKpiCard('Tổng Deal', data.kpi.tong_deal, data.kpi.tong_deal_prev, <BarChart3 size={20} />)}
-          {renderKpiCard('Đang xử lý', data.kpi.dang_xu_ly, data.kpi.dang_xu_ly_prev, <Target size={20} />)}
-          {renderKpiCard('Đã ký HĐ', data.kpi.da_ky, data.kpi.da_ky_prev, <Handshake size={20} />)}
-          {renderKpiCard('Doanh thu', data.kpi.doanh_thu, data.kpi.doanh_thu_prev, <DollarSign size={20} />, 'currency')}
+        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          {renderKpiCard(
+            'TỔNG DOANH SỐ',
+            data.tonghop?.tong_doanh_so ?? data.kpi.doanh_thu,
+            undefined,
+            <DollarSign size={20} />,
+            'currency'
+          )}
+          {renderKpiCard(
+            'TỔNG SỐ CĂN',
+            data.tonghop?.tong_so_can ?? data.kpi.da_ky,
+            undefined,
+            <Home size={20} />
+          )}
+          {renderKpiCard(
+            'GIÁ TRỊ TB / CĂN',
+            data.tonghop?.gia_tri_tb_can ?? (data.kpi.da_ky > 0 ? Math.round(data.kpi.doanh_thu / data.kpi.da_ky) : 0),
+            undefined,
+            <Layers size={20} />,
+            'currency'
+          )}
         </div>
       )}
 
+
+      {/* ── Bảng tổng hợp so sánh — admin only ── */}
+      {isAdmin && data.tonghop && (
+        <TongHopTables tonghop={data.tonghop} />
+      )}
 
       {/* Charts Row — admin only */}
       {isAdmin && (
@@ -1049,6 +1070,176 @@ export default function DashboardPage() {
           <BirthdayWidget employees={data.sinh_nhat_thang_nay} />
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── TongHop Tables ──────────────────────────────────────────────────────────
+
+function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tonghop']> }) {
+  const fmtTy = (v: number) => {
+    if (v >= 1e9) return `${(v / 1e9).toFixed(1)} TỶ`;
+    if (v >= 1e6) return `${(v / 1e6).toFixed(0)} TR`;
+    return formatCurrency(v);
+  };
+
+  const maxPhongKD = Math.max(...(tonghop.top_phong_kd.map(p => p.doanh_so) || [1]), 1);
+  const maxKhuVuc  = Math.max(...(tonghop.khu_vuc.map(k => k.doanh_so)  || [1]), 1);
+
+  const SoSanhCard = ({
+    title, icon, items, color1, color2,
+  }: {
+    title: string;
+    icon: React.ReactNode;
+    items: TongHopCompareItem[];
+    color1: string;
+    color2: string;
+  }) => {
+    if (!items || items.length === 0) return null;
+    const total_can = items.reduce((s, x) => s + x.so_can, 0) || 1;
+    const total_ds  = items.reduce((s, x) => s + x.doanh_so, 0) || 1;
+    const colors = [color1, color2, '#94a3b8', '#f59e0b'];
+    const pieData = items.map(x => ({ name: x.loai, value: x.doanh_so }));
+
+    return (
+      <div className="chart-card" style={{ padding: '18px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          {icon}
+          <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>{title}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+          {/* Donut */}
+          <div style={{ width: 130, height: 130, flexShrink: 0 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius={38} outerRadius={58} strokeWidth={2} stroke="#fff">
+                  {pieData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
+                </Pie>
+                <Tooltip formatter={(v: number) => fmtTy(v)} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Table */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '4px 12px', fontSize: '0.78rem', marginBottom: 6 }}>
+              <span style={{ color: 'var(--text-label)', fontWeight: 600 }}>Loại</span>
+              <span style={{ color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Số căn</span>
+              <span style={{ color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Doanh số</span>
+            </div>
+            {items.map((x, i) => (
+              <div key={x.loai} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '4px 12px', marginBottom: 8, alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[i % colors.length], flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-body)', whiteSpace: 'nowrap' }}>{x.loai}</span>
+                </div>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right' }}>
+                  {x.so_can} <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.72rem' }}>({Math.round(x.so_can / total_can * 100)}%)</span>
+                </span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: colors[i % colors.length], textAlign: 'right' }}>
+                  {fmtTy(x.doanh_so)}
+                </span>
+              </div>
+            ))}
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 6, display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '4px 12px' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)' }}>Tổng</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right' }}>{total_can}</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right' }}>{fmtTy(total_ds)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {/* Row 1: Loại hình + Nguồn */}
+      {(tonghop.loai_hinh.length > 0 || tonghop.loai_nguon.length > 0) && (
+        <div className="charts-grid" style={{ marginBottom: 16 }}>
+          <SoSanhCard
+            title="Cao tầng vs Thấp tầng"
+            icon={<Layers size={16} style={{ color: '#6366f1' }} />}
+            items={tonghop.loai_hinh}
+            color1="#6366f1"
+            color2="#f59e0b"
+          />
+          <SoSanhCard
+            title="Nội bộ vs Đối tác"
+            icon={<Users size={16} style={{ color: '#10b981' }} />}
+            items={tonghop.loai_nguon}
+            color1="#10b981"
+            color2="#f472b6"
+          />
+        </div>
+      )}
+
+      {/* Row 2: Top Phòng KD + Khu vực */}
+      <div className="charts-grid">
+        {/* Top 5 Phòng KD */}
+        {tonghop.top_phong_kd.length > 0 && (
+          <div className="chart-card" style={{ padding: '18px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <BarChart3 size={16} style={{ color: '#f59e0b' }} />
+              <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>Top 5 Phòng kinh doanh</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {tonghop.top_phong_kd.map((p, i) => (
+                <div key={p.ten}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 700, color: '#f59e0b', width: 18, textAlign: 'center' }}>{i + 1}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-title)' }}>{p.ten}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{p.so_can} căn</span>
+                      <span style={{ fontWeight: 700, color: '#f59e0b' }}>{fmtTy(p.doanh_so)}</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 4, background: 'var(--border)' }}>
+                    <div style={{
+                      height: '100%', borderRadius: 4,
+                      width: `${Math.round((p.doanh_so / maxPhongKD) * 100)}%`,
+                      background: ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#ec4899'][i % 5],
+                      transition: 'width 0.4s ease',
+                    }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* So sánh khu vực */}
+        {tonghop.khu_vuc.length > 0 && (
+          <div className="chart-card" style={{ padding: '18px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <GitBranch size={16} style={{ color: '#3b82f6' }} />
+              <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>So sánh khu vực</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {tonghop.khu_vuc.slice(0, 6).map((k, i) => (
+                <div key={k.loai}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.8rem' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-title)' }}>{k.loai}</span>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{k.so_can} căn</span>
+                      <span style={{ fontWeight: 700, color: '#3b82f6' }}>{fmtTy(k.doanh_so)}</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 4, background: 'var(--border)' }}>
+                    <div style={{
+                      height: '100%', borderRadius: 4,
+                      width: `${Math.round((k.doanh_so / maxKhuVuc) * 100)}%`,
+                      background: ['#3b82f6', '#10b981', '#f59e0b', '#6366f1', '#ec4899', '#ef4444'][i % 6],
+                      transition: 'width 0.4s ease',
+                    }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

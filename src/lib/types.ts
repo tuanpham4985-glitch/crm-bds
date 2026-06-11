@@ -240,6 +240,29 @@ export interface CrmTotals {
   cv_by_status: CrmModuleStat[];
 }
 
+// === TỔNG HỢP GIAO DỊCH (external sheet) ===
+export interface TongHopCompareItem {
+  loai: string;
+  so_can: number;
+  doanh_so: number;
+}
+
+export interface TongHopPhongKD {
+  ten: string;
+  so_can: number;
+  doanh_so: number;
+}
+
+export interface TongHopStats {
+  tong_doanh_so: number;
+  tong_so_can: number;
+  gia_tri_tb_can: number;
+  loai_hinh: TongHopCompareItem[];   // Cao tầng vs Thấp tầng
+  loai_nguon: TongHopCompareItem[];  // Nội bộ vs Đối tác
+  top_phong_kd: TongHopPhongKD[];    // Top 5 phòng KD
+  khu_vuc: TongHopCompareItem[];     // Hà Nội vs TP.HCM
+}
+
 export interface DashboardData {
   kpi: DashboardKPI;
   doanh_thu_theo_sale: DoanhThuTheoSale[];
@@ -249,6 +272,7 @@ export interface DashboardData {
   sinh_nhat_thang_nay: SinhNhatNhanVien[];
   pipeline_funnel: PipelineFunnelItem[];
   crm_totals?: CrmTotals;
+  tonghop?: TongHopStats;
 }
 
 // === FILTERS ===

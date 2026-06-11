@@ -726,6 +726,113 @@ export async function getNhiemVu(): Promise<Record<string, string>> {
 }
 
 // ============================================================
+// TỔNG HỢP GIAO DỊCH — External sheet reader
+// ============================================================
+
+export interface TongHopRow {
+  du_an: string;
+  loai_hinh: string;   // Cao tầng / Thấp tầng
+  loai_nguon: string;  // Nội bộ / Đối tác
+  gia_tri: number;
+  chi_nhanh: string;   // Chi nhánh / Vùng KD
+  phong_kd: string;    // Phòng KD
+  ngay_ky: string;     // Ngày ký (for date filtering)
+}
+
+// Normalize Vietnamese header text for flexible column matching
+function normVi(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, '');
+}
+
+export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promise<TongHopRow[]> {
+  const sheetId = process.env.TONG_HOP_SHEET_ID;
+  if (!sheetId) {
+    console.warn('[GSheets] TONG_HOP_SHEET_ID not set — skipping getTongHopGiaoDich');
+    return [];
+  }
+
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, getJWT());
+    await doc.loadInfo();
+
+    // Access by gid=444476674 or by name
+    const sheet =
+      doc.sheetsById[444476674] ||
+      doc.sheetsByTitle['Tổng hợp giao dịch chi tiết'] ||
+      doc.sheetsByTitle['Tong hop giao dich chi tiet'] ||
+      Object.values(doc.sheetsByTitle)[0];
+
+    if (!sheet) {
+      console.warn('[GSheets] "Tổng hợp giao dịch chi tiết" sheet not found in TONG_HOP_SHEET_ID');
+      return [];
+    }
+
+    await sheet.loadHeaderRow();
+    const rows = await sheet.getRows();
+    const h = sheet.headerValues;
+
+    console.log('[TongHop] Sheet:', sheet.title, '— headers:', h.join(', '));
+
+    // Find a column whose normalized name matches any of the given patterns
+    const findCol = (...patterns: string[]): string | null => {
+      for (const col of h) {
+        const norm = normVi(col);
+        if (patterns.some(p => norm.includes(p))) return col;
+      }
+      return null;
+    };
+
+    const colGiaTri  = findCol('giatri', 'doanhso', 'giaban', 'tongtien', 'giatrihd', 'doanhso');
+    const colLoaiHinh = findCol('loaihinhcan', 'loaihinh', 'loaican', 'phanloai', 'caothap', 'tang');
+    const colNguon   = findCol('nguon', 'loainguon', 'loaigd', 'noibo', 'doitac', 'phanloaigd', 'loaihinhtd');
+    const colChiNhanh = findCol('chinhanh', 'vuongkd', 'khuvuc', 'region', 'mien', 'vung');
+    const colPhongKD = findCol('phongkd', 'phongban', 'khoikd', 'nhomkd', 'team');
+    const colDuAn    = findCol('duan', 'tenduan', 'tenduan', 'project');
+    const colNgay    = findCol('ngayky', 'ngay', 'date', 'thang');
+
+    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colDuAn, colNgay });
+
+    return rows
+      .map(row => {
+        const v = row.toObject();
+        const gTri = colGiaTri ? num(v[colGiaTri]) : 0;
+        if (!gTri || gTri <= 0) return null;
+
+        // Date filter
+        if ((fromDate || toDate) && colNgay) {
+          const rawDate = str(v[colNgay]);
+          if (rawDate) {
+            const d = new Date(rawDate.includes('/') ? rawDate.split('/').reverse().join('-') : rawDate);
+            if (!isNaN(d.getTime())) {
+              if (fromDate && d < fromDate) return null;
+              if (toDate && d > toDate) return null;
+            }
+          }
+        }
+
+        return {
+          du_an:      colDuAn     ? str(v[colDuAn])     : '',
+          loai_hinh:  colLoaiHinh ? str(v[colLoaiHinh]) : '',
+          loai_nguon: colNguon    ? str(v[colNguon])    : '',
+          gia_tri:    gTri,
+          chi_nhanh:  colChiNhanh ? str(v[colChiNhanh]) : '',
+          phong_kd:   colPhongKD  ? str(v[colPhongKD])  : '',
+          ngay_ky:    colNgay     ? str(v[colNgay])     : '',
+        } as TongHopRow;
+      })
+      .filter((r): r is TongHopRow => r !== null);
+  } catch (err) {
+    console.error('[GSheets] getTongHopGiaoDich error:', err);
+    return [];
+  }
+}
+
+// ============================================================
 // WRITE OPERATIONS
 // ============================================================
 
