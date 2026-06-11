@@ -485,9 +485,12 @@ export async function GET(request: NextRequest) {
             .map(([loai, v]) => ({ loai, so_can: v.so_can, doanh_so: v.doanh_so }))
             .sort((a, b) => b.doanh_so - a.doanh_so);
 
+        // Only show loai_hinh if column was found in sheet (at least 1 non-empty value)
+        const hasLoaiHinhCol = tongHopRows.some(r => (r.loai_hinh || '').trim() !== '');
+
         return {
           tong_doanh_so, tong_so_can, gia_tri_tb_can,
-          loai_hinh: toArr(loaiHinhMap),
+          loai_hinh: hasLoaiHinhCol ? toArr(loaiHinhMap) : [],
           loai_nguon: toArr(nguonMap),
           top_phong_kd: Array.from(phongKDMap.entries())
             .map(([ten, v]) => ({ ten, so_can: v.so_can, doanh_so: v.doanh_so }))
@@ -528,9 +531,22 @@ export async function GET(request: NextRequest) {
         phongMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + pl.gia_tri_thuc_te });
       });
 
+      // Loại hình from pipeline loai_can (only if field has actual data)
+      const loaiHinhFBMap = new Map<string, { so_can: number; doanh_so: number }>();
+      const hasLoaiCanData = daKy.some(pl => (pl.loai_can || '').trim() !== '');
+      if (hasLoaiCanData) {
+        daKy.forEach(pl => {
+          const key = classifyLoaiCan(pl.loai_can || '');
+          const cur = loaiHinhFBMap.get(key) ?? { so_can: 0, doanh_so: 0 };
+          loaiHinhFBMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + pl.gia_tri_thuc_te });
+        });
+      }
+
       return {
         tong_doanh_so, tong_so_can, gia_tri_tb_can,
-        loai_hinh: [],
+        loai_hinh: Array.from(loaiHinhFBMap.entries())
+          .map(([loai, v]) => ({ loai, so_can: v.so_can, doanh_so: v.doanh_so }))
+          .sort((a, b) => b.doanh_so - a.doanh_so),
         loai_nguon: [
           { loai: 'Nội bộ',  so_can: noiBoCount,  doanh_so: noiBoDS },
           { loai: 'Đối tác', so_can: doiTacCount, doanh_so: doiTacDS },

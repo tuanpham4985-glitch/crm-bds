@@ -788,7 +788,11 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
     };
 
     const colGiaTri  = findCol('giatri', 'doanhso', 'giaban', 'tongtien', 'giatrihd', 'doanhso');
-    const colLoaiHinh = findCol('loaihinhcan', 'loaihinh', 'loaican', 'phanloai', 'caothap', 'tang');
+    // Prioritize exact "Loại căn" column (apartment type codes: 1BR, 2BR, etc.)
+    // before broader "Loại hình" patterns, to avoid grabbing the wrong column
+    const colLoaiHinh = h.find(c => normVi(c) === 'loaican')
+      || h.find(c => { const n = normVi(c); return n.includes('loai') && n.includes('can') && !n.includes('hinh'); })
+      || findCol('loaihinhcan', 'loaihinh', 'phanloai', 'caothap', 'tang');
     const colNguon   = findCol('nguon', 'loainguon', 'loaigd', 'noibo', 'doitac', 'phanloaigd', 'loaihinhtd');
     const colChiNhanh = findCol('chinhanh', 'vuongkd', 'khuvuc', 'region', 'mien', 'vung');
     const colPhongKD = findCol('phongkd', 'phongban', 'khoikd', 'nhomkd', 'team');
