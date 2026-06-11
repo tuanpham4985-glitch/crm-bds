@@ -432,6 +432,16 @@ export async function GET(request: NextRequest) {
     // Check if a string indicates Đối tác (partner, not internal team)
     const isDoiTacStr = (s: string): boolean => s.toLowerCase().includes('đối tác');
 
+    // Classify phong_kd by region: VIC-01..VIC-05 = TP.HCM, VIC-06..VIC-12 = Hà Nội
+    const classifyKhuVucByPhongKD = (phongKd: string): string | null => {
+      const m = (phongKd || '').match(/VIC[-\s]?(\d+)/i);
+      if (!m) return null;
+      const n = parseInt(m[1], 10);
+      if (n >= 1 && n <= 5) return 'TP.HCM';
+      if (n >= 6 && n <= 12) return 'Hà Nội';
+      return null;
+    };
+
     const buildTongHopStats = (): TongHopStats => {
       if (tongHopRows.length > 0) {
         // Aggregate from external sheet
@@ -464,12 +474,13 @@ export async function GET(request: NextRequest) {
           phongKDMap.set(r.phong_kd, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
         });
 
-        // Khu vực (chi_nhanh grouping)
+        // Khu vực — prefer chi_nhanh column; fallback classify from phong_kd (VIC-01..05=TPHCM, VIC-06..12=HN)
         const khuVucMap = new Map<string, { so_can: number; doanh_so: number }>();
         tongHopRows.forEach(r => {
-          if (!r.chi_nhanh) return;
-          const cur = khuVucMap.get(r.chi_nhanh) ?? { so_can: 0, doanh_so: 0 };
-          khuVucMap.set(r.chi_nhanh, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
+          const region = r.chi_nhanh || classifyKhuVucByPhongKD(r.phong_kd);
+          if (!region) return;
+          const cur = khuVucMap.get(region) ?? { so_can: 0, doanh_so: 0 };
+          khuVucMap.set(region, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
         });
 
         // Dự án
@@ -555,7 +566,19 @@ export async function GET(request: NextRequest) {
           .map(([ten, v]) => ({ ten, so_can: v.so_can, doanh_so: v.doanh_so }))
           .sort((a, b) => b.doanh_so - a.doanh_so)
           .slice(0, 5),
-        khu_vuc: [],
+        khu_vuc: (() => {
+          const m = new Map<string, { so_can: number; doanh_so: number }>();
+          daKy.forEach(pl => {
+            if (isDoiTacStr(pl.sale_phu_trach || '') || isDoiTacStr(pl.phong_kd || '')) return;
+            const region = classifyKhuVucByPhongKD(pl.phong_kd || '');
+            if (!region) return;
+            const cur = m.get(region) ?? { so_can: 0, doanh_so: 0 };
+            m.set(region, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + pl.gia_tri_thuc_te });
+          });
+          return Array.from(m.entries())
+            .map(([loai, v]) => ({ loai, so_can: v.so_can, doanh_so: v.doanh_so }))
+            .sort((a, b) => b.doanh_so - a.doanh_so);
+        })(),
         top_du_an: Array.from(duAnMap.values())
           .map(d => ({ ten: d.du_an, so_can: d.so_deal, doanh_so: d.doanh_thu } as TongHopDuAn))
           .sort((a, b) => b.doanh_so - a.doanh_so)

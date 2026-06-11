@@ -465,8 +465,9 @@ export default function DashboardPage() {
         <TongHopTables tonghop={data.tonghop} />
       )}
 
-      {/* Doanh thu theo thời gian — admin only */}
+      {/* Doanh thu theo thời gian — admin only, half width */}
       {isAdmin && (
+        <div className="charts-grid" style={{ marginBottom: 16 }}>
         <div className="chart-card">
           <div className="card-header">
             <div>
@@ -498,6 +499,7 @@ export default function DashboardPage() {
               </LineChart>
             </ResponsiveContainer>
           </div>
+        </div>
         </div>
       )}
 
@@ -1115,9 +1117,9 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
           {/* Top Dự Án */}
           {tonghop.top_du_an.length > 0 && (
             <div className="chart-card" style={{ padding: '18px 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <span style={{ fontSize: '1.3rem' }}>🏆</span>
-                <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', letterSpacing: 0.5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, height: 38 }}>
+                <span style={{ fontSize: '1rem' }}>🏆</span>
+                <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)', letterSpacing: 0.5 }}>
                   TOP {tonghop.top_du_an.length} DỰ ÁN
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 24, fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-label)' }}>
@@ -1133,7 +1135,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
                   const bar = barColors[i % barColors.length];
                   return (
                     <div key={d.ten}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5, minHeight: 24 }}>
                         <div style={{
                           width: 24, height: 24, borderRadius: 6, flexShrink: 0,
                           background: rankBg, color: rankText,
@@ -1168,14 +1170,14 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
           {/* Top 5 Phòng KD */}
           {tonghop.top_phong_kd.length > 0 && (
             <div className="chart-card" style={{ padding: '18px 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, height: 38 }}>
                 <BarChart3 size={16} style={{ color: '#f59e0b' }} />
                 <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>Top 5 Phòng kinh doanh</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {tonghop.top_phong_kd.map((p, i) => (
                   <div key={p.ten}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, minHeight: 24, alignItems: 'center', fontSize: '0.8rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontWeight: 700, color: '#f59e0b', width: 18, textAlign: 'center' }}>{i + 1}</span>
                         <span style={{ fontWeight: 600, color: 'var(--text-title)' }}>{p.ten}</span>
@@ -1185,7 +1187,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
                         <span style={{ fontWeight: 700, color: '#f59e0b' }}>{fmtTy(p.doanh_so)}</span>
                       </div>
                     </div>
-                    <div style={{ height: 8, borderRadius: 4, background: 'var(--border)' }}>
+                    <div style={{ height: 7, borderRadius: 4, background: 'var(--border)' }}>
                       <div style={{
                         height: '100%', borderRadius: 4,
                         width: `${Math.round((p.doanh_so / maxPhongKD) * 100)}%`,
@@ -1227,7 +1229,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
           <div className="chart-card" style={{ padding: '18px 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
               <GitBranch size={16} style={{ color: '#3b82f6' }} />
-              <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>So sánh khu vực</span>
+              <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>Hà Nội vs TP.HCM</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {tonghop.khu_vuc.slice(0, 6).map((k, i) => (
