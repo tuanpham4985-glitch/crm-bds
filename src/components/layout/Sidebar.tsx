@@ -4,14 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Users, GitBranch, CheckSquare,
+  LayoutDashboard,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Database, Briefcase, BarChart3, LayoutList, UserCheck
+  ChevronDown, Briefcase, BarChart3, LayoutList,
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
-import { useCrmAccess } from '@/hooks/useCrmAccess';
-
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -20,13 +18,6 @@ interface BeforeInstallPromptEvent extends Event {
   }>;
   prompt(): Promise<void>;
 }
-
-const CRM_STEPS = [
-  { href: '/khach-hang', label: 'Khách hàng', icon: Users,       step: 1 },
-  { href: '/phan-khach', label: 'Phân khách', icon: UserCheck,   step: 2 },
-  { href: '/pipeline',   label: 'Pipeline',   icon: GitBranch,   step: 3 },
-  { href: '/cong-viec',  label: 'Công việc',  icon: CheckSquare, step: 4 },
-];
 
 const CRM_CATALOG = [
   { href: '/du-an',     label: 'Dự án',        icon: Building2 },
@@ -47,30 +38,22 @@ interface SidebarProps {
 export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { user, isAdmin } = useAuth();
-  const { canKH, canPhanKhach } = useCrmAccess();
   const [logo, setLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
-  // Group states
-  const [crmOpen, setCrmOpen] = useState(true);
   const [hrmOpen, setHrmOpen] = useState(true);
 
-  // Auto-expand group if current path is inside
+  // Auto-expand HRM group if current path is inside
   useEffect(() => {
-    const allCrmItems = [...CRM_STEPS, ...CRM_CATALOG];
-    if (allCrmItems.some(item => pathname.startsWith(item.href))) setCrmOpen(true);
     if (HRM_ITEMS.some(item => pathname.startsWith(item.href))) setHrmOpen(true);
   }, [pathname]);
 
-  // Force groups open when collapsed (so icons are visible)
+  // Force group open when collapsed (so icons are visible)
   useEffect(() => {
-    if (collapsed) {
-      setCrmOpen(true);
-      setHrmOpen(true);
-    }
+    if (collapsed) setHrmOpen(true);
   }, [collapsed]);
 
   // Password Modal State
@@ -263,42 +246,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
             <LayoutDashboard size={20} />
             <span>Dashboard</span>
           </Link>
-        </div>
-
-        {/* CRM GROUP */}
-        <div className={styles.navSection}>
-          <button
-            className={styles.groupHeader}
-            onClick={() => setCrmOpen(!crmOpen)}
-          >
-            <div className="flex items-center gap-3">
-              <Users size={18} />
-              <span>CRM</span>
-            </div>
-            <ChevronDown size={14} className={`${styles.chevron} ${crmOpen ? styles.open : ''}`} />
-          </button>
-
-          <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
-            {CRM_STEPS.filter(item => {
-              if (item.href === '/khach-hang') return canKH;
-              if (item.href === '/phan-khach') return canPhanKhach;
-              return true; // Pipeline, Công việc visible to all CRM users
-            }).map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
-                  title={item.label}
-                >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
         </div>
 
         {/* Dự án & Bảng hàng — standalone links */}
