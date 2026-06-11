@@ -465,9 +465,42 @@ export default function DashboardPage() {
         <TongHopTables tonghop={data.tonghop} />
       )}
 
-      {/* Doanh thu theo thời gian — admin only, half width */}
+      {/* Hà Nội vs TP.HCM + Doanh thu theo thời gian — cùng hàng */}
       {isAdmin && (
         <div className="charts-grid" style={{ marginBottom: 16 }}>
+          {(() => {
+            const kv = data.tonghop?.khu_vuc ?? [];
+            if (!kv.length) return null;
+            const maxKV = Math.max(...kv.map(x => x.doanh_so), 1);
+            return (
+              <div className="chart-card" style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, height: 38 }}>
+                  <GitBranch size={16} style={{ color: '#3b82f6' }} />
+                  <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-title)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Hà Nội vs TP.HCM</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-evenly' }}>
+                  {kv.slice(0, 6).map((k, i) => {
+                    const pct = Math.round((k.doanh_so / maxKV) * 100);
+                    const barColor = ['#3b82f6', '#10b981', '#f59e0b', '#6366f1'][i % 4];
+                    return (
+                      <div key={k.loai}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <span style={{ fontWeight: 700, color: 'var(--text-title)', fontSize: '0.95rem' }}>{k.loai}</span>
+                          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{k.so_can} căn</span>
+                            <span style={{ fontWeight: 800, color: barColor, fontSize: '1.05rem' }}>{formatCurrency(k.doanh_so)}</span>
+                          </div>
+                        </div>
+                        <div style={{ height: 14, borderRadius: 8, background: 'var(--border)' }}>
+                          <div style={{ height: '100%', borderRadius: 8, width: `${pct}%`, background: barColor, transition: 'width 0.4s ease' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         <div className="chart-card">
           <div className="card-header">
             <div>
@@ -1038,7 +1071,6 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
   };
 
   const maxPhongKD = Math.max(...(tonghop.top_phong_kd.map(p => p.doanh_so) || [1]), 1);
-  const maxKhuVuc  = Math.max(...(tonghop.khu_vuc.map(k => k.doanh_so)  || [1]), 1);
 
   const SoSanhCard = ({
     title, icon, items, color1, color2,
@@ -1223,38 +1255,6 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
         </div>
       )}
 
-      {/* Row 3: So sánh khu vực */}
-      {tonghop.khu_vuc.length > 0 && (
-        <div className="charts-grid">
-          <div className="chart-card" style={{ padding: '18px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <GitBranch size={16} style={{ color: '#3b82f6' }} />
-              <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-title)' }}>Hà Nội vs TP.HCM</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {tonghop.khu_vuc.slice(0, 6).map((k, i) => (
-                <div key={k.loai}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.8rem' }}>
-                    <span style={{ fontWeight: 600, color: 'var(--text-title)' }}>{k.loai}</span>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{k.so_can} căn</span>
-                      <span style={{ fontWeight: 700, color: '#3b82f6' }}>{fmtTy(k.doanh_so)}</span>
-                    </div>
-                  </div>
-                  <div style={{ height: 8, borderRadius: 4, background: 'var(--border)' }}>
-                    <div style={{
-                      height: '100%', borderRadius: 4,
-                      width: `${Math.round((k.doanh_so / maxKhuVuc) * 100)}%`,
-                      background: ['#3b82f6', '#10b981', '#f59e0b', '#6366f1', '#ec4899', '#ef4444'][i % 6],
-                      transition: 'width 0.4s ease',
-                    }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
