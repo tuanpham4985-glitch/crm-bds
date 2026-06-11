@@ -424,6 +424,14 @@ export async function GET(request: NextRequest) {
 
     // ── Tổng hợp giao dịch stats ─────────────────────────────────────────────
     // Nếu có external sheet → dùng; fallback về pipeline data đã ký
+
+    // Classify loại căn: 1BR/2BR/3BR/Penhouse/Penthouse → Cao tầng, còn lại → Thấp tầng
+    const classifyLoaiCan = (loaiCan: string): 'Cao tầng' | 'Thấp tầng' =>
+      /^([1-9]BR[+]?|penh?ouse|studio)/i.test((loaiCan || '').trim()) ? 'Cao tầng' : 'Thấp tầng';
+
+    // Check if a string indicates Đối tác (partner, not internal team)
+    const isDoiTacStr = (s: string): boolean => s.toLowerCase().includes('đối tác');
+
     const buildTongHopStats = (): TongHopStats => {
       if (tongHopRows.length > 0) {
         // Aggregate from external sheet
@@ -431,10 +439,10 @@ export async function GET(request: NextRequest) {
         const tong_so_can   = tongHopRows.length;
         const gia_tri_tb_can = tong_so_can > 0 ? Math.round(tong_doanh_so / tong_so_can) : 0;
 
-        // Loại hình (Cao tầng / Thấp tầng)
+        // Loại hình: classify from Loại căn column (r.loai_hinh = raw value e.g. "1BR", "Shophouse")
         const loaiHinhMap = new Map<string, { so_can: number; doanh_so: number }>();
         tongHopRows.forEach(r => {
-          const key = r.loai_hinh || 'Khác';
+          const key = classifyLoaiCan(r.loai_hinh);
           const cur = loaiHinhMap.get(key) ?? { so_can: 0, doanh_so: 0 };
           loaiHinhMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
         });
@@ -447,10 +455,11 @@ export async function GET(request: NextRequest) {
           nguonMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
         });
 
-        // Phòng KD Top 5
+        // Phòng KD Top 5 — nội bộ only (exclude Đối tác)
         const phongKDMap = new Map<string, { so_can: number; doanh_so: number }>();
         tongHopRows.forEach(r => {
           if (!r.phong_kd) return;
+          if (isDoiTacStr(r.phong_kd) || isDoiTacStr(r.loai_nguon)) return;
           const cur = phongKDMap.get(r.phong_kd) ?? { so_can: 0, doanh_so: 0 };
           phongKDMap.set(r.phong_kd, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
         });
@@ -507,9 +516,13 @@ export async function GET(request: NextRequest) {
         else          { noiBoCount++;  noiBoDS  += pl.gia_tri_thuc_te; }
       });
 
-      // Top phòng KD từ pipeline
+      // Top phòng KD từ pipeline — nội bộ only (exclude Đối tác)
       const phongMap = new Map<string, { so_can: number; doanh_so: number }>();
       daKy.forEach(pl => {
+        const isDoiTac =
+          (pl.sale_phu_trach || '').toLowerCase().includes('đối tác') ||
+          (pl.phong_kd || '').toLowerCase().includes('đối tác');
+        if (isDoiTac) return;
         const key = pl.phong_kd || 'Chưa phân';
         const cur = phongMap.get(key) ?? { so_can: 0, doanh_so: 0 };
         phongMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + pl.gia_tri_thuc_te });
