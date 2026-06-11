@@ -25,7 +25,11 @@ export default function KhachHangPage() {
   // Filters
   const [search, setSearch] = useState('');
   const [nguon, setNguon] = useState('');
-  const [sale, setSale] = useState('');
+  const [sale, setSale] = useState(() =>
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('sale') || ''
+      : ''
+  );
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -106,13 +110,6 @@ export default function KhachHangPage() {
     } catch (err) {
       console.error('Fetch du-an error:', err);
     }
-  }, []);
-
-  // Read ?sale= param from URL on mount (avoids useSearchParams/Suspense requirement)
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    const s = p.get('sale');
-    if (s) setSale(s);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
