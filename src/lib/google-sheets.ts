@@ -859,30 +859,23 @@ export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
     const doc = new GoogleSpreadsheet(sheetId, getJWT());
     await doc.loadInfo();
 
-    // NOTE: Do NOT use sheetsById[444476674] — that gid is "Tồn cọc", not "Tổng hợp giao dịch chi tiết"
-    const sheet =
+    // Use sheetsByIndex + normVi to find sheet regardless of Unicode encoding (NFC vs NFD)
+    // sheetsByTitle uses exact key match which can fail with Vietnamese diacritics
+    const sheet = doc.sheetsByIndex.find(s => normVi(s.title).includes('giaodich')) ||
       doc.sheetsByTitle['Tổng hợp giao dịch chi tiết'] ||
-      doc.sheetsByTitle['Tong hop giao dich chi tiet'];
+      doc.sheetsByTitle['Tong hop giao dich chi tiet'] ||
+      null;
     if (!sheet) {
-      console.warn('[GSheets] "Tổng hợp giao dịch chi tiết" not found. Available:', Object.keys(doc.sheetsByTitle).join(', '));
+      console.warn('[GSheets] "Tổng hợp giao dịch chi tiết" not found. Sheets:', doc.sheetsByIndex.map(s => `"${s.title}"`).join(', '));
       return [];
     }
 
-    // Auto-detect header row: sheet has rows 1-2 as decorative (yellow/cyan),
-    // actual headers are at row 3. Try rows 3 → 2 → 1, use first with ≥2 meaningful columns.
-    let headerFound = false;
-    for (const tryRow of [3, 2, 1]) {
-      try {
-        await sheet.loadHeaderRow(tryRow);
-        const testH = sheet.headerValues;
-        const score = testH.filter(col => {
-          const n = normVi(col);
-          return n.length > 2 && (n.includes('ngay') || n.includes('duan') || n.includes('can') || n.includes('stt') || n.includes('tuan') || n.includes('thang'));
-        }).length;
-        if (score >= 2) { headerFound = true; break; }
-      } catch { /* continue */ }
+    // Headers are at row 3 (rows 1–2 are decorative). Load row 3, fall back to row 1.
+    try {
+      await sheet.loadHeaderRow(3);
+    } catch {
+      await sheet.loadHeaderRow(1);
     }
-    if (!headerFound) await sheet.loadHeaderRow(1);
 
     const rows = await sheet.getRows();
     const h = sheet.headerValues;
@@ -954,9 +947,14 @@ export async function getTonCoc(): Promise<TonCocRow[]> {
     const doc = new GoogleSpreadsheet(sheetId, getJWT());
     await doc.loadInfo();
 
-    const sheet = doc.sheetsByTitle['Tồn cọc'] || doc.sheetsByTitle['Ton coc'];
+    // Use sheetsByIndex + normVi to handle Unicode encoding differences (NFC vs NFD)
+    const sheet = doc.sheetsByIndex.find(s => normVi(s.title) === 'toncoc') ||
+      doc.sheetsByIndex.find(s => normVi(s.title).includes('toncoc')) ||
+      doc.sheetsByTitle['Tồn cọc'] ||
+      doc.sheetsByTitle['Ton coc'] ||
+      null;
     if (!sheet) {
-      console.warn('[GSheets] "Tồn cọc" sheet not found in TONG_HOP_SHEET_ID');
+      console.warn('[GSheets] "Tồn cọc" sheet not found. Sheets:', doc.sheetsByIndex.map(s => `"${s.title}"`).join(', '));
       return [];
     }
 

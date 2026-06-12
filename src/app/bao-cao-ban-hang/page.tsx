@@ -32,6 +32,20 @@ interface TonCocRow {
 
 const PAGE_SIZE = 10;
 
+// Normalize Vietnamese text to plain ASCII for comparison (mirrors normVi on server)
+const normStr = (s: string) => (s || '').toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/\s+/g, '');
+
+// Find the closest project name in external-sheet data for the given main-sheet project name.
+// Tokenizes mainName and checks each token appears in the candidate (handles "Vinhomes Cần Giờ" → "Vinhomes Green Paradise Cần Giờ").
+const findBestProjectMatch = (items: { du_an: string }[], mainName: string): string => {
+  if (!mainName) return '';
+  const tokens = mainName.split(/\s+/).map(normStr).filter(t => t.length > 2);
+  if (tokens.length === 0) return mainName;
+  const uniqueNames = [...new Set(items.map(r => r.du_an).filter(Boolean))];
+  return uniqueNames.find(name => tokens.every(t => normStr(name).includes(t))) || mainName;
+};
+
 const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> = {
   'Chưa xử lý': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
   'Đang xử lý':  { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
@@ -130,19 +144,21 @@ export default function BaoCaoBanHangPage() {
   useEffect(() => { setPageTTGD(1); }, [filterDuAnTTGD]);
   useEffect(() => { setPageTonCoc(1); }, [filterDuAnTonCoc]);
 
-  // Sync new card filters when main project filter changes
+  // Sync new card filters when main project filter or secondary data changes.
+  // Uses fuzzy token matching to handle name differences between sheets
+  // (e.g. main sheet "Vinhomes Cần Giờ" → external sheet "Vinhomes Green Paradise Cần Giờ").
   useEffect(() => {
     if (filterDuAn && projects.length > 0) {
       const proj = projects.find(p => p.id_du_an === filterDuAn);
       if (proj) {
-        setFilterDuAnTTGD(proj.ten_du_an);
-        setFilterDuAnTonCoc(proj.ten_du_an);
+        setFilterDuAnTTGD(findBestProjectMatch(tinhTrangGiaoDich, proj.ten_du_an));
+        setFilterDuAnTonCoc(findBestProjectMatch(tonCoc, proj.ten_du_an));
       }
     } else if (!filterDuAn) {
       setFilterDuAnTTGD('');
       setFilterDuAnTonCoc('');
     }
-  }, [filterDuAn, projects]);
+  }, [filterDuAn, projects, tinhTrangGiaoDich, tonCoc]);
 
   const getCustomerName = (pl: Pipeline) => {
     if (pl.ho_ten_kh) return pl.ho_ten_kh;
