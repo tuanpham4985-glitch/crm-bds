@@ -47,6 +47,17 @@ const findBestProjectMatch = (items: { du_an: string }[], mainName: string): str
   return uniqueNames.find(name => tokens.every(t => normStr(name).includes(t))) || mainName;
 };
 
+// Parse date strings from Google Sheets (DD/MM/YYYY or YYYY-MM-DD) into Date objects
+const parseDate = (s: string): Date | null => {
+  if (!s) return null;
+  const dmY = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmY) return new Date(+dmY[3], +dmY[2] - 1, +dmY[1]);
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> = {
   'Chưa xử lý': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
   'Đang xử lý':  { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
@@ -89,6 +100,9 @@ export default function BaoCaoBanHangPage() {
   // Tình trạng giao dịch
   const [tinhTrangGiaoDich, setTinhTrangGiaoDich] = useState<TinhTrangGiaoDichRow[]>([]);
   const [filterDuAnTTGD, setFilterDuAnTTGD] = useState('');
+  const [filterTTGDLaiPhat, setFilterTTGDLaiPhat] = useState(false);
+  const [filterTTGDDateFrom, setFilterTTGDDateFrom] = useState('');
+  const [filterTTGDDateTo, setFilterTTGDDateTo] = useState('');
 
   // Tồn cọc
   const [tonCoc, setTonCoc] = useState<TonCocRow[]>([]);
@@ -142,7 +156,7 @@ export default function BaoCaoBanHangPage() {
 
   // Reset pages on filter change
   useEffect(() => { setPagePipeline(1); }, [filterSale, filterDuAn]);
-  useEffect(() => { setPageTTGD(1); }, [filterDuAnTTGD]);
+  useEffect(() => { setPageTTGD(1); }, [filterDuAnTTGD, filterTTGDLaiPhat, filterTTGDDateFrom, filterTTGDDateTo]);
   useEffect(() => { setPageTonCoc(1); }, [filterDuAnTonCoc]);
 
   // Sync new card filters when main project filter or secondary data changes.
@@ -552,23 +566,49 @@ export default function BaoCaoBanHangPage() {
       {/* ── Tình trạng giao dịch ── */}
       {(() => {
         const ttgdProjects = [...new Set(tinhTrangGiaoDich.map(r => r.du_an).filter(Boolean))].sort();
-        const filteredTTGD = filterDuAnTTGD
+
+        // Apply filters in order: project → lãi phạt → date range
+        let filteredTTGD = filterDuAnTTGD
           ? tinhTrangGiaoDich.filter(r => r.du_an === filterDuAnTTGD)
           : tinhTrangGiaoDich;
+        if (filterTTGDLaiPhat) {
+          filteredTTGD = filteredTTGD.filter(r => r.lai_phat > 0 || r.lai_phat_phat_sinh > 0);
+        }
+        if (filterTTGDDateFrom || filterTTGDDateTo) {
+          const from = filterTTGDDateFrom ? new Date(filterTTGDDateFrom) : null;
+          const to   = filterTTGDDateTo   ? new Date(filterTTGDDateTo + 'T23:59:59') : null;
+          filteredTTGD = filteredTTGD.filter(r => {
+            const d = parseDate(r.ngay_coc);
+            if (!d) return false;
+            if (from && d < from) return false;
+            if (to   && d > to)   return false;
+            return true;
+          });
+        }
+
         const pagedTTGD = filteredTTGD.slice((pageTTGD - 1) * PAGE_SIZE, pageTTGD * PAGE_SIZE);
+        const hasAnyFilter = filterDuAnTTGD || filterTTGDLaiPhat || filterTTGDDateFrom || filterTTGDDateTo;
+        const clearAllTTGD = () => {
+          setFilterDuAnTTGD('');
+          setFilterTTGDLaiPhat(false);
+          setFilterTTGDDateFrom('');
+          setFilterTTGDDateTo('');
+        };
+
         return (
           <div style={{ marginTop: 28 }}>
             <div className="card" style={{ padding: 0 }}>
-              <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-title)', margin: 0 }}>
-                    Tình trạng giao dịch
-                  </h2>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                    Ngày cọc · Ngày ký TTĐC/VBTT · Ngày ký HĐMB · % Lãi phạt · Lãi phạt phát sinh
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border-light)' }}>
+                {/* Row 1: title + project dropdown */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-title)', margin: 0 }}>
+                      Tình trạng giao dịch
+                    </h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                      Ngày cọc · Ngày ký TTĐC/VBTT · Ngày ký HĐMB · % Lãi phạt · Lãi phạt phát sinh
+                    </p>
+                  </div>
                   <select
                     className="form-select"
                     value={filterDuAnTTGD}
@@ -581,9 +621,54 @@ export default function BaoCaoBanHangPage() {
                       return <option key={da} value={da}>{da} ({count})</option>;
                     })}
                   </select>
-                  {filterDuAnTTGD && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => setFilterDuAnTTGD('')}>
-                      <X size={13} /> Xóa
+                </div>
+
+                {/* Row 2: column filters */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>Lọc:</span>
+
+                  {/* Toggle: chỉ hiện dòng có lãi phạt */}
+                  <button
+                    onClick={() => setFilterTTGDLaiPhat(v => !v)}
+                    style={{
+                      padding: '4px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                      border: filterTTGDLaiPhat ? '1px solid #dc2626' : '1px solid var(--border-light)',
+                      background: filterTTGDLaiPhat ? 'rgba(220,38,38,0.08)' : 'transparent',
+                      color: filterTTGDLaiPhat ? '#dc2626' : 'var(--text-body)',
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                    }}
+                  >
+                    🔴 Có lãi phạt
+                    {filterTTGDLaiPhat && (
+                      <span style={{ background: '#dc2626', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {filteredTTGD.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Date range: Ngày cọc */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Ngày cọc:</span>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={filterTTGDDateFrom}
+                      onChange={e => setFilterTTGDDateFrom(e.target.value)}
+                      style={{ padding: '3px 8px', fontSize: '0.82rem', width: 130 }}
+                    />
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>–</span>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={filterTTGDDateTo}
+                      onChange={e => setFilterTTGDDateTo(e.target.value)}
+                      style={{ padding: '3px 8px', fontSize: '0.82rem', width: 130 }}
+                    />
+                  </div>
+
+                  {hasAnyFilter && (
+                    <button className="btn btn-ghost btn-sm" onClick={clearAllTTGD} style={{ marginLeft: 4 }}>
+                      <X size={12} /> Xóa lọc
                     </button>
                   )}
                 </div>
