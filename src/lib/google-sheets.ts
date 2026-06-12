@@ -868,22 +868,25 @@ export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
       return [];
     }
 
-    // Auto-detect header row: try row 2 first (some sheets have merged title in row 1)
-    try {
-      await sheet.loadHeaderRow(2);
-      const h2 = sheet.headerValues;
-      const hasMeaningfulHeaders = h2.some(col => {
-        const n = normVi(col);
-        return n.length > 1 && (n.includes('ngay') || n.includes('can') || n.includes('duan') || n.includes('ma'));
-      });
-      if (!hasMeaningfulHeaders) await sheet.loadHeaderRow(1);
-    } catch {
-      await sheet.loadHeaderRow(1);
+    // Auto-detect header row: sheet has rows 1-2 as decorative (yellow/cyan),
+    // actual headers are at row 3. Try rows 3 → 2 → 1, use first with ≥2 meaningful columns.
+    let headerFound = false;
+    for (const tryRow of [3, 2, 1]) {
+      try {
+        await sheet.loadHeaderRow(tryRow);
+        const testH = sheet.headerValues;
+        const score = testH.filter(col => {
+          const n = normVi(col);
+          return n.length > 2 && (n.includes('ngay') || n.includes('duan') || n.includes('can') || n.includes('stt') || n.includes('tuan') || n.includes('thang'));
+        }).length;
+        if (score >= 2) { headerFound = true; break; }
+      } catch { /* continue */ }
     }
+    if (!headerFound) await sheet.loadHeaderRow(1);
 
     const rows = await sheet.getRows();
     const h = sheet.headerValues;
-    console.log('[TinhTrangGD] sheet:', sheet.title, '— headers (first 10):', h.slice(0, 10).join(', '));
+    console.log('[TinhTrangGD] sheet:', sheet.title, '— ALL headers:', h.join(' | '));
 
     const findCol = (...patterns: string[]): string | null => {
       for (const col of h) {
@@ -892,14 +895,17 @@ export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
       }
       return null;
     };
+    // Positional fallbacks based on actual sheet layout (A=STT, B=Tuần, C=Tháng, D=Năm, E=NgàyCọc, F=TTĐC, G=HĐMB, K=DựÁn)
     const colAtPos = (pos: number): string | null => h[pos] || null;
 
-    const colDuAn       = findCol('duan', 'tenduan', 'project') || colAtPos(2);
-    const colMaCan      = findCol('macan', 'ma_can', 'maso')    || colAtPos(1);
-    const colNgayCoc    = findCol('ngaycoc')                     || colAtPos(4);
-    const colNgayTTDC   = findCol('ttdc', 'vbtt', 'kyttdc', 'kyvbtt', 'ngaykyttdc', 'ngaykyvbtt') || colAtPos(5);
-    const colNgayHDMB   = findCol('hdmb', 'kyhd', 'ngaykyhd', 'hopdonmua') || colAtPos(6);
-    const colLaiPhat    = findCol('laiphat', 'phat', 'tienphat') || colAtPos(30);
+    const colDuAn       = findCol('duan', 'tenduan', 'project', 'tenda')  || colAtPos(10);
+    const colMaCan      = findCol('macan', 'ma_can', 'maso')              || colAtPos(11);
+    const colNgayCoc    = findCol('ngaycoc')                               || colAtPos(4);
+    const colNgayTTDC   = findCol('ttdc', 'vbtt', 'kyttdc', 'kyvbtt')    || colAtPos(5);
+    const colNgayHDMB   = findCol('hdmb', 'kyhd', 'hopdonmua')            || colAtPos(6);
+    const colLaiPhat    = findCol('laiphat', 'phat', 'tienphat', 'laixuat') || colAtPos(30);
+
+    console.log('[TinhTrangGD] cols → duAn:', colDuAn, '| ngayCoc:', colNgayCoc, '| ttdc:', colNgayTTDC, '| hdmb:', colNgayHDMB, '| laiPhat:', colLaiPhat);
 
     return rows.map(row => {
       const v = row.toObject();

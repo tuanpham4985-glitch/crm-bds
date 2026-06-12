@@ -30,6 +30,8 @@ interface TonCocRow {
   ghi_chu: string;
 }
 
+const PAGE_SIZE = 10;
+
 const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> = {
   'Chưa xử lý': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
   'Đang xử lý':  { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
@@ -79,6 +81,11 @@ export default function BaoCaoBanHangPage() {
 
   const [secondaryLoaded, setSecondaryLoaded] = useState(false);
 
+  // Pagination
+  const [pagePipeline, setPagePipeline] = useState(1);
+  const [pageTTGD, setPageTTGD] = useState(1);
+  const [pageTonCoc, setPageTonCoc] = useState(1);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
@@ -117,6 +124,11 @@ export default function BaoCaoBanHangPage() {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Reset pages on filter change
+  useEffect(() => { setPagePipeline(1); }, [filterSale, filterDuAn]);
+  useEffect(() => { setPageTTGD(1); }, [filterDuAnTTGD]);
+  useEffect(() => { setPageTonCoc(1); }, [filterDuAnTonCoc]);
 
   // Sync new card filters when main project filter changes
   useEffect(() => {
@@ -225,6 +237,39 @@ export default function BaoCaoBanHangPage() {
   };
 
   if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+
+  const renderPagination = (page: number, total: number, onPage: (p: number) => void) => {
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    if (totalPages <= 1) return null;
+    const pages: (number | 'e')[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (page > 3) pages.push('e');
+      for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+      if (page < totalPages - 2) pages.push('e');
+      pages.push(totalPages);
+    }
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4, padding: '10px 16px', borderTop: '1px solid var(--border-lighter)', flexWrap: 'wrap' }}>
+        <button className="btn btn-ghost btn-sm" disabled={page === 1} onClick={() => onPage(page - 1)} style={{ padding: '0 10px' }}>‹ Trước</button>
+        {pages.map((p, i) => p === 'e' ? (
+          <span key={`e${i}`} style={{ color: 'var(--text-muted)', padding: '0 2px' }}>…</span>
+        ) : (
+          <button key={p} onClick={() => onPage(p as number)} style={{
+            minWidth: 30, height: 28, borderRadius: 6, border: p === page ? 'none' : '1px solid var(--border-light)',
+            cursor: 'pointer', background: p === page ? 'var(--primary)' : 'transparent',
+            color: p === page ? '#fff' : 'var(--text-body)', fontWeight: p === page ? 700 : 400, fontSize: '0.85rem',
+          }}>{p}</button>
+        ))}
+        <button className="btn btn-ghost btn-sm" disabled={page === totalPages} onClick={() => onPage(page + 1)} style={{ padding: '0 10px' }}>Tiếp ›</button>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 4 }}>
+          {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} / {total}
+        </span>
+      </div>
+    );
+  };
 
   const chipStyle = (bg: string, color: string, border?: string) => ({
     background: bg, color,
@@ -357,11 +402,12 @@ export default function BaoCaoBanHangPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((pl, idx) => {
+              {filtered.slice((pagePipeline - 1) * PAGE_SIZE, pagePipeline * PAGE_SIZE).map((pl, idx) => {
+                const idx_display = (pagePipeline - 1) * PAGE_SIZE + idx;
                 const colors = GIAI_DOAN_COLORS[pl.giai_doan] || { bg: '#f1f5f9', text: '#475569' };
                 return (
                   <tr key={pl.id_pipeline}>
-                    <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
+                    <td style={{ color: 'var(--text-label)' }}>{idx_display + 1}</td>
                     {showKhachHang && (
                       <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
                         {getCustomerName(pl)}
@@ -441,6 +487,7 @@ export default function BaoCaoBanHangPage() {
             </tbody>
           </table>
         </div>
+        {renderPagination(pagePipeline, filtered.length, setPagePipeline)}
       </div>
 
       {/* ── Tình trạng giao dịch ── */}
@@ -449,6 +496,7 @@ export default function BaoCaoBanHangPage() {
         const filteredTTGD = filterDuAnTTGD
           ? tinhTrangGiaoDich.filter(r => r.du_an === filterDuAnTTGD)
           : tinhTrangGiaoDich;
+        const pagedTTGD = filteredTTGD.slice((pageTTGD - 1) * PAGE_SIZE, pageTTGD * PAGE_SIZE);
         return (
           <div style={{ marginTop: 28 }}>
             <div className="card" style={{ padding: 0 }}>
@@ -501,9 +549,11 @@ export default function BaoCaoBanHangPage() {
                           <h3>{!secondaryLoaded ? 'Đang tải dữ liệu...' : 'Không có giao dịch nào'}</h3>
                         </td>
                       </tr>
-                    ) : filteredTTGD.map((r, idx) => (
-                      <tr key={`${r.du_an}-${r.ma_can}-${idx}`}>
-                        <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
+                    ) : pagedTTGD.map((r, idx) => {
+                      const displayIdx = (pageTTGD - 1) * PAGE_SIZE + idx;
+                      return (
+                      <tr key={`${r.du_an}-${r.ma_can}-${displayIdx}`}>
+                        <td style={{ color: 'var(--text-label)' }}>{displayIdx + 1}</td>
                         {!filterDuAnTTGD && <td style={{ fontWeight: 500 }}>{r.du_an || '—'}</td>}
                         <td style={{ fontWeight: 600, color: 'var(--text-title)' }}>{r.ma_can || '—'}</td>
                         <td>{r.ngay_coc ? formatDate(r.ngay_coc) : '—'}</td>
@@ -513,10 +563,12 @@ export default function BaoCaoBanHangPage() {
                           {r.lai_phat > 0 ? formatCurrency(r.lai_phat) : '—'}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+              {renderPagination(pageTTGD, filteredTTGD.length, setPageTTGD)}
             </div>
           </div>
         );
@@ -528,6 +580,7 @@ export default function BaoCaoBanHangPage() {
         const filteredTonCoc = filterDuAnTonCoc
           ? tonCoc.filter(r => r.du_an === filterDuAnTonCoc)
           : tonCoc;
+        const pagedTonCoc = filteredTonCoc.slice((pageTonCoc - 1) * PAGE_SIZE, pageTonCoc * PAGE_SIZE);
         const totalTonCoc = filteredTonCoc.reduce((s, r) => s + (r.so_tien || 0), 0);
         return (
           <div style={{ marginTop: 28, marginBottom: 32 }}>
@@ -593,9 +646,11 @@ export default function BaoCaoBanHangPage() {
                           <h3>{!secondaryLoaded ? 'Đang tải dữ liệu...' : 'Không có căn nào tồn cọc'}</h3>
                         </td>
                       </tr>
-                    ) : filteredTonCoc.map((r, idx) => (
-                      <tr key={`${r.du_an}-${r.ma_can}-${idx}`}>
-                        <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
+                    ) : pagedTonCoc.map((r, idx) => {
+                      const displayIdx = (pageTonCoc - 1) * PAGE_SIZE + idx;
+                      return (
+                      <tr key={`${r.du_an}-${r.ma_can}-${displayIdx}`}>
+                        <td style={{ color: 'var(--text-label)' }}>{displayIdx + 1}</td>
                         <td style={{ fontWeight: 600, color: 'var(--text-title)' }}>{r.ma_can || '—'}</td>
                         {!filterDuAnTonCoc && <td style={{ fontWeight: 500 }}>{r.du_an || '—'}</td>}
                         <td>{r.ngay_coc ? formatDate(r.ngay_coc) : '—'}</td>
@@ -613,10 +668,12 @@ export default function BaoCaoBanHangPage() {
                         </td>
                         <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: 180 }}>{r.ghi_chu || ''}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+              {renderPagination(pageTonCoc, filteredTonCoc.length, setPageTonCoc)}
             </div>
           </div>
         );
