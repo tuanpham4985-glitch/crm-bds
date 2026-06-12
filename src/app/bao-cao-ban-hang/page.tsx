@@ -115,9 +115,6 @@ export default function BaoCaoBanHangPage() {
   const [secondaryLoaded, setSecondaryLoaded] = useState(false);
 
   // Pagination
-  const [pagePipeline, setPagePipeline] = useState(1);
-  const [pageTTGD, setPageTTGD] = useState(1);
-  const [pageTonCoc, setPageTonCoc] = useState(1);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -159,9 +156,6 @@ export default function BaoCaoBanHangPage() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   // Reset pages on filter change
-  useEffect(() => { setPagePipeline(1); }, [filterSale, filterDuAn]);
-  useEffect(() => { setPageTTGD(1); }, [filterDuAnTTGD, filterTTGDMaCan, filterTTGDLaiPhat, filterTTGDDateFrom, filterTTGDDateTo]);
-  useEffect(() => { setPageTonCoc(1); }, [filterDuAnTonCoc]);
 
   // Close TTGD popover when clicking outside — use native listener + setTimeout to avoid
   // catching the same click that opened it (React synthetic events fire before native bubbling completes)
@@ -469,7 +463,7 @@ export default function BaoCaoBanHangPage() {
 
       {/* Table */}
       <div className="card" style={{ padding: 0 }}>
-        <div className="table-wrapper" style={{ borderRadius: 'var(--radius-xl)', overflow: 'visible' }}>
+        <div className="table-wrapper" style={{ borderRadius: 'var(--radius-xl)', maxHeight: 520, overflowY: 'auto' }}>
           <table className="data-table" style={{ minWidth: '850px' }}>
             <thead>
               <tr>
@@ -488,8 +482,8 @@ export default function BaoCaoBanHangPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice((pagePipeline - 1) * PAGE_SIZE, pagePipeline * PAGE_SIZE).map((pl, idx) => {
-                const idx_display = (pagePipeline - 1) * PAGE_SIZE + idx;
+              {filtered.map((pl, idx) => {
+                const idx_display = idx;
                 const colors = GIAI_DOAN_COLORS[pl.giai_doan] || { bg: '#f1f5f9', text: '#475569' };
                 return (
                   <tr key={pl.id_pipeline}>
@@ -573,7 +567,6 @@ export default function BaoCaoBanHangPage() {
             </tbody>
           </table>
         </div>
-        {renderPagination(pagePipeline, filtered.length, setPagePipeline)}
       </div>
 
       {/* ── Tình trạng giao dịch ── */}
@@ -624,7 +617,6 @@ export default function BaoCaoBanHangPage() {
           });
         }
 
-        const pagedTTGD = filteredTTGD.slice((pageTTGD - 1) * PAGE_SIZE, pageTTGD * PAGE_SIZE);
         const hasAnyFilter = filterDuAnTTGD || filterTTGDMaCan || filterTTGDLaiPhat || filterTTGDDateFrom || filterTTGDDateTo || ttgdSortCol;
         const clearAllTTGD = () => {
           setFilterDuAnTTGD('');
@@ -697,7 +689,7 @@ export default function BaoCaoBanHangPage() {
                   </button>
                 )}
               </div>
-              <div className="table-wrapper">
+              <div className="table-wrapper" style={{ maxHeight: 520, overflowY: 'auto' }}>
                 <table className="data-table" style={{ minWidth: 680 }}>
                   <thead>
                     <tr>
@@ -835,8 +827,8 @@ export default function BaoCaoBanHangPage() {
                           <h3>{!secondaryLoaded ? 'Đang tải dữ liệu...' : 'Không có giao dịch nào'}</h3>
                         </td>
                       </tr>
-                    ) : pagedTTGD.map((r, idx) => {
-                      const displayIdx = (pageTTGD - 1) * PAGE_SIZE + idx;
+                    ) : filteredTTGD.map((r, idx) => {
+                      const displayIdx = idx;
                       return (
                       <tr key={`${r.du_an}-${r.ma_can}-${displayIdx}`}>
                         <td style={{ color: 'var(--text-label)' }}>{displayIdx + 1}</td>
@@ -857,7 +849,6 @@ export default function BaoCaoBanHangPage() {
                   </tbody>
                 </table>
               </div>
-              {renderPagination(pageTTGD, filteredTTGD.length, setPageTTGD)}
             </div>
           </div>
         );
@@ -869,7 +860,6 @@ export default function BaoCaoBanHangPage() {
         const filteredTonCoc = filterDuAnTonCoc
           ? tonCoc.filter(r => r.du_an === filterDuAnTonCoc)
           : tonCoc;
-        const pagedTonCoc = filteredTonCoc.slice((pageTonCoc - 1) * PAGE_SIZE, pageTonCoc * PAGE_SIZE);
         const totalTonCoc = filteredTonCoc.reduce((s, r) => s + (r.so_tien || 0), 0);
         return (
           <div style={{ marginTop: 28, marginBottom: 32 }}>
@@ -913,7 +903,7 @@ export default function BaoCaoBanHangPage() {
                   )}
                 </div>
               </div>
-              <div className="table-wrapper">
+              <div className="table-wrapper" style={{ maxHeight: 520, overflowY: 'auto' }}>
                 <table className="data-table" style={{ minWidth: 820 }}>
                   <thead>
                     <tr>
@@ -935,8 +925,8 @@ export default function BaoCaoBanHangPage() {
                           <h3>{!secondaryLoaded ? 'Đang tải dữ liệu...' : 'Không có căn nào tồn cọc'}</h3>
                         </td>
                       </tr>
-                    ) : pagedTonCoc.map((r, idx) => {
-                      const displayIdx = (pageTonCoc - 1) * PAGE_SIZE + idx;
+                    ) : filteredTonCoc.map((r, idx) => {
+                      const displayIdx = idx;
                       return (
                       <tr key={`${r.du_an}-${r.ma_can}-${displayIdx}`}>
                         <td style={{ color: 'var(--text-label)' }}>{displayIdx + 1}</td>
@@ -962,7 +952,6 @@ export default function BaoCaoBanHangPage() {
                   </tbody>
                 </table>
               </div>
-              {renderPagination(pageTonCoc, filteredTonCoc.length, setPageTonCoc)}
             </div>
           </div>
         );
