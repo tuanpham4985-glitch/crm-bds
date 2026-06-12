@@ -157,6 +157,18 @@ function str(val: unknown): string {
   return String(val).trim();
 }
 
+// Google Sheets API returns dates as M/D/YYYY (en-US locale) regardless of how the sheet displays them.
+// Convert to DD/MM/YYYY so the client always receives a consistent format.
+function fmtSheetDate(raw: string): string {
+  if (!raw) return '';
+  if (!raw.includes('/')) return raw;
+  const d = new Date(raw); // JS Date() parses "M/D/YYYY" natively (en-US)
+  if (isNaN(d.getTime())) return raw;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
 function num(val: unknown): number {
   const raw = str(val);
   if (!raw) return 0;
@@ -913,9 +925,9 @@ export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
       return {
         du_an:               duAn,
         ma_can:              maCan,
-        ngay_coc:            ngayCoc,
-        ngay_ky_ttdc:        colNgayTTDC  ? str(v[colNgayTTDC])  : '',
-        ngay_ky_hdmb:        colNgayHDMB  ? str(v[colNgayHDMB])  : '',
+        ngay_coc:            fmtSheetDate(ngayCoc),
+        ngay_ky_ttdc:        fmtSheetDate(colNgayTTDC  ? str(v[colNgayTTDC])  : ''),
+        ngay_ky_hdmb:        fmtSheetDate(colNgayHDMB  ? str(v[colNgayHDMB])  : ''),
         lai_phat:            colLaiPhat   ? num(v[colLaiPhat])   : 0,
         lai_phat_phat_sinh:  colLaiPhatPS ? num(v[colLaiPhatPS]) : 0,
       } as TinhTrangGiaoDichRow;
@@ -998,9 +1010,9 @@ export async function getTonCoc(): Promise<TonCocRow[]> {
       return {
         du_an:           duAn,
         ma_can:          maCan,
-        ngay_coc:        colNgayCoc    ? str(v[colNgayCoc])    : '',
+        ngay_coc:        fmtSheetDate(colNgayCoc    ? str(v[colNgayCoc])    : ''),
         so_tien:         soTien,
-        ngay_ky_thu_tuc: colNgayKyTT  ? str(v[colNgayKyTT])  : '',
+        ngay_ky_thu_tuc: fmtSheetDate(colNgayKyTT  ? str(v[colNgayKyTT])  : ''),
         phuong_an_tt:    colPhuongAnTT ? str(v[colPhuongAnTT]) : '',
         tinh_trang:      colTinhTrang  ? str(v[colTinhTrang])  : '',
         ghi_chu:         colGhiChu     ? str(v[colGhiChu])     : '',
