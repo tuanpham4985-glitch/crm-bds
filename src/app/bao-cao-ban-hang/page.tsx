@@ -163,6 +163,15 @@ export default function BaoCaoBanHangPage() {
   useEffect(() => { setPageTTGD(1); }, [filterDuAnTTGD, filterTTGDMaCan, filterTTGDLaiPhat, filterTTGDDateFrom, filterTTGDDateTo]);
   useEffect(() => { setPageTonCoc(1); }, [filterDuAnTonCoc]);
 
+  // Close TTGD popover when clicking outside — use native listener + setTimeout to avoid
+  // catching the same click that opened it (React synthetic events fire before native bubbling completes)
+  useEffect(() => {
+    if (!ttgdPopover) return;
+    const close = () => setTtgdPopover(null);
+    const t = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => { clearTimeout(t); document.removeEventListener('click', close); };
+  }, [ttgdPopover]);
+
   // Sync new card filters when main project filter or secondary data changes.
   // Uses fuzzy token matching to handle name differences between sheets
   // (e.g. main sheet "Vinhomes Cần Giờ" → external sheet "Vinhomes Green Paradise Cần Giờ").
@@ -688,9 +697,6 @@ export default function BaoCaoBanHangPage() {
                   </button>
                 )}
               </div>
-              {ttgdPopover && (
-                <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={() => setTtgdPopover(null)} />
-              )}
               <div className="table-wrapper">
                 <table className="data-table" style={{ minWidth: 680 }}>
                   <thead>
