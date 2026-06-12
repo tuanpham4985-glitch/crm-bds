@@ -36,7 +36,21 @@
       "Bash(node -e \"const lib = require\\('google-spreadsheet'\\); const c = lib.GoogleSpreadsheetCell; console.log\\(Object.getOwnPropertyNames\\(c.prototype\\).join\\('\\\\n'\\)\\)\")",
       "Bash(node -e \"console.log\\(require.resolve\\('google-spreadsheet'\\)\\)\")",
       "Bash(Get-Content \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\\\\src\\\\lib\\\\google-sheets.ts\")",
-      "Bash(Measure-Object -Line)"
+      "Bash(Measure-Object -Line)",
+      "Bash(git -C \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" status)",
+      "Bash(git -C \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" diff)",
+      "Bash(git -C \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" add src/app/api/khach-hang/route.ts src/app/khach-hang/page.tsx src/app/page.tsx)",
+      "Bash(gh run *)",
+      "Bash(git -C \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" add src/app/khach-hang/page.tsx)",
+      "Bash(git -C 'D:\\\\Work\\\\CRM_Mini\\\\crm-bds' commit -m ' *)",
+      "Bash(git -C \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" push origin main)",
+      "Bash(git -C \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" diff --stat)",
+      "Bash(git -C \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\" add src/app/page.tsx src/components/layout/Sidebar.tsx)",
+      "Bash(git commit *)",
+      "Bash(New-Item -ItemType Directory -Force \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\\\\src\\\\app\\\\api\\\\tinh-trang-giao-dich\")",
+      "Bash(Out-Null)",
+      "Bash(New-Item -ItemType Directory -Force \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\\\\src\\\\app\\\\api\\\\ton-coc\")",
+      "Bash(Write-Output \"done\")"
     ]
   }
 }

@@ -10,6 +10,26 @@ import type { Pipeline, KhachHang, DuAn, NhanVien, CongViec } from '@/lib/types'
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { GIAI_DOAN_COLORS, SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
+interface TinhTrangGiaoDichRow {
+  du_an: string;
+  ma_can: string;
+  ngay_coc: string;
+  ngay_ky_ttdc: string;
+  ngay_ky_hdmb: string;
+  lai_phat: number;
+}
+
+interface TonCocRow {
+  du_an: string;
+  ma_can: string;
+  ngay_coc: string;
+  so_tien: number;
+  ngay_ky_thu_tuc: string;
+  phuong_an_tt: string;
+  tinh_trang: string;
+  ghi_chu: string;
+}
+
 const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> = {
   'Chưa xử lý': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
   'Đang xử lý':  { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
@@ -49,6 +69,14 @@ export default function BaoCaoBanHangPage() {
   const [tasks, setTasks] = useState<CongViec[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
 
+  // Tình trạng giao dịch
+  const [tinhTrangGiaoDich, setTinhTrangGiaoDich] = useState<TinhTrangGiaoDichRow[]>([]);
+  const [filterDuAnTTGD, setFilterDuAnTTGD] = useState('');
+
+  // Tồn cọc
+  const [tonCoc, setTonCoc] = useState<TonCocRow[]>([]);
+  const [filterDuAnTonCoc, setFilterDuAnTonCoc] = useState('');
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
@@ -69,6 +97,18 @@ export default function BaoCaoBanHangPage() {
       console.error('Fetch error:', err);
     } finally {
       setLoading(false);
+    }
+    // Load secondary data (don't block main table)
+    try {
+      const [ttgdRes, tcRes] = await Promise.all([
+        fetch('/api/tinh-trang-giao-dich'),
+        fetch('/api/ton-coc'),
+      ]);
+      const [ttgdData, tcData] = await Promise.all([ttgdRes.json(), tcRes.json()]);
+      if (ttgdData.success) setTinhTrangGiaoDich(ttgdData.data);
+      if (tcData.success) setTonCoc(tcData.data);
+    } catch (err) {
+      console.error('Secondary fetch error:', err);
     }
   }, []);
 
@@ -384,6 +424,185 @@ export default function BaoCaoBanHangPage() {
           </table>
         </div>
       </div>
+
+      {/* ── Tình trạng giao dịch ── */}
+      {(() => {
+        const ttgdProjects = [...new Set(tinhTrangGiaoDich.map(r => r.du_an).filter(Boolean))].sort();
+        const filteredTTGD = filterDuAnTTGD
+          ? tinhTrangGiaoDich.filter(r => r.du_an === filterDuAnTTGD)
+          : tinhTrangGiaoDich;
+        return (
+          <div style={{ marginTop: 28 }}>
+            <div className="card" style={{ padding: 0 }}>
+              <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-title)', margin: 0 }}>
+                    Tình trạng giao dịch
+                  </h2>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                    Ngày cọc · Ngày ký TTĐC/VBTT · Ngày ký HĐMB · Lãi phạt
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select
+                    className="form-select"
+                    value={filterDuAnTTGD}
+                    onChange={e => setFilterDuAnTTGD(e.target.value)}
+                    style={{ minWidth: 200 }}
+                  >
+                    <option value="">Tất cả dự án ({tinhTrangGiaoDich.length} giao dịch)</option>
+                    {ttgdProjects.map(da => {
+                      const count = tinhTrangGiaoDich.filter(r => r.du_an === da).length;
+                      return <option key={da} value={da}>{da} ({count})</option>;
+                    })}
+                  </select>
+                  {filterDuAnTTGD && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => setFilterDuAnTTGD('')}>
+                      <X size={13} /> Xóa
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="table-wrapper">
+                <table className="data-table" style={{ minWidth: 680 }}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      {!filterDuAnTTGD && <th>Dự án</th>}
+                      <th>Mã căn</th>
+                      <th>Ngày cọc</th>
+                      <th>Ngày ký TTĐC/VBTT</th>
+                      <th>Ngày ký HĐMB</th>
+                      <th style={{ textAlign: 'right' }}>Lãi phạt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTTGD.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="empty-state">
+                          <h3>{tinhTrangGiaoDich.length === 0 ? 'Đang tải dữ liệu...' : 'Không có giao dịch nào'}</h3>
+                        </td>
+                      </tr>
+                    ) : filteredTTGD.map((r, idx) => (
+                      <tr key={`${r.du_an}-${r.ma_can}-${idx}`}>
+                        <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
+                        {!filterDuAnTTGD && <td style={{ fontWeight: 500 }}>{r.du_an || '—'}</td>}
+                        <td style={{ fontWeight: 600, color: 'var(--text-title)' }}>{r.ma_can || '—'}</td>
+                        <td>{r.ngay_coc ? formatDate(r.ngay_coc) : '—'}</td>
+                        <td>{r.ngay_ky_ttdc ? formatDate(r.ngay_ky_ttdc) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td>{r.ngay_ky_hdmb ? formatDate(r.ngay_ky_hdmb) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td style={{ textAlign: 'right', color: r.lai_phat > 0 ? '#dc2626' : 'var(--text-muted)', fontWeight: r.lai_phat > 0 ? 600 : 400 }}>
+                          {r.lai_phat > 0 ? formatCurrency(r.lai_phat) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Tồn cọc ── */}
+      {(() => {
+        const tonCocProjects = [...new Set(tonCoc.map(r => r.du_an).filter(Boolean))].sort();
+        const filteredTonCoc = filterDuAnTonCoc
+          ? tonCoc.filter(r => r.du_an === filterDuAnTonCoc)
+          : tonCoc;
+        const totalTonCoc = filteredTonCoc.reduce((s, r) => s + (r.so_tien || 0), 0);
+        return (
+          <div style={{ marginTop: 28, marginBottom: 32 }}>
+            <div className="card" style={{ padding: 0 }}>
+              <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-title)', margin: 0 }}>
+                    Tồn cọc
+                  </h2>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={chipStyle('rgba(239,68,68,0.08)', '#dc2626', 'rgba(239,68,68,0.2)')}>
+                      💰 Tổng tồn: <strong>{formatCurrency(totalTonCoc, false)}</strong>
+                    </span>
+                    <span style={chipStyle('#f1f5f9', '#475569')}>
+                      {filteredTonCoc.length} căn
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select
+                    className="form-select"
+                    value={filterDuAnTonCoc}
+                    onChange={e => setFilterDuAnTonCoc(e.target.value)}
+                    style={{ minWidth: 200 }}
+                  >
+                    <option value="">Tất cả dự án ({tonCoc.length} căn)</option>
+                    {tonCocProjects.map(da => {
+                      const count = tonCoc.filter(r => r.du_an === da).length;
+                      const total = tonCoc.filter(r => r.du_an === da).reduce((s, r) => s + r.so_tien, 0);
+                      return (
+                        <option key={da} value={da}>
+                          {da} ({count} căn · {formatCurrency(total, false)})
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {filterDuAnTonCoc && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => setFilterDuAnTonCoc('')}>
+                      <X size={13} /> Xóa
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="table-wrapper">
+                <table className="data-table" style={{ minWidth: 820 }}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Mã căn</th>
+                      {!filterDuAnTonCoc && <th>Dự án</th>}
+                      <th>Ngày cọc</th>
+                      <th style={{ textAlign: 'right' }}>Số tiền cọc</th>
+                      <th>Ngày ký thủ tục</th>
+                      <th>Phương án TT</th>
+                      <th>Tình trạng</th>
+                      <th>Ghi chú</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTonCoc.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="empty-state">
+                          <h3>{tonCoc.length === 0 ? 'Đang tải dữ liệu...' : 'Không có căn nào tồn cọc'}</h3>
+                        </td>
+                      </tr>
+                    ) : filteredTonCoc.map((r, idx) => (
+                      <tr key={`${r.du_an}-${r.ma_can}-${idx}`}>
+                        <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
+                        <td style={{ fontWeight: 600, color: 'var(--text-title)' }}>{r.ma_can || '—'}</td>
+                        {!filterDuAnTonCoc && <td style={{ fontWeight: 500 }}>{r.du_an || '—'}</td>}
+                        <td>{r.ngay_coc ? formatDate(r.ngay_coc) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--primary)' }}>
+                          {formatCurrency(r.so_tien)}
+                        </td>
+                        <td>{r.ngay_ky_thu_tuc ? formatDate(r.ngay_ky_thu_tuc) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td style={{ fontSize: '0.82rem', color: 'var(--text-body)' }}>{r.phuong_an_tt || '—'}</td>
+                        <td>
+                          {r.tinh_trang ? (
+                            <span className="badge" style={{ background: 'rgba(251,191,36,0.12)', color: '#b45309' }}>
+                              {r.tinh_trang}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: 180 }}>{r.ghi_chu || ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* View Detail Modal */}
       {showViewModal && viewingItem && (

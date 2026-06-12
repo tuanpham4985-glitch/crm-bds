@@ -837,6 +837,159 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
 }
 
 // ============================================================
+// TÌNH TRẠNG GIAO DỊCH — cols E, F, G, AE from "Tổng hợp giao dịch chi tiết"
+// ============================================================
+
+export interface TinhTrangGiaoDichRow {
+  du_an: string;
+  ma_can: string;
+  ngay_coc: string;
+  ngay_ky_ttdc: string;
+  ngay_ky_hdmb: string;
+  lai_phat: number;
+}
+
+export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
+  const sheetId = process.env.TONG_HOP_SHEET_ID;
+  if (!sheetId) {
+    console.warn('[GSheets] TONG_HOP_SHEET_ID not set — skipping getTinhTrangGiaoDich');
+    return [];
+  }
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, getJWT());
+    await doc.loadInfo();
+
+    const sheet =
+      doc.sheetsById[444476674] ||
+      doc.sheetsByTitle['Tổng hợp giao dịch chi tiết'] ||
+      doc.sheetsByTitle['Tong hop giao dich chi tiet'];
+    if (!sheet) {
+      console.warn('[GSheets] "Tổng hợp giao dịch chi tiết" not found in TONG_HOP_SHEET_ID');
+      return [];
+    }
+
+    await sheet.loadHeaderRow();
+    const rows = await sheet.getRows();
+    const h = sheet.headerValues;
+
+    const findCol = (...patterns: string[]): string | null => {
+      for (const col of h) {
+        const norm = normVi(col);
+        if (patterns.some(p => norm.includes(p))) return col;
+      }
+      return null;
+    };
+    const colAtPos = (pos: number): string | null => h[pos] || null;
+
+    const colDuAn       = findCol('duan', 'tenduan', 'project') || colAtPos(2);
+    const colMaCan      = findCol('macan', 'ma_can', 'maso')    || colAtPos(1);
+    const colNgayCoc    = findCol('ngaycoc')                     || colAtPos(4);
+    const colNgayTTDC   = findCol('ttdc', 'vbtt', 'kyttdc', 'kyvbtt', 'ngaykyttdc', 'ngaykyvbtt') || colAtPos(5);
+    const colNgayHDMB   = findCol('hdmb', 'kyhd', 'ngaykyhd', 'hopdonmua') || colAtPos(6);
+    const colLaiPhat    = findCol('laiphat', 'phat', 'tienphat') || colAtPos(30);
+
+    return rows.map(row => {
+      const v = row.toObject();
+      const duAn  = colDuAn  ? str(v[colDuAn])  : '';
+      const maCan = colMaCan ? str(v[colMaCan])  : '';
+      if (!duAn && !maCan) return null;
+      return {
+        du_an:        duAn,
+        ma_can:       maCan,
+        ngay_coc:     colNgayCoc  ? str(v[colNgayCoc])  : '',
+        ngay_ky_ttdc: colNgayTTDC ? str(v[colNgayTTDC]) : '',
+        ngay_ky_hdmb: colNgayHDMB ? str(v[colNgayHDMB]) : '',
+        lai_phat:     colLaiPhat  ? num(v[colLaiPhat])  : 0,
+      } as TinhTrangGiaoDichRow;
+    }).filter((r): r is TinhTrangGiaoDichRow => r !== null);
+  } catch (err) {
+    console.error('[GSheets] getTinhTrangGiaoDich error:', err);
+    return [];
+  }
+}
+
+// ============================================================
+// TỒN CỌC — "Tồn cọc" sheet (header at row 2, row 1 = TỔNG TỒN)
+// ============================================================
+
+export interface TonCocRow {
+  du_an: string;
+  ma_can: string;
+  ngay_coc: string;
+  so_tien: number;
+  ngay_ky_thu_tuc: string;
+  phuong_an_tt: string;
+  tinh_trang: string;
+  ghi_chu: string;
+}
+
+export async function getTonCoc(): Promise<TonCocRow[]> {
+  const sheetId = process.env.TONG_HOP_SHEET_ID;
+  if (!sheetId) {
+    console.warn('[GSheets] TONG_HOP_SHEET_ID not set — skipping getTonCoc');
+    return [];
+  }
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, getJWT());
+    await doc.loadInfo();
+
+    const sheet = doc.sheetsByTitle['Tồn cọc'] || doc.sheetsByTitle['Ton coc'];
+    if (!sheet) {
+      console.warn('[GSheets] "Tồn cọc" sheet not found in TONG_HOP_SHEET_ID');
+      return [];
+    }
+
+    // Row 1 is a TỔNG TỒN summary row; actual column headers are at row 2
+    try {
+      await sheet.loadHeaderRow(2);
+    } catch {
+      await sheet.loadHeaderRow();
+    }
+    const rows = await sheet.getRows();
+    const h = sheet.headerValues;
+
+    const findCol = (...patterns: string[]): string | null => {
+      for (const col of h) {
+        const norm = normVi(col);
+        if (patterns.some(p => norm.includes(p))) return col;
+      }
+      return null;
+    };
+    const colAtPos = (pos: number): string | null => h[pos] || null;
+
+    const colMaCan       = findCol('macan', 'ma_can', 'maso')           || colAtPos(1);
+    const colDuAn        = findCol('duan', 'tenduan', 'project')         || colAtPos(2);
+    const colNgayCoc     = findCol('ngaycoc')                             || colAtPos(3);
+    const colSoTien      = findCol('sotien', 'tiencoc', 'sotiencoc')     || colAtPos(4);
+    const colNgayKyTT    = findCol('ngaykythutuc', 'kythutuc', 'thutu')  || colAtPos(5);
+    const colPhuongAnTT  = findCol('phuongan', 'phuongthuc', 'hinhthuc') || colAtPos(6);
+    const colTinhTrang   = findCol('tinhtrang', 'trangthai')              || colAtPos(7);
+    const colGhiChu      = findCol('ghichu')                              || colAtPos(8);
+
+    return rows.map(row => {
+      const v = row.toObject();
+      const maCan  = colMaCan ? str(v[colMaCan]) : '';
+      const duAn   = colDuAn  ? str(v[colDuAn])  : '';
+      const soTien = colSoTien ? num(v[colSoTien]) : 0;
+      if (!maCan && !duAn) return null;
+      return {
+        du_an:           duAn,
+        ma_can:          maCan,
+        ngay_coc:        colNgayCoc    ? str(v[colNgayCoc])    : '',
+        so_tien:         soTien,
+        ngay_ky_thu_tuc: colNgayKyTT  ? str(v[colNgayKyTT])  : '',
+        phuong_an_tt:    colPhuongAnTT ? str(v[colPhuongAnTT]) : '',
+        tinh_trang:      colTinhTrang  ? str(v[colTinhTrang])  : '',
+        ghi_chu:         colGhiChu     ? str(v[colGhiChu])     : '',
+      } as TonCocRow;
+    }).filter((r): r is TonCocRow => r !== null);
+  } catch (err) {
+    console.error('[GSheets] getTonCoc error:', err);
+    return [];
+  }
+}
+
+// ============================================================
 // WRITE OPERATIONS
 // ============================================================
 
