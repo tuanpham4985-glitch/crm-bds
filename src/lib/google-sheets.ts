@@ -859,18 +859,31 @@ export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
     const doc = new GoogleSpreadsheet(sheetId, getJWT());
     await doc.loadInfo();
 
+    // NOTE: Do NOT use sheetsById[444476674] — that gid is "Tồn cọc", not "Tổng hợp giao dịch chi tiết"
     const sheet =
-      doc.sheetsById[444476674] ||
       doc.sheetsByTitle['Tổng hợp giao dịch chi tiết'] ||
       doc.sheetsByTitle['Tong hop giao dich chi tiet'];
     if (!sheet) {
-      console.warn('[GSheets] "Tổng hợp giao dịch chi tiết" not found in TONG_HOP_SHEET_ID');
+      console.warn('[GSheets] "Tổng hợp giao dịch chi tiết" not found. Available:', Object.keys(doc.sheetsByTitle).join(', '));
       return [];
     }
 
-    await sheet.loadHeaderRow();
+    // Auto-detect header row: try row 2 first (some sheets have merged title in row 1)
+    try {
+      await sheet.loadHeaderRow(2);
+      const h2 = sheet.headerValues;
+      const hasMeaningfulHeaders = h2.some(col => {
+        const n = normVi(col);
+        return n.length > 1 && (n.includes('ngay') || n.includes('can') || n.includes('duan') || n.includes('ma'));
+      });
+      if (!hasMeaningfulHeaders) await sheet.loadHeaderRow(1);
+    } catch {
+      await sheet.loadHeaderRow(1);
+    }
+
     const rows = await sheet.getRows();
     const h = sheet.headerValues;
+    console.log('[TinhTrangGD] sheet:', sheet.title, '— headers (first 10):', h.slice(0, 10).join(', '));
 
     const findCol = (...patterns: string[]): string | null => {
       for (const col of h) {
@@ -890,13 +903,15 @@ export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
 
     return rows.map(row => {
       const v = row.toObject();
-      const duAn  = colDuAn  ? str(v[colDuAn])  : '';
-      const maCan = colMaCan ? str(v[colMaCan])  : '';
-      if (!duAn && !maCan) return null;
+      const duAn    = colDuAn    ? str(v[colDuAn])    : '';
+      const maCan   = colMaCan   ? str(v[colMaCan])   : '';
+      const ngayCoc = colNgayCoc ? str(v[colNgayCoc]) : '';
+      // Skip rows with no meaningful identifier
+      if (!duAn && !maCan && !ngayCoc) return null;
       return {
         du_an:        duAn,
         ma_can:       maCan,
-        ngay_coc:     colNgayCoc  ? str(v[colNgayCoc])  : '',
+        ngay_coc:     ngayCoc,
         ngay_ky_ttdc: colNgayTTDC ? str(v[colNgayTTDC]) : '',
         ngay_ky_hdmb: colNgayHDMB ? str(v[colNgayHDMB]) : '',
         lai_phat:     colLaiPhat  ? num(v[colLaiPhat])  : 0,

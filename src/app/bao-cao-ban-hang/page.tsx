@@ -77,6 +77,8 @@ export default function BaoCaoBanHangPage() {
   const [tonCoc, setTonCoc] = useState<TonCocRow[]>([]);
   const [filterDuAnTonCoc, setFilterDuAnTonCoc] = useState('');
 
+  const [secondaryLoaded, setSecondaryLoaded] = useState(false);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
@@ -109,10 +111,26 @@ export default function BaoCaoBanHangPage() {
       if (tcData.success) setTonCoc(tcData.data);
     } catch (err) {
       console.error('Secondary fetch error:', err);
+    } finally {
+      setSecondaryLoaded(true);
     }
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Sync new card filters when main project filter changes
+  useEffect(() => {
+    if (filterDuAn && projects.length > 0) {
+      const proj = projects.find(p => p.id_du_an === filterDuAn);
+      if (proj) {
+        setFilterDuAnTTGD(proj.ten_du_an);
+        setFilterDuAnTonCoc(proj.ten_du_an);
+      }
+    } else if (!filterDuAn) {
+      setFilterDuAnTTGD('');
+      setFilterDuAnTonCoc('');
+    }
+  }, [filterDuAn, projects]);
 
   const getCustomerName = (pl: Pipeline) => {
     if (pl.ho_ten_kh) return pl.ho_ten_kh;
@@ -480,7 +498,7 @@ export default function BaoCaoBanHangPage() {
                     {filteredTTGD.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="empty-state">
-                          <h3>{tinhTrangGiaoDich.length === 0 ? 'Đang tải dữ liệu...' : 'Không có giao dịch nào'}</h3>
+                          <h3>{!secondaryLoaded ? 'Đang tải dữ liệu...' : 'Không có giao dịch nào'}</h3>
                         </td>
                       </tr>
                     ) : filteredTTGD.map((r, idx) => (
@@ -572,7 +590,7 @@ export default function BaoCaoBanHangPage() {
                     {filteredTonCoc.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="empty-state">
-                          <h3>{tonCoc.length === 0 ? 'Đang tải dữ liệu...' : 'Không có căn nào tồn cọc'}</h3>
+                          <h3>{!secondaryLoaded ? 'Đang tải dữ liệu...' : 'Không có căn nào tồn cọc'}</h3>
                         </td>
                       </tr>
                     ) : filteredTonCoc.map((r, idx) => (
