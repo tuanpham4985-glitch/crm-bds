@@ -105,6 +105,8 @@ export default function BaoCaoBanHangPage() {
   const [filterTTGDDateFrom, setFilterTTGDDateFrom] = useState('');
   const [filterTTGDDateTo, setFilterTTGDDateTo] = useState('');
   const [ttgdPopover, setTtgdPopover] = useState<string | null>(null);
+  const [ttgdSortCol, setTtgdSortCol] = useState('');
+  const [ttgdSortDir, setTtgdSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Tồn cọc
   const [tonCoc, setTonCoc] = useState<TonCocRow[]>([]);
@@ -591,15 +593,66 @@ export default function BaoCaoBanHangPage() {
           });
         }
 
+        // Sort
+        if (ttgdSortCol) {
+          const getV = (r: TinhTrangGiaoDichRow): string | number => {
+            switch (ttgdSortCol) {
+              case 'du_an':   return r.du_an || '';
+              case 'ma_can':  return r.ma_can || '';
+              case 'ngay_coc':      return parseDate(r.ngay_coc)?.getTime()      ?? 0;
+              case 'ngay_ky_ttdc':  return parseDate(r.ngay_ky_ttdc)?.getTime()  ?? 0;
+              case 'ngay_ky_hdmb':  return parseDate(r.ngay_ky_hdmb)?.getTime()  ?? 0;
+              case 'lai_phat':            return r.lai_phat;
+              case 'lai_phat_phat_sinh':  return r.lai_phat_phat_sinh;
+              default: return '';
+            }
+          };
+          filteredTTGD = [...filteredTTGD].sort((a, b) => {
+            const av = getV(a), bv = getV(b);
+            const d = ttgdSortDir === 'asc' ? 1 : -1;
+            if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * d;
+            return String(av).localeCompare(String(bv), 'vi') * d;
+          });
+        }
+
         const pagedTTGD = filteredTTGD.slice((pageTTGD - 1) * PAGE_SIZE, pageTTGD * PAGE_SIZE);
-        const hasAnyFilter = filterDuAnTTGD || filterTTGDMaCan || filterTTGDLaiPhat || filterTTGDDateFrom || filterTTGDDateTo;
+        const hasAnyFilter = filterDuAnTTGD || filterTTGDMaCan || filterTTGDLaiPhat || filterTTGDDateFrom || filterTTGDDateTo || ttgdSortCol;
         const clearAllTTGD = () => {
           setFilterDuAnTTGD('');
           setFilterTTGDMaCan('');
           setFilterTTGDLaiPhat(false);
           setFilterTTGDDateFrom('');
           setFilterTTGDDateTo('');
+          setTtgdSortCol('');
+          setTtgdSortDir('asc');
         };
+
+        // Popover helpers
+        const applySort = (col: string, dir: 'asc' | 'desc') => { setTtgdSortCol(col); setTtgdSortDir(dir); setTtgdPopover(null); };
+        const popStyle = {
+          position: 'absolute' as const, top: '100%', zIndex: 200,
+          background: 'var(--bg-card, #fff)', border: '1px solid var(--border-light)',
+          borderRadius: 8, padding: 4, boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
+          minWidth: 190, fontWeight: 400,
+        };
+        const mi = (active: boolean) => ({
+          padding: '7px 10px', borderRadius: 5, fontSize: '0.82rem', cursor: 'pointer',
+          color: active ? '#3b82f6' : 'var(--text-body)',
+          background: active ? 'rgba(59,130,246,0.08)' : 'transparent',
+          fontWeight: active ? 600 : 400,
+          display: 'flex', alignItems: 'center', gap: 8,
+        });
+        const divider = <div style={{ borderTop: '1px solid var(--border-light)', margin: '4px 2px' }} />;
+        const filterSection = (label: string) => (
+          <div style={{ padding: '6px 10px 2px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+        );
+        const colBtnStyle = (col: string, filterActive = false) => ({
+          padding: '1px 2px', borderRadius: 3, border: 'none', cursor: 'pointer', lineHeight: 1,
+          background: (filterActive || ttgdSortCol === col) ? '#3b82f6' : 'transparent',
+          color: (filterActive || ttgdSortCol === col) ? '#fff' : 'var(--text-muted)',
+          display: 'inline-flex' as const, alignItems: 'center',
+        });
+        const si = (col: string) => ttgdSortCol === col ? (ttgdSortDir === 'asc' ? ' ↑' : ' ↓') : '';
 
         return (
           <div style={{ marginTop: 28 }}>
@@ -643,124 +696,130 @@ export default function BaoCaoBanHangPage() {
                   <thead>
                     <tr>
                       <th>#</th>
-                      {!filterDuAnTTGD && <th>Dự án</th>}
 
-                      {/* Mã căn — filter icon → popover text search */}
+                      {/* Dự án */}
+                      {!filterDuAnTTGD && (
+                        <th style={{ position: 'relative', whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            Dự án{si('du_an')}
+                            <button onClick={() => setTtgdPopover(ttgdPopover === 'du_an' ? null : 'du_an')} style={colBtnStyle('du_an')}><Filter size={11} /></button>
+                          </span>
+                          {ttgdPopover === 'du_an' && (
+                            <div style={{ ...popStyle, left: 0 }}>
+                              <div style={mi(ttgdSortCol === 'du_an' && ttgdSortDir === 'asc')} onClick={() => applySort('du_an', 'asc')}>↑ Sort A → Z</div>
+                              <div style={mi(ttgdSortCol === 'du_an' && ttgdSortDir === 'desc')} onClick={() => applySort('du_an', 'desc')}>↓ Sort Z → A</div>
+                            </div>
+                          )}
+                        </th>
+                      )}
+
+                      {/* Mã căn */}
                       <th style={{ position: 'relative', whiteSpace: 'nowrap' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                          Mã căn
-                          <button
-                            onClick={() => setTtgdPopover(ttgdPopover === 'ma_can' ? null : 'ma_can')}
-                            style={{
-                              padding: '1px 2px', borderRadius: 3, border: 'none', cursor: 'pointer',
-                              background: filterTTGDMaCan ? '#3b82f6' : 'transparent',
-                              color: filterTTGDMaCan ? '#fff' : 'var(--text-muted)',
-                              display: 'inline-flex', alignItems: 'center', lineHeight: 1,
-                            }}
-                          ><Filter size={11} /></button>
+                          Mã căn{si('ma_can')}
+                          <button onClick={() => setTtgdPopover(ttgdPopover === 'ma_can' ? null : 'ma_can')} style={colBtnStyle('ma_can', !!filterTTGDMaCan)}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'ma_can' && (
-                          <div style={{
-                            position: 'absolute', top: '100%', left: 0, zIndex: 200,
-                            background: 'var(--bg-card, #fff)', border: '1px solid var(--border-light)',
-                            borderRadius: 8, padding: '12px 14px', boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
-                            minWidth: 200, fontWeight: 400,
-                          }}>
-                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-title)', marginBottom: 8 }}>Lọc Mã căn</div>
-                            <input
-                              type="text"
-                              placeholder="Nhập mã căn..."
-                              value={filterTTGDMaCan}
-                              onChange={e => setFilterTTGDMaCan(e.target.value)}
-                              autoFocus
-                              style={{
-                                width: '100%', padding: '5px 8px', fontSize: '0.82rem', borderRadius: 5,
-                                border: '1px solid var(--border-light)', background: 'var(--bg-input, #fff)',
-                                color: 'var(--text-body)', outline: 'none', boxSizing: 'border-box',
-                              }}
-                            />
-                            {filterTTGDMaCan && (
-                              <button onClick={() => setFilterTTGDMaCan('')}
-                                style={{ marginTop: 6, fontSize: '0.75rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                                Xóa
-                              </button>
-                            )}
+                          <div style={{ ...popStyle, left: 0 }}>
+                            <div style={mi(ttgdSortCol === 'ma_can' && ttgdSortDir === 'asc')} onClick={() => applySort('ma_can', 'asc')}>↑ Sort A → Z</div>
+                            <div style={mi(ttgdSortCol === 'ma_can' && ttgdSortDir === 'desc')} onClick={() => applySort('ma_can', 'desc')}>↓ Sort Z → A</div>
+                            {divider}
+                            {filterSection('Lọc')}
+                            <div style={{ padding: '4px 8px 8px' }}>
+                              <input type="text" placeholder="Nhập mã căn..." value={filterTTGDMaCan} onChange={e => setFilterTTGDMaCan(e.target.value)} autoFocus
+                                style={{ width: '100%', padding: '5px 8px', fontSize: '0.82rem', borderRadius: 5, border: '1px solid var(--border-light)', background: 'var(--bg-input,#fff)', color: 'var(--text-body)', outline: 'none', boxSizing: 'border-box' }} />
+                              {filterTTGDMaCan && <button onClick={() => setFilterTTGDMaCan('')} style={{ marginTop: 5, fontSize: '0.75rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Xóa</button>}
+                            </div>
                           </div>
                         )}
                       </th>
 
-                      {/* Ngày cọc — filter icon → popover date range */}
+                      {/* Ngày cọc */}
                       <th style={{ position: 'relative', whiteSpace: 'nowrap' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                          Ngày cọc
-                          <button
-                            onClick={() => setTtgdPopover(ttgdPopover === 'ngay_coc' ? null : 'ngay_coc')}
-                            style={{
-                              padding: '1px 2px', borderRadius: 3, border: 'none', cursor: 'pointer',
-                              background: (filterTTGDDateFrom || filterTTGDDateTo) ? '#3b82f6' : 'transparent',
-                              color: (filterTTGDDateFrom || filterTTGDDateTo) ? '#fff' : 'var(--text-muted)',
-                              display: 'inline-flex', alignItems: 'center', lineHeight: 1,
-                            }}
-                          ><Filter size={11} /></button>
+                          Ngày cọc{si('ngay_coc')}
+                          <button onClick={() => setTtgdPopover(ttgdPopover === 'ngay_coc' ? null : 'ngay_coc')} style={colBtnStyle('ngay_coc', !!(filterTTGDDateFrom || filterTTGDDateTo))}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'ngay_coc' && (
-                          <div style={{
-                            position: 'absolute', top: '100%', left: 0, zIndex: 200,
-                            background: 'var(--bg-card, #fff)', border: '1px solid var(--border-light)',
-                            borderRadius: 8, padding: '12px 14px', boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
-                            minWidth: 220, fontWeight: 400,
-                          }}>
-                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-title)', marginBottom: 8 }}>Lọc Ngày cọc</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 3 }}>Từ ngày</div>
-                            <input type="date" value={filterTTGDDateFrom} onChange={e => setFilterTTGDDateFrom(e.target.value)}
-                              style={{ width: '100%', padding: '4px 6px', fontSize: '0.82rem', borderRadius: 5, border: '1px solid var(--border-light)', background: 'var(--bg-input, #fff)', color: 'var(--text-body)', outline: 'none', marginBottom: 8, boxSizing: 'border-box' }} />
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 3 }}>Đến ngày</div>
-                            <input type="date" value={filterTTGDDateTo} onChange={e => setFilterTTGDDateTo(e.target.value)}
-                              style={{ width: '100%', padding: '4px 6px', fontSize: '0.82rem', borderRadius: 5, border: '1px solid var(--border-light)', background: 'var(--bg-input, #fff)', color: 'var(--text-body)', outline: 'none', boxSizing: 'border-box' }} />
-                            {(filterTTGDDateFrom || filterTTGDDateTo) && (
-                              <button onClick={() => { setFilterTTGDDateFrom(''); setFilterTTGDDateTo(''); }}
-                                style={{ marginTop: 8, fontSize: '0.75rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                                Xóa
-                              </button>
-                            )}
+                          <div style={{ ...popStyle, left: 0 }}>
+                            <div style={mi(ttgdSortCol === 'ngay_coc' && ttgdSortDir === 'asc')} onClick={() => applySort('ngay_coc', 'asc')}>↑ Sort A → Z</div>
+                            <div style={mi(ttgdSortCol === 'ngay_coc' && ttgdSortDir === 'desc')} onClick={() => applySort('ngay_coc', 'desc')}>↓ Sort Z → A</div>
+                            {divider}
+                            {filterSection('Lọc theo ngày')}
+                            <div style={{ padding: '4px 8px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <input type="date" value={filterTTGDDateFrom} onChange={e => setFilterTTGDDateFrom(e.target.value)} placeholder="Từ ngày"
+                                style={{ width: '100%', padding: '4px 6px', fontSize: '0.82rem', borderRadius: 5, border: '1px solid var(--border-light)', background: 'var(--bg-input,#fff)', color: 'var(--text-body)', outline: 'none', boxSizing: 'border-box' }} />
+                              <input type="date" value={filterTTGDDateTo} onChange={e => setFilterTTGDDateTo(e.target.value)} placeholder="Đến ngày"
+                                style={{ width: '100%', padding: '4px 6px', fontSize: '0.82rem', borderRadius: 5, border: '1px solid var(--border-light)', background: 'var(--bg-input,#fff)', color: 'var(--text-body)', outline: 'none', boxSizing: 'border-box' }} />
+                              {(filterTTGDDateFrom || filterTTGDDateTo) && <button onClick={() => { setFilterTTGDDateFrom(''); setFilterTTGDDateTo(''); }} style={{ fontSize: '0.75rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>Xóa</button>}
+                            </div>
                           </div>
                         )}
                       </th>
 
-                      <th>Ngày ký TTĐC/VBTT</th>
-                      <th>Ngày ký HĐMB</th>
+                      {/* Ngày ký TTĐC/VBTT */}
+                      <th style={{ position: 'relative', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          Ngày ký TTĐC/VBTT{si('ngay_ky_ttdc')}
+                          <button onClick={() => setTtgdPopover(ttgdPopover === 'ngay_ky_ttdc' ? null : 'ngay_ky_ttdc')} style={colBtnStyle('ngay_ky_ttdc')}><Filter size={11} /></button>
+                        </span>
+                        {ttgdPopover === 'ngay_ky_ttdc' && (
+                          <div style={{ ...popStyle, left: 0 }}>
+                            <div style={mi(ttgdSortCol === 'ngay_ky_ttdc' && ttgdSortDir === 'asc')} onClick={() => applySort('ngay_ky_ttdc', 'asc')}>↑ Sort A → Z</div>
+                            <div style={mi(ttgdSortCol === 'ngay_ky_ttdc' && ttgdSortDir === 'desc')} onClick={() => applySort('ngay_ky_ttdc', 'desc')}>↓ Sort Z → A</div>
+                          </div>
+                        )}
+                      </th>
 
-                      {/* % Lãi phạt — filter icon → popover checkbox */}
+                      {/* Ngày ký HĐMB */}
+                      <th style={{ position: 'relative', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          Ngày ký HĐMB{si('ngay_ky_hdmb')}
+                          <button onClick={() => setTtgdPopover(ttgdPopover === 'ngay_ky_hdmb' ? null : 'ngay_ky_hdmb')} style={colBtnStyle('ngay_ky_hdmb')}><Filter size={11} /></button>
+                        </span>
+                        {ttgdPopover === 'ngay_ky_hdmb' && (
+                          <div style={{ ...popStyle, left: 0 }}>
+                            <div style={mi(ttgdSortCol === 'ngay_ky_hdmb' && ttgdSortDir === 'asc')} onClick={() => applySort('ngay_ky_hdmb', 'asc')}>↑ Sort A → Z</div>
+                            <div style={mi(ttgdSortCol === 'ngay_ky_hdmb' && ttgdSortDir === 'desc')} onClick={() => applySort('ngay_ky_hdmb', 'desc')}>↓ Sort Z → A</div>
+                          </div>
+                        )}
+                      </th>
+
+                      {/* % Lãi phạt */}
                       <th style={{ position: 'relative', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end' }}>
-                          % Lãi phạt
-                          <button
-                            onClick={() => setTtgdPopover(ttgdPopover === 'lai_phat' ? null : 'lai_phat')}
-                            style={{
-                              padding: '1px 2px', borderRadius: 3, border: 'none', cursor: 'pointer',
-                              background: filterTTGDLaiPhat ? '#dc2626' : 'transparent',
-                              color: filterTTGDLaiPhat ? '#fff' : 'var(--text-muted)',
-                              display: 'inline-flex', alignItems: 'center', lineHeight: 1,
-                            }}
-                          ><Filter size={11} /></button>
+                          % Lãi phạt{si('lai_phat')}
+                          <button onClick={() => setTtgdPopover(ttgdPopover === 'lai_phat' ? null : 'lai_phat')} style={colBtnStyle('lai_phat', filterTTGDLaiPhat)}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'lai_phat' && (
-                          <div style={{
-                            position: 'absolute', top: '100%', right: 0, zIndex: 200,
-                            background: 'var(--bg-card, #fff)', border: '1px solid var(--border-light)',
-                            borderRadius: 8, padding: '12px 14px', boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
-                            minWidth: 190, fontWeight: 400, textAlign: 'left',
-                          }}>
-                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-title)', marginBottom: 8 }}>Lọc Lãi phạt</div>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-body)' }}>
-                              <input type="checkbox" checked={filterTTGDLaiPhat} onChange={e => setFilterTTGDLaiPhat(e.target.checked)} />
-                              Chỉ hiện có lãi phạt
-                            </label>
+                          <div style={{ ...popStyle, right: 0, textAlign: 'left' }}>
+                            <div style={mi(ttgdSortCol === 'lai_phat' && ttgdSortDir === 'asc')} onClick={() => applySort('lai_phat', 'asc')}>↑ Sort A → Z</div>
+                            <div style={mi(ttgdSortCol === 'lai_phat' && ttgdSortDir === 'desc')} onClick={() => applySort('lai_phat', 'desc')}>↓ Sort Z → A</div>
+                            {divider}
+                            {filterSection('Lọc')}
+                            <div style={{ padding: '4px 8px 8px' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-body)' }}>
+                                <input type="checkbox" checked={filterTTGDLaiPhat} onChange={e => setFilterTTGDLaiPhat(e.target.checked)} />
+                                Chỉ hiện có lãi phạt
+                              </label>
+                            </div>
                           </div>
                         )}
                       </th>
 
-                      <th style={{ textAlign: 'right' }}>Lãi phạt phát sinh</th>
+                      {/* Lãi phạt phát sinh */}
+                      <th style={{ position: 'relative', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end' }}>
+                          Lãi phạt phát sinh{si('lai_phat_phat_sinh')}
+                          <button onClick={() => setTtgdPopover(ttgdPopover === 'lai_phat_phat_sinh' ? null : 'lai_phat_phat_sinh')} style={colBtnStyle('lai_phat_phat_sinh')}><Filter size={11} /></button>
+                        </span>
+                        {ttgdPopover === 'lai_phat_phat_sinh' && (
+                          <div style={{ ...popStyle, right: 0, textAlign: 'left' }}>
+                            <div style={mi(ttgdSortCol === 'lai_phat_phat_sinh' && ttgdSortDir === 'asc')} onClick={() => applySort('lai_phat_phat_sinh', 'asc')}>↑ Sort A → Z</div>
+                            <div style={mi(ttgdSortCol === 'lai_phat_phat_sinh' && ttgdSortDir === 'desc')} onClick={() => applySort('lai_phat_phat_sinh', 'desc')}>↓ Sort Z → A</div>
+                          </div>
+                        )}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
