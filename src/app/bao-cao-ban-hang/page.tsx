@@ -705,7 +705,7 @@ export default function BaoCaoBanHangPage() {
                             <button onClick={() => setTtgdPopover(ttgdPopover === 'du_an' ? null : 'du_an')} style={colBtnStyle('du_an')}><Filter size={11} /></button>
                           </span>
                           {ttgdPopover === 'du_an' && (
-                            <div style={{ ...popStyle, left: 0 }}>
+                            <div style={{ ...popStyle, left: 0 }} onClick={e => e.stopPropagation()}>
                               <div style={mi(ttgdSortCol === 'du_an' && ttgdSortDir === 'asc')} onClick={() => applySort('du_an', 'asc')}>↑ Sort A → Z</div>
                               <div style={mi(ttgdSortCol === 'du_an' && ttgdSortDir === 'desc')} onClick={() => applySort('du_an', 'desc')}>↓ Sort Z → A</div>
                             </div>
@@ -720,7 +720,7 @@ export default function BaoCaoBanHangPage() {
                           <button onClick={() => setTtgdPopover(ttgdPopover === 'ma_can' ? null : 'ma_can')} style={colBtnStyle('ma_can', !!filterTTGDMaCan)}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'ma_can' && (
-                          <div style={{ ...popStyle, left: 0 }}>
+                          <div style={{ ...popStyle, left: 0 }} onClick={e => e.stopPropagation()}>
                             <div style={mi(ttgdSortCol === 'ma_can' && ttgdSortDir === 'asc')} onClick={() => applySort('ma_can', 'asc')}>↑ Sort A → Z</div>
                             <div style={mi(ttgdSortCol === 'ma_can' && ttgdSortDir === 'desc')} onClick={() => applySort('ma_can', 'desc')}>↓ Sort Z → A</div>
                             {divider}
@@ -741,7 +741,7 @@ export default function BaoCaoBanHangPage() {
                           <button onClick={() => setTtgdPopover(ttgdPopover === 'ngay_coc' ? null : 'ngay_coc')} style={colBtnStyle('ngay_coc', !!(filterTTGDDateFrom || filterTTGDDateTo))}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'ngay_coc' && (
-                          <div style={{ ...popStyle, left: 0 }}>
+                          <div style={{ ...popStyle, left: 0 }} onClick={e => e.stopPropagation()}>
                             <div style={mi(ttgdSortCol === 'ngay_coc' && ttgdSortDir === 'asc')} onClick={() => applySort('ngay_coc', 'asc')}>↑ Sort A → Z</div>
                             <div style={mi(ttgdSortCol === 'ngay_coc' && ttgdSortDir === 'desc')} onClick={() => applySort('ngay_coc', 'desc')}>↓ Sort Z → A</div>
                             {divider}
@@ -764,7 +764,7 @@ export default function BaoCaoBanHangPage() {
                           <button onClick={() => setTtgdPopover(ttgdPopover === 'ngay_ky_ttdc' ? null : 'ngay_ky_ttdc')} style={colBtnStyle('ngay_ky_ttdc')}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'ngay_ky_ttdc' && (
-                          <div style={{ ...popStyle, left: 0 }}>
+                          <div style={{ ...popStyle, left: 0 }} onClick={e => e.stopPropagation()}>
                             <div style={mi(ttgdSortCol === 'ngay_ky_ttdc' && ttgdSortDir === 'asc')} onClick={() => applySort('ngay_ky_ttdc', 'asc')}>↑ Sort A → Z</div>
                             <div style={mi(ttgdSortCol === 'ngay_ky_ttdc' && ttgdSortDir === 'desc')} onClick={() => applySort('ngay_ky_ttdc', 'desc')}>↓ Sort Z → A</div>
                           </div>
@@ -778,7 +778,7 @@ export default function BaoCaoBanHangPage() {
                           <button onClick={() => setTtgdPopover(ttgdPopover === 'ngay_ky_hdmb' ? null : 'ngay_ky_hdmb')} style={colBtnStyle('ngay_ky_hdmb')}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'ngay_ky_hdmb' && (
-                          <div style={{ ...popStyle, left: 0 }}>
+                          <div style={{ ...popStyle, left: 0 }} onClick={e => e.stopPropagation()}>
                             <div style={mi(ttgdSortCol === 'ngay_ky_hdmb' && ttgdSortDir === 'asc')} onClick={() => applySort('ngay_ky_hdmb', 'asc')}>↑ Sort A → Z</div>
                             <div style={mi(ttgdSortCol === 'ngay_ky_hdmb' && ttgdSortDir === 'desc')} onClick={() => applySort('ngay_ky_hdmb', 'desc')}>↓ Sort Z → A</div>
                           </div>
@@ -792,7 +792,7 @@ export default function BaoCaoBanHangPage() {
                           <button onClick={() => setTtgdPopover(ttgdPopover === 'lai_phat' ? null : 'lai_phat')} style={colBtnStyle('lai_phat', filterTTGDLaiPhat)}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'lai_phat' && (
-                          <div style={{ ...popStyle, right: 0, textAlign: 'left' }}>
+                          <div style={{ ...popStyle, right: 0, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
                             <div style={mi(ttgdSortCol === 'lai_phat' && ttgdSortDir === 'asc')} onClick={() => applySort('lai_phat', 'asc')}>↑ Sort A → Z</div>
                             <div style={mi(ttgdSortCol === 'lai_phat' && ttgdSortDir === 'desc')} onClick={() => applySort('lai_phat', 'desc')}>↓ Sort Z → A</div>
                             {divider}
@@ -814,7 +814,7 @@ export default function BaoCaoBanHangPage() {
                           <button onClick={() => setTtgdPopover(ttgdPopover === 'lai_phat_phat_sinh' ? null : 'lai_phat_phat_sinh')} style={colBtnStyle('lai_phat_phat_sinh')}><Filter size={11} /></button>
                         </span>
                         {ttgdPopover === 'lai_phat_phat_sinh' && (
-                          <div style={{ ...popStyle, right: 0, textAlign: 'left' }}>
+                          <div style={{ ...popStyle, right: 0, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
                             <div style={mi(ttgdSortCol === 'lai_phat_phat_sinh' && ttgdSortDir === 'asc')} onClick={() => applySort('lai_phat_phat_sinh', 'asc')}>↑ Sort A → Z</div>
                             <div style={mi(ttgdSortCol === 'lai_phat_phat_sinh' && ttgdSortDir === 'desc')} onClick={() => applySort('lai_phat_phat_sinh', 'desc')}>↓ Sort Z → A</div>
                           </div>
