@@ -305,49 +305,91 @@ export default function BaoCaoBanHangPage() {
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: 2, marginBottom: 8 }}>
             Tổng hợp các căn đã ký hợp đồng
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            {/* Số deal */}
-            <span style={chipStyle('#f1f5f9', '#334155')}>
-              <span style={{ fontSize: '1.15rem' }}>📊</span> {filtered.length} căn đã ký
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
 
-            {/* Tổng giá trị */}
-            <span style={chipStyle('rgba(99,102,241,0.08)', '#4f46e5', 'rgba(99,102,241,0.15)')}>
-              <span style={{ fontSize: '1.15rem' }}>💰</span>
-              Tổng giá trị: <strong>{formatCurrency(totalValue, false)}</strong>
-            </span>
+            {/* ══ 3 MỤC CHÍNH NỔI BẬT ══ */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
+
+              {/* 1. Số căn đã ký */}
+              <div style={{
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                color: '#fff', borderRadius: 12, padding: '10px 18px',
+                display: 'flex', alignItems: 'center', gap: 10,
+                boxShadow: '0 4px 14px rgba(59,130,246,0.35)',
+                minWidth: 0,
+              }}>
+                <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>📊</span>
+                <div style={{ lineHeight: 1.2 }}>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 800 }}>{filtered.length}</div>
+                  <div style={{ fontSize: '0.72rem', opacity: 0.88, fontWeight: 500 }}>căn đã ký</div>
+                </div>
+              </div>
+
+              {/* 2. Tổng giá trị */}
+              <div style={{
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+                color: '#fff', borderRadius: 12, padding: '10px 18px',
+                display: 'flex', alignItems: 'center', gap: 10,
+                boxShadow: '0 4px 14px rgba(109,40,217,0.32)',
+                minWidth: 0,
+              }}>
+                <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>💰</span>
+                <div style={{ lineHeight: 1.2 }}>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{formatCurrency(totalValue, false)}</div>
+                  <div style={{ fontSize: '0.72rem', opacity: 0.88, fontWeight: 500 }}>Tổng giá trị</div>
+                </div>
+              </div>
+
+              {/* 3. Tổng lợi nhuận — Admin only */}
+              {canViewProfit && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  color: '#fff', borderRadius: 12, padding: '10px 18px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  boxShadow: '0 4px 14px rgba(217,119,6,0.35)',
+                  minWidth: 0,
+                }}>
+                  <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>💎</span>
+                  <div style={{ lineHeight: 1.2 }}>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{formatCurrency(totalProfit, false)}</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.88, fontWeight: 500 }}>Tổng lợi nhuận</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 36, background: 'var(--border-light)', flexShrink: 0 }} />
+
+            {/* ══ CÁC MỤC PHỤ (nhỏ hơn) ══ */}
 
             {/* Hoa hồng */}
             {(showPhiTraSale || showPhiTraGDDA || showPhiTraGDKD) && (
-              <span style={chipStyle('rgba(16,185,129,0.08)', '#059669', 'rgba(16,185,129,0.15)')}>
-                <span style={{ fontSize: '1.15rem' }}>💵</span>
-                {isAllVisible ? 'Tổng hoa hồng' : 'Hoa hồng cá nhân'}: <strong>{formatCurrency(personalCommission, false)}</strong>
+              <span style={chipStyle('rgba(16,185,129,0.08)', '#059669', 'rgba(16,185,129,0.18)')}>
+                <span style={{ fontSize: '1rem' }}>💵</span>
+                {isAllVisible ? 'Tổng hoa hồng' : 'Hoa hồng'}: <strong>{formatCurrency(personalCommission, false)}</strong>
               </span>
             )}
 
             {/* Thưởng nóng */}
             {showThuongNong && (
-              <span style={chipStyle('rgba(239,68,68,0.08)', '#dc2626', 'rgba(239,68,68,0.15)')}>
-                <span style={{ fontSize: '1.15rem' }}>🔥</span>
-                {isAllVisible ? 'Tổng thưởng nóng' : 'Thưởng nóng cá nhân'}: <strong>{formatCurrency(personalHotBonus, false)}</strong>
+              <span style={chipStyle('rgba(239,68,68,0.08)', '#dc2626', 'rgba(239,68,68,0.18)')}>
+                <span style={{ fontSize: '1rem' }}>🔥</span>
+                {isAllVisible ? 'Tổng thưởng nóng' : 'Thưởng nóng'}: <strong>{formatCurrency(personalHotBonus, false)}</strong>
               </span>
             )}
 
             {/* Phí TKKD */}
             {showPhiTKKD && (
-              <span style={chipStyle('rgba(139,92,246,0.08)', '#7c3aed', 'rgba(139,92,246,0.15)')}>
-                <span style={{ fontSize: '1.15rem' }}>💜</span>
-                {isAllVisible ? 'Tổng phí TKKD' : 'Phí TKKD cá nhân'}: <strong>{formatCurrency(personalPhiTKKD, false)}</strong>
+              <span style={chipStyle('rgba(139,92,246,0.08)', '#7c3aed', 'rgba(139,92,246,0.18)')}>
+                <span style={{ fontSize: '1rem' }}>💜</span>
+                {isAllVisible ? 'Tổng phí TKKD' : 'Phí TKKD'}: <strong>{formatCurrency(personalPhiTKKD, false)}</strong>
               </span>
             )}
 
-            {/* Lợi nhuận & chi phí — Admin only */}
+            {/* Admin-only cost chips */}
             {canViewProfit && (
               <>
-                <span style={chipStyle('rgba(212,175,55,0.15)', '#b45309', 'rgba(212,175,55,0.45)')}>
-                  <span style={{ fontSize: '1.15rem' }}>💎</span>
-                  Tổng lợi nhuận: <strong style={{ color: '#d97706' }}>{formatCurrency(totalProfit, false)}</strong>
-                </span>
                 {totalPhiTraKH > 0 && (
                   <span style={chipStyle('rgba(139,92,246,0.08)', '#6d28d9', 'rgba(139,92,246,0.18)')}>
                     🏷️ Phí trả KH: <strong>{formatCurrency(totalPhiTraKH, false)}</strong>
