@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   SlidersHorizontal, X, Eye, ClipboardList,
-  CheckCircle2, Circle, Clock, XCircle,
+  CheckCircle2, Circle, Clock, XCircle, Filter,
 } from 'lucide-react';
 import type { Pipeline, KhachHang, DuAn, NhanVien, CongViec } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -104,6 +104,7 @@ export default function BaoCaoBanHangPage() {
   const [filterTTGDLaiPhat, setFilterTTGDLaiPhat] = useState(false);
   const [filterTTGDDateFrom, setFilterTTGDDateFrom] = useState('');
   const [filterTTGDDateTo, setFilterTTGDDateTo] = useState('');
+  const [ttgdPopover, setTtgdPopover] = useState<string | null>(null);
 
   // Tồn cọc
   const [tonCoc, setTonCoc] = useState<TonCocRow[]>([]);
@@ -634,77 +635,131 @@ export default function BaoCaoBanHangPage() {
                   </button>
                 )}
               </div>
+              {ttgdPopover && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={() => setTtgdPopover(null)} />
+              )}
               <div className="table-wrapper">
                 <table className="data-table" style={{ minWidth: 680 }}>
                   <thead>
                     <tr>
                       <th>#</th>
                       {!filterDuAnTTGD && <th>Dự án</th>}
-                      <th>
-                        <div>Mã căn</div>
-                        <input
-                          type="text"
-                          placeholder="Tìm..."
-                          value={filterTTGDMaCan}
-                          onChange={e => setFilterTTGDMaCan(e.target.value)}
-                          style={{
-                            marginTop: 4, width: '100%', padding: '2px 6px',
-                            fontSize: '0.75rem', borderRadius: 4,
-                            border: filterTTGDMaCan ? '1px solid #3b82f6' : '1px solid var(--border-light)',
-                            background: 'var(--bg-input, #fff)', color: 'var(--text-body)',
-                            outline: 'none', fontWeight: 400,
-                          }}
-                          onClick={e => e.stopPropagation()}
-                        />
-                      </th>
-                      <th>
-                        <div>Ngày cọc</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
-                          <input
-                            type="date"
-                            value={filterTTGDDateFrom}
-                            onChange={e => setFilterTTGDDateFrom(e.target.value)}
-                            title="Từ ngày"
+
+                      {/* Mã căn — filter icon → popover text search */}
+                      <th style={{ position: 'relative', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          Mã căn
+                          <button
+                            onClick={() => setTtgdPopover(ttgdPopover === 'ma_can' ? null : 'ma_can')}
                             style={{
-                              width: '100%', padding: '2px 4px', fontSize: '0.72rem', borderRadius: 4,
-                              border: filterTTGDDateFrom ? '1px solid #3b82f6' : '1px solid var(--border-light)',
-                              background: 'var(--bg-input, #fff)', color: 'var(--text-body)', outline: 'none', fontWeight: 400,
+                              padding: '1px 2px', borderRadius: 3, border: 'none', cursor: 'pointer',
+                              background: filterTTGDMaCan ? '#3b82f6' : 'transparent',
+                              color: filterTTGDMaCan ? '#fff' : 'var(--text-muted)',
+                              display: 'inline-flex', alignItems: 'center', lineHeight: 1,
                             }}
-                            onClick={e => e.stopPropagation()}
-                          />
-                          <input
-                            type="date"
-                            value={filterTTGDDateTo}
-                            onChange={e => setFilterTTGDDateTo(e.target.value)}
-                            title="Đến ngày"
-                            style={{
-                              width: '100%', padding: '2px 4px', fontSize: '0.72rem', borderRadius: 4,
-                              border: filterTTGDDateTo ? '1px solid #3b82f6' : '1px solid var(--border-light)',
-                              background: 'var(--bg-input, #fff)', color: 'var(--text-body)', outline: 'none', fontWeight: 400,
-                            }}
-                            onClick={e => e.stopPropagation()}
-                          />
-                        </div>
+                          ><Filter size={11} /></button>
+                        </span>
+                        {ttgdPopover === 'ma_can' && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, zIndex: 200,
+                            background: 'var(--bg-card, #fff)', border: '1px solid var(--border-light)',
+                            borderRadius: 8, padding: '12px 14px', boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
+                            minWidth: 200, fontWeight: 400,
+                          }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-title)', marginBottom: 8 }}>Lọc Mã căn</div>
+                            <input
+                              type="text"
+                              placeholder="Nhập mã căn..."
+                              value={filterTTGDMaCan}
+                              onChange={e => setFilterTTGDMaCan(e.target.value)}
+                              autoFocus
+                              style={{
+                                width: '100%', padding: '5px 8px', fontSize: '0.82rem', borderRadius: 5,
+                                border: '1px solid var(--border-light)', background: 'var(--bg-input, #fff)',
+                                color: 'var(--text-body)', outline: 'none', boxSizing: 'border-box',
+                              }}
+                            />
+                            {filterTTGDMaCan && (
+                              <button onClick={() => setFilterTTGDMaCan('')}
+                                style={{ marginTop: 6, fontSize: '0.75rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                Xóa
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </th>
+
+                      {/* Ngày cọc — filter icon → popover date range */}
+                      <th style={{ position: 'relative', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          Ngày cọc
+                          <button
+                            onClick={() => setTtgdPopover(ttgdPopover === 'ngay_coc' ? null : 'ngay_coc')}
+                            style={{
+                              padding: '1px 2px', borderRadius: 3, border: 'none', cursor: 'pointer',
+                              background: (filterTTGDDateFrom || filterTTGDDateTo) ? '#3b82f6' : 'transparent',
+                              color: (filterTTGDDateFrom || filterTTGDDateTo) ? '#fff' : 'var(--text-muted)',
+                              display: 'inline-flex', alignItems: 'center', lineHeight: 1,
+                            }}
+                          ><Filter size={11} /></button>
+                        </span>
+                        {ttgdPopover === 'ngay_coc' && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, zIndex: 200,
+                            background: 'var(--bg-card, #fff)', border: '1px solid var(--border-light)',
+                            borderRadius: 8, padding: '12px 14px', boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
+                            minWidth: 220, fontWeight: 400,
+                          }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-title)', marginBottom: 8 }}>Lọc Ngày cọc</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 3 }}>Từ ngày</div>
+                            <input type="date" value={filterTTGDDateFrom} onChange={e => setFilterTTGDDateFrom(e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', fontSize: '0.82rem', borderRadius: 5, border: '1px solid var(--border-light)', background: 'var(--bg-input, #fff)', color: 'var(--text-body)', outline: 'none', marginBottom: 8, boxSizing: 'border-box' }} />
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 3 }}>Đến ngày</div>
+                            <input type="date" value={filterTTGDDateTo} onChange={e => setFilterTTGDDateTo(e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', fontSize: '0.82rem', borderRadius: 5, border: '1px solid var(--border-light)', background: 'var(--bg-input, #fff)', color: 'var(--text-body)', outline: 'none', boxSizing: 'border-box' }} />
+                            {(filterTTGDDateFrom || filterTTGDDateTo) && (
+                              <button onClick={() => { setFilterTTGDDateFrom(''); setFilterTTGDDateTo(''); }}
+                                style={{ marginTop: 8, fontSize: '0.75rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                Xóa
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </th>
+
                       <th>Ngày ký TTĐC/VBTT</th>
                       <th>Ngày ký HĐMB</th>
-                      <th style={{ textAlign: 'right' }}>
-                        <div>% Lãi phạt</div>
-                        <button
-                          onClick={() => setFilterTTGDLaiPhat(v => !v)}
-                          title={filterTTGDLaiPhat ? 'Đang lọc có lãi phạt — nhấn để bỏ' : 'Chỉ hiện dòng có lãi phạt'}
-                          style={{
-                            marginTop: 4, padding: '2px 8px', borderRadius: 4, fontSize: '0.72rem',
-                            fontWeight: filterTTGDLaiPhat ? 700 : 400, cursor: 'pointer',
-                            border: filterTTGDLaiPhat ? '1px solid #dc2626' : '1px solid var(--border-light)',
-                            background: filterTTGDLaiPhat ? 'rgba(220,38,38,0.1)' : 'transparent',
-                            color: filterTTGDLaiPhat ? '#dc2626' : 'var(--text-muted)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {filterTTGDLaiPhat ? `Có lãi (${filteredTTGD.length})` : 'Có lãi phạt'}
-                        </button>
+
+                      {/* % Lãi phạt — filter icon → popover checkbox */}
+                      <th style={{ position: 'relative', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end' }}>
+                          % Lãi phạt
+                          <button
+                            onClick={() => setTtgdPopover(ttgdPopover === 'lai_phat' ? null : 'lai_phat')}
+                            style={{
+                              padding: '1px 2px', borderRadius: 3, border: 'none', cursor: 'pointer',
+                              background: filterTTGDLaiPhat ? '#dc2626' : 'transparent',
+                              color: filterTTGDLaiPhat ? '#fff' : 'var(--text-muted)',
+                              display: 'inline-flex', alignItems: 'center', lineHeight: 1,
+                            }}
+                          ><Filter size={11} /></button>
+                        </span>
+                        {ttgdPopover === 'lai_phat' && (
+                          <div style={{
+                            position: 'absolute', top: '100%', right: 0, zIndex: 200,
+                            background: 'var(--bg-card, #fff)', border: '1px solid var(--border-light)',
+                            borderRadius: 8, padding: '12px 14px', boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
+                            minWidth: 190, fontWeight: 400, textAlign: 'left',
+                          }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-title)', marginBottom: 8 }}>Lọc Lãi phạt</div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-body)' }}>
+                              <input type="checkbox" checked={filterTTGDLaiPhat} onChange={e => setFilterTTGDLaiPhat(e.target.checked)} />
+                              Chỉ hiện có lãi phạt
+                            </label>
+                          </div>
+                        )}
                       </th>
+
                       <th style={{ textAlign: 'right' }}>Lãi phạt phát sinh</th>
                     </tr>
                   </thead>
