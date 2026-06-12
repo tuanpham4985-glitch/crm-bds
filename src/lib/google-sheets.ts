@@ -846,7 +846,8 @@ export interface TinhTrangGiaoDichRow {
   ngay_coc: string;
   ngay_ky_ttdc: string;
   ngay_ky_hdmb: string;
-  lai_phat: number;
+  lai_phat: number;           // % Lãi phạt — col AE, stored as decimal (0.0041 = 0.41%)
+  lai_phat_phat_sinh: number; // Lãi phạt phát sinh — col AU, monetary amount
 }
 
 export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
@@ -896,9 +897,11 @@ export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
     const colNgayCoc    = findCol('ngaycoc')                               || colAtPos(4);
     const colNgayTTDC   = findCol('ttdc', 'vbtt', 'kyttdc', 'kyvbtt')    || colAtPos(5);
     const colNgayHDMB   = findCol('hdmb', 'kyhd', 'hopdonmua')            || colAtPos(6);
-    const colLaiPhat    = findCol('laiphat', 'phat', 'tienphat', 'laixuat') || colAtPos(30);
+    // AE = index 30 (% Lãi phạt), AU = index 46 (Lãi phạt phát sinh)
+    const colLaiPhat    = findCol('laiphat', 'tienphat', 'laixuat')      || colAtPos(30);
+    const colLaiPhatPS  = findCol('laiphatphatsinh', 'phatsinh')         || colAtPos(46);
 
-    console.log('[TinhTrangGD] cols → duAn:', colDuAn, '| ngayCoc:', colNgayCoc, '| ttdc:', colNgayTTDC, '| hdmb:', colNgayHDMB, '| laiPhat:', colLaiPhat);
+    console.log('[TinhTrangGD] cols → duAn:', colDuAn, '| ngayCoc:', colNgayCoc, '| ttdc:', colNgayTTDC, '| hdmb:', colNgayHDMB, '| laiPhat:', colLaiPhat, '| laiPhatPS:', colLaiPhatPS);
 
     return rows.map(row => {
       const v = row.toObject();
@@ -908,12 +911,13 @@ export async function getTinhTrangGiaoDich(): Promise<TinhTrangGiaoDichRow[]> {
       // Skip rows with no meaningful identifier
       if (!duAn && !maCan && !ngayCoc) return null;
       return {
-        du_an:        duAn,
-        ma_can:       maCan,
-        ngay_coc:     ngayCoc,
-        ngay_ky_ttdc: colNgayTTDC ? str(v[colNgayTTDC]) : '',
-        ngay_ky_hdmb: colNgayHDMB ? str(v[colNgayHDMB]) : '',
-        lai_phat:     colLaiPhat  ? num(v[colLaiPhat])  : 0,
+        du_an:               duAn,
+        ma_can:              maCan,
+        ngay_coc:            ngayCoc,
+        ngay_ky_ttdc:        colNgayTTDC  ? str(v[colNgayTTDC])  : '',
+        ngay_ky_hdmb:        colNgayHDMB  ? str(v[colNgayHDMB])  : '',
+        lai_phat:            colLaiPhat   ? num(v[colLaiPhat])   : 0,
+        lai_phat_phat_sinh:  colLaiPhatPS ? num(v[colLaiPhatPS]) : 0,
       } as TinhTrangGiaoDichRow;
     }).filter((r): r is TinhTrangGiaoDichRow => r !== null);
   } catch (err) {

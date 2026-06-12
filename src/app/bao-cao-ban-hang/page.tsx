@@ -16,7 +16,8 @@ interface TinhTrangGiaoDichRow {
   ngay_coc: string;
   ngay_ky_ttdc: string;
   ngay_ky_hdmb: string;
-  lai_phat: number;
+  lai_phat: number;           // % rate stored as decimal (0.0041 = 0.41%)
+  lai_phat_phat_sinh: number; // monetary amount (VNĐ)
 }
 
 interface TonCocRow {
@@ -564,7 +565,7 @@ export default function BaoCaoBanHangPage() {
                     Tình trạng giao dịch
                   </h2>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                    Ngày cọc · Ngày ký TTĐC/VBTT · Ngày ký HĐMB · Lãi phạt
+                    Ngày cọc · Ngày ký TTĐC/VBTT · Ngày ký HĐMB · % Lãi phạt · Lãi phạt phát sinh
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -597,7 +598,8 @@ export default function BaoCaoBanHangPage() {
                       <th>Ngày cọc</th>
                       <th>Ngày ký TTĐC/VBTT</th>
                       <th>Ngày ký HĐMB</th>
-                      <th style={{ textAlign: 'right' }}>Lãi phạt</th>
+                      <th style={{ textAlign: 'right' }}>% Lãi phạt</th>
+                      <th style={{ textAlign: 'right' }}>Lãi phạt phát sinh</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -618,7 +620,10 @@ export default function BaoCaoBanHangPage() {
                         <td>{r.ngay_ky_ttdc ? formatDate(r.ngay_ky_ttdc) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                         <td>{r.ngay_ky_hdmb ? formatDate(r.ngay_ky_hdmb) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                         <td style={{ textAlign: 'right', color: r.lai_phat > 0 ? '#dc2626' : 'var(--text-muted)', fontWeight: r.lai_phat > 0 ? 600 : 400 }}>
-                          {r.lai_phat > 0 ? formatCurrency(r.lai_phat) : '—'}
+                          {r.lai_phat > 0 ? (r.lai_phat * 100).toFixed(2).replace(/\.?0+$/, '') + '%' : '—'}
+                        </td>
+                        <td style={{ textAlign: 'right', color: r.lai_phat_phat_sinh > 0 ? '#dc2626' : 'var(--text-muted)', fontWeight: r.lai_phat_phat_sinh > 0 ? 600 : 400 }}>
+                          {r.lai_phat_phat_sinh > 0 ? formatCurrency(r.lai_phat_phat_sinh) : '—'}
                         </td>
                       </tr>
                       );

@@ -50,7 +50,10 @@
       "Bash(New-Item -ItemType Directory -Force \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\\\\src\\\\app\\\\api\\\\tinh-trang-giao-dich\")",
       "Bash(Out-Null)",
       "Bash(New-Item -ItemType Directory -Force \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\\\\src\\\\app\\\\api\\\\ton-coc\")",
-      "Bash(Write-Output \"done\")"
+      "Bash(Write-Output \"done\")",
+      "Bash(node -e \"const normStr = \\(s\\) => \\(s || ''\\).toLowerCase\\(\\).normalize\\('NFD'\\).replace\\(/[̀-ͯ]/g, ''\\).replace\\(/đ/g, 'd'\\).replace\\(/\\\\s+/g, ''\\); console.log\\(normStr\\('Tồn cọc'\\)\\); console.log\\(normStr\\('Tổng hợp giao dịch chi tiết'\\)\\); console.log\\(normStr\\('Vinhomes Cần Giờ'\\)\\);\")",
+      "Bash(grep -v \"console\\\\|//\")",
+      "Bash(grep -v \"interface\\\\|comment\\\\|//\")"
     ]
   }
 }
