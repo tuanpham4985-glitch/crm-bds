@@ -100,6 +100,7 @@ export default function BaoCaoBanHangPage() {
   // Tình trạng giao dịch
   const [tinhTrangGiaoDich, setTinhTrangGiaoDich] = useState<TinhTrangGiaoDichRow[]>([]);
   const [filterDuAnTTGD, setFilterDuAnTTGD] = useState('');
+  const [filterTTGDMaCan, setFilterTTGDMaCan] = useState('');
   const [filterTTGDLaiPhat, setFilterTTGDLaiPhat] = useState(false);
   const [filterTTGDDateFrom, setFilterTTGDDateFrom] = useState('');
   const [filterTTGDDateTo, setFilterTTGDDateTo] = useState('');
@@ -156,7 +157,7 @@ export default function BaoCaoBanHangPage() {
 
   // Reset pages on filter change
   useEffect(() => { setPagePipeline(1); }, [filterSale, filterDuAn]);
-  useEffect(() => { setPageTTGD(1); }, [filterDuAnTTGD, filterTTGDLaiPhat, filterTTGDDateFrom, filterTTGDDateTo]);
+  useEffect(() => { setPageTTGD(1); }, [filterDuAnTTGD, filterTTGDMaCan, filterTTGDLaiPhat, filterTTGDDateFrom, filterTTGDDateTo]);
   useEffect(() => { setPageTonCoc(1); }, [filterDuAnTonCoc]);
 
   // Sync new card filters when main project filter or secondary data changes.
@@ -567,10 +568,13 @@ export default function BaoCaoBanHangPage() {
       {(() => {
         const ttgdProjects = [...new Set(tinhTrangGiaoDich.map(r => r.du_an).filter(Boolean))].sort();
 
-        // Apply filters in order: project → lãi phạt → date range
+        // Apply filters in order: project → mã căn → lãi phạt → date range
         let filteredTTGD = filterDuAnTTGD
           ? tinhTrangGiaoDich.filter(r => r.du_an === filterDuAnTTGD)
           : tinhTrangGiaoDich;
+        if (filterTTGDMaCan) {
+          filteredTTGD = filteredTTGD.filter(r => normStr(r.ma_can).includes(normStr(filterTTGDMaCan)));
+        }
         if (filterTTGDLaiPhat) {
           filteredTTGD = filteredTTGD.filter(r => r.lai_phat > 0 || r.lai_phat_phat_sinh > 0);
         }
@@ -587,9 +591,10 @@ export default function BaoCaoBanHangPage() {
         }
 
         const pagedTTGD = filteredTTGD.slice((pageTTGD - 1) * PAGE_SIZE, pageTTGD * PAGE_SIZE);
-        const hasAnyFilter = filterDuAnTTGD || filterTTGDLaiPhat || filterTTGDDateFrom || filterTTGDDateTo;
+        const hasAnyFilter = filterDuAnTTGD || filterTTGDMaCan || filterTTGDLaiPhat || filterTTGDDateFrom || filterTTGDDateTo;
         const clearAllTTGD = () => {
           setFilterDuAnTTGD('');
+          setFilterTTGDMaCan('');
           setFilterTTGDLaiPhat(false);
           setFilterTTGDDateFrom('');
           setFilterTTGDDateTo('');
@@ -623,55 +628,11 @@ export default function BaoCaoBanHangPage() {
                   </select>
                 </div>
 
-                {/* Row 2: column filters */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>Lọc:</span>
-
-                  {/* Toggle: chỉ hiện dòng có lãi phạt */}
-                  <button
-                    onClick={() => setFilterTTGDLaiPhat(v => !v)}
-                    style={{
-                      padding: '4px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                      border: filterTTGDLaiPhat ? '1px solid #dc2626' : '1px solid var(--border-light)',
-                      background: filterTTGDLaiPhat ? 'rgba(220,38,38,0.08)' : 'transparent',
-                      color: filterTTGDLaiPhat ? '#dc2626' : 'var(--text-body)',
-                      display: 'inline-flex', alignItems: 'center', gap: 5,
-                    }}
-                  >
-                    🔴 Có lãi phạt
-                    {filterTTGDLaiPhat && (
-                      <span style={{ background: '#dc2626', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {filteredTTGD.length}
-                      </span>
-                    )}
+                {hasAnyFilter && (
+                  <button className="btn btn-ghost btn-sm" onClick={clearAllTTGD} style={{ marginTop: 8 }}>
+                    <X size={12} /> Xóa lọc
                   </button>
-
-                  {/* Date range: Ngày cọc */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Ngày cọc:</span>
-                    <input
-                      type="date"
-                      className="form-input"
-                      value={filterTTGDDateFrom}
-                      onChange={e => setFilterTTGDDateFrom(e.target.value)}
-                      style={{ padding: '3px 8px', fontSize: '0.82rem', width: 130 }}
-                    />
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>–</span>
-                    <input
-                      type="date"
-                      className="form-input"
-                      value={filterTTGDDateTo}
-                      onChange={e => setFilterTTGDDateTo(e.target.value)}
-                      style={{ padding: '3px 8px', fontSize: '0.82rem', width: 130 }}
-                    />
-                  </div>
-
-                  {hasAnyFilter && (
-                    <button className="btn btn-ghost btn-sm" onClick={clearAllTTGD} style={{ marginLeft: 4 }}>
-                      <X size={12} /> Xóa lọc
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
               <div className="table-wrapper">
                 <table className="data-table" style={{ minWidth: 680 }}>
@@ -679,11 +640,71 @@ export default function BaoCaoBanHangPage() {
                     <tr>
                       <th>#</th>
                       {!filterDuAnTTGD && <th>Dự án</th>}
-                      <th>Mã căn</th>
-                      <th>Ngày cọc</th>
+                      <th>
+                        <div>Mã căn</div>
+                        <input
+                          type="text"
+                          placeholder="Tìm..."
+                          value={filterTTGDMaCan}
+                          onChange={e => setFilterTTGDMaCan(e.target.value)}
+                          style={{
+                            marginTop: 4, width: '100%', padding: '2px 6px',
+                            fontSize: '0.75rem', borderRadius: 4,
+                            border: filterTTGDMaCan ? '1px solid #3b82f6' : '1px solid var(--border-light)',
+                            background: 'var(--bg-input, #fff)', color: 'var(--text-body)',
+                            outline: 'none', fontWeight: 400,
+                          }}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      </th>
+                      <th>
+                        <div>Ngày cọc</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                          <input
+                            type="date"
+                            value={filterTTGDDateFrom}
+                            onChange={e => setFilterTTGDDateFrom(e.target.value)}
+                            title="Từ ngày"
+                            style={{
+                              width: '100%', padding: '2px 4px', fontSize: '0.72rem', borderRadius: 4,
+                              border: filterTTGDDateFrom ? '1px solid #3b82f6' : '1px solid var(--border-light)',
+                              background: 'var(--bg-input, #fff)', color: 'var(--text-body)', outline: 'none', fontWeight: 400,
+                            }}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <input
+                            type="date"
+                            value={filterTTGDDateTo}
+                            onChange={e => setFilterTTGDDateTo(e.target.value)}
+                            title="Đến ngày"
+                            style={{
+                              width: '100%', padding: '2px 4px', fontSize: '0.72rem', borderRadius: 4,
+                              border: filterTTGDDateTo ? '1px solid #3b82f6' : '1px solid var(--border-light)',
+                              background: 'var(--bg-input, #fff)', color: 'var(--text-body)', outline: 'none', fontWeight: 400,
+                            }}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        </div>
+                      </th>
                       <th>Ngày ký TTĐC/VBTT</th>
                       <th>Ngày ký HĐMB</th>
-                      <th style={{ textAlign: 'right' }}>% Lãi phạt</th>
+                      <th style={{ textAlign: 'right' }}>
+                        <div>% Lãi phạt</div>
+                        <button
+                          onClick={() => setFilterTTGDLaiPhat(v => !v)}
+                          title={filterTTGDLaiPhat ? 'Đang lọc có lãi phạt — nhấn để bỏ' : 'Chỉ hiện dòng có lãi phạt'}
+                          style={{
+                            marginTop: 4, padding: '2px 8px', borderRadius: 4, fontSize: '0.72rem',
+                            fontWeight: filterTTGDLaiPhat ? 700 : 400, cursor: 'pointer',
+                            border: filterTTGDLaiPhat ? '1px solid #dc2626' : '1px solid var(--border-light)',
+                            background: filterTTGDLaiPhat ? 'rgba(220,38,38,0.1)' : 'transparent',
+                            color: filterTTGDLaiPhat ? '#dc2626' : 'var(--text-muted)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {filterTTGDLaiPhat ? `Có lãi (${filteredTTGD.length})` : 'Có lãi phạt'}
+                        </button>
+                      </th>
                       <th style={{ textAlign: 'right' }}>Lãi phạt phát sinh</th>
                     </tr>
                   </thead>
