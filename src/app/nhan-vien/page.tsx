@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
-  Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText, FileUser, RefreshCw
+  Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText, FileUser, RefreshCw,
+  Megaphone, Send, Paperclip, CheckCircle2, Users
 } from 'lucide-react';
 import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc } from '@/lib/types';
 import Link from 'next/link';
@@ -78,6 +79,54 @@ export default function NhanVienPage() {
   };
 
   const [syncing, setSyncing] = useState(false);
+
+  // Announcement email state
+  const annFileRef = useRef<HTMLInputElement>(null);
+  const [annModal, setAnnModal] = useState(false);
+  const [annSubject, setAnnSubject] = useState('');
+  const [annBody, setAnnBody] = useState('');
+  const [annFiles, setAnnFiles] = useState<File[]>([]);
+  const [annSending, setAnnSending] = useState(false);
+  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[] } | null>(null);
+
+  const openAnnModal = () => {
+    setAnnSubject('');
+    setAnnBody('');
+    setAnnFiles([]);
+    setAnnResult(null);
+    setAnnModal(true);
+  };
+
+  const addAnnFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    setAnnFiles(prev => [...prev, ...picked]);
+    e.target.value = '';
+  };
+
+  const removeAnnFile = (idx: number) => setAnnFiles(prev => prev.filter((_, i) => i !== idx));
+
+  const sendAnnouncement = async () => {
+    if (!annSubject.trim() || !annBody.trim()) return;
+    setAnnSending(true);
+    setAnnResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('subject', annSubject.trim());
+      fd.append('body', annBody.trim());
+      annFiles.forEach(f => fd.append('files', f));
+      const res = await fetch('/api/email/announcement', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.success) {
+        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [] });
+      } else {
+        alert('Lỗi gửi thông báo: ' + (data.error || 'Không xác định'));
+      }
+    } catch (err: any) {
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setAnnSending(false);
+    }
+  };
 
   const handleSync = async () => {
     if (!confirm('Bạn có chắc chắn muốn đồng bộ danh sách nhân viên từ file nguồn VIC_DATA NHÂN SỰ VICTORY HOLDINGS? Dữ liệu nhân sự trên CRM sẽ được cập nhật.')) return;
@@ -524,6 +573,39 @@ export default function NhanVienPage() {
           )}
         </div>
       </div>
+
+      {/* Announcement Card — HR/Admin only */}
+      {canEditHRM && (
+        <div className="card" style={{ marginBottom: 16, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Megaphone size={17} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-title)' }}>
+                  Gửi thông báo toàn thể
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
+                  Gửi email thông báo nội bộ đến tất cả nhân viên đang làm việc
+                </div>
+              </div>
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={openAnnModal}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              <Send size={15} />
+              Soạn thông báo
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Employee Table */}
       <div className="card" style={{ padding: 0 }}>
@@ -996,6 +1078,155 @@ export default function NhanVienPage() {
             <div className="confirm-actions">
               <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>Hủy</button>
               <button className="btn btn-danger" onClick={handleDelete}>Xóa</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Announcement Modal */}
+      {annModal && (
+        <div className="modal-overlay" onClick={() => !annSending && setAnnModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 580, width: '100%' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Megaphone size={18} style={{ color: 'var(--primary)' }} />
+                Gửi thông báo toàn thể
+              </h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setAnnModal(false)} disabled={annSending}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {/* Recipients info */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                background: 'var(--info-bg)', borderRadius: 'var(--radius-md)', marginBottom: 16,
+                fontSize: 13, color: 'var(--info-text)',
+              }}>
+                <Users size={14} />
+                <span>Gửi đến <strong>{employees.filter(nv => nv.email && nv.trang_thai !== 'Nghỉ việc').length} nhân viên</strong> có email</span>
+              </div>
+
+              {/* Subject */}
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label className="form-label">Tiêu đề *</label>
+                <input
+                  className="form-control"
+                  placeholder="Nhập tiêu đề thông báo..."
+                  value={annSubject}
+                  onChange={e => setAnnSubject(e.target.value)}
+                  disabled={annSending}
+                />
+              </div>
+
+              {/* Body */}
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label className="form-label">Nội dung *</label>
+                <textarea
+                  className="form-control"
+                  placeholder="Nhập nội dung thông báo..."
+                  value={annBody}
+                  onChange={e => setAnnBody(e.target.value)}
+                  disabled={annSending}
+                  rows={8}
+                  style={{ resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.65 }}
+                />
+              </div>
+
+              {/* File attachments */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Đính kèm (ảnh / PDF)</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => annFileRef.current?.click()}
+                    disabled={annSending}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content' }}
+                  >
+                    <Paperclip size={15} />
+                    Chọn file
+                  </button>
+                  <input
+                    ref={annFileRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf"
+                    style={{ display: 'none' }}
+                    onChange={addAnnFiles}
+                  />
+                  {annFiles.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {annFiles.map((f, i) => (
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                          background: 'var(--bg-surface-2, #f8fafc)', borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--border-light)', fontSize: 13,
+                        }}>
+                          <Paperclip size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {f.name}
+                          </span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            {(f.size / 1024).toFixed(0)} KB
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-icon btn-sm"
+                            onClick={() => removeAnnFile(i)}
+                            disabled={annSending}
+                            style={{ color: 'var(--danger-text)', flexShrink: 0 }}
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Result */}
+              {annResult && (
+                <div style={{
+                  marginTop: 16, padding: '12px 14px', borderRadius: 'var(--radius-md)',
+                  background: annResult.failed === 0 ? '#f0fdf4' : '#fffbeb',
+                  border: `1px solid ${annResult.failed === 0 ? '#bbf7d0' : '#fde68a'}`,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14,
+                    color: annResult.failed === 0 ? '#15803d' : '#92400e' }}>
+                    <CheckCircle2 size={16} />
+                    Gửi thành công {annResult.sent}/{annResult.sent + annResult.failed} email
+                    {annResult.failed > 0 && ` · ${annResult.failed} thất bại`}
+                  </div>
+                  {annResult.errors.length > 0 && (
+                    <ul style={{ margin: '8px 0 0 20px', fontSize: 12, color: '#92400e' }}>
+                      {annResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setAnnModal(false)} disabled={annSending}>
+                {annResult ? 'Đóng' : 'Hủy'}
+              </button>
+              {!annResult && (
+                <button
+                  className="btn btn-primary"
+                  onClick={sendAnnouncement}
+                  disabled={annSending || !annSubject.trim() || !annBody.trim()}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  {annSending ? (
+                    <><Loader2 size={15} className="animate-spin" />Đang gửi...</>
+                  ) : (
+                    <><Send size={15} />Gửi thông báo</>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
