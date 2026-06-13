@@ -87,12 +87,14 @@ export default function NhanVienPage() {
   const [annBody, setAnnBody] = useState('');
   const [annFiles, setAnnFiles] = useState<File[]>([]);
   const [annSending, setAnnSending] = useState(false);
-  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[] } | null>(null);
+  const [annTestEmail, setAnnTestEmail] = useState('');
+  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[]; isTest?: boolean } | null>(null);
 
   const openAnnModal = () => {
     setAnnSubject('');
     setAnnBody('');
     setAnnFiles([]);
+    setAnnTestEmail('');
     setAnnResult(null);
     setAnnModal(true);
   };
@@ -105,19 +107,21 @@ export default function NhanVienPage() {
 
   const removeAnnFile = (idx: number) => setAnnFiles(prev => prev.filter((_, i) => i !== idx));
 
-  const sendAnnouncement = async () => {
+  const sendAnnouncement = async (isTest = false) => {
     if (!annSubject.trim() || !annBody.trim()) return;
+    if (isTest && !annTestEmail.trim()) return;
     setAnnSending(true);
     setAnnResult(null);
     try {
       const fd = new FormData();
       fd.append('subject', annSubject.trim());
       fd.append('body', annBody.trim());
+      if (isTest) fd.append('testEmail', annTestEmail.trim());
       annFiles.forEach(f => fd.append('files', f));
       const res = await fetch('/api/email/announcement', { method: 'POST', body: fd });
       const data = await res.json();
       if (data.success) {
-        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [] });
+        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], isTest });
       } else {
         alert('Lỗi gửi thông báo: ' + (data.error || 'Không xác định'));
       }
@@ -1187,6 +1191,36 @@ export default function NhanVienPage() {
                 </div>
               </div>
 
+              {/* Test send */}
+              <div style={{
+                marginTop: 16, padding: '12px 14px', borderRadius: 'var(--radius-md)',
+                background: '#fafafa', border: '1px dashed var(--border-light)',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Gửi thử nghiệm
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    className="form-control"
+                    type="email"
+                    placeholder="Nhập email để gửi thử..."
+                    value={annTestEmail}
+                    onChange={e => setAnnTestEmail(e.target.value)}
+                    disabled={annSending}
+                    style={{ flex: 1, fontSize: 13 }}
+                  />
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => sendAnnouncement(true)}
+                    disabled={annSending || !annSubject.trim() || !annBody.trim() || !annTestEmail.trim()}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', flexShrink: 0 }}
+                  >
+                    {annSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    Gửi thử
+                  </button>
+                </div>
+              </div>
+
               {/* Result */}
               {annResult && (
                 <div style={{
@@ -1197,8 +1231,10 @@ export default function NhanVienPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14,
                     color: annResult.failed === 0 ? '#15803d' : '#92400e' }}>
                     <CheckCircle2 size={16} />
-                    Gửi thành công {annResult.sent}/{annResult.sent + annResult.failed} email
-                    {annResult.failed > 0 && ` · ${annResult.failed} thất bại`}
+                    {annResult.isTest
+                      ? `Gửi thử thành công đến ${annTestEmail}`
+                      : `Gửi thành công ${annResult.sent}/${annResult.sent + annResult.failed} email${annResult.failed > 0 ? ` · ${annResult.failed} thất bại` : ''}`
+                    }
                   </div>
                   {annResult.errors.length > 0 && (
                     <ul style={{ margin: '8px 0 0 20px', fontSize: 12, color: '#92400e' }}>
@@ -1213,17 +1249,17 @@ export default function NhanVienPage() {
               <button className="btn btn-secondary" onClick={() => setAnnModal(false)} disabled={annSending}>
                 {annResult ? 'Đóng' : 'Hủy'}
               </button>
-              {!annResult && (
+              {(!annResult || annResult.isTest) && (
                 <button
                   className="btn btn-primary"
-                  onClick={sendAnnouncement}
+                  onClick={() => sendAnnouncement(false)}
                   disabled={annSending || !annSubject.trim() || !annBody.trim()}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
                   {annSending ? (
                     <><Loader2 size={15} className="animate-spin" />Đang gửi...</>
                   ) : (
-                    <><Send size={15} />Gửi thông báo</>
+                    <><Send size={15} />Gửi toàn thể</>
                   )}
                 </button>
               )}

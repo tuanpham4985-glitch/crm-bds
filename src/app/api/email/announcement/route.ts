@@ -1,10 +1,11 @@
 /**
  * POST /api/email/announcement
- * Gửi thông báo nội bộ đến toàn thể nhân viên (hoặc danh sách id chỉ định).
+ * Gửi thông báo nội bộ đến toàn thể nhân viên hoặc 1 email thử.
  *
  * Body (multipart/form-data):
  *   subject      — Tiêu đề email
  *   body         — Nội dung (plain text hoặc HTML)
+ *   testEmail    — Nếu có: chỉ gửi đến email này (chế độ thử)
  *   recipientIds — JSON array id_nhan_vien, bỏ trống = gửi tất cả nhân viên đang làm
  *   files        — (tuỳ chọn) File đính kèm (image/*, .pdf)
  */
@@ -17,8 +18,9 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
 
-    const subject = (formData.get('subject') as string | null)?.trim();
-    const body    = (formData.get('body')    as string | null)?.trim();
+    const subject   = (formData.get('subject')   as string | null)?.trim();
+    const body      = (formData.get('body')       as string | null)?.trim();
+    const testEmail = (formData.get('testEmail')  as string | null)?.trim();
     const recipientIdsRaw = formData.get('recipientIds') as string | null;
 
     if (!subject || !body) {
@@ -42,18 +44,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get employee list
-    const allEmployees = await getNhanVien();
-    const selectedIds: string[] | null = recipientIdsRaw ? JSON.parse(recipientIdsRaw) : null;
-
-    const recipients = allEmployees
-      .filter(nv => {
-        if (nv.trang_thai === 'Nghỉ việc') return false;
-        if (!nv.email?.trim()) return false;
-        if (selectedIds && !selectedIds.includes(nv.id_nhan_vien)) return false;
-        return true;
-      })
-      .map(nv => ({ email: nv.email.trim(), ho_ten: nv.ho_ten }));
+    // Chế độ gửi thử: chỉ gửi đến testEmail, không cần lấy danh sách nhân viên
+    let recipients: { email: string; ho_ten: string }[];
+    if (testEmail) {
+      recipients = [{ email: testEmail, ho_ten: 'Test' }];
+    } else {
+      const allEmployees = await getNhanVien();
+      const selectedIds: string[] | null = recipientIdsRaw ? JSON.parse(recipientIdsRaw) : null;
+      recipients = allEmployees
+        .filter(nv => {
+          if (nv.trang_thai === 'Nghỉ việc') return false;
+          if (!nv.email?.trim()) return false;
+          if (selectedIds && !selectedIds.includes(nv.id_nhan_vien)) return false;
+          return true;
+        })
+        .map(nv => ({ email: nv.email.trim(), ho_ten: nv.ho_ten }));
+    }
 
     if (recipients.length === 0) {
       return NextResponse.json(
