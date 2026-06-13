@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
     const smtpUser = process.env.SMTP_USER;
     const smtpPass = process.env.SMTP_PASS;
     const smtpFrom = process.env.SMTP_FROM || 'Victory Holdings HR';
+    const smtpFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser;
 
     if (!smtpHost || !smtpUser || !smtpPass) {
       return NextResponse.json(
@@ -233,7 +234,7 @@ export async function POST(request: NextRequest) {
       }
       try {
         await transporter.sendMail({
-          from: `"${smtpFrom}" <${smtpUser}>`,
+          from: `"${smtpFrom}" <${smtpFromEmail}>`,
           to: row.email.trim(),
           subject: `Phiếu lương tháng ${thang}/${nam} — ${row.ho_ten}`,
           html: buildHtml(row, thang, nam),
