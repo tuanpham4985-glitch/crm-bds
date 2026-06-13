@@ -34,6 +34,8 @@ interface Props {
   disabled?: boolean;
   placeholder?: string;
   minHeight?: number;
+  /** Khi true: editor dùng flex để lấp đầy container cha, bỏ qua minHeight/maxHeight */
+  fillHeight?: boolean;
 }
 
 export default function RichEditor({
@@ -43,6 +45,7 @@ export default function RichEditor({
   disabled = false,
   placeholder = 'Nhập nội dung...',
   minHeight = 200,
+  fillHeight = false,
 }: Props) {
   const editorRef     = useRef<HTMLDivElement>(null);
   const onChangeRef   = useRef(onChange);
@@ -154,7 +157,10 @@ export default function RichEditor({
   };
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={fillHeight
+      ? { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }
+      : { position: 'relative' }
+    }>
 
       {/* ── Toolbar ── */}
       <div
@@ -241,7 +247,10 @@ export default function RichEditor({
       </div>
 
       {/* ── Editor ── */}
-      <div style={{ position: 'relative' }}>
+      <div style={fillHeight
+        ? { position: 'relative', flex: 1, minHeight: 0 }
+        : { position: 'relative' }
+      }>
         <div
           ref={editorRef}
           contentEditable={!disabled}
@@ -255,8 +264,7 @@ export default function RichEditor({
           onDragLeave={onFileDrop ? onDragLeave : undefined}
           onDrop={onFileDrop ? onDrop : undefined}
           style={{
-            minHeight,
-            maxHeight: 380,
+            ...(fillHeight ? { height: '100%' } : { minHeight, maxHeight: 380 }),
             padding: '14px 16px',
             border: `1px solid ${dragging ? '#6366f1' : 'var(--border-light, #e2e8f0)'}`,
             borderRadius: '0 0 8px 8px',

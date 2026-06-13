@@ -1088,12 +1088,29 @@ export default function NhanVienPage() {
         </div>
       )}
 
-      {/* Announcement Modal */}
+      {/* Announcement Modal — flex layout: chỉ editor tự scroll, modal không scroll */}
       {annModal && (
         <div className="modal-overlay" onClick={() => !annSending && setAnnModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 580, width: '100%' }}>
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-surface)',
+              borderRadius: 'var(--radius-2xl)',
+              boxShadow: 'var(--shadow-lg)',
+              width: '100%',
+              maxWidth: 600,
+              height: 'min(92vh, 860px)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',       /* modal không scroll — chỉ editor scroll */
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '18px 24px', borderBottom: '1px solid var(--border-light)', flexShrink: 0,
+            }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-title)' }}>
                 <Megaphone size={18} style={{ color: 'var(--primary)' }} />
                 Gửi thông báo toàn thể
               </h3>
@@ -1102,19 +1119,21 @@ export default function NhanVienPage() {
               </button>
             </div>
 
-            <div className="modal-body">
-              {/* Recipients info */}
+            {/* Body — flex column, editor fills remaining space */}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '16px 24px 0', gap: 10, overflow: 'hidden' }}>
+
+              {/* Recipients */}
               <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-                background: 'var(--info-bg)', borderRadius: 'var(--radius-md)', marginBottom: 16,
-                fontSize: 13, color: 'var(--info-text)',
+                flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 12px', background: 'var(--info-bg)',
+                borderRadius: 'var(--radius-md)', fontSize: 13, color: 'var(--info-text)',
               }}>
                 <Users size={14} />
                 <span>Gửi đến <strong>{employees.filter(nv => nv.email && nv.trang_thai !== 'Nghỉ việc').length} nhân viên</strong> có email</span>
               </div>
 
               {/* Subject */}
-              <div className="form-group" style={{ marginBottom: 12 }}>
+              <div style={{ flexShrink: 0 }}>
                 <label className="form-label">Tiêu đề *</label>
                 <input
                   className="form-control"
@@ -1125,97 +1144,78 @@ export default function NhanVienPage() {
                 />
               </div>
 
-              {/* Body */}
-              <div className="form-group" style={{ marginBottom: 12 }}>
-                <label className="form-label">Nội dung *</label>
-                <RichEditor
-                  value={annBody}
-                  onChange={setAnnBody}
-                  onFileDrop={files => setAnnFiles(prev => [...prev, ...files])}
-                  disabled={annSending}
-                  placeholder="Nhập nội dung thông báo..."
-                  minHeight={200}
-                />
+              {/* Editor — chiếm toàn bộ không gian còn lại */}
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <label className="form-label" style={{ flexShrink: 0 }}>Nội dung *</label>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <RichEditor
+                    value={annBody}
+                    onChange={setAnnBody}
+                    onFileDrop={files => setAnnFiles(prev => [...prev, ...files])}
+                    disabled={annSending}
+                    placeholder="Nhập nội dung thông báo..."
+                    fillHeight
+                  />
+                </div>
               </div>
+            </div>
 
-              {/* File attachments */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Đính kèm (ảnh / PDF)</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Bottom panel: attachments + test + result — có scroll riêng nếu cần */}
+            <div style={{
+              flexShrink: 0, padding: '12px 24px',
+              borderTop: '1px solid var(--border-lighter)',
+              display: 'flex', flexDirection: 'column', gap: 10,
+              maxHeight: 220, overflowY: 'auto',
+            }}>
+              {/* Attachments */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: annFiles.length ? 6 : 0 }}>
                   <button
                     type="button"
-                    className="btn btn-secondary"
+                    className="btn btn-secondary btn-sm"
                     onClick={() => annFileRef.current?.click()}
                     disabled={annSending}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
                   >
-                    <Paperclip size={15} />
-                    Chọn file
+                    <Paperclip size={13} />
+                    Đính kèm file
                   </button>
-                  <input
-                    ref={annFileRef}
-                    type="file"
-                    multiple
-                    accept="image/*,.pdf"
-                    style={{ display: 'none' }}
-                    onChange={addAnnFiles}
-                  />
-                  {annFiles.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {annFiles.map((f, i) => (
-                        <div key={i} style={{
-                          display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-                          background: 'var(--bg-surface-2, #f8fafc)', borderRadius: 'var(--radius-md)',
-                          border: '1px solid var(--border-light)', fontSize: 13,
-                        }}>
-                          <Paperclip size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {f.name}
-                          </span>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                            {(f.size / 1024).toFixed(0)} KB
-                          </span>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-icon btn-sm"
-                            onClick={() => removeAnnFile(i)}
-                            disabled={annSending}
-                            style={{ color: 'var(--danger-text)', flexShrink: 0 }}
-                          >
-                            <X size={13} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Ảnh hoặc PDF</span>
                 </div>
+                <input ref={annFileRef} type="file" multiple accept="image/*,.pdf" style={{ display: 'none' }} onChange={addAnnFiles} />
+                {annFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    {annFiles.map((f, i) => (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
+                        background: '#f8fafc', borderRadius: 6, border: '1px solid var(--border-light)', fontSize: 13,
+                      }}>
+                        <Paperclip size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{(f.size / 1024).toFixed(0)} KB</span>
+                        <button type="button" className="btn btn-ghost btn-icon btn-sm"
+                          onClick={() => removeAnnFile(i)} disabled={annSending}
+                          style={{ color: 'var(--danger-text)', flexShrink: 0 }}><X size={12} /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Test send */}
-              <div style={{
-                marginTop: 16, padding: '12px 14px', borderRadius: 'var(--radius-md)',
-                background: '#fafafa', border: '1px dashed var(--border-light)',
-              }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div style={{ padding: '10px 12px', borderRadius: 8, background: '#fafafa', border: '1px dashed var(--border-light)' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Gửi thử nghiệm
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    className="form-control"
-                    type="email"
-                    placeholder="Nhập email để gửi thử..."
-                    value={annTestEmail}
-                    onChange={e => setAnnTestEmail(e.target.value)}
-                    disabled={annSending}
-                    style={{ flex: 1, fontSize: 13 }}
-                  />
-                  <button
-                    className="btn btn-secondary"
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="form-control" type="email" placeholder="Nhập email để gửi thử..."
+                    value={annTestEmail} onChange={e => setAnnTestEmail(e.target.value)}
+                    disabled={annSending} style={{ flex: 1, fontSize: 13 }} />
+                  <button className="btn btn-secondary btn-sm"
                     onClick={() => sendAnnouncement(true)}
                     disabled={annSending || !annSubject.trim() || !annBody.trim() || !annTestEmail.trim()}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', flexShrink: 0 }}
-                  >
-                    {annSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {annSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                     Gửi thử
                   </button>
                 </div>
@@ -1224,20 +1224,19 @@ export default function NhanVienPage() {
               {/* Result */}
               {annResult && (
                 <div style={{
-                  marginTop: 16, padding: '12px 14px', borderRadius: 'var(--radius-md)',
+                  padding: '10px 12px', borderRadius: 8,
                   background: annResult.failed === 0 ? '#f0fdf4' : '#fffbeb',
                   border: `1px solid ${annResult.failed === 0 ? '#bbf7d0' : '#fde68a'}`,
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14,
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 600, fontSize: 13,
                     color: annResult.failed === 0 ? '#15803d' : '#92400e' }}>
-                    <CheckCircle2 size={16} />
+                    <CheckCircle2 size={15} />
                     {annResult.isTest
                       ? `Gửi thử thành công đến ${annTestEmail}`
-                      : `Gửi thành công ${annResult.sent}/${annResult.sent + annResult.failed} email${annResult.failed > 0 ? ` · ${annResult.failed} thất bại` : ''}`
-                    }
+                      : `Gửi thành công ${annResult.sent}/${annResult.sent + annResult.failed} email${annResult.failed > 0 ? ` · ${annResult.failed} thất bại` : ''}`}
                   </div>
                   {annResult.errors.length > 0 && (
-                    <ul style={{ margin: '8px 0 0 20px', fontSize: 12, color: '#92400e' }}>
+                    <ul style={{ margin: '6px 0 0 18px', fontSize: 12, color: '#92400e' }}>
                       {annResult.errors.map((e, i) => <li key={i}>{e}</li>)}
                     </ul>
                   )}
@@ -1245,22 +1244,22 @@ export default function NhanVienPage() {
               )}
             </div>
 
-            <div className="modal-footer">
+            {/* Footer */}
+            <div style={{
+              flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 10,
+              padding: '14px 24px', borderTop: '1px solid var(--border-lighter)',
+            }}>
               <button className="btn btn-secondary" onClick={() => setAnnModal(false)} disabled={annSending}>
                 {annResult ? 'Đóng' : 'Hủy'}
               </button>
               {(!annResult || annResult.isTest) && (
-                <button
-                  className="btn btn-primary"
+                <button className="btn btn-primary"
                   onClick={() => sendAnnouncement(false)}
                   disabled={annSending || !annSubject.trim() || !annBody.trim()}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                >
-                  {annSending ? (
-                    <><Loader2 size={15} className="animate-spin" />Đang gửi...</>
-                  ) : (
-                    <><Send size={15} />Gửi toàn thể</>
-                  )}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {annSending
+                    ? <><Loader2 size={15} className="animate-spin" />Đang gửi...</>
+                    : <><Send size={15} />Gửi toàn thể</>}
                 </button>
               )}
             </div>
