@@ -7,6 +7,7 @@ const COLORS = [
   { label: 'Đen',        value: '#1f2937' },
   { label: 'Đỏ',         value: '#dc2626' },
   { label: 'Cam',         value: '#ea580c' },
+  { label: 'Vàng kim',   value: '#f59e0b' },
   { label: 'Vàng đậm',  value: '#b45309' },
   { label: 'Xanh lá',   value: '#15803d' },
   { label: 'Xanh dương',value: '#1d4ed8' },
