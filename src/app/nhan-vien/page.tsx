@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc } from '@/lib/types';
 import Link from 'next/link';
+import RichEditor from '@/components/RichEditor';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { VAI_TRO } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
@@ -1127,14 +1128,12 @@ export default function NhanVienPage() {
               {/* Body */}
               <div className="form-group" style={{ marginBottom: 12 }}>
                 <label className="form-label">Nội dung *</label>
-                <textarea
-                  className="form-control"
-                  placeholder="Nhập nội dung thông báo..."
+                <RichEditor
                   value={annBody}
-                  onChange={e => setAnnBody(e.target.value)}
+                  onChange={setAnnBody}
                   disabled={annSending}
-                  rows={8}
-                  style={{ resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.65 }}
+                  placeholder="Nhập nội dung thông báo..."
+                  minHeight={200}
                 />
               </div>
 
