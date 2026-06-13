@@ -154,7 +154,7 @@ export default function RichEditor({
   };
 
   return (
-    <div style={{ position: 'relative', fontSize: 0 }}>
+    <div style={{ position: 'relative' }}>
 
       {/* ── Toolbar ── */}
       <div
@@ -256,6 +256,7 @@ export default function RichEditor({
           onDrop={onFileDrop ? onDrop : undefined}
           style={{
             minHeight,
+            maxHeight: 380,
             padding: '14px 16px',
             border: `1px solid ${dragging ? '#6366f1' : 'var(--border-light, #e2e8f0)'}`,
             borderRadius: '0 0 8px 8px',
@@ -345,8 +346,8 @@ export default function RichEditor({
           color: #9ca3af;
           pointer-events: none;
         }
-        [contenteditable] ul { padding-left: 1.5em; margin: 4px 0; }
-        [contenteditable] li { list-style: disc; margin: 2px 0; cursor: text; user-select: text; }
+        [contenteditable] ul { padding-left: 24px; margin: 4px 0; }
+        [contenteditable] li { list-style: disc; margin: 2px 0; cursor: text; user-select: text; pointer-events: auto; }
       `}</style>
     </div>
   );
