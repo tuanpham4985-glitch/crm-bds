@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  Bold, Italic, Underline, Type, Smile, RotateCcw, List
+  Bold, Italic, Underline, Type, Smile, RotateCcw, List, Paperclip
 } from 'lucide-react';
 
 const COLORS = [
@@ -25,9 +25,12 @@ const SIZES = [
   { label: 'Tiêu đề',  value: '6' },
 ];
 
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+
 interface Props {
   value: string;
   onChange: (html: string) => void;
+  onFileDrop?: (files: File[]) => void;
   disabled?: boolean;
   placeholder?: string;
   minHeight?: number;
@@ -36,17 +39,21 @@ interface Props {
 export default function RichEditor({
   value,
   onChange,
+  onFileDrop,
   disabled = false,
   placeholder = 'Nhập nội dung...',
   minHeight = 200,
 }: Props) {
-  const editorRef   = useRef<HTMLDivElement>(null);
-  const onChangeRef = useRef(onChange);
-  const initialized = useRef(false);
+  const editorRef     = useRef<HTMLDivElement>(null);
+  const onChangeRef   = useRef(onChange);
+  const onDropRef     = useRef(onFileDrop);
+  const initialized   = useRef(false);
+  const dragCounter   = useRef(0);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [dragging, setDragging]   = useState(false);
 
-  // Keep the callback ref fresh without triggering effects
   onChangeRef.current = onChange;
+  onDropRef.current   = onFileDrop;
 
   // Set initial HTML only once on first mount
   useEffect(() => {
@@ -68,6 +75,32 @@ export default function RichEditor({
   const notify = useCallback(() => {
     onChangeRef.current(editorRef.current?.innerHTML ?? '');
   }, []);
+
+  // ── Drag & drop handlers ──
+  const onDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (disabled || !onDropRef.current) return;
+    dragCounter.current += 1;
+    if ([...e.dataTransfer.items].some(i => ALLOWED_TYPES.includes(i.type))) {
+      setDragging(true);
+    }
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) setDragging(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragging(false);
+    if (disabled || !onDropRef.current) return;
+    const files = [...e.dataTransfer.files].filter(f => ALLOWED_TYPES.includes(f.type));
+    if (files.length > 0) onDropRef.current(files);
+  };
 
   // ── execCommand helpers (use onMouseDown + preventDefault to keep focus) ──
   const cmd = (command: string, val?: string) => (e: React.MouseEvent) => {
@@ -208,32 +241,60 @@ export default function RichEditor({
       </div>
 
       {/* ── Editor ── */}
-      <div
-        ref={editorRef}
-        contentEditable={!disabled}
-        suppressContentEditableWarning
-        spellCheck={false}
-        data-ph={!disabled ? placeholder : undefined}
-        onInput={notify}
-        onBlur={notify}
-        style={{
-          minHeight,
-          padding: '14px 16px',
-          border: '1px solid var(--border-light, #e2e8f0)',
-          borderRadius: '0 0 8px 8px',
-          outline: 'none',
-          fontSize: 15,
-          lineHeight: 1.75,
-          color: '#1f2937',
-          background: disabled ? '#f9fafb' : '#fff',
-          cursor: disabled ? 'default' : 'text',
-          overflowY: 'auto',
-          wordBreak: 'break-word',
-          userSelect: disabled ? 'none' : 'text',
-          WebkitUserSelect: disabled ? 'none' : 'text',
-          boxSizing: 'border-box',
-        }}
-      />
+      <div style={{ position: 'relative' }}>
+        <div
+          ref={editorRef}
+          contentEditable={!disabled}
+          suppressContentEditableWarning
+          spellCheck={false}
+          data-ph={!disabled ? placeholder : undefined}
+          onInput={notify}
+          onBlur={notify}
+          onDragEnter={onFileDrop ? onDragEnter : undefined}
+          onDragOver={onFileDrop ? onDragOver : undefined}
+          onDragLeave={onFileDrop ? onDragLeave : undefined}
+          onDrop={onFileDrop ? onDrop : undefined}
+          style={{
+            minHeight,
+            padding: '14px 16px',
+            border: `1px solid ${dragging ? '#6366f1' : 'var(--border-light, #e2e8f0)'}`,
+            borderRadius: '0 0 8px 8px',
+            outline: 'none',
+            fontSize: 15,
+            lineHeight: 1.75,
+            color: '#1f2937',
+            background: disabled ? '#f9fafb' : '#fff',
+            cursor: disabled ? 'default' : 'text',
+            overflowY: 'auto',
+            wordBreak: 'break-word',
+            userSelect: disabled ? 'none' : 'text',
+            WebkitUserSelect: disabled ? 'none' : 'text',
+            boxSizing: 'border-box',
+            transition: 'border-color 0.15s',
+          }}
+        />
+
+        {/* Drop overlay */}
+        {dragging && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            borderRadius: '0 0 8px 8px',
+            background: 'rgba(99,102,241,0.08)',
+            border: '2px dashed #6366f1',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            gap: 8, pointerEvents: 'none',
+          }}>
+            <Paperclip size={28} color="#6366f1" />
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#4f46e5' }}>
+              Thả file để đính kèm
+            </span>
+            <span style={{ fontSize: 12, color: '#818cf8' }}>
+              Hỗ trợ: ảnh (JPG, PNG, GIF) và PDF
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* ── Emoji picker (outside toolbar to avoid covering editor) ── */}
       {showEmoji && (

@@ -1131,6 +1131,7 @@ export default function NhanVienPage() {
                 <RichEditor
                   value={annBody}
                   onChange={setAnnBody}
+                  onFileDrop={files => setAnnFiles(prev => [...prev, ...files])}
                   disabled={annSending}
                   placeholder="Nhập nội dung thông báo..."
                   minHeight={200}
