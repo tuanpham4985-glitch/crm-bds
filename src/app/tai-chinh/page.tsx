@@ -371,6 +371,11 @@ export default function TaiChinhPage() {
             <Download size={14} />
             {exporting ? 'Đang xuất...' : 'Xuất Word'}
           </button>
+          <a href="/tai-chinh/cfo"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: '#6366f115', color: '#6366f1', border: '1px solid #6366f130', fontSize: '0.8rem', fontWeight: 700, textDecoration: 'none' }}>
+            <BarChart2 size={14} />
+            CFO Dashboard
+          </a>
         </div>
       </div>
 
@@ -483,7 +488,7 @@ export default function TaiChinhPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-lighter)" />
               <XAxis dataKey="thang" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={[0, Math.max(13, ...monthly.map(m => Math.max(m.soCan, m.canKH ?? 0) + 2))]} />
-              <Tooltip formatter={(v: any, name: string) => [`${v} căn`, name]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              <Tooltip formatter={(v: any) => [`${v} căn`]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
               <ReferenceLine y={Math.round(Math.round(tgtCan))} stroke="#ef4444" strokeDasharray="5 4" strokeWidth={1.5} />
               <Bar dataKey="soCan" name="Thực tế" radius={[4,4,0,0]}>
                 {monthly.map(m => <Cell key={m.thang} fill={m.soCan >= (m.canKH ?? 6) ? '#10b981' : '#f87171'} />)}
