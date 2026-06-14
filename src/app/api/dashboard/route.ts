@@ -299,12 +299,11 @@ export async function GET(request: NextRequest) {
     );
 
     // Doanh thu theo sale — loại trừ "Đối tác" (không tính vào bảng xếp hạng nội bộ)
+    // Chỉ loại theo sale_phu_trach, KHÔNG check phong_kd:
+    // nhân viên nội bộ có thể xử lý deal qua kênh "Đối tác" nhưng vẫn cần được tính vào BXH cá nhân.
     const saleMap = new Map<string, DoanhThuTheoSale>();
     daKy.forEach(pl => {
-      // Bỏ qua deal của Đối tác (kiểm tra cả sale_phu_trach và phong_kd)
-      const isDoiTac =
-        (pl.sale_phu_trach || '').toLowerCase().includes('đối tác') ||
-        (pl.phong_kd || '').toLowerCase().includes('đối tác');
+      const isDoiTac = (pl.sale_phu_trach || '').toLowerCase().includes('đối tác');
       if (isDoiTac) return;
 
       const key = pl.sale_phu_trach || 'Chưa phân';
