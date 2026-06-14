@@ -247,8 +247,11 @@ export async function GET(request: NextRequest) {
     // Filter current period — PRIMARY: thang column (timezone-safe); FALLBACK: ngay_cap_nhat
     const currentPipelines = allPipelines.filter(pl => {
       // Primary: match by thang (format YYYY-MM or MM-YYYY) — no timezone issues
-      if (pl.thang) {
-        return currentThangKeys.has(pl.thang);
+      // Only use thang as primary if it actually matches a known key format.
+      // If thang is present but in an unrecognized format (e.g. "6/2026", "6", "T6-2026"),
+      // fall through to the ngay_cap_nhat fallback instead of silently dropping the deal.
+      if (pl.thang && currentThangKeys.has(pl.thang)) {
+        return true;
       }
       // Fallback: try to parse ngay_cap_nhat (add 1-day buffer to handle UTC+7 offset)
       if (pl.ngay_cap_nhat) {
