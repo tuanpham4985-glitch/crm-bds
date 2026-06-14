@@ -1185,7 +1185,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
                   <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-body)', whiteSpace: 'nowrap' }}>{x.loai}</span>
                 </div>
                 <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right' }}>
-                  {x.so_can} <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.72rem' }}>({Math.round(x.so_can / total_can * 100)}%)</span>
+                  {x.so_can}
                 </span>
                 <span style={{ fontSize: '0.82rem', fontWeight: 700, color: colors[i % colors.length], textAlign: 'right' }}>
                   {fmtTy(x.doanh_so)}
