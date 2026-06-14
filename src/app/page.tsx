@@ -1171,31 +1171,36 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
               </PieChart>
             </ResponsiveContainer>
           </div>
-          {/* Table */}
+          {/* Table — single grid so all rows share the same column widths */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '4px 12px', fontSize: '0.78rem', marginBottom: 6 }}>
-              <span style={{ color: 'var(--text-label)', fontWeight: 600 }}>Loại</span>
-              <span style={{ color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Số căn</span>
-              <span style={{ color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Doanh số</span>
-            </div>
-            {items.map((x, i) => (
-              <div key={x.loai} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '4px 12px', marginBottom: 8, alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[i % colors.length], flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-body)', whiteSpace: 'nowrap' }}>{x.loai}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 44px 88px', rowGap: 8, columnGap: 12, alignItems: 'center' }}>
+              {/* Header */}
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-label)', fontWeight: 600 }}>Loại</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Số căn</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Doanh số</span>
+
+              {/* Data rows — display:contents makes wrapper invisible to grid */}
+              {items.map((x, i) => (
+                <div key={x.loai} style={{ display: 'contents' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[i % colors.length], flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-body)', whiteSpace: 'nowrap' }}>{x.loai}</span>
+                  </div>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right' }}>
+                    {x.so_can}
+                  </span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: colors[i % colors.length], textAlign: 'right' }}>
+                    {fmtTy(x.doanh_so)}
+                  </span>
                 </div>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right' }}>
-                  {x.so_can}
-                </span>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: colors[i % colors.length], textAlign: 'right' }}>
-                  {fmtTy(x.doanh_so)}
-                </span>
+              ))}
+
+              {/* Total row */}
+              <div style={{ display: 'contents' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', borderTop: '1px solid var(--border)', paddingTop: 6 }}>Tổng</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right', borderTop: '1px solid var(--border)', paddingTop: 6 }}>{total_can}</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right', borderTop: '1px solid var(--border)', paddingTop: 6 }}>{fmtTy(total_ds)}</span>
               </div>
-            ))}
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 6, display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '4px 12px' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)' }}>Tổng</span>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right' }}>{total_can}</span>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right' }}>{fmtTy(total_ds)}</span>
             </div>
           </div>
         </div>
