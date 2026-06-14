@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Briefcase, BarChart3, LayoutList,
+  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp,
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -275,6 +275,16 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           >
             <BarChart3 size={20} />
             <span>Báo cáo bán hàng</span>
+          </Link>
+        </div>
+        <div className={styles.navSection}>
+          <Link
+            href="/tai-chinh"
+            className={`${styles.navItem} ${pathname.startsWith('/tai-chinh') ? styles.active : ''}`}
+            title="Tài chính"
+          >
+            <TrendingUp size={20} />
+            <span>Tài chính</span>
           </Link>
         </div>
 
