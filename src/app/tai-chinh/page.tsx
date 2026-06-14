@@ -1,95 +1,167 @@
 'use client';
 
+import { useState, useRef, useMemo } from 'react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
-import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, DollarSign, Home, BarChart2, Percent } from 'lucide-react';
+import {
+  TrendingUp, TrendingDown, DollarSign, Home, BarChart2, Percent,
+  Upload, FileSpreadsheet, Download, X, AlertCircle,
+} from 'lucide-react';
 
-const fmt = (v: number) =>
-  v >= 1e9 ? `${(v / 1e9).toFixed(2)} tỷ` : v >= 1e6 ? `${(v / 1e6).toFixed(0)} tr` : v.toLocaleString('vi');
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface RawMonthly { label: string; doanhSo: number; dtHH: number; soCan: number }
+interface RawPnL {
+  soCan: number; doanhSo: number; dtMG: number;
+  hhSalesAll: number; thuongNongSales: number;
+  cpBanHang: number; cpVanHanh: number; lnTruocThue: number;
+}
+interface RawData {
+  period: string; filename: string; numMonths: number;
+  pnl: RawPnL; monthly: RawMonthly[];
+}
+
+// ─── Default data (T1–T5/2026) ───────────────────────────────────────────────
+
+const DEFAULT_RAW: RawData = {
+  period: 'T1–T5/2026', filename: 'VH_BC KQ HĐKD T1-5.2026.xlsx', numMonths: 5,
+  pnl: {
+    soCan: 32, doanhSo: 457237918201, dtMG: 15635026322,
+    hhSalesAll: 11001292919, thuongNongSales: 690909091,
+    cpBanHang: 743647888, cpVanHanh: 2344661707, lnTruocThue: 854514717,
+  },
+  monthly: [
+    { label: 'T12/25', doanhSo: 73632000000, dtHH: 2449000000, soCan: 3 },
+    { label: 'T1/26',  doanhSo: 115516000000, dtHH: 3905000000, soCan: 11 },
+    { label: 'T2/26',  doanhSo: 19942000000,  dtHH: 617000000,  soCan: 2 },
+    { label: 'T3/26',  doanhSo: 60524000000,  dtHH: 1812000000, soCan: 3 },
+    { label: 'T4/26',  doanhSo: 66896000000,  dtHH: 2148000000, soCan: 7 },
+    { label: 'T5/26',  doanhSo: 120728000000, dtHH: 4620000000, soCan: 7 },
+  ],
+};
+
+// ─── Compute display values ───────────────────────────────────────────────────
+
+function computeDisplay(raw: RawData) {
+  const B = 1e9;
+  const p = raw.pnl;
+  const dtMG  = p.dtMG / B;
+  const hhAll = p.hhSalesAll / B;
+  const tNong = p.thuongNongSales / B;
+  const cpBH  = p.cpBanHang / B;
+  const cpVH  = p.cpVanHanh / B;
+  const ln    = p.lnTruocThue / B;
+  const ds    = p.doanhSo / B;
+  const gross = dtMG - hhAll - tNong;
+  const pct   = (a: number) => dtMG > 0 ? a / dtMG * 100 : 0;
+
+  const hhPct    = pct(hhAll);
+  const tNongPct = pct(tNong);
+  const grossPct = pct(gross);
+  const cpBHPct  = pct(cpBH);
+  const cpVHPct  = pct(cpVH);
+  const lnPct    = pct(ln);
+
+  const n = raw.numMonths || raw.monthly.filter(m => !m.label.includes('12/')).length || 5;
+  const avgDS  = ds / n;
+  const avgDT  = dtMG / n;
+  const avgCan = p.soCan / n;
+
+  const monthly = raw.monthly.map(m => ({
+    thang: m.label,
+    doanhSo: m.doanhSo / B,
+    dtHH: m.dtHH / B,
+    soCan: m.soCan,
+  }));
+
+  const pnlRows = [
+    { label: 'Doanh thu MG', value: dtMG, pct: 100, type: 'pos' },
+    { label: `HH Sales (${hhPct.toFixed(1)}%)`, value: -hhAll, pct: -hhPct, type: 'neg' },
+    { label: 'Thưởng nóng sales', value: -tNong, pct: -tNongPct, type: 'neg' },
+    { label: 'Lợi nhuận gộp', value: gross, pct: grossPct, type: 'mid' },
+    { label: 'CP bán hàng/MKT', value: -cpBH, pct: -cpBHPct, type: 'neg' },
+    { label: 'CP vận hành', value: -cpVH, pct: -cpVHPct, type: 'warn' },
+    { label: 'LN trước thuế', value: ln, pct: lnPct, type: 'result' },
+  ];
+
+  const kpis = [
+    {
+      icon: DollarSign, label: 'Doanh số GD', value: `${ds.toFixed(1)} tỷ`,
+      sub: `BQ/tháng: ${avgDS.toFixed(1)} tỷ`, target: 'Mục tiêu ≥ 58 tỷ/tháng',
+      status: avgDS >= 58 ? 'green' : 'red',
+      note: avgDS >= 58 ? `Vượt mục tiêu +${((avgDS/58-1)*100).toFixed(0)}%` : `Chưa đạt (thiếu ${(58-avgDS).toFixed(1)} tỷ)`,
+    },
+    {
+      icon: TrendingUp, label: 'Doanh thu môi giới', value: `${dtMG.toFixed(2)} tỷ`,
+      sub: `BQ/tháng: ${avgDT.toFixed(2)} tỷ`, target: 'Mục tiêu ≥ 2,3 tỷ/tháng',
+      status: avgDT >= 2.3 ? 'green' : 'red',
+      note: avgDT >= 2.3 ? `Vượt mục tiêu +${((avgDT/2.3-1)*100).toFixed(0)}%` : `Chưa đạt (thiếu ${(2.3-avgDT).toFixed(2)} tỷ)`,
+    },
+    {
+      icon: Home, label: 'Số căn bán', value: `${p.soCan} căn`,
+      sub: `BQ/tháng: ${avgCan.toFixed(1)} căn`, target: 'Mục tiêu ≥ 6–7 căn/tháng',
+      status: avgCan >= 6 ? 'green' : avgCan >= 4 ? 'amber' : 'red',
+      note: avgCan >= 6 ? 'Đạt mục tiêu' : `Chưa đạt (BQ ${avgCan.toFixed(1)} căn/tháng)`,
+    },
+    {
+      icon: Percent, label: 'HH Sales / Doanh thu', value: `${hhPct.toFixed(1)}%`,
+      sub: `HH Sales: ${hhAll.toFixed(2)} tỷ`, target: 'Mục tiêu ≤ 65%',
+      status: hhPct <= 65 ? 'green' : hhPct <= 70 ? 'amber' : 'red',
+      note: hhPct <= 65 ? `Tốt (dư ${(65-hhPct).toFixed(1)}%)` : `Vượt giới hạn +${(hhPct-65).toFixed(1)}%`,
+    },
+    {
+      icon: BarChart2, label: 'CP vận hành / DT', value: `${cpVHPct.toFixed(1)}%`,
+      sub: `CP VH: ${cpVH.toFixed(2)} tỷ`, target: 'Mục tiêu ≤ 15%',
+      status: cpVHPct <= 15 ? (cpVHPct >= 13 ? 'amber' : 'green') : 'red',
+      note: cpVHPct <= 15 ? 'Trong giới hạn' : `Vượt giới hạn +${(cpVHPct-15).toFixed(1)}%`,
+    },
+    {
+      icon: TrendingDown, label: 'LN trước thuế', value: `${lnPct.toFixed(1)}%`,
+      sub: `LN: ${(ln*1000).toFixed(0)} triệu`, target: 'Mục tiêu ≥ 20% DT',
+      status: lnPct >= 20 ? 'green' : lnPct >= 10 ? 'amber' : 'red',
+      note: lnPct >= 20 ? 'Đạt mục tiêu' : `Thiếu ${(20-lnPct).toFixed(1)}% — kiểm soát HH Sales`,
+    },
+  ];
+
+  const insights: { type: string; title: string; body: string }[] = [];
+  if (hhPct > 65) insights.push({
+    type: 'red', title: `HH Sales ${hhPct.toFixed(1)}% — vượt trần 65%`,
+    body: `Deal đối tác HH 3,5–4%+ chiếm tỷ trọng cao. Mỗi điểm % dư ≈ ${((dtMG)*(hhPct-65)/100*1000/n).toFixed(0)} tr đồng/tháng. Cần tăng deal nội bộ, đặt trần HH đối tác ≤3%.`,
+  });
+  if (lnPct < 20) insights.push({
+    type: 'red', title: `LN ${lnPct.toFixed(1)}% — xa mục tiêu 20%`,
+    body: `Điểm hòa vốn ~2,7 tỷ/tháng. Nếu kéo HH Sales về 65%, LN tăng thêm ~${((hhPct-65)*0.01*dtMG*1000/1).toFixed(0)} tr / kỳ. Ưu tiên số 1 cần cải thiện.`,
+  });
+  const weakMonths = monthly.filter(m => m.dtHH < 2.7);
+  if (weakMonths.length > 0) insights.push({
+    type: 'amber', title: `${weakMonths.length} tháng dưới điểm hòa vốn`,
+    body: `${weakMonths.map(m => m.thang).join(', ')} — DT dưới 2,7 tỷ. Cần pipeline dự phòng 3–6 tháng để tránh tháng lỗ.`,
+  });
+  if (cpVHPct > 13 && cpVHPct <= 15) insights.push({
+    type: 'amber', title: `CP vận hành ${cpVHPct.toFixed(1)}% — sát giới hạn`,
+    body: `Có thể có CP setup VP một lần trong kỳ. Loại CP này, CP VH thực chỉ ~${(cpVHPct-3.6).toFixed(1)}% DT — trong kiểm soát tốt.`,
+  });
+  const best = [...monthly].sort((a, b) => b.dtHH - a.dtHH)[0];
+  if (best) insights.push({
+    type: 'green', title: `${best.thang} — tháng tốt nhất (DT ${best.dtHH.toFixed(2)} tỷ)`,
+    body: `${best.soCan} căn, doanh số ${best.doanhSo.toFixed(1)} tỷ. Momentum tích cực, cần duy trì và nhân rộng.`,
+  });
+  if (avgDS >= 58) insights.push({
+    type: 'green', title: `Doanh số vượt kế hoạch +${((avgDS/58-1)*100).toFixed(0)}%`,
+    body: `BQ ${avgDS.toFixed(1)} tỷ/tháng vs mục tiêu 58 tỷ. Năng lực giao dịch mạnh, cần chuyển hóa thành lợi nhuận bằng kiểm soát HH.`,
+  });
+
+  return { pnlRows, kpis, monthly, insights, lnPct, hhPct, avgDS, dtMG };
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmtTy = (v: number) => `${v.toFixed(2)} tỷ`;
 
-const MONTHLY = [
-  { thang: 'T12/25', doanhSo: 73.63,  dtHH: 2.45, soCan: 3 },
-  { thang: 'T1/26',  doanhSo: 115.52, dtHH: 3.91, soCan: 11 },
-  { thang: 'T2/26',  doanhSo: 19.94,  dtHH: 0.62, soCan: 2 },
-  { thang: 'T3/26',  doanhSo: 60.52,  dtHH: 1.81, soCan: 3 },
-  { thang: 'T4/26',  doanhSo: 66.90,  dtHH: 2.15, soCan: 7 },
-  { thang: 'T5/26',  doanhSo: 120.73, dtHH: 4.62, soCan: 7 },
-];
-
-const PNL = [
-  { label: 'Doanh thu MG',      value: 15.64,  pct: 100,   type: 'pos' },
-  { label: 'HH Sales (70,4%)',  value: -11.00, pct: -70.4, type: 'neg' },
-  { label: 'Thưởng nóng sales', value: -0.69,  pct: -4.4,  type: 'neg' },
-  { label: 'Lợi nhuận gộp',     value: 3.94,   pct: 25.2,  type: 'mid' },
-  { label: 'CP bán hàng/MKT',   value: -0.74,  pct: -4.8,  type: 'neg' },
-  { label: 'CP vận hành',       value: -2.34,  pct: -15.0, type: 'warn' },
-  { label: 'LN trước thuế',     value: 0.86,   pct: 5.5,   type: 'result' },
-];
-
-const KPIS = [
-  {
-    icon: DollarSign, label: 'Doanh số GD', value: '457,2 tỷ',
-    sub: 'BQ/tháng: 91,4 tỷ', target: 'Mục tiêu ≥ 58 tỷ/tháng',
-    status: 'green', note: 'Vượt mục tiêu +57%',
-  },
-  {
-    icon: TrendingUp, label: 'Doanh thu môi giới', value: '15,64 tỷ',
-    sub: 'BQ/tháng: 3,13 tỷ', target: 'Mục tiêu ≥ 2,3 tỷ/tháng',
-    status: 'green', note: 'Vượt mục tiêu +36%',
-  },
-  {
-    icon: Home, label: 'Số căn bán', value: '32 căn',
-    sub: 'BQ/tháng: 6,4 căn', target: 'Mục tiêu ≥ 6–7 căn/tháng',
-    status: 'green', note: 'Đạt mục tiêu',
-  },
-  {
-    icon: Percent, label: 'HH Sales / Doanh thu', value: '74,8%',
-    sub: 'HH Sales: 11,69 tỷ / 5 tháng', target: 'Mục tiêu ≤ 65%',
-    status: 'red', note: 'Vượt giới hạn +9,8% ≈ 1,53 tỷ dư',
-  },
-  {
-    icon: BarChart2, label: 'CP vận hành / DT', value: '15,0%',
-    sub: 'CP VH: 2,34 tỷ / 5 tháng', target: 'Mục tiêu ≤ 15%',
-    status: 'amber', note: 'Sát giới hạn (có 569 tr setup VP 1 lần)',
-  },
-  {
-    icon: TrendingDown, label: 'Lợi nhuận trước thuế', value: '5,5%',
-    sub: 'LN: 855 triệu / 5 tháng', target: 'Mục tiêu ≥ 20% DT',
-    status: 'red', note: 'Thiếu 14,5% — LN thực ≈ 855 tr/5 tháng',
-  },
-];
-
-const INSIGHTS = [
-  {
-    type: 'red',
-    title: 'HH Sales 74,8% — vượt trần 65%',
-    body: 'Nguyên nhân: tỷ trọng deal đối tác cao (Vinhomes Cần Giờ qua NEWWAY, FIVE STAR…) với HH 3,5–4%+. Mỗi điểm % dư ≈ 156 triệu/5 tháng. Cần tăng tỷ lệ deal nội bộ hoặc đàm phán lại HH khung với đối tác.',
-  },
-  {
-    type: 'red',
-    title: 'Lợi nhuận 5,5% — xa mục tiêu 20%',
-    body: 'Điểm hòa vốn ~2,7 tỷ DT/tháng. Tháng 2/2026 (DT 0,62 tỷ) lỗ nặng. Nếu kéo HH Sales về 65%, LN tăng thêm ~1,53 tỷ → đạt ~15% DT, tiệm cận mục tiêu.',
-  },
-  {
-    type: 'amber',
-    title: 'CP vận hành đúng giới hạn 15%',
-    body: 'Loại CP setup VP một lần (569 triệu) thì chỉ còn 11,4% DT. Từ T6/2026 trở đi CP này không lặp lại, biên lợi nhuận sẽ cải thiện rõ.',
-  },
-  {
-    type: 'green',
-    title: 'T5/2026 bứt phá — momentum tích cực',
-    body: 'T5/2026 đạt 120,7 tỷ (7 căn, DT 4,62 tỷ) — tháng tốt nhất trong kỳ. Xu hướng tăng mạnh vào nửa cuối 2026.',
-  },
-  {
-    type: 'amber',
-    title: 'Biến động doanh số lớn — cần pipeline dự phòng',
-    body: 'T2/2026 chỉ 19,9 tỷ, T5/2026 đạt 120,7 tỷ — chênh lệch 6x. Cần pipeline 3–6 tháng tới để tránh tháng trống dưới điểm hòa vốn.',
-  },
-];
+const pnlColor = (type: string) =>
+  ({ pos: '#6366f1', neg: '#ef4444', warn: '#f59e0b', mid: '#10b981', result: '#6366f1' }[type] ?? '#6366f1');
 
 const statusStyle = (s: string) => ({
   green: { bg: 'var(--success-bg)', text: 'var(--success-text)', border: 'var(--success-border)' },
@@ -103,9 +175,6 @@ const insightStyle = (t: string) => ({
   green: { bg: 'var(--success-bg)', text: 'var(--success-text)', accent: '#059669' },
 }[t] ?? { bg: 'var(--info-bg)', text: 'var(--info-text)', accent: '#3b82f6' });
 
-const pnlColor = (type: string) =>
-  type === 'pos' ? '#6366f1' : type === 'neg' ? '#ef4444' : type === 'warn' ? '#f59e0b' : type === 'mid' ? '#10b981' : '#6366f1';
-
 const CustomTooltipDS = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
@@ -118,30 +187,141 @@ const CustomTooltipDS = ({ active, payload, label }: any) => {
   );
 };
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function TaiChinhPage() {
+  const [rawData, setRawData] = useState<RawData>(DEFAULT_RAW);
+  const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const { pnlRows, kpis, monthly, insights, lnPct, hhPct, avgDS, dtMG } =
+    useMemo(() => computeDisplay(rawData), [rawData]);
+
+  const handleFile = async (file: File) => {
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+      setUploadError('Chỉ hỗ trợ file .xlsx hoặc .xls');
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/tai-chinh/upload', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Lỗi không xác định');
+      setRawData(json as RawData);
+    } catch (e: any) {
+      setUploadError(e.message ?? 'Lỗi phân tích file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/tai-chinh/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rawData),
+      });
+      if (!res.ok) throw new Error('Export lỗi');
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `VH_BaoCao_TaiChinh_${rawData.period.replace(/[^a-zA-Z0-9]/g, '_')}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setUploadError(e.message ?? 'Lỗi xuất file');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+
+      {/* Header + actions */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-title)', marginBottom: 4 }}>
             Dashboard Tài chính
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Victory Holdings — Kết quả HĐKD lũy kế T1–T5/2026 (gồm 3 HĐ T12/2025)
+            Victory Holdings — Kết quả HĐKD lũy kế <strong>{rawData.period}</strong>
           </p>
         </div>
-        <span style={{
-          fontSize: '0.75rem', padding: '4px 12px', borderRadius: 20,
-          background: 'var(--primary-light)', color: 'var(--primary-text)', fontWeight: 600,
-        }}>
-          Kế toán trưởng
-        </span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', borderRadius: 8, cursor: uploading ? 'not-allowed' : 'pointer',
+              background: 'var(--primary)', color: '#fff', border: 'none', fontSize: '0.8rem', fontWeight: 600,
+              opacity: uploading ? 0.7 : 1,
+            }}
+          >
+            <Upload size={14} />
+            {uploading ? 'Đang phân tích...' : 'Upload file .xlsx'}
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', borderRadius: 8, cursor: exporting ? 'not-allowed' : 'pointer',
+              background: 'var(--bg-card)', color: 'var(--text-body)',
+              border: '1px solid var(--border-light)', fontSize: '0.8rem', fontWeight: 600,
+              opacity: exporting ? 0.7 : 1,
+            }}
+          >
+            <Download size={14} />
+            {exporting ? 'Đang xuất...' : 'Xuất Word (BGĐ)'}
+          </button>
+        </div>
       </div>
+
+      {/* File info bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
+        background: 'var(--bg-page)', borderRadius: 8, marginBottom: 16,
+        border: '1px solid var(--border-lighter)', fontSize: '0.78rem', color: 'var(--text-muted)',
+      }}>
+        <FileSpreadsheet size={14} style={{ flexShrink: 0 }} />
+        <span>Nguồn: <strong style={{ color: 'var(--text-body)' }}>{rawData.filename}</strong></span>
+        <span style={{ marginLeft: 'auto' }}>Kỳ báo cáo: <strong style={{ color: 'var(--text-body)' }}>{rawData.period}</strong></span>
+      </div>
+
+      {/* Upload error */}
+      {uploadError && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 14,
+          background: 'var(--danger-bg)', border: '1px solid var(--danger-border)',
+          borderRadius: 8, fontSize: '0.8rem', color: 'var(--danger-text)',
+        }}>
+          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>{uploadError}</span>
+          <button onClick={() => setUploadError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--danger-text)' }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
+      />
 
       {/* KPI Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-        {KPIS.map((k) => {
+        {kpis.map((k) => {
           const Icon = k.icon;
           const s = statusStyle(k.status);
           return (
@@ -158,10 +338,9 @@ export default function TaiChinhPage() {
               <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-title)', marginBottom: 2 }}>{k.value}</div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6 }}>{k.sub}</div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-label)', marginBottom: 4 }}>{k.target}</div>
-              <div style={{
-                fontSize: '0.72rem', fontWeight: 600, color: s.text,
-                background: s.bg, padding: '3px 8px', borderRadius: 6, display: 'inline-block',
-              }}>{k.note}</div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: s.text, background: s.bg, padding: '3px 8px', borderRadius: 6, display: 'inline-block' }}>
+                {k.note}
+              </div>
             </div>
           );
         })}
@@ -169,70 +348,48 @@ export default function TaiChinhPage() {
 
       {/* Charts row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        {/* Monthly DS + DT */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 14, padding: '16px 18px' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)', marginBottom: 4 }}>
-            DOANH SỐ & DOANH THU THEO THÁNG
-          </div>
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)', marginBottom: 4 }}>DOANH SỐ & DOANH THU THEO THÁNG</div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-            {[
-              { color: '#818cf8', label: 'Doanh số (tỷ)' },
-              { color: '#10b981', label: 'DT môi giới (tỷ)' },
-              { color: '#ef4444', label: 'Mục tiêu DS 58 tỷ', dashed: true },
-            ].map(l => (
+            {[{ color: '#818cf8', label: 'Doanh số (tỷ)' }, { color: '#10b981', label: 'DT môi giới (tỷ)' }, { color: '#ef4444', label: 'Mục tiêu DS 58 tỷ', dashed: true }].map(l => (
               <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                <span style={{
-                  width: 12, height: l.dashed ? 2 : 10, borderRadius: l.dashed ? 0 : 2,
-                  background: l.color, borderTop: l.dashed ? `2px dashed ${l.color}` : undefined, display: 'inline-block',
-                }} />
+                <span style={{ width: 12, height: l.dashed ? 2 : 10, borderRadius: l.dashed ? 0 : 2, background: l.color, borderTop: l.dashed ? `2px dashed ${l.color}` : undefined, display: 'inline-block' }} />
                 {l.label}
               </span>
             ))}
           </div>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={MONTHLY} barSize={18}>
+            <BarChart data={monthly} barSize={18}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-lighter)" />
               <XAxis dataKey="thang" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `${v}tỷ`} />
               <Tooltip content={<CustomTooltipDS />} />
               <ReferenceLine y={58} stroke="#ef4444" strokeDasharray="5 4" strokeWidth={1.5} />
-              <Bar dataKey="doanhSo" name="Doanh số" fill="#818cf8" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="dtHH" name="DT môi giới" fill="#10b981" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="doanhSo" name="Doanh số" fill="#818cf8" radius={[3,3,0,0]} />
+              <Bar dataKey="dtHH" name="DT môi giới" fill="#10b981" radius={[3,3,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* So can */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 14, padding: '16px 18px' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)', marginBottom: 4 }}>
-            SỐ CĂN BÁN THEO THÁNG
-          </div>
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)', marginBottom: 4 }}>SỐ CĂN BÁN THEO THÁNG</div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-            {[
-              { color: '#10b981', label: '≥ 6 căn (đạt)' },
-              { color: '#f87171', label: '< 6 căn (thiếu)' },
-              { color: '#ef4444', label: 'Mục tiêu 6 căn', dashed: true },
-            ].map(l => (
+            {[{ color: '#10b981', label: '≥ 6 căn (đạt)' }, { color: '#f87171', label: '< 6 căn (thiếu)' }, { color: '#ef4444', label: 'Mục tiêu 6 căn', dashed: true }].map(l => (
               <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                <span style={{
-                  width: 12, height: l.dashed ? 2 : 10, borderRadius: l.dashed ? 0 : 2,
-                  background: l.color, borderTop: l.dashed ? `2px dashed ${l.color}` : undefined, display: 'inline-block',
-                }} />
+                <span style={{ width: 12, height: l.dashed ? 2 : 10, borderRadius: l.dashed ? 0 : 2, background: l.color, borderTop: l.dashed ? `2px dashed ${l.color}` : undefined, display: 'inline-block' }} />
                 {l.label}
               </span>
             ))}
           </div>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={MONTHLY} barSize={28}>
+            <BarChart data={monthly} barSize={28}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-lighter)" />
               <XAxis dataKey="thang" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-              <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={[0, 13]} />
+              <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={[0, Math.max(13, ...monthly.map(m => m.soCan + 2))]} />
               <Tooltip formatter={(v: any) => [`${v} căn`, 'Số căn']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
               <ReferenceLine y={6} stroke="#ef4444" strokeDasharray="5 4" strokeWidth={1.5} />
-              <Bar dataKey="soCan" name="Số căn" radius={[4, 4, 0, 0]}>
-                {MONTHLY.map((m) => (
-                  <Cell key={m.thang} fill={m.soCan >= 6 ? '#10b981' : '#f87171'} />
-                ))}
+              <Bar dataKey="soCan" name="Số căn" radius={[4,4,0,0]}>
+                {monthly.map(m => <Cell key={m.thang} fill={m.soCan >= 6 ? '#10b981' : '#f87171'} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -241,72 +398,44 @@ export default function TaiChinhPage() {
 
       {/* P&L + Insights */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        {/* P&L Waterfall */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 14, padding: '16px 18px' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)', marginBottom: 14 }}>
-            CẤU TRÚC P&amp;L — LŨY KẾ 5 THÁNG (tỷ VND)
-          </div>
-          {PNL.map((row, i) => {
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)', marginBottom: 14 }}>CẤU TRÚC P&amp;L — LŨY KẾ {rawData.period.toUpperCase()} (tỷ VND)</div>
+          {pnlRows.map((row, i) => {
             const isResult = row.type === 'result';
-            const isMid = row.type === 'mid';
-            const color = pnlColor(row.type);
-            const barWidth = Math.abs(row.pct);
-            const labelOutside = barWidth < 20;
+            const isMid    = row.type === 'mid';
+            const color    = pnlColor(row.type);
+            const barW     = Math.abs(row.pct);
+            const outside  = barW < 20;
             return (
               <div key={i} style={{ marginBottom: isResult || isMid ? 8 : 5 }}>
                 {(isMid || isResult) && <div style={{ height: '0.5px', background: 'var(--border-light)', margin: '6px 0' }} />}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{
-                    width: 150, fontSize: '0.75rem', flexShrink: 0,
-                    color: isResult || isMid ? 'var(--text-title)' : 'var(--text-muted)',
-                    fontWeight: isResult || isMid ? 700 : 400,
-                  }}>{row.label}</span>
-                  <div style={{ flex: 1, height: 18, position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{
-                      width: `${barWidth}%`, minWidth: 4, height: 18, borderRadius: 3,
-                      background: color, opacity: isResult || isMid ? 1 : 0.8, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', paddingLeft: labelOutside ? 0 : 6,
-                    }}>
-                      {!labelOutside && (
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>
-                          {row.value > 0 ? '+' : ''}{fmtTy(row.value)}
-                        </span>
-                      )}
-                    </div>
-                    {labelOutside && (
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color, whiteSpace: 'nowrap' }}>
-                        {row.value > 0 ? '+' : ''}{fmtTy(row.value)}
-                      </span>
-                    )}
-                  </div>
-                  <span style={{ width: 44, textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color, flexShrink: 0 }}>
-                    {Math.abs(row.pct).toFixed(1)}%
+                  <span style={{ width: 150, fontSize: '0.75rem', flexShrink: 0, color: isResult || isMid ? 'var(--text-title)' : 'var(--text-muted)', fontWeight: isResult || isMid ? 700 : 400 }}>
+                    {row.label}
                   </span>
+                  <div style={{ flex: 1, height: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: `${barW}%`, minWidth: 4, height: 18, borderRadius: 3, background: color, opacity: isResult || isMid ? 1 : 0.8, flexShrink: 0, display: 'flex', alignItems: 'center', paddingLeft: outside ? 0 : 6 }}>
+                      {!outside && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>{row.value > 0 ? '+' : ''}{fmtTy(row.value)}</span>}
+                    </div>
+                    {outside && <span style={{ fontSize: '0.72rem', fontWeight: 700, color, whiteSpace: 'nowrap' }}>{row.value > 0 ? '+' : ''}{fmtTy(row.value)}</span>}
+                  </div>
+                  <span style={{ width: 44, textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color, flexShrink: 0 }}>{Math.abs(row.pct).toFixed(1)}%</span>
                 </div>
               </div>
             );
           })}
-          <div style={{
-            marginTop: 12, padding: '8px 10px', borderRadius: 8,
-            background: 'var(--bg-page)', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.6,
-          }}>
-            MKT: 2,0% DT ✓ &nbsp;|&nbsp; Lương Sales+BO: 5,8% DT &nbsp;|&nbsp; Thuê VP: 4,1% DT &nbsp;|&nbsp; Setup VP 1 lần: 3,6%
+          <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-page)', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            MKT: {((rawData.pnl.cpBanHang/rawData.pnl.dtMG)*100).toFixed(1)}% DT ✓ &nbsp;|&nbsp; Thuê VP: 4,1% DT &nbsp;|&nbsp; Hòa vốn: ~2,7 tỷ/tháng
           </div>
         </div>
 
-        {/* Insights */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 14, padding: '16px 18px' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)', marginBottom: 14 }}>
-            PHÂN TÍCH & KHUYẾN NGHỊ BGĐ
-          </div>
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)', marginBottom: 14 }}>PHÂN TÍCH & KHUYẾN NGHỊ BGĐ</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {INSIGHTS.map((ins, i) => {
+            {insights.map((ins, i) => {
               const s = insightStyle(ins.type);
               return (
-                <div key={i} style={{
-                  padding: '10px 12px', borderRadius: 8,
-                  background: s.bg, borderLeft: `3px solid ${s.accent}`,
-                }}>
+                <div key={i} style={{ padding: '10px 12px', borderRadius: 8, background: s.bg, borderLeft: `3px solid ${s.accent}` }}>
                   <div style={{ fontWeight: 700, fontSize: '0.78rem', color: s.text, marginBottom: 3 }}>{ins.title}</div>
                   <div style={{ fontSize: '0.72rem', color: s.text, lineHeight: 1.55, opacity: 0.85 }}>{ins.body}</div>
                 </div>
@@ -316,12 +445,10 @@ export default function TaiChinhPage() {
         </div>
       </div>
 
-      {/* DT trend line */}
+      {/* Trend line */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 14, padding: '16px 18px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)' }}>
-            XU HƯỚNG DOANH THU MÔI GIỚI (tỷ VND)
-          </div>
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)' }}>XU HƯỚNG DOANH THU MÔI GIỚI (tỷ VND)</div>
           <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
             {[
               { color: '#6366f1', label: 'DT môi giới', dashed: false },
@@ -332,8 +459,7 @@ export default function TaiChinhPage() {
                 <svg width="22" height="10" style={{ flexShrink: 0 }}>
                   {l.dashed
                     ? <line x1="0" y1="5" x2="22" y2="5" stroke={l.color} strokeWidth="2" strokeDasharray="5,3" />
-                    : <line x1="0" y1="5" x2="22" y2="5" stroke={l.color} strokeWidth="2.5" />
-                  }
+                    : <line x1="0" y1="5" x2="22" y2="5" stroke={l.color} strokeWidth="2.5" />}
                 </svg>
                 {l.label}
               </span>
@@ -341,25 +467,20 @@ export default function TaiChinhPage() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={150}>
-          <LineChart data={MONTHLY}>
+          <LineChart data={monthly}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-lighter)" />
             <XAxis dataKey="thang" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-            <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `${v}tỷ`} domain={[0, 5.5]} />
+            <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `${v}tỷ`} domain={[0, Math.max(5.5, ...monthly.map(m => m.dtHH + 0.5))]} />
             <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} tỷ`, 'DT môi giới']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             <ReferenceLine y={2.3} stroke="#10b981" strokeDasharray="5 4" strokeWidth={1.5} />
             <ReferenceLine y={2.7} stroke="#f59e0b" strokeDasharray="4 3" strokeWidth={1.5} />
-            <Line
-              type="monotone" dataKey="dtHH" stroke="#6366f1" strokeWidth={2.5}
-              dot={{ r: 5, fill: '#6366f1', strokeWidth: 0 }}
-              activeDot={{ r: 7 }}
-            />
+            <Line type="monotone" dataKey="dtHH" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 5, fill: '#6366f1', strokeWidth: 0 }} activeDot={{ r: 7 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Footer */}
       <div style={{ marginTop: 16, fontSize: '0.72rem', color: 'var(--text-label)', textAlign: 'center' }}>
-        Nguồn: VH_BC KQ HĐKD T1–5.2026.xlsx &nbsp;·&nbsp; VIC NS dự kiến VH 2026.xlsx &nbsp;·&nbsp; Cập nhật: T5/2026
+        Nguồn: {rawData.filename} &nbsp;·&nbsp; Cập nhật: {rawData.period} &nbsp;·&nbsp; Victory Holdings CRM
       </div>
     </div>
   );
