@@ -1179,9 +1179,9 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
               <span style={{ fontSize: '0.78rem', color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Số căn</span>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Doanh số</span>
 
-              {/* Data rows — display:contents makes wrapper invisible to grid */}
+              {/* Data rows — Fragment with key renders no DOM wrapper, children go directly into grid */}
               {items.map((x, i) => (
-                <div key={x.loai} style={{ display: 'contents' }}>
+                <React.Fragment key={x.loai}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[i % colors.length], flexShrink: 0 }} />
                     <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-body)', whiteSpace: 'nowrap' }}>{x.loai}</span>
@@ -1192,15 +1192,15 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
                   <span style={{ fontSize: '0.82rem', fontWeight: 700, color: colors[i % colors.length], textAlign: 'right' }}>
                     {fmtTy(x.doanh_so)}
                   </span>
-                </div>
+                </React.Fragment>
               ))}
 
               {/* Total row */}
-              <div style={{ display: 'contents' }}>
+              <React.Fragment key="total">
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', borderTop: '1px solid var(--border)', paddingTop: 6 }}>Tổng</span>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right', borderTop: '1px solid var(--border)', paddingTop: 6 }}>{total_can}</span>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right', borderTop: '1px solid var(--border)', paddingTop: 6 }}>{fmtTy(total_ds)}</span>
-              </div>
+              </React.Fragment>
             </div>
           </div>
         </div>
