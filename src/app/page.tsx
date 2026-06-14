@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import {
   TrendingUp, TrendingDown, BarChart3,
   DollarSign, Home, Layers, ToggleLeft, ToggleRight, Cake, ChevronDown,
@@ -1181,7 +1181,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
 
               {/* Data rows — Fragment with key renders no DOM wrapper, children go directly into grid */}
               {items.map((x, i) => (
-                <React.Fragment key={x.loai}>
+                <Fragment key={x.loai}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[i % colors.length], flexShrink: 0 }} />
                     <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-body)', whiteSpace: 'nowrap' }}>{x.loai}</span>
@@ -1192,15 +1192,15 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
                   <span style={{ fontSize: '0.82rem', fontWeight: 700, color: colors[i % colors.length], textAlign: 'right' }}>
                     {fmtTy(x.doanh_so)}
                   </span>
-                </React.Fragment>
+                </Fragment>
               ))}
 
               {/* Total row */}
-              <React.Fragment key="total">
+              <Fragment key="total">
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', borderTop: '1px solid var(--border)', paddingTop: 6 }}>Tổng</span>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right', borderTop: '1px solid var(--border)', paddingTop: 6 }}>{total_can}</span>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-title)', textAlign: 'right', borderTop: '1px solid var(--border)', paddingTop: 6 }}>{fmtTy(total_ds)}</span>
-              </React.Fragment>
+              </Fragment>
             </div>
           </div>
         </div>
