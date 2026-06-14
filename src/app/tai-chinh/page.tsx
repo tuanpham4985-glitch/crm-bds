@@ -251,6 +251,7 @@ export default function TaiChinhPage() {
             const isMid = row.type === 'mid';
             const color = pnlColor(row.type);
             const barWidth = Math.abs(row.pct);
+            const labelOutside = barWidth < 20;
             return (
               <div key={i} style={{ marginBottom: isResult || isMid ? 8 : 5 }}>
                 {(isMid || isResult) && <div style={{ height: '0.5px', background: 'var(--border-light)', margin: '6px 0' }} />}
@@ -260,16 +261,23 @@ export default function TaiChinhPage() {
                     color: isResult || isMid ? 'var(--text-title)' : 'var(--text-muted)',
                     fontWeight: isResult || isMid ? 700 : 400,
                   }}>{row.label}</span>
-                  <div style={{ flex: 1, height: 18, position: 'relative' }}>
+                  <div style={{ flex: 1, height: 18, position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{
-                      width: `${barWidth}%`, height: 18, borderRadius: 3,
-                      background: color, opacity: isResult || isMid ? 1 : 0.75,
-                      display: 'flex', alignItems: 'center', paddingLeft: 6,
+                      width: `${barWidth}%`, minWidth: 4, height: 18, borderRadius: 3,
+                      background: color, opacity: isResult || isMid ? 1 : 0.8, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', paddingLeft: labelOutside ? 0 : 6,
                     }}>
-                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>
+                      {!labelOutside && (
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>
+                          {row.value > 0 ? '+' : ''}{fmtTy(row.value)}
+                        </span>
+                      )}
+                    </div>
+                    {labelOutside && (
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color, whiteSpace: 'nowrap' }}>
                         {row.value > 0 ? '+' : ''}{fmtTy(row.value)}
                       </span>
-                    </div>
+                    )}
                   </div>
                   <span style={{ width: 44, textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color, flexShrink: 0 }}>
                     {Math.abs(row.pct).toFixed(1)}%
@@ -310,12 +318,26 @@ export default function TaiChinhPage() {
 
       {/* DT trend line */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 14, padding: '16px 18px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-title)' }}>
             XU HƯỚNG DOANH THU MÔI GIỚI (tỷ VND)
           </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            Điểm hòa vốn: ~2,7 tỷ/tháng &nbsp;·&nbsp; Mục tiêu: ≥ 2,3 tỷ/tháng
+          <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
+            {[
+              { color: '#6366f1', label: 'DT môi giới', dashed: false },
+              { color: '#10b981', label: 'Mục tiêu ≥ 2,3 tỷ', dashed: true },
+              { color: '#f59e0b', label: 'Hòa vốn ~2,7 tỷ', dashed: true },
+            ].map(l => (
+              <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                <svg width="22" height="10" style={{ flexShrink: 0 }}>
+                  {l.dashed
+                    ? <line x1="0" y1="5" x2="22" y2="5" stroke={l.color} strokeWidth="2" strokeDasharray="5,3" />
+                    : <line x1="0" y1="5" x2="22" y2="5" stroke={l.color} strokeWidth="2.5" />
+                  }
+                </svg>
+                {l.label}
+              </span>
+            ))}
           </div>
         </div>
         <ResponsiveContainer width="100%" height={150}>
@@ -324,8 +346,8 @@ export default function TaiChinhPage() {
             <XAxis dataKey="thang" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
             <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `${v}tỷ`} domain={[0, 5.5]} />
             <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} tỷ`, 'DT môi giới']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-            <ReferenceLine y={2.3} stroke="#10b981" strokeDasharray="5 4" strokeWidth={1.5} label={{ value: 'Target 2,3', position: 'right', fontSize: 10, fill: '#10b981' }} />
-            <ReferenceLine y={2.7} stroke="#f59e0b" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: 'Hòa vốn 2,7', position: 'right', fontSize: 10, fill: '#f59e0b' }} />
+            <ReferenceLine y={2.3} stroke="#10b981" strokeDasharray="5 4" strokeWidth={1.5} />
+            <ReferenceLine y={2.7} stroke="#f59e0b" strokeDasharray="4 3" strokeWidth={1.5} />
             <Line
               type="monotone" dataKey="dtHH" stroke="#6366f1" strokeWidth={2.5}
               dot={{ r: 5, fill: '#6366f1', strokeWidth: 0 }}
