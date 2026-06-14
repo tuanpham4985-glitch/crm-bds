@@ -119,6 +119,7 @@ const SHEETS = {
   PAYROLL: 'PAYROLL',
   PAYROLL_ITEMS: 'PAYROLL_ITEMS',
   NHIEM_VU: 'NHIEM_VU',
+  TAI_CHINH_HISTORY: 'TAI_CHINH_HISTORY',
 } as const;
 
 /**
@@ -3253,5 +3254,84 @@ export async function importFromPhanKhachConfig(
   ]);
 
   return { imported: toImport.length, duplicates, updated };
+}
+
+// ─── Tài chính history ────────────────────────────────────────────────────────
+
+const TC_HISTORY_HEADERS = [
+  'id', 'ngay_upload', 'ky_bao_cao', 'ten_file', 'so_can',
+  'doanh_so_ty', 'dt_mg_ty', 'hh_sales_pct', 'ln_ty', 'ln_pct',
+  'data_json',
+] as const;
+
+export interface TaiChinhHistoryRow {
+  id: string;
+  ngay_upload: string;
+  ky_bao_cao: string;
+  ten_file: string;
+  so_can: number;
+  doanh_so_ty: number;
+  dt_mg_ty: number;
+  hh_sales_pct: number;
+  ln_ty: number;
+  ln_pct: number;
+  data_json: string;
+}
+
+async function getOrCreateTaiChinhHistorySheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
+  let sheet = doc.sheetsByTitle[SHEETS.TAI_CHINH_HISTORY];
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: SHEETS.TAI_CHINH_HISTORY,
+      headerValues: [...TC_HISTORY_HEADERS],
+    });
+  } else {
+    try {
+      await sheet.loadHeaderRow();
+    } catch {
+      await sheet.setHeaderRow([...TC_HISTORY_HEADERS]);
+    }
+  }
+  return sheet;
+}
+
+export async function getTaiChinhHistory(): Promise<TaiChinhHistoryRow[]> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateTaiChinhHistorySheet(doc);
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => ({
+      id:           String(r.get('id') ?? ''),
+      ngay_upload:  String(r.get('ngay_upload') ?? ''),
+      ky_bao_cao:   String(r.get('ky_bao_cao') ?? ''),
+      ten_file:     String(r.get('ten_file') ?? ''),
+      so_can:       Number(r.get('so_can') ?? 0),
+      doanh_so_ty:  Number(r.get('doanh_so_ty') ?? 0),
+      dt_mg_ty:     Number(r.get('dt_mg_ty') ?? 0),
+      hh_sales_pct: Number(r.get('hh_sales_pct') ?? 0),
+      ln_ty:        Number(r.get('ln_ty') ?? 0),
+      ln_pct:       Number(r.get('ln_pct') ?? 0),
+      data_json:    String(r.get('data_json') ?? ''),
+    }))
+    .filter(r => r.id)
+    .sort((a, b) => b.ngay_upload.localeCompare(a.ngay_upload));
+}
+
+export async function saveTaiChinhHistory(row: TaiChinhHistoryRow): Promise<void> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateTaiChinhHistorySheet(doc);
+  await sheet.addRow({
+    id:           row.id,
+    ngay_upload:  row.ngay_upload,
+    ky_bao_cao:   row.ky_bao_cao,
+    ten_file:     row.ten_file,
+    so_can:       row.so_can,
+    doanh_so_ty:  row.doanh_so_ty,
+    dt_mg_ty:     row.dt_mg_ty,
+    hh_sales_pct: row.hh_sales_pct,
+    ln_ty:        row.ln_ty,
+    ln_pct:       row.ln_pct,
+    data_json:    row.data_json,
+  });
 }
 

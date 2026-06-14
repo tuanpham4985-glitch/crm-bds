@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as xlsx from 'xlsx';
+import { saveTaiChinhHistory } from '@/lib/google-sheets';
 
 const toNum = (v: unknown): number => {
   if (typeof v === 'number') return v;
@@ -121,7 +122,28 @@ export async function POST(request: NextRequest) {
     const last  = monthly[monthly.length - 1]?.label ?? '';
     const period = first && last ? `${first}–${last}` : 'Lũy kế';
 
-    return NextResponse.json({ filename: file.name, period, numMonths, pnl, monthly });
+    const result = { filename: file.name, period, numMonths, pnl, monthly };
+
+    // Save to Google Sheets history (fire-and-forget — don't block response)
+    const B = 1e9;
+    const hhPct  = pnl.dtMG > 0 ? (pnl.hhSalesAll / pnl.dtMG) * 100 : 0;
+    const lnPct  = pnl.dtMG > 0 ? (pnl.lnTruocThue / pnl.dtMG) * 100 : 0;
+    const id     = `${Date.now()}`;
+    saveTaiChinhHistory({
+      id,
+      ngay_upload:  new Date().toISOString(),
+      ky_bao_cao:   period,
+      ten_file:     file.name,
+      so_can:       pnl.soCan,
+      doanh_so_ty:  Math.round(pnl.doanhSo / B * 100) / 100,
+      dt_mg_ty:     Math.round(pnl.dtMG / B * 1000) / 1000,
+      hh_sales_pct: Math.round(hhPct * 10) / 10,
+      ln_ty:        Math.round(pnl.lnTruocThue / B * 1000) / 1000,
+      ln_pct:       Math.round(lnPct * 10) / 10,
+      data_json:    JSON.stringify({ ...result, id }),
+    }).catch(e => console.error('[TaiChinh] History save failed:', e));
+
+    return NextResponse.json({ ...result, id });
   } catch (err) {
     console.error('Upload parse error:', err);
     return NextResponse.json({ error: 'Lỗi đọc file. Kiểm tra đúng file KQ HĐKD.' }, { status: 500 });

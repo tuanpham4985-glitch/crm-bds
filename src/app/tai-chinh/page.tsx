@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, DollarSign, Home, BarChart2, Percent,
-  Upload, FileSpreadsheet, Download, X, AlertCircle,
+  Upload, FileSpreadsheet, Download, X, AlertCircle, History, ChevronDown, ChevronUp, Loader2,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -19,8 +19,13 @@ interface RawPnL {
   cpBanHang: number; cpVanHanh: number; lnTruocThue: number;
 }
 interface RawData {
-  period: string; filename: string; numMonths: number;
+  id?: string; period: string; filename: string; numMonths: number;
   pnl: RawPnL; monthly: RawMonthly[];
+}
+interface HistoryItem {
+  id: string; ngay_upload: string; ky_bao_cao: string; ten_file: string;
+  so_can: number; doanh_so_ty: number; dt_mg_ty: number;
+  hh_sales_pct: number; ln_ty: number; ln_pct: number;
 }
 
 // ─── Default data (T1–T5/2026) ───────────────────────────────────────────────
@@ -196,8 +201,25 @@ export default function TaiChinhPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
   const { pnlRows, kpis, monthly, insights, lnPct, hhPct, avgDS, dtMG } =
     useMemo(() => computeDisplay(rawData), [rawData]);
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch('/api/tai-chinh/history');
+      if (res.ok) setHistory(await res.json());
+    } catch { /* silent */ } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchHistory(); }, []);
 
   const handleFile = async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
@@ -213,10 +235,26 @@ export default function TaiChinhPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Lỗi không xác định');
       setRawData(json as RawData);
+      // Refresh history list after a short delay (GSheets write is async)
+      setTimeout(fetchHistory, 3000);
     } catch (e: any) {
       setUploadError(e.message ?? 'Lỗi phân tích file');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleLoadHistory = async (id: string) => {
+    setLoadingId(id);
+    try {
+      const res = await fetch(`/api/tai-chinh/history/${id}`);
+      if (!res.ok) throw new Error('Không tải được báo cáo');
+      setRawData(await res.json());
+      setHistoryOpen(false);
+    } catch (e: any) {
+      setUploadError(e.message);
+    } finally {
+      setLoadingId(null);
     }
   };
 
@@ -245,6 +283,7 @@ export default function TaiChinhPage() {
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1200, margin: '0 auto' }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* Header + actions */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -477,6 +516,82 @@ export default function TaiChinhPage() {
             <Line type="monotone" dataKey="dtHH" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 5, fill: '#6366f1', strokeWidth: 0 }} activeDot={{ r: 7 }} />
           </LineChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* History panel */}
+      <div style={{ marginTop: 20, background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 14, overflow: 'hidden' }}>
+        <button
+          onClick={() => setHistoryOpen(h => !h)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+            padding: '12px 18px', background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--text-title)',
+          }}
+        >
+          <History size={16} style={{ color: 'var(--primary)' }} />
+          <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>
+            Lịch sử báo cáo {history.length > 0 && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({history.length} kỳ đã lưu)</span>}
+          </span>
+          {historyLoading && <Loader2 size={14} style={{ marginLeft: 4, color: 'var(--text-muted)', animation: 'spin 1s linear infinite' }} />}
+          <span style={{ marginLeft: 'auto' }}>{historyOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+        </button>
+
+        {historyOpen && (
+          <div style={{ borderTop: '1px solid var(--border-lighter)', overflowX: 'auto' }}>
+            {history.length === 0 ? (
+              <div style={{ padding: '20px 18px', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                Chưa có báo cáo nào được lưu. Hãy upload file .xlsx để bắt đầu.
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-page)' }}>
+                    {['Ngày upload', 'Kỳ báo cáo', 'Tên file', 'Số căn', 'Doanh số', 'DT môi giới', 'HH Sales', 'LN', 'LN%', ''].map(h => (
+                      <th key={h} style={{ padding: '8px 12px', textAlign: h === '' || h === 'Số căn' || h === 'LN%' ? 'center' : 'left', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border-lighter)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((row, i) => {
+                    const isActive = rawData.id === row.id;
+                    const date = new Date(row.ngay_upload);
+                    const dateStr = `${date.getDate().toString().padStart(2,'0')}/${(date.getMonth()+1).toString().padStart(2,'0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
+                    return (
+                      <tr key={row.id} style={{ background: isActive ? 'rgba(99,102,241,0.06)' : i % 2 === 0 ? 'transparent' : 'var(--bg-page)' }}>
+                        <td style={{ padding: '9px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{dateStr}</td>
+                        <td style={{ padding: '9px 12px', fontWeight: 600, color: 'var(--text-title)', whiteSpace: 'nowrap' }}>{row.ky_bao_cao}</td>
+                        <td style={{ padding: '9px 12px', color: 'var(--text-body)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.ten_file}>{row.ten_file}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 600 }}>{row.so_can}</td>
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{row.doanh_so_ty.toFixed(1)} tỷ</td>
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{row.dt_mg_ty.toFixed(2)} tỷ</td>
+                        <td style={{ padding: '9px 12px', color: row.hh_sales_pct > 65 ? 'var(--danger-text)' : 'var(--success-text)', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.hh_sales_pct.toFixed(1)}%</td>
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{(row.ln_ty * 1000).toFixed(0)} tr</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center', color: row.ln_pct >= 20 ? 'var(--success-text)' : row.ln_pct >= 10 ? 'var(--warning-text)' : 'var(--danger-text)', fontWeight: 700 }}>{row.ln_pct.toFixed(1)}%</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>
+                          {isActive ? (
+                            <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 600 }}>Đang xem</span>
+                          ) : (
+                            <button
+                              onClick={() => handleLoadHistory(row.id)}
+                              disabled={loadingId === row.id}
+                              style={{
+                                padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border-light)',
+                                background: 'var(--bg-card)', color: 'var(--primary)', cursor: 'pointer',
+                                fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {loadingId === row.id ? 'Đang tải...' : 'Xem lại'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 16, fontSize: '0.72rem', color: 'var(--text-label)', textAlign: 'center' }}>
