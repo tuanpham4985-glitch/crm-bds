@@ -1095,10 +1095,30 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
         </div>
         <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
           {/* Donut */}
-          <div style={{ width: 130, height: 130, flexShrink: 0 }}>
+          <div style={{ width: 140, height: 140, flexShrink: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius={38} outerRadius={58} strokeWidth={2} stroke="#fff">
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  cx="50%" cy="50%"
+                  innerRadius={40} outerRadius={64}
+                  strokeWidth={2} stroke="#fff"
+                  labelLine={false}
+                  label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+                    if (percent < 0.06) return null;
+                    const RADIAN = Math.PI / 180;
+                    const r = innerRadius + (outerRadius - innerRadius) * 0.5;
+                    const x = cx + r * Math.cos(-midAngle * RADIAN);
+                    const y = cy + r * Math.sin(-midAngle * RADIAN);
+                    return (
+                      <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central"
+                            fontSize={10} fontWeight={700} style={{ pointerEvents: 'none' }}>
+                        {`${(percent * 100).toFixed(1)}%`}
+                      </text>
+                    );
+                  }}
+                >
                   {pieData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
                 </Pie>
                 <Tooltip formatter={(v) => fmtTy(Number(v))} />
