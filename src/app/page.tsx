@@ -210,7 +210,9 @@ export default function DashboardPage() {
   const [raceData, setRaceData] = useState<any[] | null>(null);
   const [period, setPeriod] = useState('month');
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+  const [showYearDropdown, setShowYearDropdown] = useState(false);
   const monthDropdownRef = useRef<HTMLDivElement>(null);
   const [compare, setCompare] = useState('');
   const [loading, setLoading] = useState(true);
@@ -227,6 +229,7 @@ export default function DashboardPage() {
     const handleClickOutside = (e: MouseEvent) => {
       if (monthDropdownRef.current && !monthDropdownRef.current.contains(e.target as Node)) {
         setShowMonthDropdown(false);
+        setShowYearDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -238,11 +241,14 @@ export default function DashboardPage() {
     try {
       const params = new URLSearchParams({ period });
       if (period === 'month') {
-        const year = new Date().getFullYear();
         const mm = String(selectedMonth).padStart(2, '0');
-        const lastDay = new Date(year, selectedMonth, 0).getDate();
-        params.set('from', `${year}-${mm}-01`);
-        params.set('to', `${year}-${mm}-${String(lastDay).padStart(2, '0')}`);
+        const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+        params.set('from', `${selectedYear}-${mm}-01`);
+        params.set('to', `${selectedYear}-${mm}-${String(lastDay).padStart(2, '0')}`);
+      }
+      if (period === 'year') {
+        params.set('from', `${selectedYear}-01-01`);
+        params.set('to', `${selectedYear}-12-31`);
       }
       if (compare) params.set('compare', compare);
       const res = await fetch(`/api/dashboard?${params}`);
@@ -253,7 +259,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, compare, selectedMonth]);
+  }, [period, compare, selectedMonth, selectedYear]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -284,11 +290,9 @@ export default function DashboardPage() {
     let to: Date = today;
     switch (period) {
       case 'month': {
-        const year = today.getFullYear();
-        from = new Date(year, selectedMonth - 1, 1);
-        to = selectedMonth === today.getMonth() + 1
-          ? today
-          : new Date(year, selectedMonth, 0);
+        from = new Date(selectedYear, selectedMonth - 1, 1);
+        const isCurrentMonth = selectedYear === today.getFullYear() && selectedMonth === today.getMonth() + 1;
+        to = isCurrentMonth ? today : new Date(selectedYear, selectedMonth, 0);
         break;
       }
       case 'quarter': {
@@ -297,7 +301,8 @@ export default function DashboardPage() {
         break;
       }
       case 'year':
-        from = new Date(today.getFullYear(), 0, 1);
+        from = new Date(selectedYear, 0, 1);
+        to = selectedYear === today.getFullYear() ? today : new Date(selectedYear, 11, 31);
         break;
       default:
         from = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -372,20 +377,26 @@ export default function DashboardPage() {
               <button
                 className={`toggle-btn ${period === 'month' ? 'active' : ''}`}
                 style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                onClick={() => { setPeriod('month'); setShowMonthDropdown(v => !v); }}
+                onClick={() => { setPeriod('month'); setShowMonthDropdown(v => !v); setShowYearDropdown(false); }}
               >
-                {period === 'month' ? `T${selectedMonth}` : 'Tháng'}
+                {period === 'month' ? `T${selectedMonth}/${selectedYear}` : 'Tháng'}
                 <ChevronDown size={13} style={{ opacity: 0.7, transition: 'transform 150ms', transform: showMonthDropdown ? 'rotate(180deg)' : 'none' }} />
               </button>
               <button
                 className={`toggle-btn ${period === 'quarter' ? 'active' : ''}`}
-                onClick={() => { setPeriod('quarter'); setShowMonthDropdown(false); }}
+                onClick={() => { setPeriod('quarter'); setShowMonthDropdown(false); setShowYearDropdown(false); }}
               >Quý</button>
               <button
                 className={`toggle-btn ${period === 'year' ? 'active' : ''}`}
-                onClick={() => { setPeriod('year'); setShowMonthDropdown(false); }}
-              >Năm</button>
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                onClick={() => { setPeriod('year'); setShowYearDropdown(v => !v); setShowMonthDropdown(false); }}
+              >
+                {period === 'year' ? `${selectedYear}` : 'Năm'}
+                <ChevronDown size={13} style={{ opacity: 0.7, transition: 'transform 150ms', transform: showYearDropdown ? 'rotate(180deg)' : 'none' }} />
+              </button>
             </div>
+
+            {/* Month dropdown */}
             {showMonthDropdown && (
               <div style={{
                 position: 'absolute', top: 'calc(100% + 6px)', left: 0,
@@ -395,6 +406,17 @@ export default function DashboardPage() {
                 display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4,
                 minWidth: 192,
               }}>
+                {/* Chọn năm trong month dropdown */}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 4, marginBottom: 4, paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>
+                  {[2025, 2026].map(y => (
+                    <button key={y} onClick={() => setSelectedYear(y)} style={{
+                      flex: 1, padding: '4px 0', borderRadius: 'var(--radius-sm)', border: 'none',
+                      cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                      background: selectedYear === y ? 'var(--primary)' : 'var(--bg-muted)',
+                      color: selectedYear === y ? '#fff' : 'var(--text-body)',
+                    }}>{y}</button>
+                  ))}
+                </div>
                 {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
                   <button
                     key={m}
@@ -411,6 +433,30 @@ export default function DashboardPage() {
                   >
                     T{m}
                   </button>
+                ))}
+              </div>
+            )}
+
+            {/* Year dropdown */}
+            {showYearDropdown && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
+                borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+                padding: 8, zIndex: 200,
+                display: 'flex', flexDirection: 'column', gap: 4, minWidth: 100,
+              }}>
+                {[2025, 2026].map(y => (
+                  <button key={y} onClick={() => { setSelectedYear(y); setShowYearDropdown(false); }} style={{
+                    padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none',
+                    cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'center',
+                    background: selectedYear === y ? 'var(--primary)' : 'transparent',
+                    color: selectedYear === y ? '#fff' : 'var(--text-body)',
+                    transition: 'background var(--transition-fast)',
+                  }}
+                  onMouseEnter={e => { if (selectedYear !== y) (e.target as HTMLButtonElement).style.background = 'var(--primary-light)'; }}
+                  onMouseLeave={e => { if (selectedYear !== y) (e.target as HTMLButtonElement).style.background = 'transparent'; }}
+                  >{y}</button>
                 ))}
               </div>
             )}
@@ -1095,14 +1141,14 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
         </div>
         <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
           {/* Donut */}
-          <div style={{ width: 140, height: 140, flexShrink: 0 }}>
+          <div style={{ width: 160, height: 160, flexShrink: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={pieData}
                   dataKey="value"
                   cx="50%" cy="50%"
-                  innerRadius={40} outerRadius={64}
+                  innerRadius={42} outerRadius={74}
                   strokeWidth={2} stroke="#fff"
                   labelLine={false}
                   label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
@@ -1113,7 +1159,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
                     const y = cy + r * Math.sin(-midAngle * RADIAN);
                     return (
                       <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central"
-                            fontSize={10} fontWeight={700} style={{ pointerEvents: 'none' }}>
+                            fontSize={11} fontWeight={700} style={{ pointerEvents: 'none' }}>
                         {`${(percent * 100).toFixed(1)}%`}
                       </text>
                     );
