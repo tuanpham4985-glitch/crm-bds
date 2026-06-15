@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
     let sent = 0;
     let failed = 0;
     const errors: string[] = [];
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     for (const { email, ho_ten } of recipients) {
       try {
@@ -135,6 +136,8 @@ export async function POST(request: NextRequest) {
         failed++;
         errors.push(`${ho_ten} <${email}>: ${err?.message || 'Lỗi không xác định'}`);
       }
+      // Giới hạn 2 email/giây — chờ 600ms giữa mỗi lần gửi
+      await sleep(600);
     }
 
     return NextResponse.json({ success: true, total: recipients.length, sent, failed, errors });

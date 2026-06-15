@@ -186,6 +186,7 @@ export async function POST(request: NextRequest) {
     });
 
     const result = { sent: 0, skipped: 0, failed: 0, errors: [] as string[] };
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     for (const rec of records) {
       if (!rec.email?.trim()) {
@@ -204,6 +205,7 @@ export async function POST(request: NextRequest) {
         result.failed++;
         result.errors.push(`${rec.ho_ten} <${rec.email}>: ${e?.message ?? String(e)}`);
       }
+      await sleep(600);
     }
 
     return NextResponse.json({
