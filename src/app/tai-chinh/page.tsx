@@ -79,6 +79,12 @@ function computeDisplay(raw: RawData) {
   const lnPct    = pct(ln);
 
   const n      = raw.numMonths || raw.monthly.filter(m => !m.label.includes('12/')).length || 5;
+
+  // Điểm hòa vốn tính từ số liệu thực tế
+  const cpBienDoiRate = dtMG > 0 ? (hhAll + tNong + cpBH * 0.8) / dtMG : 0;
+  const cmRate        = 1 - cpBienDoiRate;
+  const cpCoDinhThang = (cpVH + cpBH * 0.2) / n;
+  const bepDT         = cmRate > 0 ? +(cpCoDinhThang / cmRate).toFixed(3) : 0;
   const avgDS  = ds / n;
   const avgDT  = dtMG / n;
   const avgCan = p.soCan / n;
@@ -196,12 +202,12 @@ function computeDisplay(raw: RawData) {
   });
   if (lnPct < 20) insights.push({
     type: 'red', title: `LN ${lnPct.toFixed(1)}% — xa chuẩn 20%`,
-    body: `Điểm hòa vốn ~2,7 tỷ/tháng. Nếu kéo HH về 65% thì LN tăng thêm ~${((hhPct - 65) * 0.01 * dtMG * 1000).toFixed(0)} tr / kỳ.`,
+    body: `Điểm hòa vốn ~${bepDT.toFixed(2)} tỷ/tháng (CM rate ${(cmRate*100).toFixed(1)}%). Nếu kéo HH về 65% thì LN tăng thêm ~${((hhPct - 65) * 0.01 * dtMG * 1000).toFixed(0)} tr / kỳ.`,
   });
-  const weakMonths = monthly.filter(m => m.dtHH < 2.7);
+  const weakMonths = monthly.filter(m => m.dtHH < bepDT);
   if (weakMonths.length > 0) insights.push({
-    type: 'amber', title: `${weakMonths.length} tháng dưới điểm hòa vốn`,
-    body: `${weakMonths.map(m => m.thang).join(', ')} — DT dưới 2,7 tỷ. Cần pipeline dự phòng 3–6 tháng để tránh tháng lỗ.`,
+    type: 'amber', title: `${weakMonths.length} tháng dưới điểm hòa vốn (${bepDT.toFixed(2)} tỷ)`,
+    body: `${weakMonths.map(m => m.thang).join(', ')} — DT dưới ${bepDT.toFixed(2)} tỷ. Cần pipeline dự phòng 3–6 tháng để tránh tháng lỗ.`,
   });
   const best = [...monthly].sort((a, b) => b.dtHH - a.dtHH)[0];
   if (best) insights.push({
@@ -209,7 +215,7 @@ function computeDisplay(raw: RawData) {
     body: `${best.soCan} căn, doanh số ${best.doanhSo.toFixed(1)} tỷ. Momentum tích cực, cần duy trì và nhân rộng.`,
   });
 
-  return { pnlRows, kpis, monthly, insights, lnPct, hhPct, avgDS, dtMG, tgtDS, tgtDT, tgtCan, hasTargets };
+  return { pnlRows, kpis, monthly, insights, lnPct, hhPct, avgDS, dtMG, tgtDS, tgtDT, tgtCan, hasTargets, bepDT, cmRate };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -268,7 +274,7 @@ export default function TaiChinhPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  const { pnlRows, kpis, monthly, insights, lnPct, hhPct, avgDS, dtMG, tgtDS, tgtDT, tgtCan, hasTargets } =
+  const { pnlRows, kpis, monthly, insights, lnPct, hhPct, avgDS, dtMG, tgtDS, tgtDT, tgtCan, hasTargets, bepDT, cmRate } =
     useMemo(() => computeDisplay(rawData), [rawData]);
 
   const fetchHistory = async () => {
@@ -526,7 +532,7 @@ export default function TaiChinhPage() {
             );
           })}
           <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-page)', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            MKT: {((rawData.pnl.cpBanHang / rawData.pnl.dtMG) * 100).toFixed(1)}% DT ✓ &nbsp;|&nbsp; Hòa vốn: ~2,7 tỷ/tháng
+            MKT: {((rawData.pnl.cpBanHang / rawData.pnl.dtMG) * 100).toFixed(1)}% DT ✓ &nbsp;|&nbsp; Hòa vốn: ~{bepDT.toFixed(2)} tỷ/tháng (CM {(cmRate*100).toFixed(1)}%)
           </div>
         </div>
 
@@ -557,7 +563,7 @@ export default function TaiChinhPage() {
             {[
               { color: '#6366f1', label: 'DT môi giới', dashed: false },
               { color: '#10b981', label: `KH NS ${tgtDT.toFixed(2)} tỷ`, dashed: true },
-              { color: '#f59e0b', label: 'Hòa vốn ~2,7 tỷ', dashed: true },
+              { color: '#f59e0b', label: `Hòa vốn ${bepDT.toFixed(2)} tỷ`, dashed: true },
             ].map(l => (
               <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 <svg width="22" height="10" style={{ flexShrink: 0 }}>
@@ -578,7 +584,7 @@ export default function TaiChinhPage() {
               domain={[0, Math.max(5.5, ...monthly.map(m => m.dtHH + 0.5))]} />
             <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} tỷ`, 'DT môi giới']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             <ReferenceLine y={tgtDT} stroke="#10b981" strokeDasharray="5 4" strokeWidth={1.5} />
-            <ReferenceLine y={2.7} stroke="#f59e0b" strokeDasharray="4 3" strokeWidth={1.5} />
+            <ReferenceLine y={bepDT} stroke="#f59e0b" strokeDasharray="4 3" strokeWidth={1.5} />
             <Line type="monotone" dataKey="dtHH" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 5, fill: '#6366f1', strokeWidth: 0 }} activeDot={{ r: 7 }} />
           </LineChart>
         </ResponsiveContainer>
