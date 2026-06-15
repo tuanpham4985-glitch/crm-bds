@@ -309,8 +309,7 @@ export async function POST(request: NextRequest) {
       ? parseMonthly(xlsx.utils.sheet_to_json<unknown[]>(dthhSheet, { header: 1, defval: '' }) as unknown[][])
       : [];
 
-    const t1to5 = monthly.filter(m => !m.label.includes('12/'));
-    const numMonths = t1to5.length || monthly.length || 5;
+    const numMonths = monthly.length || 5;
     const first = monthly[0]?.label ?? '';
     const last  = monthly[monthly.length - 1]?.label ?? '';
     const period = first && last ? `${first}–${last}` : 'Lũy kế';

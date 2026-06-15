@@ -38,7 +38,7 @@ interface HistoryItem {
 // ─── Default data (T1–T5/2026) ───────────────────────────────────────────────
 
 const DEFAULT_RAW: RawData = {
-  period: 'T1–T5/2026', filename: 'VH_BC KQ HĐKD T1-5.2026.xlsx', numMonths: 5,
+  period: 'T12/25–T5/26', filename: 'VH_BC KQ HĐKD T1-5.2026.xlsx', numMonths: 6,
   pnl: {
     soCan: 32, doanhSo: 457237918201, dtMG: 15635026322,
     hhSalesAll: 11001292919, thuongNongSales: 690909091,
@@ -78,8 +78,8 @@ function computeDisplay(raw: RawData) {
   const cpVHPct  = pct(cpVH);
   const lnPct    = pct(ln);
 
-  // n = tổng số tháng thực tế trong dữ liệu (nhất quán với tổng chi phí từ raw.pnl)
-  const n      = raw.numMonths || raw.monthly.length || 5;
+  // n = số tháng, ưu tiên đếm từ mảng monthly thực tế (luôn khớp với tổng chi phí raw.pnl)
+  const n      = raw.monthly.length || raw.numMonths || 5;
 
   // Điểm hòa vốn tính từ số liệu thực tế
   const cpBienDoiRate = dtMG > 0 ? (hhAll + tNong + cpBH * 0.8) / dtMG : 0;
