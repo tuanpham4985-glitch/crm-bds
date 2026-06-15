@@ -89,7 +89,7 @@ export default function NhanVienPage() {
   const [annFiles, setAnnFiles] = useState<File[]>([]);
   const [annSending, setAnnSending] = useState(false);
   const [annTestEmail, setAnnTestEmail] = useState('');
-  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[]; isTest?: boolean } | null>(null);
+  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[]; isTest?: boolean; failedEmails?: string[] } | null>(null);
 
   const openAnnModal = () => {
     setAnnSubject('');
@@ -122,9 +122,45 @@ export default function NhanVienPage() {
       const res = await fetch('/api/email/announcement', { method: 'POST', body: fd });
       const data = await res.json();
       if (data.success) {
-        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], isTest });
+        const failedEmails = (data.errors ?? []).map((e: string) => {
+          const m = e.match(/<([^>]+)>/);
+          return m ? m[1].toLowerCase() : '';
+        }).filter(Boolean);
+        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], isTest, failedEmails });
       } else {
         alert('Lỗi gửi thông báo: ' + (data.error || 'Không xác định'));
+      }
+    } catch (err: any) {
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setAnnSending(false);
+    }
+  };
+
+  const retrySendFailed = async () => {
+    if (!annResult?.failedEmails?.length) return;
+    const failedIds = employees
+      .filter(nv => annResult.failedEmails!.includes((nv.email ?? '').toLowerCase()))
+      .map(nv => nv.id_nhan_vien);
+    if (failedIds.length === 0) return;
+    setAnnSending(true);
+    setAnnResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('subject', annSubject.trim());
+      fd.append('body', annBody.trim());
+      fd.append('recipientIds', JSON.stringify(failedIds));
+      annFiles.forEach(f => fd.append('files', f));
+      const res = await fetch('/api/email/announcement', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.success) {
+        const newFailedEmails = (data.errors ?? []).map((e: string) => {
+          const m = e.match(/<([^>]+)>/);
+          return m ? m[1].toLowerCase() : '';
+        }).filter(Boolean);
+        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], failedEmails: newFailedEmails });
+      } else {
+        alert('Lỗi gửi lại: ' + (data.error || 'Không xác định'));
       }
     } catch (err: any) {
       alert('Lỗi: ' + err.message);
@@ -1236,9 +1272,23 @@ export default function NhanVienPage() {
                       : `Gửi thành công ${annResult.sent}/${annResult.sent + annResult.failed} email${annResult.failed > 0 ? ` · ${annResult.failed} thất bại` : ''}`}
                   </div>
                   {annResult.errors.length > 0 && (
-                    <ul style={{ margin: '6px 0 0 18px', fontSize: 12, color: '#92400e' }}>
-                      {annResult.errors.map((e, i) => <li key={i}>{e}</li>)}
-                    </ul>
+                    <>
+                      <ul style={{ margin: '6px 0 4px 18px', fontSize: 12, color: '#92400e' }}>
+                        {annResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                      </ul>
+                      {!annResult.isTest && annResult.failedEmails && annResult.failedEmails.length > 0 && (
+                        <button
+                          onClick={retrySendFailed}
+                          disabled={annSending}
+                          style={{
+                            marginTop: 6, padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                            background: '#f59e0b', color: '#fff', border: 'none',
+                            borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5,
+                          }}>
+                          Gửi lại {annResult.failed} người thất bại
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
