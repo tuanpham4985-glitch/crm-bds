@@ -374,7 +374,7 @@ export default function TaiChinhPage() {
           <a href="/tai-chinh/cfo"
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: '#6366f115', color: '#6366f1', border: '1px solid #6366f130', fontSize: '0.8rem', fontWeight: 700, textDecoration: 'none' }}>
             <BarChart2 size={14} />
-            CFO Dashboard
+            Phân tích chuyên sâu
           </a>
         </div>
       </div>
