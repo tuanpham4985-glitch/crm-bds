@@ -78,7 +78,8 @@ function computeDisplay(raw: RawData) {
   const cpVHPct  = pct(cpVH);
   const lnPct    = pct(ln);
 
-  const n      = raw.numMonths || raw.monthly.filter(m => !m.label.includes('12/')).length || 5;
+  // n = tổng số tháng thực tế trong dữ liệu (nhất quán với tổng chi phí từ raw.pnl)
+  const n      = raw.numMonths || raw.monthly.length || 5;
 
   // Điểm hòa vốn tính từ số liệu thực tế
   const cpBienDoiRate = dtMG > 0 ? (hhAll + tNong + cpBH * 0.8) / dtMG : 0;
