@@ -59,9 +59,16 @@ export async function POST(request: NextRequest) {
     const cpVH  = p.cpVanHanh;
     const ln    = p.lnTruocThue;
     const ds    = p.doanhSo;
-    const n     = body.numMonths || 5;
+    const n     = monthly.length || body.numMonths || 5;
 
     const pct = (a: number) => dtMG > 0 ? (a / dtMG * 100) : 0;
+
+    // Điểm hòa vốn tính động (nhất quán với page.tsx)
+    const cpBienDoiRate = dtMG > 0 ? (hhAll + tNong + cpBH * 0.8) / dtMG : 0;
+    const cmRate        = 1 - cpBienDoiRate;
+    const cpCoDinhThang = (cpVH + cpBH * 0.2) / n;
+    const bepDT         = cmRate > 0 ? (cpCoDinhThang / cmRate / B) : 0;
+    const bepStr        = bepDT.toFixed(2);
     const hhPct   = pct(hhAll);
     const tNongPct= pct(tNong);
     const grossPct= 100 - hhPct - tNongPct;
@@ -252,7 +259,7 @@ export async function POST(request: NextRequest) {
           ...[
             `✗  HH Sales ${fmtPct(hhPct)} DT — vượt trần 65% tới ${(hhPct-65).toFixed(1)} điểm %. Nguyên nhân: tỷ trọng deal đối tác cao (HH 3,5–4%+). Mỗi điểm % dư ≈ ${((dtMG/B)*(hhPct-65)/100*1000/n).toFixed(0)} tr đồng/tháng bị "rò rỉ".`,
             `✗  LN trước thuế ${fmtPct(lnPct)} — thấp hơn mục tiêu 20%, chênh lệch ${(20-lnPct).toFixed(1)} điểm %, tương đương ${((dtMG/B)*(20-lnPct)/100).toFixed(2)} tỷ lợi nhuận bị thiếu hụt trong kỳ.`,
-            `✗  Biến động doanh thu tháng lớn — có tháng dưới điểm hòa vốn 2,7 tỷ, gây áp lực dòng tiền.`,
+            `✗  Biến động doanh thu tháng lớn — có tháng dưới điểm hòa vốn ${bepStr} tỷ, gây áp lực dòng tiền.`,
             `✗  Phụ thuộc đối tác bên ngoài — rủi ro khi đối tác rút lui hoặc chuyển sang sàn khác.`,
           ].map(t => para(t)),
 
@@ -261,7 +268,7 @@ export async function POST(request: NextRequest) {
           heading('VI. Ý KIẾN THAM MƯU KẾ TOÁN TRƯỞNG', HeadingLevel.HEADING_1),
           ...[
             '1. Kiểm soát tỷ lệ HH Sales về ≤65% — Ưu tiên deal nội bộ, đàm phán lại khung HH với đối tác chiến lược (đặt trần HH đối tác ≤3%). Mỗi điểm % giảm = thêm ~' + ((dtMG/B)*0.01*1000/n).toFixed(0) + ' triệu LN/tháng.',
-            '2. Xây dựng pipeline 3 tháng tới — Đảm bảo mỗi tháng có ít nhất 6 căn trong pipe để không bị tháng "trống" dưới điểm hòa vốn 2,7 tỷ DT.',
+            `2. Xây dựng pipeline 3 tháng tới — Đảm bảo mỗi tháng có ít nhất 6 căn trong pipe để không bị tháng "trống" dưới điểm hòa vốn ${bepStr} tỷ DT.`,
             '3. Tách báo cáo Deal nội bộ vs Đối tác — Theo dõi KPI riêng: tỷ trọng deal nội bộ mục tiêu ≥60% (hiện ~50%).',
             '4. Chi phí setup VP (569 tr) — Đây là CP một lần, đề nghị phân bổ vào 12 tháng (47,4 tr/tháng) để phản ánh đúng chi phí định kỳ. Nếu điều chỉnh, CP VH thực tế chỉ ~11,4% DT.',
             '5. Tăng thưởng nóng CĐT cho nội bộ — Ưu tiên dự án có chính sách thưởng nóng, giảm phụ thuộc deal HH cao từ đối tác.',
