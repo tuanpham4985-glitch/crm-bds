@@ -3505,12 +3505,21 @@ export async function syncManagerFromHrFile(): Promise<{
   });
 
   // 2. Đọc header hàng 4 để auto-detect cột
+  // Chuẩn hóa header (bỏ dấu, chữ thường, bỏ khoảng trắng)
   const normH = (s: string) =>
     s.toLowerCase()
       .normalize('NFD')
       .replace(/[̀-ͯ]/g, '')
       .trim()
       .replace(/\s+/g, '');
+
+  // Chuẩn hóa tên người (giữ khoảng trắng đơn để so sánh)
+  const normName = (s: string) =>
+    s.toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .trim()
+      .replace(/\s+/g, ' ');
 
   const headers: string[] = [];
   for (let c = 0; c < hrColCount; c++) {
@@ -3521,34 +3530,58 @@ export async function syncManagerFromHrFile(): Promise<{
   const colMNV = (() => {
     const idx = headers.findIndex(h => {
       const n = normH(h);
-      return n === 'mnv' || n === 'manv' || n === 'manhânvien' || n === 'manhânviên' || n === 'mãnv' || n === 'mãnhânvien' || n === 'mãnhânviên';
+      return n === 'mnv' || n === 'manv' || n === 'manhânvien' || n === 'manhânviên'
+          || n === 'mãnv' || n === 'mãnhânvien' || n === 'mãnhânviên';
     });
     return idx !== -1 ? idx : 1; // fallback cột B
+  })();
+
+  // Auto-detect cột Họ và tên — thường là cột C (index 2)
+  const colHoTen = (() => {
+    const idx = headers.findIndex(h => {
+      const n = normH(h);
+      return n === 'hoten' || n === 'hovaten' || n === 'hotenvaten'
+          || n.includes('hotennhanvien') || n.includes('hovaten');
+    });
+    return idx !== -1 ? idx : 2; // fallback cột C
   })();
 
   // Auto-detect cột Quản lý trực tiếp — thường là cột K (index 10)
   const colQL = (() => {
     const idx = headers.findIndex(h => {
       const n = normH(h);
-      return n.includes('quantructiep') || n.includes('quanlytructiep') || (n.includes('quanly') && n.includes('truc'));
+      return n.includes('quantructiep') || n.includes('quanlytructiep')
+          || (n.includes('quanly') && n.includes('truc'));
     });
     return idx !== -1 ? idx : 10; // fallback cột K
   })();
 
   console.log(`[syncManager] File: ${hrSheetId}, Sheet: "${HR_SHEET_NAME}"`);
-  console.log(`[syncManager] Detected cols — MNV: ${colMNV} (${headers[colMNV]}), QL: ${colQL} (${headers[colQL]})`);
+  console.log(`[syncManager] Cols — MNV:${colMNV}(${headers[colMNV]}), HoTen:${colHoTen}(${headers[colHoTen]}), QL:${colQL}(${headers[colQL]})`);
 
   // 3. Đọc tất cả dữ liệu từ file HR (từ hàng 5, index 4)
-  const hrMap = new Map<string, string>(); // padded_id → ql_truc_tiep
+  // Xây dựng 2 map: theo ID và theo tên (fallback cho nhân viên bị lệch ID)
+  const hrByIdMap   = new Map<string, string>(); // padded_mnv → ql_truc_tiep
+  const hrByNameMap = new Map<string, string>(); // normalized_ho_ten → ql_truc_tiep
+
   for (let rowIdx = HEADER_ROW_IDX + 1; rowIdx < hrRowCount; rowIdx++) {
-    const mnvRaw = str(hrSheet.getCell(rowIdx, colMNV).value);
-    const qlRaw  = str(hrSheet.getCell(rowIdx, colQL).value);
-    if (!mnvRaw) continue;
-    const mnv = padEmployeeId(mnvRaw);
-    if (mnv) hrMap.set(mnv, qlRaw);
+    const mnvRaw  = str(hrSheet.getCell(rowIdx, colMNV).value);
+    const nameRaw = str(hrSheet.getCell(rowIdx, colHoTen).value);
+    const qlRaw   = str(hrSheet.getCell(rowIdx, colQL).value);
+
+    if (!mnvRaw && !nameRaw) continue; // dòng trống hoàn toàn
+
+    if (mnvRaw) {
+      const mnv = padEmployeeId(mnvRaw);
+      if (mnv) hrByIdMap.set(mnv, qlRaw);
+    }
+    if (nameRaw) {
+      const name = normName(nameRaw);
+      if (name) hrByNameMap.set(name, qlRaw);
+    }
   }
 
-  console.log(`[syncManager] Read ${hrMap.size} employees from HR file`);
+  console.log(`[syncManager] HR file: ${hrByIdMap.size} by-ID, ${hrByNameMap.size} by-name`);
 
   // 4. Cập nhật NHAN_VIEN sheet
   const crmDoc = await getDoc();
@@ -3560,22 +3593,37 @@ export async function syncManagerFromHrFile(): Promise<{
 
   for (const row of nvRows) {
     const v = row.toObject();
-    const id = padEmployeeId(str(v['id_nhan_vien']));
-    if (!id) { skipped++; continue; }
+    const id    = padEmployeeId(str(v['id_nhan_vien']));
+    const hoTen = str(v['ho_ten']);
 
-    const qlFromHr = hrMap.get(id);
-    if (qlFromHr === undefined) { skipped++; continue; } // không có trong file HR
+    if (!id && !hoTen) { skipped++; continue; }
+
+    // Ưu tiên khớp theo ID, fallback khớp theo tên
+    let qlFromHr: string | undefined;
+    let matchBy = '';
+
+    if (id) {
+      const byId = hrByIdMap.get(id);
+      if (byId !== undefined) { qlFromHr = byId; matchBy = 'id'; }
+    }
+
+    if (qlFromHr === undefined && hoTen) {
+      const byName = hrByNameMap.get(normName(hoTen));
+      if (byName !== undefined) { qlFromHr = byName; matchBy = 'name'; }
+    }
+
+    if (qlFromHr === undefined) { skipped++; continue; } // không tìm thấy trong file HR
 
     const currentQL = str(v['ql_truc_tiep']);
-    if (currentQL === qlFromHr) { skipped++; continue; } // không cần cập nhật
+    if (currentQL === qlFromHr) { skipped++; continue; } // đã đúng rồi
 
     try {
       row.set('ql_truc_tiep', qlFromHr);
       await row.save();
-      console.log(`[syncManager] ${id} (${str(v['ho_ten'])}) → "${qlFromHr}"`);
+      console.log(`[syncManager] [by-${matchBy}] ${id} "${hoTen}" → "${qlFromHr}"`);
       updated++;
     } catch (e: any) {
-      errors.push(`${id}: ${e?.message || String(e)}`);
+      errors.push(`${id || hoTen}: ${e?.message || String(e)}`);
     }
   }
 
