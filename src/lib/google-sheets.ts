@@ -3463,3 +3463,123 @@ export async function deleteChamCongNgoai(id: string, idNhanVien: string): Promi
   return true;
 }
 
+// ============================================================
+// SYNC QUẢN LÝ TRỰC TIẾP từ file HR ngoài → NHAN_VIEN.ql_truc_tiep
+// ============================================================
+
+export async function syncManagerFromHrFile(): Promise<{
+  updated: number;
+  skipped: number;
+  errors: string[];
+}> {
+  const hrSheetId = process.env.NHAN_SU_SHEET_ID;
+  if (!hrSheetId) {
+    throw new Error(
+      'Biến môi trường NHAN_SU_SHEET_ID chưa được cấu hình. ' +
+      'Thêm vào Vercel → Settings → Environment Variables: ' +
+      'NHAN_SU_SHEET_ID = 1jbrf9uC6K_k-VRQyFwMzFk8qiU845wsqSszNXdnyJZw'
+    );
+  }
+
+  const HR_SHEET_NAME = 'DATA NHÂN SỰ';
+  const HEADER_ROW_IDX = 3; // hàng 4 (0-based = 3) là header trong file nhân sự
+
+  // 1. Mở file HR ngoài
+  const hrDoc = await getDocBySheetId(hrSheetId);
+  const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
+  if (!hrSheet) {
+    throw new Error(
+      `Không tìm thấy sheet "${HR_SHEET_NAME}" trong file nhân sự. ` +
+      `Đảm bảo file đã chia sẻ với: ${process.env.GOOGLE_CLIENT_EMAIL}`
+    );
+  }
+
+  const hrRowCount = Math.min(hrSheet.rowCount, 1000);
+  const hrColCount = Math.min(hrSheet.columnCount, 30);
+
+  await hrSheet.loadCells({
+    startRowIndex: HEADER_ROW_IDX,
+    endRowIndex: hrRowCount,
+    startColumnIndex: 0,
+    endColumnIndex: hrColCount,
+  });
+
+  // 2. Đọc header hàng 4 để auto-detect cột
+  const normH = (s: string) =>
+    s.toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .trim()
+      .replace(/\s+/g, '');
+
+  const headers: string[] = [];
+  for (let c = 0; c < hrColCount; c++) {
+    headers.push(str(hrSheet.getCell(HEADER_ROW_IDX, c).value));
+  }
+
+  // Auto-detect cột MNV (Mã nhân viên) — thường là cột B (index 1)
+  const colMNV = (() => {
+    const idx = headers.findIndex(h => {
+      const n = normH(h);
+      return n === 'mnv' || n === 'manv' || n === 'manhânvien' || n === 'manhânviên' || n === 'mãnv' || n === 'mãnhânvien' || n === 'mãnhânviên';
+    });
+    return idx !== -1 ? idx : 1; // fallback cột B
+  })();
+
+  // Auto-detect cột Quản lý trực tiếp — thường là cột K (index 10)
+  const colQL = (() => {
+    const idx = headers.findIndex(h => {
+      const n = normH(h);
+      return n.includes('quantructiep') || n.includes('quanlytructiep') || (n.includes('quanly') && n.includes('truc'));
+    });
+    return idx !== -1 ? idx : 10; // fallback cột K
+  })();
+
+  console.log(`[syncManager] File: ${hrSheetId}, Sheet: "${HR_SHEET_NAME}"`);
+  console.log(`[syncManager] Detected cols — MNV: ${colMNV} (${headers[colMNV]}), QL: ${colQL} (${headers[colQL]})`);
+
+  // 3. Đọc tất cả dữ liệu từ file HR (từ hàng 5, index 4)
+  const hrMap = new Map<string, string>(); // padded_id → ql_truc_tiep
+  for (let rowIdx = HEADER_ROW_IDX + 1; rowIdx < hrRowCount; rowIdx++) {
+    const mnvRaw = str(hrSheet.getCell(rowIdx, colMNV).value);
+    const qlRaw  = str(hrSheet.getCell(rowIdx, colQL).value);
+    if (!mnvRaw) continue;
+    const mnv = padEmployeeId(mnvRaw);
+    if (mnv) hrMap.set(mnv, qlRaw);
+  }
+
+  console.log(`[syncManager] Read ${hrMap.size} employees from HR file`);
+
+  // 4. Cập nhật NHAN_VIEN sheet
+  const crmDoc = await getDoc();
+  const nvSheet = await getSheet(crmDoc, SHEETS.NHAN_VIEN);
+  const nvRows = await nvSheet.getRows();
+
+  let updated = 0, skipped = 0;
+  const errors: string[] = [];
+
+  for (const row of nvRows) {
+    const v = row.toObject();
+    const id = padEmployeeId(str(v['id_nhan_vien']));
+    if (!id) { skipped++; continue; }
+
+    const qlFromHr = hrMap.get(id);
+    if (qlFromHr === undefined) { skipped++; continue; } // không có trong file HR
+
+    const currentQL = str(v['ql_truc_tiep']);
+    if (currentQL === qlFromHr) { skipped++; continue; } // không cần cập nhật
+
+    try {
+      row.set('ql_truc_tiep', qlFromHr);
+      await row.save();
+      console.log(`[syncManager] ${id} (${str(v['ho_ten'])}) → "${qlFromHr}"`);
+      updated++;
+    } catch (e: any) {
+      errors.push(`${id}: ${e?.message || String(e)}`);
+    }
+  }
+
+  console.log(`[syncManager] Done — updated: ${updated}, skipped: ${skipped}, errors: ${errors.length}`);
+  return { updated, skipped, errors };
+}
+
