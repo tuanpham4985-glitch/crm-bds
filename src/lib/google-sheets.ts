@@ -3342,7 +3342,7 @@ export async function saveTaiChinhHistory(row: TaiChinhHistoryRow): Promise<void
 
 const CCN_HEADERS = [
   'id', 'id_nhan_vien', 'ho_ten', 'ngay', 'gio_bat_dau', 'gio_ket_thuc',
-  'du_an_khach_hang', 'dia_diem', 'ghi_chu',
+  'du_an_khach_hang', 'dia_diem', 'ghi_chu', 'hinh_anh',
   'trang_thai', 'nguoi_duyet', 'ghi_chu_duyet', 'created_at',
 ] as const;
 
@@ -3384,6 +3384,7 @@ export async function getChamCongNgoai(idNhanVien?: string): Promise<ChamCongNgo
         du_an_khach_hang: str(v.du_an_khach_hang),
         dia_diem:         str(v.dia_diem),
         ghi_chu:          str(v.ghi_chu),
+        hinh_anh:         str(v.hinh_anh) || undefined,
         trang_thai:       (str(v.trang_thai) || 'cho_duyet') as ChamCongNgoai['trang_thai'],
         nguoi_duyet:      str(v.nguoi_duyet) || undefined,
         ghi_chu_duyet:    str(v.ghi_chu_duyet) || undefined,
@@ -3409,6 +3410,7 @@ export async function addChamCongNgoai(payload: Omit<ChamCongNgoai, 'id' | 'crea
     du_an_khach_hang: payload.du_an_khach_hang,
     dia_diem:         payload.dia_diem,
     ghi_chu:          payload.ghi_chu || '',
+    hinh_anh:         payload.hinh_anh || '',
     trang_thai:       'cho_duyet',
     nguoi_duyet:      '',
     ghi_chu_duyet:    '',

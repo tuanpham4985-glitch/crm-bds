@@ -467,6 +467,7 @@ export interface ChamCongNgoai {
   du_an_khach_hang: string;
   dia_diem: string;
   ghi_chu?: string;
+  hinh_anh?: string;         // base64 JPEG thumbnail
   trang_thai: 'cho_duyet' | 'da_duyet' | 'tu_choi';
   nguoi_duyet?: string;
   ghi_chu_duyet?: string;

@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
 
     const body = await request.json();
-    const { ngay, gio_bat_dau, gio_ket_thuc, du_an_khach_hang, dia_diem, ghi_chu } = body;
+    const { ngay, gio_bat_dau, gio_ket_thuc, du_an_khach_hang, dia_diem, ghi_chu, hinh_anh } = body;
 
     if (!ngay || !gio_bat_dau || !gio_ket_thuc || !du_an_khach_hang || !dia_diem) {
       return NextResponse.json({ success: false, error: 'Thiếu thông tin bắt buộc' }, { status: 400 });
@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
       du_an_khach_hang,
       dia_diem,
       ghi_chu: ghi_chu || '',
+      hinh_anh: hinh_anh || '',
     });
 
     return NextResponse.json({ success: true, data: result });
