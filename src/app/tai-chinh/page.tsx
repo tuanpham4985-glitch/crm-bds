@@ -9,6 +9,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, Home, BarChart2, Percent,
   Upload, FileSpreadsheet, Download, X, AlertCircle, History, ChevronDown, ChevronUp, Loader2,
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -262,6 +263,7 @@ const LegendDot = ({ color, label, dashed }: { color: string; label: string; das
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TaiChinhPage() {
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [rawData, setRawData] = useState<RawData>(DEFAULT_RAW);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -347,6 +349,16 @@ export default function TaiChinhPage() {
       setExporting(false);
     }
   };
+
+  if (authLoading) return null;
+
+  if (!isAdmin) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+      <AlertCircle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+      <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+      <p style={{ fontSize: 13, margin: 0 }}>Chỉ Ban lãnh đạo và Admin mới có thể xem Tài chính</p>
+    </div>
+  );
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1200, margin: '0 auto' }}>

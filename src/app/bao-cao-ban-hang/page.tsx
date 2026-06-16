@@ -137,23 +137,32 @@ export default function BaoCaoBanHangPage() {
     } finally {
       setLoading(false);
     }
-    // Load secondary data (don't block main table)
-    try {
-      const [ttgdRes, tcRes] = await Promise.all([
-        fetch('/api/tinh-trang-giao-dich'),
-        fetch('/api/ton-coc'),
-      ]);
-      const [ttgdData, tcData] = await Promise.all([ttgdRes.json(), tcRes.json()]);
-      if (ttgdData.success) setTinhTrangGiaoDich(ttgdData.data);
-      if (tcData.success) setTonCoc(tcData.data);
-    } catch (err) {
-      console.error('Secondary fetch error:', err);
-    } finally {
-      setSecondaryLoaded(true);
-    }
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Chỉ load Tình trạng giao dịch + Tồn cọc khi user đã xác thực là lãnh đạo
+  useEffect(() => {
+    if (!isAllVisible) { setSecondaryLoaded(true); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [ttgdRes, tcRes] = await Promise.all([
+          fetch('/api/tinh-trang-giao-dich'),
+          fetch('/api/ton-coc'),
+        ]);
+        const [ttgdData, tcData] = await Promise.all([ttgdRes.json(), tcRes.json()]);
+        if (cancelled) return;
+        if (ttgdData.success) setTinhTrangGiaoDich(ttgdData.data);
+        if (tcData.success) setTonCoc(tcData.data);
+      } catch (err) {
+        console.error('Secondary fetch error:', err);
+      } finally {
+        if (!cancelled) setSecondaryLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isAllVisible]);
 
   // Reset pages on filter change
 
@@ -570,7 +579,7 @@ export default function BaoCaoBanHangPage() {
       </div>
 
       {/* ── Tình trạng giao dịch ── */}
-      {(() => {
+      {isAllVisible && (() => {
         const ttgdProjects = [...new Set(tinhTrangGiaoDich.map(r => r.du_an).filter(Boolean))].sort();
 
         // Apply filters in order: project → mã căn → lãi phạt → date range
@@ -855,7 +864,7 @@ export default function BaoCaoBanHangPage() {
       })()}
 
       {/* ── Tồn cọc ── */}
-      {(() => {
+      {isAllVisible && (() => {
         const tonCocProjects = [...new Set(tonCoc.map(r => r.du_an).filter(Boolean))].sort();
         const filteredTonCoc = filterDuAnTonCoc
           ? tonCoc.filter(r => r.du_an === filterDuAnTonCoc)

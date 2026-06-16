@@ -288,16 +288,18 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
             <span>Báo cáo bán hàng</span>
           </Link>
         </div>
-        <div className={styles.navSection}>
-          <Link
-            href="/tai-chinh"
-            className={`${styles.navItem} ${pathname.startsWith('/tai-chinh') ? styles.active : ''}`}
-            title="Tài chính"
-          >
-            <TrendingUp size={20} />
-            <span>Tài chính</span>
-          </Link>
-        </div>
+        {isAdmin && (
+          <div className={styles.navSection}>
+            <Link
+              href="/tai-chinh"
+              className={`${styles.navItem} ${pathname.startsWith('/tai-chinh') ? styles.active : ''}`}
+              title="Tài chính"
+            >
+              <TrendingUp size={20} />
+              <span>Tài chính</span>
+            </Link>
+          </div>
+        )}
 
         {/* HRM GROUP */}
         <div className={styles.navSection}>
