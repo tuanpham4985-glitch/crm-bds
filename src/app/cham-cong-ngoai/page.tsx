@@ -75,9 +75,6 @@ export default function ChamCongNgoaiPage() {
   });
   const [photo, setPhoto]           = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
-  const [gps, setGps]               = useState('');
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [gpsError, setGpsError]     = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formMsg, setFormMsg]       = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -116,30 +113,6 @@ export default function ChamCongNgoaiPage() {
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
-  // ── GPS ───────────────────────────────────────────────────────
-  const handleGetGps = () => {
-    if (!navigator.geolocation) {
-      setGpsError('Thiết bị không hỗ trợ định vị GPS');
-      return;
-    }
-    setGpsLoading(true);
-    setGpsError('');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude.toFixed(6);
-        const lng = pos.coords.longitude.toFixed(6);
-        const acc = Math.round(pos.coords.accuracy);
-        setGps(`${lat},${lng} (±${acc}m)`);
-        setGpsLoading(false);
-      },
-      (err) => {
-        setGpsError(err.code === 1 ? 'Cần cấp quyền vị trí cho trình duyệt' : 'Không lấy được vị trí: ' + err.message);
-        setGpsLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    );
-  };
-
   // ── Photo ─────────────────────────────────────────────────────
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -160,13 +133,13 @@ export default function ChamCongNgoaiPage() {
       const res = await fetch('/api/cham-cong-ngoai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, hinh_anh: photo, vi_tri_gps: gps }),
+        body: JSON.stringify({ ...form, hinh_anh: photo, vi_tri_gps: '' }),
       });
       const json = await res.json();
       if (json.success) {
         setFormMsg({ ok: true, text: 'Đã gửi đơn, chờ phê duyệt' });
         setForm({ ngay: today(), gio_bat_dau: '08:00', gio_ket_thuc: '17:00', du_an_khach_hang: '', dia_diem: '', ghi_chu: '' });
-        setPhoto(''); setGps('');
+        setPhoto('');
         fetchRecords();
       } else {
         setFormMsg({ ok: false, text: json.error || 'Gửi thất bại' });
@@ -333,13 +306,13 @@ export default function ChamCongNgoaiPage() {
       for (let c = 1; c < TOTAL_COLS; c++) titleRow.push({ v: '', t: 's', s: {} });
       s3.push(titleRow);
 
-      // Dòng 1: Tháng / Năm
+      // Dòng 1: Tháng / Năm — A2="Tháng", B2=tháng, C2=năm
       const mRow: any[] = [
         sc('Tháng', undefined, true),
-        sc(String(exportMonth).padStart(4, '0'), undefined, false, true),
+        sc(String(exportMonth).padStart(2, '0'), undefined, false, true),
+        sc(String(exportYear), undefined, true, true),
       ];
-      while (mRow.length < TOTAL_COLS - 1) mRow.push({ v: '', t: 's', s: {} });
-      mRow.push(sc(String(exportYear), undefined, true, true));
+      while (mRow.length < TOTAL_COLS) mRow.push({ v: '', t: 's', s: {} });
       s3.push(mRow);
 
       // Dòng 2: Trống
@@ -388,7 +361,8 @@ export default function ChamCongNgoaiPage() {
 
       const ws3 = XLSX.utils.aoa_to_sheet(s3);
 
-      // Merge: tiêu đề + các cột cố định (merge 2 hàng header)
+      // Merge: tiêu đề + các cột cố định (merge 2 hàng header) + chữ ký
+      const sigRowIdx = 6 + employees.length;
       ws3['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: TOTAL_COLS - 1 } },
         { s: { r: 3, c: 0 }, e: { r: 4, c: 0 } },
@@ -396,6 +370,8 @@ export default function ChamCongNgoaiPage() {
         { s: { r: 3, c: 2 }, e: { r: 4, c: 2 } },
         { s: { r: 3, c: TOTAL_COLS - 2 }, e: { r: 4, c: TOTAL_COLS - 2 } },
         { s: { r: 3, c: TOTAL_COLS - 1 }, e: { r: 4, c: TOTAL_COLS - 1 } },
+        { s: { r: sigRowIdx, c: 4 }, e: { r: sigRowIdx, c: 8 } },
+        { s: { r: sigRowIdx, c: sigR }, e: { r: sigRowIdx, c: Math.min(sigR + 4, TOTAL_COLS - 1) } },
       ];
 
       ws3['!cols'] = [
@@ -441,7 +417,7 @@ export default function ChamCongNgoaiPage() {
       {/* HEADER */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
         <MapPin size={22} style={{ color: 'var(--primary)' }} />
-        <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Chấm công ngoài</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Chấm công online</h1>
         <button onClick={fetchRecords} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 4 }} title="Làm mới">
           <RefreshCw size={16} />
         </button>
@@ -470,10 +446,10 @@ export default function ChamCongNgoaiPage() {
             </div>
           </div>
 
-          {/* Dự án */}
+          {/* Lý do */}
           <div className="form-group" style={{ marginBottom: 10 }}>
-            <label className="form-label">Dự án / Khách hàng <span style={{ color: 'var(--danger)' }}>*</span></label>
-            <input type="text" className="form-input" placeholder="Tên dự án hoặc tên khách hàng" value={form.du_an_khach_hang} onChange={e => setForm(f => ({ ...f, du_an_khach_hang: e.target.value }))} required />
+            <label className="form-label">Lý do <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <input type="text" className="form-input" placeholder="Nhập lý do" value={form.du_an_khach_hang} onChange={e => setForm(f => ({ ...f, du_an_khach_hang: e.target.value }))} required />
           </div>
 
           {/* Địa điểm */}
@@ -488,65 +464,26 @@ export default function ChamCongNgoaiPage() {
             <textarea className="form-input" placeholder="Nội dung công việc, mục đích..." rows={2} style={{ resize: 'vertical' }} value={form.ghi_chu} onChange={e => setForm(f => ({ ...f, ghi_chu: e.target.value }))} />
           </div>
 
-          {/* GPS + Photo side by side */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-            {/* GPS */}
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Vị trí GPS</label>
-              {gps ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <a
-                    href={`https://maps.google.com/?q=${gps.split(' ')[0]}`}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ fontSize: 12, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600 }}
-                  >
-                    <CheckCircle size={13} />
-                    {gps.split('(')[1]?.replace(')', '') || 'Đã lấy vị trí'}
-                  </a>
-                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{gps.split(' ')[0]}</span>
-                  <button type="button" onClick={() => setGps('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 11, textAlign: 'left', padding: 0 }}>
-                    Xóa vị trí
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <button
-                    type="button"
-                    onClick={handleGetGps}
-                    disabled={gpsLoading}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1.5px dashed var(--border)', borderRadius: 8, background: 'none', cursor: gpsLoading ? 'wait' : 'pointer', color: 'var(--text-secondary)', fontSize: 13, width: '100%', justifyContent: 'center' }}
-                  >
-                    {gpsLoading
-                      ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                      : <Navigation size={15} />}
-                    {gpsLoading ? 'Đang định vị...' : 'Lấy GPS'}
-                  </button>
-                  {gpsError && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{gpsError}</div>}
-                </div>
-              )}
-            </div>
-
-            {/* Photo */}
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Ảnh tại dự án</label>
-              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
-              {photo ? (
-                <div style={{ position: 'relative', display: 'inline-block' }}>
-                  <img src={photo} alt="preview" onClick={() => setLightbox(photo)}
-                    style={{ height: 68, borderRadius: 8, cursor: 'zoom-in', objectFit: 'cover', border: '2px solid var(--primary)' }} />
-                  <button type="button" onClick={() => setPhoto('')}
-                    style={{ position: 'absolute', top: -8, right: -8, background: '#ef4444', border: 'none', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-                    <X size={11} />
-                  </button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={photoLoading}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1.5px dashed var(--border)', borderRadius: 8, background: 'none', cursor: photoLoading ? 'wait' : 'pointer', color: 'var(--text-secondary)', fontSize: 13, width: '100%', justifyContent: 'center' }}>
-                  {photoLoading ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Camera size={15} />}
-                  {photoLoading ? 'Đang xử lý...' : 'Chụp / chọn'}
+          {/* Photo */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label className="form-label">Ảnh tại dự án</label>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
+            {photo ? (
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <img src={photo} alt="preview" onClick={() => setLightbox(photo)}
+                  style={{ height: 68, borderRadius: 8, cursor: 'zoom-in', objectFit: 'cover', border: '2px solid var(--primary)' }} />
+                <button type="button" onClick={() => setPhoto('')}
+                  style={{ position: 'absolute', top: -8, right: -8, background: '#ef4444', border: 'none', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                  <X size={11} />
                 </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={photoLoading}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1.5px dashed var(--border)', borderRadius: 8, background: 'none', cursor: photoLoading ? 'wait' : 'pointer', color: 'var(--text-secondary)', fontSize: 13, width: '100%', justifyContent: 'center' }}>
+                {photoLoading ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Camera size={15} />}
+                {photoLoading ? 'Đang xử lý...' : 'Chụp / chọn'}
+              </button>
+            )}
           </div>
 
           {formMsg && (
@@ -556,7 +493,7 @@ export default function ChamCongNgoaiPage() {
             </div>
           )}
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={submitting || photoLoading || gpsLoading}>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={submitting || photoLoading}>
             {submitting ? <><Loader2 size={15} style={{ display: 'inline', marginRight: 6, animation: 'spin 1s linear infinite' }} />Đang gửi...</> : 'Gửi đơn'}
           </button>
         </form>

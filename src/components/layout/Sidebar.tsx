@@ -28,7 +28,7 @@ const HRM_ITEMS = [
   { href: '/nhan-vien', label: 'Nhân viên', icon: UserCog },
   { href: '/nhan-vien/hop-dong', label: 'Hợp đồng', icon: FileText },
   { href: '/nhan-vien/bang-luong', label: 'Bảng lương', icon: BadgeDollarSign },
-  { href: '/cham-cong-ngoai', label: 'Chấm công ngoài', icon: MapPin },
+  { href: '/cham-cong-ngoai', label: 'Chấm công online', icon: MapPin },
 ];
 
 interface SidebarProps {
