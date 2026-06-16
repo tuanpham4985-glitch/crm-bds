@@ -3373,7 +3373,10 @@ async function getOrCreateChamCongNgoaiSheet(doc: GoogleSpreadsheet): Promise<Go
   return sheet;
 }
 
-export async function getChamCongNgoai(idNhanVien?: string): Promise<ChamCongNgoai[]> {
+export async function getChamCongNgoai(
+  idNhanVien?: string,
+  qlTrucTiep?: string,
+): Promise<ChamCongNgoai[]> {
   const doc = await getDoc();
   const sheet = await getOrCreateChamCongNgoaiSheet(doc);
   const rows = await sheet.getRows();
@@ -3399,7 +3402,11 @@ export async function getChamCongNgoai(idNhanVien?: string): Promise<ChamCongNgo
         created_at:       str(v.created_at),
       };
     })
-    .filter(r => r.id && (!idNhanVien || r.id_nhan_vien === idNhanVien))
+    .filter(r =>
+      r.id &&
+      (!idNhanVien || r.id_nhan_vien === idNhanVien) &&
+      (!qlTrucTiep || r.ql_truc_tiep === qlTrucTiep),
+    )
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
@@ -3435,12 +3442,19 @@ export async function updateChamCongNgoaiStatus(
   trang_thai: 'da_duyet' | 'tu_choi',
   nguoi_duyet: string,
   ghi_chu_duyet?: string,
-): Promise<boolean> {
+  // Nếu truyền vào: chỉ cho phép duyệt nếu ql_truc_tiep của đơn khớp với tên này
+  requiredQL?: string,
+): Promise<boolean | 'forbidden'> {
   const doc = await getDoc();
   const sheet = await getOrCreateChamCongNgoaiSheet(doc);
   const rows = await sheet.getRows();
   const row = rows.find(r => str(r.toObject()['id']) === id);
   if (!row) return false;
+  // Kiểm tra quyền QL: nếu requiredQL được truyền, ql_truc_tiep phải khớp
+  if (requiredQL) {
+    const v = row.toObject();
+    if (str(v['ql_truc_tiep']) !== requiredQL) return 'forbidden';
+  }
   row.set('trang_thai', trang_thai);
   row.set('nguoi_duyet', nguoi_duyet);
   row.set('ghi_chu_duyet', ghi_chu_duyet || '');

@@ -281,7 +281,15 @@ export default function ChamCongNgoaiPage() {
     }
   };
 
-  const myRecords  = records.filter(r => r.id_nhan_vien === user?.id_nhan_vien);
+  const myRecords = records.filter(r => r.id_nhan_vien === user?.id_nhan_vien);
+
+  // Đơn của nhóm mình (là quản lý trực tiếp) — không tính đơn của chính mình
+  const managedRecords = records.filter(
+    r => r.ql_truc_tiep === user?.ho_ten && r.id_nhan_vien !== user?.id_nhan_vien,
+  );
+  const pendingManaged = managedRecords.filter(r => r.trang_thai === 'cho_duyet');
+  const isManager = managedRecords.length > 0;
+
   const pendingAll = canEditHRM ? records.filter(r => r.trang_thai === 'cho_duyet') : [];
   const filteredAll = canEditHRM
     ? records.filter(r => {
@@ -418,7 +426,7 @@ export default function ChamCongNgoaiPage() {
         </form>
       </div>
 
-      {/* DUYỆT ĐƠN chờ */}
+      {/* DUYỆT ĐƠN — Admin/HR thấy tất cả chờ duyệt */}
       {canEditHRM && pendingAll.length > 0 && (
         <div className="card" style={{ marginBottom: 24, borderLeft: '3px solid #f59e0b' }}>
           <div style={{ fontWeight: 600, marginBottom: 14, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -434,6 +442,45 @@ export default function ChamCongNgoaiPage() {
                 onReject={() => { setApproving({ id: r.id, action: 'tu_choi' }); setGhiChuDuyet(''); }}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* DUYỆT ĐƠN — Quản lý trực tiếp thấy đơn của nhóm mình */}
+      {!canEditHRM && isManager && pendingManaged.length > 0 && (
+        <div className="card" style={{ marginBottom: 24, borderLeft: '3px solid #f59e0b' }}>
+          <div style={{ fontWeight: 600, marginBottom: 14, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Clock size={16} />
+            Đơn nhóm chờ duyệt ({pendingManaged.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {pendingManaged.map(r => (
+              <ApproveCard
+                key={r.id} record={r}
+                onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined}
+                onApprove={() => { setApproving({ id: r.id, action: 'da_duyet' }); setGhiChuDuyet(''); }}
+                onReject={() => { setApproving({ id: r.id, action: 'tu_choi' }); setGhiChuDuyet(''); }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* LỊCH SỬ NHÓM — Quản lý xem tất cả đơn (đã/từ chối) của nhóm */}
+      {!canEditHRM && isManager && managedRecords.filter(r => r.trang_thai !== 'cho_duyet').length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ fontWeight: 600, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <User size={15} style={{ color: 'var(--primary)' }} />
+            Đơn nhóm đã xử lý
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {managedRecords
+              .filter(r => r.trang_thai !== 'cho_duyet')
+              .map(r => (
+                <RecordCard key={r.id} record={r} showName
+                  onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined}
+                />
+              ))}
           </div>
         </div>
       )}
