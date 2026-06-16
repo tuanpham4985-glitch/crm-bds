@@ -14,7 +14,7 @@ import { calculateTaxMonthly, TAX_CONFIG } from '@/lib/tax';
 
 // ── Cấu hình cột cơ bản (id / tên / thực lĩnh) ──
 const LAYOUT = {
-  KD: { colId: 1, colName: 2, colVal: 38 }, // B=Mã NV, C=Họ tên, AM=Thực Lĩnh
+  KD: { colId: 1, colName: 2, colVal: 39 }, // B=Mã NV, C=Họ tên, AN=Thực Lĩnh
   BO: { colId: 2, colName: 4, colVal: 62 }, // C=Mã ID, E=Họ tên, BK=Lương TL
 };
 
@@ -37,21 +37,22 @@ const KD_COLS = {
   kpi_doanh_thu_gdkd:  21,  // V  — GĐKD/TPKD
   kpi_doanh_thu_nvkd:  22,  // W  — NVKD: doanh thu
   kpi_plus:            23,  // X  — NVKD: KPI Plus
-  dieu_chinh_ky_truoc: 24,  // Y
-  tong_thu_nhap:       25,  // Z
-  luong_dong_bhxh:     26,  // AA
-  bhxh_nld:            27,  // AB — BHXH NLĐ 10.5%
-  giam_tru_ban_than:   28,  // AC
-  so_nguoi_giam_tru:   29,  // AD
-  so_tien_giam_tru:    30,  // AE
-  thu_nhap_tinh_thue:  31,  // AF
-  thue_tncn:           32,  // AG
-  so_phut_di_muon:     33,  // AH
-  tien_di_muon:        34,  // AI
-  tru_khac:            35,  // AJ
-  tam_ung_luong:       36,  // AK
-  tong_khau_tru:       37,  // AL
-  // AM (38) = Thực Lĩnh — đã có trong LAYOUT.KD.colVal
+  // col 24 (Y) = Phụ cấp — không parse (cột mới, shift toàn bộ +1 từ đây)
+  dieu_chinh_ky_truoc: 25,  // Z
+  tong_thu_nhap:       26,  // AA
+  luong_dong_bhxh:     27,  // AB
+  bhxh_nld:            28,  // AC — BHXH NLĐ 10.5%
+  giam_tru_ban_than:   29,  // AD
+  so_nguoi_giam_tru:   30,  // AE — Số người giảm trừ
+  so_tien_giam_tru:    31,  // AF — Số tiền giảm trừ NPT
+  thu_nhap_tinh_thue:  32,  // AG
+  thue_tncn:           33,  // AH
+  so_phut_di_muon:     34,  // AI — Số phút đi muộn
+  tien_di_muon:        35,  // AJ — Tiền đi muộn
+  tru_khac:            36,  // AK
+  tam_ung_luong:       37,  // AL
+  tong_khau_tru:       38,  // AM (tính lại từ các thành phần)
+  // AN (39) = Thực Lĩnh — đã có trong LAYOUT.KD.colVal
 } as const;
 
 // ── Mapping tất cả cột của file BO (0-indexed absolute, offset +2 từ header) ──

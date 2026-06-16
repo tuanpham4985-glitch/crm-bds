@@ -15,7 +15,7 @@ import type { SalaryImportRow } from '@/lib/types';
 
 const COL_MA_NV   = 1;  // Cột B (0-indexed)
 const COL_HO_TEN  = 2;  // Cột C
-const COL_KD      = 38; // Cột AM  — Thực Lĩnh (KD)
+const COL_KD      = 39; // Cột AN  — Thực Lĩnh (KD)
 const COL_BO      = 62; // Cột BK  — Lương Thực lĩnh (BO)
 
 function findBangLuongSheet(wb: XLSX.WorkBook): XLSX.WorkSheet | null {
