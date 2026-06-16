@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp,
+  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin,
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -28,6 +28,7 @@ const HRM_ITEMS = [
   { href: '/nhan-vien', label: 'Nhân viên', icon: UserCog },
   { href: '/nhan-vien/hop-dong', label: 'Hợp đồng', icon: FileText },
   { href: '/nhan-vien/bang-luong', label: 'Bảng lương', icon: BadgeDollarSign },
+  { href: '/cham-cong-ngoai', label: 'Chấm công ngoài', icon: MapPin },
 ];
 
 interface SidebarProps {
@@ -48,7 +49,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
 
   // Auto-expand HRM group if current path is inside
   useEffect(() => {
-    if (HRM_ITEMS.some(item => pathname.startsWith(item.href))) setHrmOpen(true);
+    if (HRM_ITEMS.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))) setHrmOpen(true);
   }, [pathname]);
 
   // Force group open when collapsed (so icons are visible)

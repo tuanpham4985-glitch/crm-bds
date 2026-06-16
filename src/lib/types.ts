@@ -456,6 +456,23 @@ export interface SavePayrollResult {
   errors: string[];
 }
 
+// === CHẤM CÔNG NGOÀI ===
+export interface ChamCongNgoai {
+  id: string;
+  id_nhan_vien: string;
+  ho_ten?: string;
+  ngay: string;              // YYYY-MM-DD
+  gio_bat_dau: string;       // HH:MM
+  gio_ket_thuc: string;      // HH:MM
+  du_an_khach_hang: string;
+  dia_diem: string;
+  ghi_chu?: string;
+  trang_thai: 'cho_duyet' | 'da_duyet' | 'tu_choi';
+  nguoi_duyet?: string;
+  ghi_chu_duyet?: string;
+  created_at: string;
+}
+
 export interface SalaryImportRow {
   id_nhan_vien: string;
   ho_ten: string;

@@ -4,7 +4,7 @@
 // ============================================================
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord, StackingSheetMeta, StackingUnit, PhanKhachConfig } from './types';
+import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord, StackingSheetMeta, StackingUnit, PhanKhachConfig, ChamCongNgoai } from './types';
 
 // ---- Environment Variable Validation ----
 function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
@@ -120,6 +120,7 @@ const SHEETS = {
   PAYROLL_ITEMS: 'PAYROLL_ITEMS',
   NHIEM_VU: 'NHIEM_VU',
   TAI_CHINH_HISTORY: 'TAI_CHINH_HISTORY',
+  CHAM_CONG_NGOAI: 'CHAM_CONG_NGOAI',
 } as const;
 
 /**
@@ -3333,5 +3334,120 @@ export async function saveTaiChinhHistory(row: TaiChinhHistoryRow): Promise<void
     ln_pct:       row.ln_pct,
     data_json:    row.data_json,
   });
+}
+
+// ============================================================
+// CHẤM CÔNG NGOÀI
+// ============================================================
+
+const CCN_HEADERS = [
+  'id', 'id_nhan_vien', 'ho_ten', 'ngay', 'gio_bat_dau', 'gio_ket_thuc',
+  'du_an_khach_hang', 'dia_diem', 'ghi_chu',
+  'trang_thai', 'nguoi_duyet', 'ghi_chu_duyet', 'created_at',
+] as const;
+
+async function getOrCreateChamCongNgoaiSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
+  let sheet = doc.sheetsByTitle[SHEETS.CHAM_CONG_NGOAI];
+  if (!sheet) {
+    sheet = await doc.addSheet({ title: SHEETS.CHAM_CONG_NGOAI, headerValues: [...CCN_HEADERS] });
+  } else {
+    try {
+      await sheet.loadHeaderRow();
+    } catch {
+      await sheet.setHeaderRow([...CCN_HEADERS]);
+    }
+    // Safe migration: add missing columns
+    const existing = new Set(sheet.headerValues || []);
+    const missing = [...CCN_HEADERS].filter(h => !existing.has(h));
+    if (missing.length > 0) {
+      await sheet.setHeaderRow([...(sheet.headerValues || []), ...missing]);
+      await sheet.loadHeaderRow();
+    }
+  }
+  return sheet;
+}
+
+export async function getChamCongNgoai(idNhanVien?: string): Promise<ChamCongNgoai[]> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateChamCongNgoaiSheet(doc);
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id:               str(v.id),
+        id_nhan_vien:     str(v.id_nhan_vien),
+        ho_ten:           str(v.ho_ten),
+        ngay:             str(v.ngay),
+        gio_bat_dau:      str(v.gio_bat_dau),
+        gio_ket_thuc:     str(v.gio_ket_thuc),
+        du_an_khach_hang: str(v.du_an_khach_hang),
+        dia_diem:         str(v.dia_diem),
+        ghi_chu:          str(v.ghi_chu),
+        trang_thai:       (str(v.trang_thai) || 'cho_duyet') as ChamCongNgoai['trang_thai'],
+        nguoi_duyet:      str(v.nguoi_duyet) || undefined,
+        ghi_chu_duyet:    str(v.ghi_chu_duyet) || undefined,
+        created_at:       str(v.created_at),
+      };
+    })
+    .filter(r => r.id && (!idNhanVien || r.id_nhan_vien === idNhanVien))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+export async function addChamCongNgoai(payload: Omit<ChamCongNgoai, 'id' | 'created_at' | 'trang_thai' | 'nguoi_duyet' | 'ghi_chu_duyet'>): Promise<ChamCongNgoai> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateChamCongNgoaiSheet(doc);
+  const id = `CCN_${Date.now()}`;
+  const created_at = new Date().toISOString();
+  await sheet.addRow({
+    id,
+    id_nhan_vien:     payload.id_nhan_vien,
+    ho_ten:           payload.ho_ten || '',
+    ngay:             payload.ngay,
+    gio_bat_dau:      payload.gio_bat_dau,
+    gio_ket_thuc:     payload.gio_ket_thuc,
+    du_an_khach_hang: payload.du_an_khach_hang,
+    dia_diem:         payload.dia_diem,
+    ghi_chu:          payload.ghi_chu || '',
+    trang_thai:       'cho_duyet',
+    nguoi_duyet:      '',
+    ghi_chu_duyet:    '',
+    created_at,
+  });
+  await addLog(doc, 'CREATE_CHAM_CONG_NGOAI', id, payload.id_nhan_vien, payload.ho_ten || '');
+  return { ...payload, id, trang_thai: 'cho_duyet', created_at };
+}
+
+export async function updateChamCongNgoaiStatus(
+  id: string,
+  trang_thai: 'da_duyet' | 'tu_choi',
+  nguoi_duyet: string,
+  ghi_chu_duyet?: string,
+): Promise<boolean> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateChamCongNgoaiSheet(doc);
+  const rows = await sheet.getRows();
+  const row = rows.find(r => str(r.toObject()['id']) === id);
+  if (!row) return false;
+  row.set('trang_thai', trang_thai);
+  row.set('nguoi_duyet', nguoi_duyet);
+  row.set('ghi_chu_duyet', ghi_chu_duyet || '');
+  await row.save();
+  await addLog(doc, `APPROVE_CCN_${trang_thai.toUpperCase()}`, id, '', nguoi_duyet);
+  return true;
+}
+
+export async function deleteChamCongNgoai(id: string, idNhanVien: string): Promise<boolean> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateChamCongNgoaiSheet(doc);
+  const rows = await sheet.getRows();
+  const row = rows.find(r => str(r.toObject()['id']) === id);
+  if (!row) return false;
+  const v = row.toObject();
+  if (str(v['id_nhan_vien']) !== idNhanVien) return false; // chỉ người tạo mới được xóa
+  if (str(v['trang_thai']) !== 'cho_duyet') throw new Error('Chỉ xóa được đơn đang chờ duyệt');
+  await row.delete();
+  await addLog(doc, 'DELETE_CHAM_CONG_NGOAI', id, idNhanVien, '');
+  return true;
 }
 
