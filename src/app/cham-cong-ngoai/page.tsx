@@ -227,7 +227,10 @@ export default function ChamCongNgoaiPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const XLSX = await import('xlsx');
+      // xlsx-js-style = drop-in replacement cho xlsx, thêm cell styling
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const XLSX = await import('xlsx-js-style') as any;
+
       const filtered = records
         .filter(r => {
           if (!r.ngay) return false;
@@ -236,6 +239,7 @@ export default function ChamCongNgoaiPage() {
         })
         .sort((a, b) => a.ngay.localeCompare(b.ngay) || a.gio_bat_dau.localeCompare(b.gio_bat_dau));
 
+      // ── Sheet 1: Chi tiết ──────────────────────────────────────
       const header = ['STT', 'Họ và tên', 'Mã NV', 'Quản lý trực tiếp', 'Ngày', 'Từ giờ', 'Đến giờ',
         'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'GPS', 'Có ảnh',
         'Trạng thái', 'Người phê duyệt', 'Ghi chú phê duyệt'];
@@ -259,7 +263,7 @@ export default function ChamCongNgoaiPage() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Chi tiết');
 
-      // Summary by person
+      // ── Sheet 2: Tổng hợp ─────────────────────────────────────
       const byPerson: Record<string, { ho_ten: string; ql: string; total: number; approved: number }> = {};
       for (const r of filtered) {
         if (!byPerson[r.id_nhan_vien]) byPerson[r.id_nhan_vien] = { ho_ten: r.ho_ten || r.id_nhan_vien, ql: r.ql_truc_tiep || '', total: 0, approved: 0 };
@@ -272,6 +276,138 @@ export default function ChamCongNgoaiPage() {
       ]);
       ws2['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, ws2, 'Tổng hợp');
+
+      // ── Sheet 3: BẢNG CHẤM CÔNG ONLINE ───────────────────────
+      const daysInMonth = new Date(exportYear, exportMonth, 0).getDate();
+      const DOW_NAME   = ['CN', 'T.2', 'T.3', 'T.4', 'T.5', 'T.6', 'T.7'];
+      const COL_FIX    = 3; // STT | Mã NV | Họ và tên
+      const TOTAL_COLS = COL_FIX + daysInMonth + 2; // + Tổng công online + Xác nhận
+
+      const CLR_GREEN  = 'FF92D050';
+      const CLR_RED    = 'FFFF7B7B';
+      const CLR_BORDER = 'FFCCCCCC';
+      const brd = {
+        top:    { style: 'thin', color: { rgb: CLR_BORDER } },
+        bottom: { style: 'thin', color: { rgb: CLR_BORDER } },
+        left:   { style: 'thin', color: { rgb: CLR_BORDER } },
+        right:  { style: 'thin', color: { rgb: CLR_BORDER } },
+      };
+
+      // Helper tạo cell có style
+      const sc = (v: string | number, fill?: string, bold = false, center = false) => ({
+        v: v ?? '',
+        t: typeof v === 'number' ? 'n' : 's',
+        s: {
+          ...(fill ? { fill: { patternType: 'solid', fgColor: { rgb: fill } } } : {}),
+          font: { name: 'Arial', sz: 10, bold, color: { rgb: 'FF000000' } },
+          alignment: { horizontal: center ? 'center' : 'left', vertical: 'center' },
+          border: brd,
+        },
+      });
+      const blank = (fill?: string) => sc('', fill);
+
+      // Chỉ tính ngày "đã duyệt" cho bảng chấm công
+      const attMap = new Map<string, Set<number>>();
+      for (const r of filtered) {
+        if (r.trang_thai === 'da_duyet') {
+          const day = parseInt(r.ngay.split('-')[2], 10);
+          if (!attMap.has(r.id_nhan_vien)) attMap.set(r.id_nhan_vien, new Set());
+          attMap.get(r.id_nhan_vien)!.add(day);
+        }
+      }
+
+      // Danh sách nhân viên (theo thứ tự Mã NV)
+      const empMap = new Map<string, string>();
+      for (const r of filtered) {
+        if (!empMap.has(r.id_nhan_vien)) empMap.set(r.id_nhan_vien, r.ho_ten || r.id_nhan_vien);
+      }
+      const employees = [...empMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+      const s3: any[][] = [];
+
+      // Dòng 0: Tiêu đề
+      const titleRow: any[] = [{
+        v: 'BẢNG CHẤM CÔNG ONLINE', t: 's',
+        s: { font: { name: 'Arial', sz: 14, bold: true }, alignment: { horizontal: 'center', vertical: 'center' } },
+      }];
+      for (let c = 1; c < TOTAL_COLS; c++) titleRow.push({ v: '', t: 's', s: {} });
+      s3.push(titleRow);
+
+      // Dòng 1: Tháng / Năm
+      const mRow: any[] = [
+        sc('Tháng', undefined, true),
+        sc(String(exportMonth).padStart(4, '0'), undefined, false, true),
+      ];
+      while (mRow.length < TOTAL_COLS - 1) mRow.push({ v: '', t: 's', s: {} });
+      mRow.push(sc(String(exportYear), undefined, true, true));
+      s3.push(mRow);
+
+      // Dòng 2: Trống
+      s3.push(Array(TOTAL_COLS).fill({ v: '', t: 's', s: {} }));
+
+      // Dòng 3: Header số ngày (01, 02, …)
+      const hD: any[] = [sc('STT', CLR_GREEN, true, true), sc('Mã NV', CLR_GREEN, true, true), sc('Họ và tên', CLR_GREEN, true)];
+      for (let d = 1; d <= daysInMonth; d++) {
+        const isSun = new Date(exportYear, exportMonth - 1, d).getDay() === 0;
+        hD.push(sc(String(d).padStart(2, '0'), isSun ? CLR_RED : CLR_GREEN, true, true));
+      }
+      hD.push(sc('Tổng công online', CLR_GREEN, true, true));
+      hD.push(sc('Xác nhận', CLR_GREEN, true, true));
+      s3.push(hD);
+
+      // Dòng 4: Header thứ (T.2, T.3, …, CN)
+      const hW: any[] = [blank(CLR_GREEN), blank(CLR_GREEN), blank(CLR_GREEN)];
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dow = new Date(exportYear, exportMonth - 1, d).getDay();
+        const isSun = dow === 0;
+        hW.push(sc(DOW_NAME[dow], isSun ? CLR_RED : CLR_GREEN, true, true));
+      }
+      hW.push(blank(CLR_GREEN));
+      hW.push(blank(CLR_GREEN));
+      s3.push(hW);
+
+      // Dòng dữ liệu: từng nhân viên
+      employees.forEach(([empId, empName], idx) => {
+        const attended = attMap.get(empId) || new Set<number>();
+        const dRow: any[] = [sc(idx + 1, undefined, false, true), sc(empId, undefined, false, true), sc(empName)];
+        for (let d = 1; d <= daysInMonth; d++) {
+          dRow.push(sc(attended.has(d) ? 'x' : '', undefined, true, true));
+        }
+        dRow.push(sc(attended.size > 0 ? attended.size : '', undefined, true, true));
+        dRow.push(blank());
+        s3.push(dRow);
+      });
+
+      // Dòng trống + chữ ký
+      s3.push(Array(TOTAL_COLS).fill({ v: '', t: 's', s: {} }));
+      const sigRow: any[] = Array(TOTAL_COLS).fill({ v: '', t: 's', s: {} });
+      sigRow[4] = { v: 'Người lập', t: 's', s: { font: { name: 'Arial', sz: 10, italic: true }, alignment: { horizontal: 'center' } } };
+      const sigR = Math.min(COL_FIX + Math.floor(daysInMonth * 0.72), TOTAL_COLS - 3);
+      sigRow[sigR] = { v: 'Tổng giám đốc', t: 's', s: { font: { name: 'Arial', sz: 10, italic: true }, alignment: { horizontal: 'center' } } };
+      s3.push(sigRow);
+
+      const ws3 = XLSX.utils.aoa_to_sheet(s3);
+
+      // Merge: tiêu đề + các cột cố định (merge 2 hàng header)
+      ws3['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: TOTAL_COLS - 1 } },
+        { s: { r: 3, c: 0 }, e: { r: 4, c: 0 } },
+        { s: { r: 3, c: 1 }, e: { r: 4, c: 1 } },
+        { s: { r: 3, c: 2 }, e: { r: 4, c: 2 } },
+        { s: { r: 3, c: TOTAL_COLS - 2 }, e: { r: 4, c: TOTAL_COLS - 2 } },
+        { s: { r: 3, c: TOTAL_COLS - 1 }, e: { r: 4, c: TOTAL_COLS - 1 } },
+      ];
+
+      ws3['!cols'] = [
+        { wch: 5 }, { wch: 10 }, { wch: 22 },
+        ...Array(daysInMonth).fill({ wch: 4.5 }),
+        { wch: 14 }, { wch: 12 },
+      ];
+      ws3['!rows'] = [
+        { hpt: 28 }, { hpt: 18 }, { hpt: 6 }, { hpt: 22 }, { hpt: 18 },
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws3, 'BẢNG CHẤM CÔNG ONLINE');
 
       XLSX.writeFile(wb, `ChamCongNgoai_T${String(exportMonth).padStart(2, '0')}_${exportYear}.xlsx`);
     } catch (err) {
