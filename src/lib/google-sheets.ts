@@ -387,6 +387,11 @@ export async function getNhanVien(): Promise<NhanVien[]> {
     newHeaders.push('vai_tro');
     needsHeaderUpdate = true;
   }
+  if (!h.includes('ql_truc_tiep')) {
+    console.log('[GSheets] Adding missing column "ql_truc_tiep" to NHAN_VIEN');
+    newHeaders.push('ql_truc_tiep');
+    needsHeaderUpdate = true;
+  }
 
   if (needsHeaderUpdate) {
     await sheet.setHeaderRow(newHeaders);
@@ -454,6 +459,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       vai_tro: finalVaiTro,
       khu_vuc: v['khu_vuc'] ? str(v['khu_vuc']) : '',
       phong_KD: v['phong_KD'] ? str(v['phong_KD']) : '',
+      ql_truc_tiep: str(v['ql_truc_tiep']) || undefined,
     } as NhanVien);
   }
   return result;
@@ -3342,7 +3348,7 @@ export async function saveTaiChinhHistory(row: TaiChinhHistoryRow): Promise<void
 
 const CCN_HEADERS = [
   'id', 'id_nhan_vien', 'ho_ten', 'ngay', 'gio_bat_dau', 'gio_ket_thuc',
-  'du_an_khach_hang', 'dia_diem', 'ghi_chu', 'hinh_anh',
+  'du_an_khach_hang', 'dia_diem', 'ghi_chu', 'hinh_anh', 'vi_tri_gps', 'ql_truc_tiep',
   'trang_thai', 'nguoi_duyet', 'ghi_chu_duyet', 'created_at',
 ] as const;
 
@@ -3385,6 +3391,8 @@ export async function getChamCongNgoai(idNhanVien?: string): Promise<ChamCongNgo
         dia_diem:         str(v.dia_diem),
         ghi_chu:          str(v.ghi_chu),
         hinh_anh:         str(v.hinh_anh) || undefined,
+        vi_tri_gps:       str(v.vi_tri_gps) || undefined,
+        ql_truc_tiep:     str(v.ql_truc_tiep) || undefined,
         trang_thai:       (str(v.trang_thai) || 'cho_duyet') as ChamCongNgoai['trang_thai'],
         nguoi_duyet:      str(v.nguoi_duyet) || undefined,
         ghi_chu_duyet:    str(v.ghi_chu_duyet) || undefined,
@@ -3411,6 +3419,8 @@ export async function addChamCongNgoai(payload: Omit<ChamCongNgoai, 'id' | 'crea
     dia_diem:         payload.dia_diem,
     ghi_chu:          payload.ghi_chu || '',
     hinh_anh:         payload.hinh_anh || '',
+    vi_tri_gps:       payload.vi_tri_gps || '',
+    ql_truc_tiep:     payload.ql_truc_tiep || '',
     trang_thai:       'cho_duyet',
     nguoi_duyet:      '',
     ghi_chu_duyet:    '',

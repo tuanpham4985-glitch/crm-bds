@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   MapPin, Clock, Building2, CheckCircle, XCircle,
   Loader2, Trash2, Plus, RefreshCw, Camera, Download, Image as ImageIcon, X,
+  Navigation, User,
 } from 'lucide-react';
 import type { ChamCongNgoai } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -43,20 +44,15 @@ function compressImage(file: File, maxPx = 480, targetKB = 20): Promise<string> 
           if (height > maxPx) { width = Math.round(width * maxPx / height); height = maxPx; }
         }
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width; canvas.height = height;
         canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
-
         const attempt = (q: number) => {
           canvas.toBlob((blob) => {
-            if (!blob) { reject(new Error('Không tạo được blob')); return; }
-            if (blob.size > targetKB * 1024 && q > 0.2) {
-              attempt(parseFloat((q - 0.1).toFixed(1)));
-            } else {
-              const fr = new FileReader();
-              fr.onloadend = () => resolve(fr.result as string);
-              fr.readAsDataURL(blob);
-            }
+            if (!blob) { reject(new Error('Lỗi tạo blob')); return; }
+            if (blob.size > targetKB * 1024 && q > 0.2) { attempt(parseFloat((q - 0.1).toFixed(1))); return; }
+            const fr = new FileReader();
+            fr.onloadend = () => resolve(fr.result as string);
+            fr.readAsDataURL(blob);
           }, 'image/jpeg', q);
         };
         attempt(0.75);
@@ -74,23 +70,22 @@ export default function ChamCongNgoaiPage() {
 
   // ── Form ──────────────────────────────────────────────────────
   const [form, setForm] = useState({
-    ngay: today(),
-    gio_bat_dau: '08:00',
-    gio_ket_thuc: '17:00',
-    du_an_khach_hang: '',
-    dia_diem: '',
-    ghi_chu: '',
+    ngay: today(), gio_bat_dau: '08:00', gio_ket_thuc: '17:00',
+    du_an_khach_hang: '', dia_diem: '', ghi_chu: '',
   });
-  const [photo, setPhoto] = useState<string>('');
+  const [photo, setPhoto]           = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [gps, setGps]               = useState('');
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError]     = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [formMsg, setFormMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [formMsg, setFormMsg]       = useState<{ ok: boolean; text: string } | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────
   const [records, setRecords] = useState<ChamCongNgoai[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ── Export ────────────────────────────────────────────────────
+  // ── Export filter ─────────────────────────────────────────────
   const now = new Date();
   const [exportMonth, setExportMonth] = useState(now.getMonth() + 1);
   const [exportYear, setExportYear]   = useState(now.getFullYear());
@@ -102,7 +97,7 @@ export default function ChamCongNgoaiPage() {
   const [approveLoading, setApproveLoading] = useState(false);
 
   // ── Lightbox ──────────────────────────────────────────────────
-  const [lightbox, setLightbox] = useState<string>('');
+  const [lightbox, setLightbox] = useState('');
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -117,20 +112,39 @@ export default function ChamCongNgoaiPage() {
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
-  // ── Photo select ──────────────────────────────────────────────
+  // ── GPS ───────────────────────────────────────────────────────
+  const handleGetGps = () => {
+    if (!navigator.geolocation) {
+      setGpsError('Thiết bị không hỗ trợ định vị GPS');
+      return;
+    }
+    setGpsLoading(true);
+    setGpsError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(6);
+        const lng = pos.coords.longitude.toFixed(6);
+        const acc = Math.round(pos.coords.accuracy);
+        setGps(`${lat},${lng} (±${acc}m)`);
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsError(err.code === 1 ? 'Cần cấp quyền vị trí cho trình duyệt' : 'Không lấy được vị trí: ' + err.message);
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+
+  // ── Photo ─────────────────────────────────────────────────────
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setPhotoLoading(true);
     try {
-      const b64 = await compressImage(file, 480, 20);
-      setPhoto(b64);
-    } catch {
-      alert('Không đọc được ảnh');
-    } finally {
-      setPhotoLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+      setPhoto(await compressImage(file, 480, 20));
+    } catch { alert('Không đọc được ảnh'); }
+    finally { setPhotoLoading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
   // ── Submit ────────────────────────────────────────────────────
@@ -142,22 +156,19 @@ export default function ChamCongNgoaiPage() {
       const res = await fetch('/api/cham-cong-ngoai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, hinh_anh: photo }),
+        body: JSON.stringify({ ...form, hinh_anh: photo, vi_tri_gps: gps }),
       });
       const json = await res.json();
       if (json.success) {
         setFormMsg({ ok: true, text: 'Đã gửi đơn, chờ phê duyệt' });
         setForm({ ngay: today(), gio_bat_dau: '08:00', gio_ket_thuc: '17:00', du_an_khach_hang: '', dia_diem: '', ghi_chu: '' });
-        setPhoto('');
+        setPhoto(''); setGps('');
         fetchRecords();
       } else {
         setFormMsg({ ok: false, text: json.error || 'Gửi thất bại' });
       }
-    } catch {
-      setFormMsg({ ok: false, text: 'Lỗi kết nối server' });
-    } finally {
-      setSubmitting(false);
-    }
+    } catch { setFormMsg({ ok: false, text: 'Lỗi kết nối server' }); }
+    finally { setSubmitting(false); }
   };
 
   // ── Delete ────────────────────────────────────────────────────
@@ -168,9 +179,7 @@ export default function ChamCongNgoaiPage() {
       const json = await res.json();
       if (json.success) fetchRecords();
       else alert(json.error || 'Xóa thất bại');
-    } catch {
-      alert('Lỗi kết nối server');
-    }
+    } catch { alert('Lỗi kết nối server'); }
   };
 
   // ── Approve ───────────────────────────────────────────────────
@@ -186,11 +195,8 @@ export default function ChamCongNgoaiPage() {
       const json = await res.json();
       if (json.success) { setApproving(null); setGhiChuDuyet(''); fetchRecords(); }
       else alert(json.error || 'Thao tác thất bại');
-    } catch {
-      alert('Lỗi kết nối server');
-    } finally {
-      setApproveLoading(false);
-    }
+    } catch { alert('Lỗi kết nối server'); }
+    finally { setApproveLoading(false); }
   };
 
   // ── Export Excel ──────────────────────────────────────────────
@@ -198,68 +204,49 @@ export default function ChamCongNgoaiPage() {
     setExporting(true);
     try {
       const XLSX = await import('xlsx');
+      const filtered = records
+        .filter(r => {
+          if (!r.ngay) return false;
+          const [y, m] = r.ngay.split('-').map(Number);
+          return m === exportMonth && y === exportYear;
+        })
+        .sort((a, b) => a.ngay.localeCompare(b.ngay) || a.gio_bat_dau.localeCompare(b.gio_bat_dau));
 
-      const filtered = records.filter(r => {
-        if (!r.ngay) return false;
-        const [y, m] = r.ngay.split('-').map(Number);
-        return m === exportMonth && y === exportYear;
-      }).sort((a, b) => a.ngay.localeCompare(b.ngay) || a.gio_bat_dau.localeCompare(b.gio_bat_dau));
-
-      const header = ['STT', 'Họ và tên', 'Mã NV', 'Ngày', 'Từ giờ', 'Đến giờ',
-        'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'Có ảnh',
+      const header = ['STT', 'Họ và tên', 'Mã NV', 'Quản lý trực tiếp', 'Ngày', 'Từ giờ', 'Đến giờ',
+        'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'GPS', 'Có ảnh',
         'Trạng thái', 'Người phê duyệt', 'Ghi chú phê duyệt'];
 
       const rows = filtered.map((r, i) => [
-        i + 1,
-        r.ho_ten || '',
-        r.id_nhan_vien,
-        formatDate(r.ngay),
-        r.gio_bat_dau,
-        r.gio_ket_thuc,
-        r.du_an_khach_hang,
-        r.dia_diem,
-        r.ghi_chu || '',
-        r.hinh_anh ? 'Có' : 'Không',
+        i + 1, r.ho_ten || '', r.id_nhan_vien, r.ql_truc_tiep || '',
+        formatDate(r.ngay), r.gio_bat_dau, r.gio_ket_thuc,
+        r.du_an_khach_hang, r.dia_diem, r.ghi_chu || '',
+        r.vi_tri_gps || '', r.hinh_anh ? 'Có' : 'Không',
         STATUS_VI[r.trang_thai] || r.trang_thai,
-        r.nguoi_duyet || '',
-        r.ghi_chu_duyet || '',
+        r.nguoi_duyet || '', r.ghi_chu_duyet || '',
       ]);
 
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-
-      // Column widths
       ws['!cols'] = [
-        { wch: 5 }, { wch: 22 }, { wch: 10 }, { wch: 12 }, { wch: 9 }, { wch: 9 },
-        { wch: 28 }, { wch: 24 }, { wch: 28 }, { wch: 8 },
+        { wch: 5 }, { wch: 22 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 9 }, { wch: 9 },
+        { wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 26 }, { wch: 8 },
         { wch: 12 }, { wch: 18 }, { wch: 24 },
       ];
 
-      // Bold header
-      const headerRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-      for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
-        const cell = ws[XLSX.utils.encode_cell({ r: 0, c })];
-        if (cell) cell.s = { font: { bold: true } };
-      }
-
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Chấm công ngoài');
+      XLSX.utils.book_append_sheet(wb, ws, 'Chi tiết');
 
-      // Summary sheet
-      const byPerson: Record<string, { ho_ten: string; total: number; approved: number }> = {};
+      // Summary by person
+      const byPerson: Record<string, { ho_ten: string; ql: string; total: number; approved: number }> = {};
       for (const r of filtered) {
-        const key = r.id_nhan_vien;
-        if (!byPerson[key]) byPerson[key] = { ho_ten: r.ho_ten || key, total: 0, approved: 0 };
-        byPerson[key].total++;
-        if (r.trang_thai === 'da_duyet') byPerson[key].approved++;
+        if (!byPerson[r.id_nhan_vien]) byPerson[r.id_nhan_vien] = { ho_ten: r.ho_ten || r.id_nhan_vien, ql: r.ql_truc_tiep || '', total: 0, approved: 0 };
+        byPerson[r.id_nhan_vien].total++;
+        if (r.trang_thai === 'da_duyet') byPerson[r.id_nhan_vien].approved++;
       }
-      const summaryData = [
-        ['Mã NV', 'Họ và tên', 'Tổng đơn', 'Đã duyệt', 'Chờ/Từ chối'],
-        ...Object.entries(byPerson).map(([id, v]) => [
-          id, v.ho_ten, v.total, v.approved, v.total - v.approved
-        ]),
-      ];
-      const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
-      ws2['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+      const ws2 = XLSX.utils.aoa_to_sheet([
+        ['Mã NV', 'Họ và tên', 'Quản lý trực tiếp', 'Tổng đơn', 'Đã duyệt', 'Chờ/Từ chối'],
+        ...Object.entries(byPerson).map(([id, v]) => [id, v.ho_ten, v.ql, v.total, v.approved, v.total - v.approved]),
+      ]);
+      ws2['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, ws2, 'Tổng hợp');
 
       XLSX.writeFile(wb, `ChamCongNgoai_T${String(exportMonth).padStart(2, '0')}_${exportYear}.xlsx`);
@@ -272,7 +259,6 @@ export default function ChamCongNgoaiPage() {
 
   const myRecords  = records.filter(r => r.id_nhan_vien === user?.id_nhan_vien);
   const pendingAll = canEditHRM ? records.filter(r => r.trang_thai === 'cho_duyet') : [];
-
   const filteredAll = canEditHRM
     ? records.filter(r => {
         if (!r.ngay) return false;
@@ -300,6 +286,7 @@ export default function ChamCongNgoaiPage() {
           Đăng ký vắng mặt
         </div>
         <form onSubmit={handleSubmit}>
+          {/* Ngày + giờ */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">Ngày</label>
@@ -315,52 +302,83 @@ export default function ChamCongNgoaiPage() {
             </div>
           </div>
 
+          {/* Dự án */}
           <div className="form-group" style={{ marginBottom: 10 }}>
             <label className="form-label">Dự án / Khách hàng <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input type="text" className="form-input" placeholder="Tên dự án hoặc tên khách hàng" value={form.du_an_khach_hang} onChange={e => setForm(f => ({ ...f, du_an_khach_hang: e.target.value }))} required />
           </div>
 
+          {/* Địa điểm */}
           <div className="form-group" style={{ marginBottom: 10 }}>
             <label className="form-label">Địa điểm <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input type="text" className="form-input" placeholder="Địa chỉ / tên địa điểm" value={form.dia_diem} onChange={e => setForm(f => ({ ...f, dia_diem: e.target.value }))} required />
           </div>
 
+          {/* Ghi chú */}
           <div className="form-group" style={{ marginBottom: 10 }}>
             <label className="form-label">Ghi chú</label>
             <textarea className="form-input" placeholder="Nội dung công việc, mục đích..." rows={2} style={{ resize: 'vertical' }} value={form.ghi_chu} onChange={e => setForm(f => ({ ...f, ghi_chu: e.target.value }))} />
           </div>
 
-          {/* Photo upload */}
-          <div className="form-group" style={{ marginBottom: 14 }}>
-            <label className="form-label">Ảnh tại dự án</label>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
-            {photo ? (
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <img
-                  src={photo}
-                  alt="preview"
-                  onClick={() => setLightbox(photo)}
-                  style={{ height: 100, borderRadius: 8, cursor: 'zoom-in', objectFit: 'cover', border: '2px solid var(--primary)' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setPhoto('')}
-                  style={{ position: 'absolute', top: -8, right: -8, background: '#ef4444', border: 'none', borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
-                >
-                  <X size={12} />
+          {/* GPS + Photo side by side */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            {/* GPS */}
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Vị trí GPS</label>
+              {gps ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <a
+                    href={`https://maps.google.com/?q=${gps.split(' ')[0]}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 12, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600 }}
+                  >
+                    <CheckCircle size={13} />
+                    {gps.split('(')[1]?.replace(')', '') || 'Đã lấy vị trí'}
+                  </a>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{gps.split(' ')[0]}</span>
+                  <button type="button" onClick={() => setGps('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 11, textAlign: 'left', padding: 0 }}>
+                    Xóa vị trí
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleGetGps}
+                    disabled={gpsLoading}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1.5px dashed var(--border)', borderRadius: 8, background: 'none', cursor: gpsLoading ? 'wait' : 'pointer', color: 'var(--text-secondary)', fontSize: 13, width: '100%', justifyContent: 'center' }}
+                  >
+                    {gpsLoading
+                      ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                      : <Navigation size={15} />}
+                    {gpsLoading ? 'Đang định vị...' : 'Lấy GPS'}
+                  </button>
+                  {gpsError && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{gpsError}</div>}
+                </div>
+              )}
+            </div>
+
+            {/* Photo */}
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Ảnh tại dự án</label>
+              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
+              {photo ? (
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <img src={photo} alt="preview" onClick={() => setLightbox(photo)}
+                    style={{ height: 68, borderRadius: 8, cursor: 'zoom-in', objectFit: 'cover', border: '2px solid var(--primary)' }} />
+                  <button type="button" onClick={() => setPhoto('')}
+                    style={{ position: 'absolute', top: -8, right: -8, background: '#ef4444', border: 'none', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={photoLoading}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1.5px dashed var(--border)', borderRadius: 8, background: 'none', cursor: photoLoading ? 'wait' : 'pointer', color: 'var(--text-secondary)', fontSize: 13, width: '100%', justifyContent: 'center' }}>
+                  {photoLoading ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Camera size={15} />}
+                  {photoLoading ? 'Đang xử lý...' : 'Chụp / chọn'}
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={photoLoading}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', border: '1.5px dashed var(--border)', borderRadius: 8, background: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 13 }}
-              >
-                {photoLoading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Camera size={16} />}
-                {photoLoading ? 'Đang xử lý...' : 'Chụp / chọn ảnh'}
-              </button>
-            )}
+              )}
+            </div>
           </div>
 
           {formMsg && (
@@ -370,7 +388,7 @@ export default function ChamCongNgoaiPage() {
             </div>
           )}
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={submitting || photoLoading}>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={submitting || photoLoading || gpsLoading}>
             {submitting ? <><Loader2 size={15} style={{ display: 'inline', marginRight: 6, animation: 'spin 1s linear infinite' }} />Đang gửi...</> : 'Gửi đơn'}
           </button>
         </form>
@@ -383,11 +401,10 @@ export default function ChamCongNgoaiPage() {
             <Clock size={16} />
             Chờ phê duyệt ({pendingAll.length})
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {pendingAll.map(r => (
               <ApproveCard
-                key={r.id}
-                record={r}
+                key={r.id} record={r}
                 onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined}
                 onApprove={() => { setApproving({ id: r.id, action: 'da_duyet' }); setGhiChuDuyet(''); }}
                 onReject={() => { setApproving({ id: r.id, action: 'tu_choi' }); setGhiChuDuyet(''); }}
@@ -407,7 +424,11 @@ export default function ChamCongNgoaiPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {myRecords.map(r => (
-              <RecordCard key={r.id} record={r} showDelete={r.trang_thai === 'cho_duyet'} onDelete={() => handleDelete(r.id)} onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined} />
+              <RecordCard key={r.id} record={r}
+                showDelete={r.trang_thai === 'cho_duyet'}
+                onDelete={() => handleDelete(r.id)}
+                onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined}
+              />
             ))}
           </div>
         )}
@@ -416,45 +437,32 @@ export default function ChamCongNgoaiPage() {
       {/* TẤT CẢ ĐƠN (Admin/HR) */}
       {canEditHRM && (
         <div className="card">
-          {/* Header + filter + export */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <span style={{ fontWeight: 600 }}>Tất cả đơn</span>
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
-              <select
-                value={exportMonth}
-                onChange={e => setExportMonth(Number(e.target.value))}
-                className="form-input"
-                style={{ width: 80, padding: '4px 8px', fontSize: 13 }}
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                  <option key={m} value={m}>Tháng {m}</option>
-                ))}
+              <select value={exportMonth} onChange={e => setExportMonth(Number(e.target.value))}
+                className="form-input" style={{ width: 90, padding: '4px 8px', fontSize: 13 }}>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>Tháng {m}</option>)}
               </select>
-              <select
-                value={exportYear}
-                onChange={e => setExportYear(Number(e.target.value))}
-                className="form-input"
-                style={{ width: 80, padding: '4px 8px', fontSize: 13 }}
-              >
+              <select value={exportYear} onChange={e => setExportYear(Number(e.target.value))}
+                className="form-input" style={{ width: 80, padding: '4px 8px', fontSize: 13 }}>
                 {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
-              <button
-                onClick={handleExport}
-                disabled={exporting || filteredAll.length === 0}
+              <button onClick={handleExport} disabled={exporting || filteredAll.length === 0}
                 className="btn btn-secondary"
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '6px 12px' }}
-                title={filteredAll.length === 0 ? 'Không có dữ liệu trong tháng này' : 'Xuất Excel'}
-              >
+                title={filteredAll.length === 0 ? 'Không có dữ liệu trong tháng này' : 'Xuất Excel'}>
                 {exporting ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={14} />}
                 Xuất .xlsx {filteredAll.length > 0 && `(${filteredAll.length})`}
               </button>
             </div>
           </div>
-
           {loading ? (
             <div style={{ textAlign: 'center', padding: 24 }}><Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-secondary)' }} /></div>
           ) : filteredAll.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-secondary)', fontSize: 14 }}>Không có đơn nào trong tháng {exportMonth}/{exportYear}</div>
+            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-secondary)', fontSize: 14 }}>
+              Không có đơn nào trong tháng {exportMonth}/{exportYear}
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {filteredAll.map(r => (
@@ -475,17 +483,15 @@ export default function ChamCongNgoaiPage() {
             <div className="modal-body">
               <div className="form-group">
                 <label className="form-label">Ghi chú (tùy chọn)</label>
-                <textarea className="form-input" rows={3} placeholder={approving.action === 'tu_choi' ? 'Lý do từ chối...' : 'Ghi chú thêm...'} value={ghiChuDuyet} onChange={e => setGhiChuDuyet(e.target.value)} />
+                <textarea className="form-input" rows={3}
+                  placeholder={approving.action === 'tu_choi' ? 'Lý do từ chối...' : 'Ghi chú thêm...'}
+                  value={ghiChuDuyet} onChange={e => setGhiChuDuyet(e.target.value)} />
               </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setApproving(null)} disabled={approveLoading}>Hủy</button>
-              <button
-                className="btn btn-primary"
-                onClick={handleApprove}
-                disabled={approveLoading}
-                style={approving.action === 'tu_choi' ? { background: '#ef4444' } : {}}
-              >
+              <button className="btn btn-primary" onClick={handleApprove} disabled={approveLoading}
+                style={approving.action === 'tu_choi' ? { background: '#ef4444' } : {}}>
                 {approveLoading ? 'Đang xử lý...' : approving.action === 'da_duyet' ? 'Phê duyệt' : 'Từ chối'}
               </button>
             </div>
@@ -495,12 +501,12 @@ export default function ChamCongNgoaiPage() {
 
       {/* LIGHTBOX */}
       {lightbox && (
-        <div
-          onClick={() => setLightbox('')}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-        >
-          <img src={lightbox} alt="ảnh tại dự án" style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 10, objectFit: 'contain' }} />
-          <button onClick={() => setLightbox('')} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 36, height: 36, cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div onClick={() => setLightbox('')}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <img src={lightbox} alt="ảnh tại dự án"
+            style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 10, objectFit: 'contain' }} />
+          <button onClick={() => setLightbox('')}
+            style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 36, height: 36, cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <X size={20} />
           </button>
         </div>
@@ -517,6 +523,18 @@ function StatusBadge({ status }: { status: string }) {
     <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: s.color + '20', color: s.color, whiteSpace: 'nowrap' }}>
       {s.text}
     </span>
+  );
+}
+
+function GpsChip({ gps }: { gps: string }) {
+  const coords = gps.split(' ')[0];
+  const acc    = gps.match(/±(.+)\)/)?.[1];
+  return (
+    <a href={`https://maps.google.com/?q=${coords}`} target="_blank" rel="noopener noreferrer"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500, background: 'rgba(99,102,241,0.08)', padding: '2px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+      <Navigation size={10} />
+      {acc ? `±${acc}` : 'Xem bản đồ'}
+    </a>
   );
 }
 
@@ -538,26 +556,23 @@ function RecordCard({ record, showDelete, onDelete, showName, onPhoto }: {
         <StatusBadge status={record.trang_thai} />
       </div>
 
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
-        <span><Clock size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />{formatDate(record.ngay)} | {record.gio_bat_dau} – {record.gio_ket_thuc}</span>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginBottom: 4 }}>
+        <span><Clock size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />{formatDate(record.ngay)} | {record.gio_bat_dau}–{record.gio_ket_thuc}</span>
         <span><MapPin size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />{record.dia_diem}</span>
       </div>
 
-      {record.ghi_chu && (
-        <div style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)', fontStyle: 'italic' }}>{record.ghi_chu}</div>
-      )}
-
-      {/* Photo thumbnail */}
-      {record.hinh_anh && onPhoto && (
-        <div style={{ marginTop: 8 }}>
-          <img
-            src={record.hinh_anh}
-            alt="ảnh"
-            onClick={onPhoto}
-            style={{ height: 60, borderRadius: 6, cursor: 'zoom-in', objectFit: 'cover', border: '1px solid var(--border)' }}
-          />
+      {/* GPS + photo row */}
+      {(record.vi_tri_gps || record.hinh_anh) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+          {record.vi_tri_gps && <GpsChip gps={record.vi_tri_gps} />}
+          {record.hinh_anh && onPhoto && (
+            <img src={record.hinh_anh} alt="ảnh" onClick={onPhoto}
+              style={{ height: 48, borderRadius: 6, cursor: 'zoom-in', objectFit: 'cover', border: '1px solid var(--border)' }} />
+          )}
         </div>
       )}
+
+      {record.ghi_chu && <div style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)', fontStyle: 'italic' }}>{record.ghi_chu}</div>}
 
       {(record.nguoi_duyet || record.ghi_chu_duyet) && (
         <div style={{ fontSize: 12, marginTop: 6, borderTop: '1px solid var(--border)', paddingTop: 6, color: 'var(--text-secondary)' }}>
@@ -567,9 +582,9 @@ function RecordCard({ record, showDelete, onDelete, showName, onPhoto }: {
       )}
 
       {showDelete && onDelete && (
-        <button onClick={onDelete} style={{ marginTop: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '2px 0' }}>
-          <Trash2 size={12} />
-          Xóa đơn
+        <button onClick={onDelete}
+          style={{ marginTop: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '2px 0' }}>
+          <Trash2 size={12} /> Xóa đơn
         </button>
       )}
     </div>
@@ -584,42 +599,60 @@ function ApproveCard({ record, onApprove, onReject, onPhoto }: {
 }) {
   return (
     <div style={{ border: '1px solid #f59e0b40', borderRadius: 10, padding: '12px 14px', background: 'rgba(245,158,11,0.04)' }}>
+      {/* Top row: info + photo */}
       <div style={{ display: 'flex', gap: 10 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{record.ho_ten || record.id_nhan_vien}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Employee + manager */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>{record.ho_ten || record.id_nhan_vien}</span>
+            {record.ql_truc_tiep && (
+              <span style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', padding: '2px 8px', borderRadius: 20, fontWeight: 500, whiteSpace: 'nowrap' }}>
+                <User size={10} />
+                QL: {record.ql_truc_tiep}
+              </span>
+            )}
+          </div>
+
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 2 }}>
-            <Building2 size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />{record.du_an_khach_hang}
+            <Building2 size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+            {record.du_an_khach_hang}
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>
             <Clock size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
             {formatDate(record.ngay)} | {record.gio_bat_dau}–{record.gio_ket_thuc}
-            <MapPin size={12} style={{ display: 'inline', marginLeft: 10, marginRight: 4, verticalAlign: 'middle' }} />{record.dia_diem}
+            <MapPin size={12} style={{ display: 'inline', marginLeft: 10, marginRight: 4, verticalAlign: 'middle' }} />
+            {record.dia_diem}
           </div>
-          {record.ghi_chu && <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: 4 }}>{record.ghi_chu}</div>}
+
+          {/* GPS chip */}
+          {record.vi_tri_gps && (
+            <div style={{ marginBottom: 4 }}>
+              <GpsChip gps={record.vi_tri_gps} />
+            </div>
+          )}
+
+          {record.ghi_chu && <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontStyle: 'italic' }}>{record.ghi_chu}</div>}
         </div>
 
-        {/* Photo thumbnail */}
-        {record.hinh_anh && onPhoto && (
-          <img
-            src={record.hinh_anh}
-            alt="ảnh"
-            onClick={onPhoto}
-            title="Xem ảnh"
-            style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover', cursor: 'zoom-in', flexShrink: 0, border: '1px solid var(--border)' }}
-          />
-        )}
-        {!record.hinh_anh && (
-          <div style={{ width: 64, height: 64, borderRadius: 8, background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <ImageIcon size={20} style={{ color: 'var(--text-secondary)', opacity: 0.4 }} />
+        {/* Photo or placeholder */}
+        {record.hinh_anh ? (
+          <img src={record.hinh_anh} alt="ảnh" onClick={onPhoto} title="Xem ảnh"
+            style={{ width: 72, height: 72, borderRadius: 8, objectFit: 'cover', cursor: 'zoom-in', flexShrink: 0, border: '1px solid var(--border)' }} />
+        ) : (
+          <div style={{ width: 72, height: 72, borderRadius: 8, background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ImageIcon size={22} style={{ color: 'var(--text-secondary)', opacity: 0.35 }} />
           </div>
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <button onClick={onApprove} className="btn btn-primary" style={{ flex: 1, fontSize: 13, padding: '6px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button onClick={onApprove} className="btn btn-primary"
+          style={{ flex: 1, fontSize: 13, padding: '7px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <CheckCircle size={14} /> Duyệt
         </button>
-        <button onClick={onReject} className="btn btn-secondary" style={{ flex: 1, fontSize: 13, padding: '6px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#ef4444' }}>
+        <button onClick={onReject} className="btn btn-secondary"
+          style={{ flex: 1, fontSize: 13, padding: '7px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#ef4444' }}>
           <XCircle size={14} /> Từ chối
         </button>
       </div>

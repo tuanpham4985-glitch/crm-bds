@@ -5,6 +5,7 @@ import {
   addChamCongNgoai,
   updateChamCongNgoaiStatus,
   deleteChamCongNgoai,
+  getNhanVien,
 } from '@/lib/google-sheets';
 
 interface SessionUser {
@@ -61,10 +62,20 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
 
     const body = await request.json();
-    const { ngay, gio_bat_dau, gio_ket_thuc, du_an_khach_hang, dia_diem, ghi_chu, hinh_anh } = body;
+    const { ngay, gio_bat_dau, gio_ket_thuc, du_an_khach_hang, dia_diem, ghi_chu, hinh_anh, vi_tri_gps } = body;
 
     if (!ngay || !gio_bat_dau || !gio_ket_thuc || !du_an_khach_hang || !dia_diem) {
       return NextResponse.json({ success: false, error: 'Thiếu thông tin bắt buộc' }, { status: 400 });
+    }
+
+    // Lookup direct manager from NhanVien sheet (cached ~60s)
+    let ql_truc_tiep = '';
+    try {
+      const allNV = await getNhanVien();
+      const nv = allNV.find(n => n.id_nhan_vien === user.id_nhan_vien);
+      ql_truc_tiep = nv?.ql_truc_tiep || '';
+    } catch {
+      // Non-fatal: proceed without manager info
     }
 
     const result = await addChamCongNgoai({
@@ -77,6 +88,8 @@ export async function POST(request: NextRequest) {
       dia_diem,
       ghi_chu: ghi_chu || '',
       hinh_anh: hinh_anh || '',
+      vi_tri_gps: vi_tri_gps || '',
+      ql_truc_tiep,
     });
 
     return NextResponse.json({ success: true, data: result });
