@@ -68,27 +68,44 @@ function parseBirthDate(raw: string): { day: number; month: number; year: number
 }
 
 /**
- * Parse date safely supporting ISO, US and Vietnamese DD/MM/YYYY formats.
+ * Parse date safely supporting ISO and Vietnamese DD/MM/YYYY formats.
+ * IMPORTANT: For "/" strings, always treat as DD/MM/YYYY (Vietnamese format).
+ * new Date("05/09/2026") is WRONG — JS interprets slashes as M/D/YYYY and gives May 9.
  */
 function safeParseDate(s: string): Date | null {
   if (!s) return null;
   const strVal = s.trim();
   if (!strVal) return null;
 
-  // 1. Try native Date parsing (ISO, etc.)
+  // 1. Slash-separated → Vietnamese DD/MM/YYYY (MUST check before new Date())
+  if (strVal.includes('/')) {
+    const match = strVal.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2}):?(\d{1,2})?)?/);
+    if (match) {
+      const day   = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10) - 1; // 0-based
+      const year  = parseInt(match[3], 10);
+      const hour  = match[4] ? parseInt(match[4], 10) : 0;
+      const min   = match[5] ? parseInt(match[5], 10) : 0;
+      const sec   = match[6] ? parseInt(match[6], 10) : 0;
+      const d = new Date(year, month, day, hour, min, sec);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+  }
+
+  // 2. Try native Date parsing (ISO timestamps, "YYYY-MM-DD", etc.)
   let d = new Date(strVal);
   if (!isNaN(d.getTime())) return d;
 
-  // 2. Try DD/MM/YYYY HH:mm:ss format
-  const match = strVal.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})(?:\s+(\d{1,2}):(\d{1,2}):?(\d{1,2})?)?/);
+  // 3. Try DD-MM-YYYY or DD.MM.YYYY
+  const match = strVal.match(/^(\d{1,2})[\-\.](\d{1,2})[\-\.](\d{4})(?:\s+(\d{1,2}):(\d{1,2}):?(\d{1,2})?)?/);
   if (match) {
-    const day = parseInt(match[1], 10);
-    const month = parseInt(match[2], 10) - 1; // 0-based
-    const year = parseInt(match[3], 10);
-    const hour = match[4] ? parseInt(match[4], 10) : 0;
-    const min = match[5] ? parseInt(match[5], 10) : 0;
-    const sec = match[6] ? parseInt(match[6], 10) : 0;
-    
+    const day   = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1;
+    const year  = parseInt(match[3], 10);
+    const hour  = match[4] ? parseInt(match[4], 10) : 0;
+    const min   = match[5] ? parseInt(match[5], 10) : 0;
+    const sec   = match[6] ? parseInt(match[6], 10) : 0;
     d = new Date(year, month, day, hour, min, sec);
     if (!isNaN(d.getTime())) return d;
   }
@@ -222,15 +239,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build current-period thang keys — both formats: MM-YYYY (CRM) and YYYY-MM (Victory/Apps Script)
+    // Build current-period thang keys — all common formats including non-padded variants
     function buildThangKeysInRange(from: Date, to: Date): Set<string> {
       const keys = new Set<string>();
       const cur = new Date(from.getFullYear(), from.getMonth(), 1);
       while (cur <= to) {
-        const mm = String(cur.getMonth() + 1).padStart(2, '0');
+        const mm   = String(cur.getMonth() + 1).padStart(2, '0');
+        const m    = String(cur.getMonth() + 1);  // no leading zero
         const yyyy = String(cur.getFullYear());
-        keys.add(`${mm}-${yyyy}`);   // format: 05-2026
-        keys.add(`${yyyy}-${mm}`);   // format: 2026-05
+        keys.add(`${mm}-${yyyy}`);   // 09-2026
+        keys.add(`${yyyy}-${mm}`);   // 2026-09
+        keys.add(`${m}-${yyyy}`);    // 9-2026  (no leading zero, from some GAS scripts)
+        keys.add(`${yyyy}-${m}`);    // 2026-9
         cur.setMonth(cur.getMonth() + 1);
       }
       return keys;
