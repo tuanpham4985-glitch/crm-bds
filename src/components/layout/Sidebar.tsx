@@ -8,8 +8,11 @@ import {
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
   ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin,
 } from 'lucide-react';
+import useSWR from 'swr';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
+
+const swrFetcher = (url: string) => fetch(url).then(r => r.json());
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -39,6 +42,13 @@ interface SidebarProps {
 export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { user, isAdmin } = useAuth();
+
+  const { data: pendingData } = useSWR(
+    user ? '/api/cham-cong-ngoai/pending-count' : null,
+    swrFetcher,
+    { refreshInterval: 30_000 },
+  );
+  const pendingCount: number = pendingData?.count ?? 0;
   const [logo, setLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -306,15 +316,35 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
             {HRM_ITEMS.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href);
               const Icon = item.icon;
+              const showBadge = item.href === '/cham-cong-ngoai' && pendingCount > 0;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
-                  title={item.label}
+                  title={showBadge ? `${item.label} (${pendingCount} đơn chờ duyệt)` : item.label}
                 >
                   <Icon size={18} />
-                  <span>{item.label}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    {showBadge && (
+                      <span style={{
+                        background: '#ef4444',
+                        color: '#fff',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        lineHeight: '16px',
+                        minWidth: 16,
+                        height: 16,
+                        padding: '0 4px',
+                        borderRadius: 8,
+                        textAlign: 'center',
+                        flexShrink: 0,
+                      }}>
+                        {pendingCount}
+                      </span>
+                    )}
+                  </span>
                 </Link>
               );
             })}
