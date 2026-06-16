@@ -88,10 +88,6 @@ export default function ChamCongNgoaiPage() {
   const [exportYear, setExportYear]   = useState(now.getFullYear());
   const [exporting, setExporting]     = useState(false);
 
-  // ── Sync manager ──────────────────────────────────────────────
-  const [syncingManager, setSyncingManager] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string } | null>(null);
-
   // ── Approve modal ─────────────────────────────────────────────
   const [approving, setApproving] = useState<{ id: string; action: 'da_duyet' | 'tu_choi' } | null>(null);
   const [ghiChuDuyet, setGhiChuDuyet] = useState('');
@@ -157,26 +153,6 @@ export default function ChamCongNgoaiPage() {
       if (json.success) fetchRecords();
       else alert(json.error || 'Xóa thất bại');
     } catch { alert('Lỗi kết nối server'); }
-  };
-
-  // ── Sync manager ─────────────────────────────────────────────
-  const handleSyncManager = async () => {
-    setSyncingManager(true);
-    setSyncResult(null);
-    try {
-      const res = await fetch('/api/nhan-vien/sync-manager', { method: 'POST' });
-      const json = await res.json();
-      if (json.success) {
-        setSyncResult({ ok: true, text: `Đồng bộ xong: ${json.updated} cập nhật, ${json.skipped} bỏ qua${json.errors?.length ? `, ${json.errors.length} lỗi` : ''}` });
-        fetchRecords();
-      } else {
-        setSyncResult({ ok: false, text: json.error || 'Đồng bộ thất bại' });
-      }
-    } catch {
-      setSyncResult({ ok: false, text: 'Lỗi kết nối server' });
-    } finally {
-      setSyncingManager(false);
-    }
   };
 
   // ── Approve ───────────────────────────────────────────────────
@@ -581,16 +557,9 @@ export default function ChamCongNgoaiPage() {
       {/* TẤT CẢ ĐƠN (Admin/HR) */}
       {canEditHRM && (
         <div className="card">
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: syncResult ? 8 : 16 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <span style={{ fontWeight: 600 }}>Tất cả đơn</span>
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
-              <button onClick={handleSyncManager} disabled={syncingManager}
-                className="btn btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '6px 12px' }}
-                title="Đồng bộ tên quản lý trực tiếp từ file nhân sự">
-                {syncingManager ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <User size={14} />}
-                Đồng bộ QLTT
-              </button>
               <select value={exportMonth} onChange={e => setExportMonth(Number(e.target.value))}
                 className="form-input" style={{ width: 90, padding: '4px 8px', fontSize: 13 }}>
                 {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>Tháng {m}</option>)}
@@ -608,13 +577,6 @@ export default function ChamCongNgoaiPage() {
               </button>
             </div>
           </div>
-          {syncResult && (
-            <div style={{ padding: '7px 12px', borderRadius: 8, marginBottom: 14, fontSize: 13, background: syncResult.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: syncResult.ok ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: 8 }}>
-              {syncResult.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
-              {syncResult.text}
-              <button onClick={() => setSyncResult(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0 }}><X size={13} /></button>
-            </div>
-          )}
           {loading ? (
             <div style={{ textAlign: 'center', padding: 24 }}><Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-secondary)' }} /></div>
           ) : filteredAll.length === 0 ? (

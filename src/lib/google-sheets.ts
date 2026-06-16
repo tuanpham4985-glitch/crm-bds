@@ -3645,3 +3645,88 @@ export async function syncManagerFromHrFile(): Promise<{
   return { updated, skipped, errors };
 }
 
+// ============================================================
+// TRA QUẢN LÝ TRỰC TIẾP từ HR file — dùng khi nhân viên gửi đơn
+// Cache 5 phút để tránh đọc Sheets mỗi request
+// ============================================================
+
+let _hrManagerCache: {
+  byId:      Map<string, string>; // padded MNV → ql_truc_tiep
+  byName:    Map<string, string>; // normalized name → ql_truc_tiep
+  expiresAt: number;
+} | null = null;
+
+export async function getManagerForEmployee(
+  id_nhan_vien: string,
+  ho_ten:        string,
+): Promise<string> {
+  const hrSheetId = process.env.NHAN_SU_SHEET_ID;
+  if (!hrSheetId) return '';
+
+  const now = Date.now();
+
+  if (!_hrManagerCache || now >= _hrManagerCache.expiresAt) {
+    try {
+      const HR_SHEET_NAME  = 'DATA NHÂN SỰ';
+      const HEADER_ROW_IDX = 3;
+
+      const hrDoc   = await getDocBySheetId(hrSheetId);
+      const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
+      if (!hrSheet) throw new Error(`Sheet "${HR_SHEET_NAME}" not found`);
+
+      const rowCount = Math.min(hrSheet.rowCount, 1000);
+      const colCount = Math.min(hrSheet.columnCount, 30);
+      await hrSheet.loadCells({
+        startRowIndex: HEADER_ROW_IDX, endRowIndex: rowCount,
+        startColumnIndex: 0, endColumnIndex: colCount,
+      });
+
+      const normH = (s: string) =>
+        s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, '');
+      const normN = (s: string) =>
+        s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, ' ');
+
+      const headers: string[] = [];
+      for (let c = 0; c < colCount; c++) headers.push(str(hrSheet.getCell(HEADER_ROW_IDX, c).value));
+
+      const findCol = (test: (n: string) => boolean, fallback: number) => {
+        const idx = headers.findIndex(h => test(normH(h)));
+        return idx !== -1 ? idx : fallback;
+      };
+      const colMNV   = findCol(n => n === 'mnv' || n === 'manv' || n.includes('manhânvien') || n.includes('mãnhânvien'), 1);
+      const colHoTen = findCol(n => n === 'hoten' || n.includes('hovaten') || n.includes('hotennhanvien'), 2);
+      const colQL    = findCol(n => n.includes('quantructiep') || n.includes('quanlytructiep') || (n.includes('quanly') && n.includes('truc')), 10);
+
+      const byId   = new Map<string, string>();
+      const byName = new Map<string, string>();
+
+      for (let r = HEADER_ROW_IDX + 1; r < rowCount; r++) {
+        const mnvRaw  = str(hrSheet.getCell(r, colMNV).value);
+        const nameRaw = str(hrSheet.getCell(r, colHoTen).value);
+        const qlRaw   = str(hrSheet.getCell(r, colQL).value);
+        if (!mnvRaw && !nameRaw) continue;
+        if (mnvRaw) { const k = padEmployeeId(mnvRaw); if (k) byId.set(k, qlRaw); }
+        if (nameRaw) { const k = normN(nameRaw); if (k) byName.set(k, qlRaw); }
+      }
+
+      _hrManagerCache = { byId, byName, expiresAt: now + 5 * 60 * 1000 };
+      console.log(`[getManagerForEmployee] cache built — ${byId.size} by-id, ${byName.size} by-name`);
+    } catch (e) {
+      console.error('[getManagerForEmployee] cache build error:', e);
+      return '';
+    }
+  }
+
+  const { byId, byName } = _hrManagerCache;
+  const normN = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, ' ');
+
+  const padded = padEmployeeId(id_nhan_vien);
+  if (padded && byId.has(padded)) return byId.get(padded)!;
+
+  const name = normN(ho_ten);
+  if (name && byName.has(name)) return byName.get(name)!;
+
+  return '';
+}
+

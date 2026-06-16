@@ -5,7 +5,7 @@ import {
   addChamCongNgoai,
   updateChamCongNgoaiStatus,
   deleteChamCongNgoai,
-  getNhanVien,
+  getManagerForEmployee,
 } from '@/lib/google-sheets';
 
 interface SessionUser {
@@ -76,14 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Thiếu thông tin bắt buộc' }, { status: 400 });
     }
 
-    let ql_truc_tiep = '';
-    try {
-      const allNV = await getNhanVien();
-      const nv = allNV.find(n => n.id_nhan_vien === user.id_nhan_vien);
-      ql_truc_tiep = nv?.ql_truc_tiep || '';
-    } catch {
-      // Non-fatal
-    }
+    const ql_truc_tiep = await getManagerForEmployee(user.id_nhan_vien, user.ho_ten).catch(() => '');
 
     const result = await addChamCongNgoai({
       id_nhan_vien:     user.id_nhan_vien,
