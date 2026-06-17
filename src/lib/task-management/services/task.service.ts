@@ -117,9 +117,9 @@ export class TaskService {
     }
 
     const old = { ...task };
-    const updated = await this.uow.tasks.update(taskId, input);
+    const updated = await this.uow.tasks.update(taskId, input, ctx.user_id);
 
-    await this.uow.activityLogs.log(taskId, 'task', ctx.user_id, 'updated', old, updated);
+    await this.uow.activityLogs.log(taskId, 'task', ctx.user_id, 'updated', old as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>);
     this.invalidateTaskCache(task);
     return updated;
   }
@@ -231,7 +231,7 @@ export class TaskService {
     const task = await this.requireTask(taskId);
     const newLevel = Math.min(3, task.approval_level + 1) as 1 | 2 | 3;
 
-    const updated = await this.uow.tasks.update(taskId, { ...task } as UpdateTaskInput);
+    const updated = await this.uow.tasks.update(taskId, { approval_level: newLevel } as UpdateTaskInput, ctx.user_id);
     await this.uow.activityLogs.log(taskId, 'task', ctx.user_id, 'escalated',
       { approval_level: task.approval_level }, { approval_level: newLevel },
     );

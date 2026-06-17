@@ -499,13 +499,13 @@ select:focus {
 }
 .stacking-scroll::-webkit-scrollbar-button:single-button:hover { background: #94a3b8; }
 /* Horizontal left arrow */
-.stacking-scroll::-webkit-scrollbar-button:horizontal:decrement:before { content: '◄'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
+.stacking-scroll::-webkit-scrollbar-button:horizontal:decrement:before { content: '\25C4'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
 /* Horizontal right arrow */
-.stacking-scroll::-webkit-scrollbar-button:horizontal:increment:before { content: '►'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
+.stacking-scroll::-webkit-scrollbar-button:horizontal:increment:before { content: '\25BA'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
 /* Vertical up arrow */
-.stacking-scroll::-webkit-scrollbar-button:vertical:decrement:before { content: '▲'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
+.stacking-scroll::-webkit-scrollbar-button:vertical:decrement:before { content: '\25B2'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
 /* Vertical down arrow */
-.stacking-scroll::-webkit-scrollbar-button:vertical:increment:before { content: '▼'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
+.stacking-scroll::-webkit-scrollbar-button:vertical:increment:before { content: '\25BC'; color: #64748b; font-size: 7px; line-height: 9px; display: block; text-align: center; }
 
 /* === Badge === */
 .badge {

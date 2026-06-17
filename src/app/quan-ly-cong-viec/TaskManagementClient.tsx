@@ -1,0 +1,95 @@
+'use client';
+import { useState } from 'react';
+import { Plus, BarChart2 } from 'lucide-react';
+import { useTmStore } from '@/stores/tmStore';
+import TaskFilters from '@/components/task-management/TaskFilters';
+import TaskList from '@/components/task-management/TaskList';
+import KanbanBoard from '@/components/task-management/KanbanBoard';
+import TaskDetail from '@/components/task-management/TaskDetail';
+import TaskForm from '@/components/task-management/TaskForm';
+import NotificationCenter from '@/components/task-management/NotificationCenter';
+import KpiDashboard from '@/components/task-management/KpiDashboard';
+
+export default function TaskManagementClient() {
+  const { filters, createModalOpen, setCreateModal } = useTmStore();
+  const [showKpi, setShowKpi] = useState(false);
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg-page)', padding: '0 0 40px' }}>
+      {/* Page header */}
+      <div style={{
+        background: 'var(--bg-card)', borderBottom: '1px solid var(--border-light)',
+        padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20,
+        position: 'sticky', top: 0, zIndex: 200,
+      }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--text-title)' }}>
+            Quản lý Công việc
+          </h1>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+            VICTORY HOLDINGS — Task Management System
+          </p>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* KPI toggle */}
+        <button onClick={() => setShowKpi(s => !s)} style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+          border: `1.5px solid ${showKpi ? 'var(--primary)' : 'var(--border-light)'}`,
+          borderRadius: 8, cursor: 'pointer',
+          background: showKpi ? 'var(--primary-light)' : 'transparent',
+          color: showKpi ? 'var(--primary)' : 'var(--text-muted)',
+          fontSize: 13, fontWeight: 600,
+        }}>
+          <BarChart2 size={15} /> KPI Dashboard
+        </button>
+
+        {/* Notifications */}
+        <NotificationCenter />
+
+        {/* Create task */}
+        <button
+          onClick={() => setCreateModal(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px',
+            borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: 'var(--primary)', color: '#fff',
+            fontSize: 13, fontWeight: 700, boxShadow: '0 2px 8px rgba(99,102,241,0.35)',
+          }}
+        >
+          <Plus size={16} /> Tạo Task
+        </button>
+      </div>
+
+      <div style={{ padding: '0 24px' }}>
+        {/* KPI Dashboard (collapsible) */}
+        {showKpi && (
+          <div style={{ marginBottom: 20 }}>
+            <KpiDashboard />
+          </div>
+        )}
+
+        {/* Filters */}
+        <TaskFilters />
+
+        {/* Content — List or Kanban */}
+        {filters.view === 'list' ? <TaskList /> : <KanbanBoard />}
+      </div>
+
+      {/* Task detail slide-over */}
+      <TaskDetail />
+
+      {/* Create task modal */}
+      {createModalOpen && (
+        <TaskForm onClose={() => setCreateModal(false)} />
+      )}
+
+      {/* Spin animation */}
+      <style>{`
+        @keyframes tm-spin { to { transform: rotate(360deg); } }
+        .tm-spin { animation: tm-spin 0.8s linear infinite; }
+      `}</style>
+    </div>
+  );
+}

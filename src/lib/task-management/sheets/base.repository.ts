@@ -9,7 +9,7 @@ import {
   filterByField, sortByField, paginateRows,
 } from './client';
 
-export abstract class BaseSheetsRepository<T extends Record<string, unknown>> {
+export abstract class BaseSheetsRepository<T extends object> {
   protected abstract sheetName: SheetName;
   protected abstract idField: string;
 
@@ -55,7 +55,8 @@ export abstract class BaseSheetsRepository<T extends Record<string, unknown>> {
     return { data: data.map(r => this.deserialize(r)), total, page, limit, has_more };
   }
 
-  async create(data: Omit<T, typeof this.idField>): Promise<T> {
+  // Convenience create — subclasses may override with custom signatures
+  protected async baseCreate(data: Partial<T> & { [key: string]: unknown }): Promise<T> {
     const id  = randomUUID();
     const now = new Date().toISOString();
     const row = this.serialize({
@@ -68,7 +69,8 @@ export abstract class BaseSheetsRepository<T extends Record<string, unknown>> {
     return this.deserialize({ ...row });
   }
 
-  async update(id: string, data: Partial<T>): Promise<T | null> {
+  // Convenience update — subclasses may override with custom signatures
+  protected async baseUpdate(id: string, data: Partial<T>): Promise<T | null> {
     const patch = this.serialize({
       ...data,
       updated_at: new Date().toISOString(),

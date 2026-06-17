@@ -20,7 +20,7 @@ type NotifType =
   | 'collaborator_added';
 
 export class NotificationService {
-  private async send(notif: Omit<TmNotification, 'notif_id' | 'created_at' | 'sent_at' | 'read_at'>): Promise<void> {
+  private async send(notif: Omit<TmNotification, 'notif_id' | 'created_at' | 'sent_at' | 'read_at' | 'status'>): Promise<void> {
     const row: Record<string, string> = {
       notif_id:   randomUUID(),
       user_id:    notif.user_id,

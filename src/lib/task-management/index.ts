@@ -66,7 +66,7 @@ class AttachmentSheetsRepo {
   }
   async create(data: Omit<TmAttachment, 'attachment_id'|'created_at'>): Promise<TmAttachment> {
     const row = { attachment_id: randomUUID(), ...data, created_at: new Date().toISOString() };
-    await appendRow(SHEET_NAMES.ATTACHMENTS, row as Record<string, string>);
+    await appendRow(SHEET_NAMES.ATTACHMENTS, row as unknown as Record<string, string>);
     return row as unknown as TmAttachment;
   }
   async delete(id: string): Promise<void> {
@@ -168,11 +168,11 @@ class ProjectSheetsRepo {
   }
   async create(data: Omit<TmProject,'project_id'|'created_at'|'updated_at'>): Promise<TmProject> {
     const row = { project_id: randomUUID(), ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-    await appendRow(SHEET_NAMES.PROJECTS, row as Record<string, string>);
+    await appendRow(SHEET_NAMES.PROJECTS, row as unknown as Record<string, string>);
     return row as unknown as TmProject;
   }
   async update(id: string, data: Partial<TmProject>): Promise<TmProject> {
-    const r = await updateRow(SHEET_NAMES.PROJECTS, 'project_id', id, data as Record<string,string>);
+    const r = await updateRow(SHEET_NAMES.PROJECTS, 'project_id', id, data as unknown as Record<string,string>);
     return r as unknown as TmProject;
   }
 }
