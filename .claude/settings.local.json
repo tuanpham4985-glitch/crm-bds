@@ -53,7 +53,23 @@
       "Bash(Write-Output \"done\")",
       "Bash(node -e \"const normStr = \\(s\\) => \\(s || ''\\).toLowerCase\\(\\).normalize\\('NFD'\\).replace\\(/[̀-ͯ]/g, ''\\).replace\\(/đ/g, 'd'\\).replace\\(/\\\\s+/g, ''\\); console.log\\(normStr\\('Tồn cọc'\\)\\); console.log\\(normStr\\('Tổng hợp giao dịch chi tiết'\\)\\); console.log\\(normStr\\('Vinhomes Cần Giờ'\\)\\);\")",
       "Bash(grep -v \"console\\\\|//\")",
-      "Bash(grep -v \"interface\\\\|comment\\\\|//\")"
+      "Bash(grep -v \"interface\\\\|comment\\\\|//\")",
+      "Bash(dir \"D:\\\\Work\\\\CRM_Mini\\\\crm-bds\\\\src\")",
+      "Bash(xargs grep -l \"proxy\")",
+      "Bash(npx tsx *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3000\")",
+      "Bash(findstr LISTENING)",
+      "Bash(node -e \"require\\('xlsx'\\); console.log\\('xlsx ok'\\)\")",
+      "Bash(extract-text \"C:\\\\Users\\\\Admin\\\\Downloads\\\\VIC NS dự kiến VH 2026.xlsx\")",
+      "Bash(python3 -c ' *)",
+      "PowerShell(python \"C:\\\\Users\\\\Admin\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\30410c62-b800-4100-a410-88fa739af5b0\\\\ba18c9bc-1689-46a5-a0b8-22a0d6eecf91\\\\skills\\\\xlsx\\\\create_ns_template.py\")",
+      "Bash(python -)",
+      "PowerShell(npx vercel --version)",
+      "Bash(wc -l /mnt/d/Work/CRM_Mini/crm-bds/src/lib/google-sheets.ts)",
+      "Bash(npx vercel *)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget"
     ]
   }
 }
