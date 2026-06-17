@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import { useTaskDetail, apiUpdateTaskStatus, apiApproveTask, apiRejectTask } from '@/hooks/tm/useTasks';
+import { useTaskDetail } from '@/hooks/tm/useTasks';
 import { StatusBadge, PriorityBadge, ProgressBar, ApprovalBadge } from '@/components/task-management/StatusBadge';
 import ChecklistPanel from '@/components/task-management/ChecklistPanel';
 import SubtaskList from '@/components/task-management/SubtaskList';
@@ -107,7 +107,7 @@ export default function TaskDetailPage({ taskId }: Props) {
             <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Phê duyệt</h3>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {[1, 2, 3].map(l => {
-                const status = (task as any)[`approval_level${l}_status`] ?? 'not_required';
+                const status = (task as Record<string, unknown>)[`approval_level${l}_status`] as string ?? 'not_required';
                 return <ApprovalBadge key={l} level={l} status={status} />;
               })}
             </div>

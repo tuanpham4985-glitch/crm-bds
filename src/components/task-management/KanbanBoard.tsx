@@ -4,7 +4,7 @@ import { useTasks } from '@/hooks/tm/useTasks';
 import { apiUpdateTaskStatus } from '@/hooks/tm/useTasks';
 import { useTmStore } from '@/stores/tmStore';
 import TaskCard from './TaskCard';
-import { StatusBadge, statusLabel } from './StatusBadge';
+import { StatusBadge } from './StatusBadge';
 import { Loader2 } from 'lucide-react';
 import type { TaskStatus, TmTask } from '@/lib/task-management/types';
 

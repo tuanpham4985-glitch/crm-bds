@@ -7,18 +7,6 @@ import { SHEET_NAMES } from '../types';
 import { appendRow, updateRow } from '../sheets/client';
 import { tmCache, CK } from '../cache';
 
-type NotifType =
-  | 'task_assigned'
-  | 'task_due_reminder'
-  | 'task_overdue'
-  | 'review_required'
-  | 'task_approved'
-  | 'task_rejected'
-  | 'task_blocked'
-  | 'task_unblocked'
-  | 'task_escalated'
-  | 'collaborator_added';
-
 export class NotificationService {
   private async send(notif: Omit<TmNotification, 'notif_id' | 'created_at' | 'sent_at' | 'read_at' | 'status'>): Promise<void> {
     const row: Record<string, string> = {

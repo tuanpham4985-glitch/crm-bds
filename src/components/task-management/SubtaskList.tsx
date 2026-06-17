@@ -56,7 +56,7 @@ export default function SubtaskList({ taskId, readOnly = false }: Props) {
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Giao cho: {sub.owner_id}</span>
             )}
           </div>
-          <StatusBadge status={sub.status as any} size="sm" />
+          <StatusBadge status={sub.status} size="sm" />
           {sub.progress_pct > 0 && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{sub.progress_pct}%</span>
           )}

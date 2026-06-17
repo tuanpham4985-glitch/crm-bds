@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { X, ChevronDown, Loader2, ThumbsUp, ThumbsDown, RotateCcw, AlertCircle } from 'lucide-react';
+import { X, Loader2, ThumbsUp, ThumbsDown, RotateCcw, AlertCircle } from 'lucide-react';
 import { useTmStore } from '@/stores/tmStore';
 import { useTaskDetail, apiUpdateTaskStatus, apiApproveTask, apiRejectTask } from '@/hooks/tm/useTasks';
 import { StatusBadge, PriorityBadge, ProgressBar, ApprovalBadge } from './StatusBadge';
@@ -206,7 +206,7 @@ export default function TaskDetail() {
                     <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Phê duyệt</span>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {[1, 2, 3].map(l => {
-                        const status = (task as any)[`approval_level${l}_status`] ?? 'not_required';
+                        const status = (task as Record<string, unknown>)[`approval_level${l}_status`] as string ?? 'not_required';
                         return <ApprovalBadge key={l} level={l} status={status} />;
                       })}
                     </div>

@@ -1,5 +1,5 @@
 'use client';
-import { Calendar, User, MessageSquare, CheckSquare, Clock, AlertTriangle } from 'lucide-react';
+import { Calendar, User, Clock, AlertTriangle } from 'lucide-react';
 import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
 import type { TmTask } from '@/lib/task-management/types';
 import { useTmStore } from '@/stores/tmStore';

@@ -1,6 +1,6 @@
 'use client';
 import { useRef, useState, useEffect } from 'react';
-import { Bell, Check, CheckCheck, Loader2 } from 'lucide-react';
+import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { useNotifications } from '@/hooks/tm/useNotifications';
 import type { TmNotification } from '@/lib/task-management/types';
 

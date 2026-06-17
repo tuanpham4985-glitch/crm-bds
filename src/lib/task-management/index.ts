@@ -30,7 +30,6 @@ import { randomUUID } from 'crypto';
 import type {
   TmComment, TmAttachment, TmNotification, TmActivityLog,
   TmUser, TmDepartment, TmProject, AuditAction,
-  PaginationOptions, PaginatedResult,
 } from './types';
 
 class CommentSheetsRepo {
@@ -85,7 +84,7 @@ class NotifSheetsRepo {
     return row as unknown as TmNotification;
   }
   async markAsRead(id: string): Promise<void> { await updateRow(SHEET_NAMES.NOTIFICATIONS, 'notif_id', id, { status: 'read', read_at: new Date().toISOString() }); }
-  async markAllAsRead(userId: string): Promise<void> { /* batch */ }
+  async markAllAsRead(_userId: string): Promise<void> { /* batch — stub */ }
   async updateStatus(id: string, status: string, sentAt?: string): Promise<void> {
     await updateRow(SHEET_NAMES.NOTIFICATIONS, 'notif_id', id, { status, ...(sentAt ? { sent_at: sentAt } : {}) });
   }
@@ -158,7 +157,7 @@ class ProjectSheetsRepo {
     const r = rows.find(r => r.project_id === id);
     return r ? r as unknown as TmProject : null;
   }
-  async findAll(filters?: Partial<TmProject>): Promise<TmProject[]> {
+  async findAll(_filters?: Partial<TmProject>): Promise<TmProject[]> {
     const rows = await loadRows(SHEET_NAMES.PROJECTS);
     return rows as unknown as TmProject[];
   }

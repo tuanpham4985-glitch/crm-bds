@@ -7,7 +7,7 @@ import type {
 } from '../types';
 import type { ITaskManagementUoW } from '../repository.interface';
 import { rbac, PERMISSIONS } from '../rbac/rbac';
-import { tmCache, CK, TTL, cached } from '../cache';
+import { CK, TTL, cached } from '../cache';
 
 export class KpiService {
   constructor(private uow: ITaskManagementUoW) {}

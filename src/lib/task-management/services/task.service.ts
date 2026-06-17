@@ -294,7 +294,6 @@ export class TaskService {
     checklist: TmChecklist;
     parent_progress: number;
   }> {
-    const checklists = await this.uow.checklists.findByTask(''); // will be filtered below
     const cl = await this.uow.checklists.toggle(checklistId, isDone, ctx.user_id);
     const progress = await this.uow.checklists.progressByTask(cl.task_id);
     const newPct   = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;

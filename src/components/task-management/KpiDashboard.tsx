@@ -45,8 +45,8 @@ export default function KpiDashboard() {
 
   const statusData = Object.entries(kpi.by_status ?? {}).map(([name, value]) => ({ name, value: value as number }));
   const priorityData = Object.entries(kpi.by_priority ?? {}).map(([name, value]) => ({ name, value: value as number }));
-  const deptData = (kpi.by_department ?? []).map((d: any) => ({
-    name: d.department_name?.slice(0, 8) ?? d.department_id,
+  const deptData = (kpi.by_department ?? []).map((d: Record<string, unknown>) => ({
+    name: String(d.department_name ?? d.department_id ?? '').slice(0, 8),
     total: d.total, completed: d.completed, overdue: d.overdue,
   }));
 

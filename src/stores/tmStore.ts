@@ -4,7 +4,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type {
-  TmTask, TaskStatus, TaskPriority, TaskFilters,
+  TaskStatus, TaskPriority,
   TmNotification, CompanyKpiDashboard,
 } from '@/lib/task-management/types';
 
@@ -89,7 +89,7 @@ interface TmState {
 }
 
 export const useTmStore = create<TmState>()(
-  subscribeWithSelector((set, get) => ({
+  subscribeWithSelector((set, _get) => ({
     // Filters
     filters:       { ...defaultFilters },
     setFilter:     (key, value) =>
