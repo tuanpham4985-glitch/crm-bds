@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin,
+  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin, ClipboardList,
 } from 'lucide-react';
 import useSWR from 'swr';
 import styles from './Sidebar.module.css';
@@ -276,6 +276,18 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
             </div>
           );
         })}
+
+        {/* TASK MANAGEMENT */}
+        <div className={styles.navSection}>
+          <Link
+            href="/quan-ly-cong-viec"
+            className={`${styles.navItem} ${pathname.startsWith('/quan-ly-cong-viec') ? styles.active : ''}`}
+            title="Quản lý công việc"
+          >
+            <ClipboardList size={20} />
+            <span>Giao việc</span>
+          </Link>
+        </div>
 
         {/* BÁO CÁO — standalone link */}
         <div className={styles.navSection}>
