@@ -1,14 +1,37 @@
 'use client';
 import { useState } from 'react';
-import { Plus, BarChart2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { Plus, BarChart2, Loader2 } from 'lucide-react';
 import { useTmStore } from '@/stores/tmStore';
 import TaskFilters from '@/components/task-management/TaskFilters';
 import TaskList from '@/components/task-management/TaskList';
-import KanbanBoard from '@/components/task-management/KanbanBoard';
 import TaskDetail from '@/components/task-management/TaskDetail';
 import TaskForm from '@/components/task-management/TaskForm';
 import NotificationCenter from '@/components/task-management/NotificationCenter';
-import KpiDashboard from '@/components/task-management/KpiDashboard';
+
+const KanbanBoard = dynamic(
+  () => import('@/components/task-management/KanbanBoard'),
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 60, color: 'var(--text-muted)', gap: 10 }}>
+        <Loader2 size={20} className="tm-spin" /> Đang tải Kanban...
+      </div>
+    ),
+  },
+);
+
+const KpiDashboard = dynamic(
+  () => import('@/components/task-management/KpiDashboard'),
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: 10 }}>
+        <Loader2 size={18} className="tm-spin" /> Đang tải KPI...
+      </div>
+    ),
+  },
+);
 
 export default function TaskManagementClient() {
   const { filters, createModalOpen, setCreateModal } = useTmStore();
