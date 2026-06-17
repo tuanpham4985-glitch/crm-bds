@@ -17,12 +17,19 @@ interface CrmSession {
 }
 
 function mapRole(session: CrmSession): UserRole {
-  const vt = (session.vai_tro || '').toLowerCase();
-  const et = (session.employee_type || '').toLowerCase();
+  const vt = (session.vai_tro || '').trim();
+  const et = (session.employee_type || '').trim();
+  const etL = et.toLowerCase();
 
-  if (vt === 'admin' || et === 'admin') return 'director';
-  if (et.includes('trưởng phòng') || et.includes('truong phong') || vt === 'manager') return 'manager';
-  if (et.includes('team leader') || et.includes('leader') || vt === 'leader') return 'team_leader';
+  // Director: vai_tro=Admin, hoặc chức vụ Giám đốc (GĐ...)
+  if (vt === 'Admin' || etL.startsWith('gđ') || etL.startsWith('giám đốc') || etL.startsWith('giam doc')) return 'director';
+
+  // Manager: chức vụ Trưởng phòng (TP...) hoặc có từ "truong phong"/"trưởng phòng"
+  if (etL.startsWith('tp') || etL.includes('trưởng phòng') || etL.includes('truong phong') || etL.includes('tkkd') || vt === 'manager') return 'manager';
+
+  // Team Leader
+  if (etL.includes('leader') || etL.includes('team lead') || vt === 'leader') return 'team_leader';
+
   return 'staff';
 }
 
