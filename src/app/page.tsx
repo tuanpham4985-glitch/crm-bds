@@ -409,7 +409,12 @@ export default function DashboardPage() {
                 {/* Chọn năm trong month dropdown */}
                 <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 4, marginBottom: 4, paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>
                   {[2025, 2026].map(y => (
-                    <button key={y} onClick={() => setSelectedYear(y)} style={{
+                    <button key={y} onClick={() => {
+                      setSelectedYear(y);
+                      const curMonth = new Date().getMonth() + 1;
+                      const curYear = new Date().getFullYear();
+                      if (y === curYear && selectedMonth > curMonth) setSelectedMonth(curMonth);
+                    }} style={{
                       flex: 1, padding: '4px 0', borderRadius: 'var(--radius-sm)', border: 'none',
                       cursor: 'pointer', fontSize: 12, fontWeight: 600,
                       background: selectedYear === y ? 'var(--primary)' : 'var(--bg-muted)',
@@ -417,23 +422,32 @@ export default function DashboardPage() {
                     }}>{y}</button>
                   ))}
                 </div>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => { setSelectedMonth(m); setShowMonthDropdown(false); }}
-                    style={{
-                      padding: '6px 4px', borderRadius: 'var(--radius-sm)',
-                      border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                      background: selectedMonth === m ? 'var(--primary)' : 'transparent',
-                      color: selectedMonth === m ? '#fff' : 'var(--text-body)',
-                      transition: 'background var(--transition-fast)',
-                    }}
-                    onMouseEnter={e => { if (selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'var(--primary-light)'; }}
-                    onMouseLeave={e => { if (selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'transparent'; }}
-                  >
-                    T{m}
-                  </button>
-                ))}
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {
+                  const today = new Date();
+                  const isFuture = selectedYear > today.getFullYear() ||
+                    (selectedYear === today.getFullYear() && m > today.getMonth() + 1);
+                  return (
+                    <button
+                      key={m}
+                      disabled={isFuture}
+                      onClick={() => { if (!isFuture) { setSelectedMonth(m); setShowMonthDropdown(false); } }}
+                      style={{
+                        padding: '6px 4px', borderRadius: 'var(--radius-sm)',
+                        border: 'none',
+                        cursor: isFuture ? 'not-allowed' : 'pointer',
+                        fontSize: 13, fontWeight: 500,
+                        background: selectedMonth === m ? 'var(--primary)' : 'transparent',
+                        color: isFuture ? 'var(--text-muted)' : selectedMonth === m ? '#fff' : 'var(--text-body)',
+                        opacity: isFuture ? 0.4 : 1,
+                        transition: 'background var(--transition-fast)',
+                      }}
+                      onMouseEnter={e => { if (!isFuture && selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'var(--primary-light)'; }}
+                      onMouseLeave={e => { if (!isFuture && selectedMonth !== m) (e.target as HTMLButtonElement).style.background = 'transparent'; }}
+                    >
+                      T{m}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -447,7 +461,13 @@ export default function DashboardPage() {
                 display: 'flex', flexDirection: 'column', gap: 4, minWidth: 100,
               }}>
                 {[2025, 2026].map(y => (
-                  <button key={y} onClick={() => { setSelectedYear(y); setShowYearDropdown(false); }} style={{
+                  <button key={y} onClick={() => {
+                    setSelectedYear(y);
+                    setShowYearDropdown(false);
+                    const curMonth = new Date().getMonth() + 1;
+                    const curYear = new Date().getFullYear();
+                    if (y === curYear && selectedMonth > curMonth) setSelectedMonth(curMonth);
+                  }} style={{
                     padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none',
                     cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'center',
                     background: selectedYear === y ? 'var(--primary)' : 'transparent',

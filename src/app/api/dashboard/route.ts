@@ -280,8 +280,8 @@ export async function GET(request: NextRequest) {
           return d >= dateRange.from && d <= toWithBuffer;
         }
       }
-      // No date info at all → include
-      return true;
+      // No date info at all → exclude (cannot assign to any period)
+      return false;
     });
 
     // Filter previous period for comparison
