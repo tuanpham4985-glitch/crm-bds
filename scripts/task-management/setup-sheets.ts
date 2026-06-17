@@ -445,9 +445,21 @@ async function main() {
 
     if (!sheet) {
       console.log(`➕ Tạo sheet: ${sheetName}`);
-      sheet = await doc.addSheet({ title: sheetName, headerValues: headers });
+      sheet = await doc.addSheet({
+        title: sheetName,
+        gridProperties: {
+          columnCount: Math.max(headers.length + 5, 30),
+          rowCount: 1000,
+        },
+      });
+      await sheet.setHeaderRow(headers);
     } else {
       console.log(`✅ Sheet đã tồn tại: ${sheetName} — cập nhật headers`);
+      // Resize if existing sheet has fewer columns than needed
+      const neededCols = Math.max(headers.length + 5, 30);
+      if ((sheet.columnCount ?? 26) < headers.length) {
+        await sheet.resize({ columnCount: neededCols, rowCount: sheet.rowCount ?? 1000 });
+      }
       await sheet.setHeaderRow(headers);
     }
 
