@@ -69,6 +69,50 @@ async function getSheet(sheetName: SheetName): Promise<GoogleSpreadsheetWorkshee
   return sheet;
 }
 
+// ─── ROW CACHE ────────────────────────────────────────────
+// Caches raw rows per sheet to prevent repeated getRows() API calls.
+// All write helpers (append/update/delete) must call invalidateRowCache().
+
+const _rowCache    = new Map<string, { rows: RawRow[]; ts: number }>();
+const ROW_CACHE_TTL = 45_000; // 45s — safe below Google's 60 req/min/user limit
+
+// Dedup concurrent fetches for the same sheet
+const _pendingFetch = new Map<string, Promise<RawRow[]>>();
+
+function getCachedRows(sheetName: string): RawRow[] | null {
+  const c = _rowCache.get(sheetName);
+  if (!c) return null;
+  if (Date.now() - c.ts > ROW_CACHE_TTL) { _rowCache.delete(sheetName); return null; }
+  return c.rows;
+}
+
+function invalidateRowCache(sheetName: string): void {
+  _rowCache.delete(sheetName);
+  _pendingFetch.delete(sheetName);
+}
+
+/** Fetch raw rows from Google Sheets, with in-memory cache + request dedup */
+async function fetchAllRows(sheetName: SheetName): Promise<RawRow[]> {
+  const hit = getCachedRows(sheetName);
+  if (hit) return hit;
+
+  // If a concurrent request is already in-flight for this sheet, reuse it
+  const inflight = _pendingFetch.get(sheetName);
+  if (inflight) return inflight;
+
+  const promise = (async () => {
+    const sheet = await getSheet(sheetName);
+    const rows  = await sheet.getRows();
+    const rawRows = rows.map(r => r.toObject() as RawRow);
+    _rowCache.set(sheetName, { rows: rawRows, ts: Date.now() });
+    _pendingFetch.delete(sheetName);
+    return rawRows;
+  })();
+
+  _pendingFetch.set(sheetName, promise);
+  return promise;
+}
+
 // ─── ROW HELPERS ──────────────────────────────────────────
 
 export type RawRow = Record<string, string>;
@@ -78,24 +122,20 @@ export async function loadRows(
   sheetName: SheetName,
   deletedField = 'deleted_at',
 ): Promise<RawRow[]> {
-  const sheet = await getSheet(sheetName);
-  const rows  = await sheet.getRows();
-  return rows
-    .map(r => r.toObject() as RawRow)
-    .filter(r => !r[deletedField]);
+  const rows = await fetchAllRows(sheetName);
+  return rows.filter(r => !r[deletedField]);
 }
 
-/** Load rows WITHOUT filtering (for audit / admin use) */
+/** Load rows WITHOUT filtering */
 export async function loadAllRows(sheetName: SheetName): Promise<RawRow[]> {
-  const sheet = await getSheet(sheetName);
-  const rows  = await sheet.getRows();
-  return rows.map(r => r.toObject() as RawRow);
+  return fetchAllRows(sheetName);
 }
 
 /** Append a single new row */
 export async function appendRow(sheetName: SheetName, data: RawRow): Promise<void> {
   const sheet = await getSheet(sheetName);
   await sheet.addRow(data);
+  invalidateRowCache(sheetName);
 }
 
 /**
@@ -109,6 +149,7 @@ export async function appendRows(sheetName: SheetName, rows: RawRow[]): Promise<
   for (let i = 0; i < rows.length; i += BATCH) {
     await sheet.addRows(rows.slice(i, i + BATCH));
   }
+  invalidateRowCache(sheetName);
 }
 
 /**
@@ -132,6 +173,7 @@ export async function updateRow(
     target.set(k, v ?? '');
   }
   await target.save();
+  invalidateRowCache(sheetName);
   return target.toObject() as RawRow;
 }
 
@@ -161,6 +203,7 @@ export async function batchUpdateRows(
   for (let i = 0; i < toSave.length; i += CONCURRENCY) {
     await Promise.all(toSave.slice(i, i + CONCURRENCY).map(r => r.save()));
   }
+  invalidateRowCache(sheetName);
 }
 
 /** Soft delete: set deleted_at timestamp */

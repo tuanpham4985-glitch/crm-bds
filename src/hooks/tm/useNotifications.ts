@@ -14,7 +14,7 @@ export function useNotifications() {
   const unreadCount      = useTmStore(s => s.unreadCount);
 
   const { data, isLoading } = useSWR<TmNotification[]>('/api/tm/notifications', fetcher, {
-    refreshInterval: 30_000,
+    refreshInterval: 60_000,
     revalidateOnFocus: false,
   });
 
