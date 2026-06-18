@@ -157,7 +157,7 @@ export class TaskSheetsRepository
       description:      input.description ?? '',
       project_id:       input.project_id,
       department_id:    input.department_id,
-      owner_id:         input.owner_id,
+      owner_id:         input.owner_id || createdBy,
       collaborator_ids: JSON.stringify(input.collaborators ?? []),
       priority:         input.priority,
       status:           'todo',

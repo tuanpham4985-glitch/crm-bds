@@ -1,5 +1,5 @@
 'use client';
-import { Calendar, User, Clock, AlertTriangle } from 'lucide-react';
+import { Calendar, User, AlertTriangle } from 'lucide-react';
 import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
 import type { TmTask } from '@/lib/task-management/types';
 import { useTmStore } from '@/stores/tmStore';
@@ -100,13 +100,6 @@ export default function TaskCard({ task, onClick, compact = false }: Props) {
           <Calendar size={11} />
           {formatDate(task.due_date)}
         </span>
-
-        {task.estimated_hours > 0 && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--text-muted)' }}>
-            <Clock size={11} />
-            {task.estimated_hours}h
-          </span>
-        )}
 
         <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--text-muted)' }}>
           <User size={11} />

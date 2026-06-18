@@ -11,6 +11,12 @@ interface Props {
   initialProjectId?: string;
 }
 
+const PREDEFINED_TAGS = [
+  'Gọi điện', 'Email', 'Họp', 'Báo cáo',
+  'Tư vấn', 'Chăm sóc KH', 'Thu thập data',
+  'Sự kiện', 'Đàm phán', 'Hợp đồng',
+];
+
 const FIELD: React.CSSProperties = {
   width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
   border: '1.5px solid var(--border-light)', fontSize: 14,
@@ -34,15 +40,20 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     priority:      'medium' as TaskPriority,
     status:        'todo'   as TaskStatus,
     due_date:      '',
-    estimated_hours: '',
     department_id: initialDepartmentId ?? '',
     project_id:    initialProjectId    ?? '',
-    tags:          '',
   });
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
+
+  function toggleTag(tag: string) {
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag],
+    );
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,17 +62,16 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     setLoading(true);
     try {
       const body: Record<string, unknown> = {
-        title:       form.title.trim(),
-        priority:    form.priority,
-        status:      form.status,
+        title:    form.title.trim(),
+        priority: form.priority,
+        status:   form.status,
       };
-      if (form.objective)       body.objective = form.objective;
-      if (form.description)     body.description = form.description;
-      if (form.due_date)        body.due_date = form.due_date;
-      if (form.estimated_hours) body.estimated_hours = Number(form.estimated_hours);
-      if (form.department_id)   body.department_id = form.department_id;
-      if (form.project_id)      body.project_id = form.project_id;
-      if (form.tags)            body.tags = form.tags.split(',').map(t => t.trim()).filter(Boolean);
+      if (form.objective)     body.objective     = form.objective;
+      if (form.description)   body.description   = form.description;
+      if (form.due_date)      body.due_date      = form.due_date;
+      if (form.department_id) body.department_id = form.department_id;
+      if (form.project_id)    body.project_id    = form.project_id;
+      if (selectedTags.length) body.tags         = selectedTags;
 
       const created = await apiCreateTask(body);
       onCreated?.(created.task_id);
@@ -147,22 +157,41 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
             </div>
           </div>
 
-          {/* Due date + Estimated hours */}
-          <div style={{ ...ROW, marginBottom: 14 }}>
-            <div>
-              <label style={LABEL}>Deadline</label>
-              <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} style={FIELD} />
-            </div>
-            <div>
-              <label style={LABEL}>Số giờ ước tính</label>
-              <input type="number" value={form.estimated_hours} onChange={e => set('estimated_hours', e.target.value)} placeholder="8" min={0} style={FIELD} />
-            </div>
+          {/* Due date (full width now) */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={LABEL}>Deadline</label>
+            <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} style={{ ...FIELD, maxWidth: 220 }} />
           </div>
 
-          {/* Tags */}
+          {/* Tags — predefined chips */}
           <div style={{ marginBottom: 14 }}>
-            <label style={LABEL}>Tags (phân cách bởi dấu phẩy)</label>
-            <input value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="marketing, bds, urgent..." style={FIELD} />
+            <label style={LABEL}>Tags</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+              {PREDEFINED_TAGS.map(tag => {
+                const active = selectedTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    style={{
+                      padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer', transition: 'all 0.15s',
+                      border: `1.5px solid ${active ? 'var(--primary)' : 'var(--border-light)'}`,
+                      background: active ? 'var(--primary)' : 'transparent',
+                      color: active ? '#fff' : 'var(--text-body)',
+                    }}
+                  >
+                    {active ? '✓ ' : ''}{tag}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedTags.length > 0 && (
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                Đã chọn: {selectedTags.join(', ')}
+              </p>
+            )}
           </div>
         </form>
 

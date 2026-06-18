@@ -104,9 +104,13 @@ export default function TaskDetail() {
             <Loader2 size={24} className="tm-spin" style={{ color: 'var(--text-muted)' }} />
           </div>
         )}
-        {error && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 60, gap: 10, color: '#dc2626' }}>
-            <AlertCircle size={20} /> Không tải được thông tin task
+        {!isLoading && (error || !task) && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 60, gap: 8, color: 'var(--text-muted)' }}>
+            <AlertCircle size={28} color="#dc2626" />
+            <span style={{ fontSize: 14, color: '#dc2626', fontWeight: 600 }}>
+              {error ? error.message : 'Không tìm thấy công việc'}
+            </span>
+            <span style={{ fontSize: 12 }}>Bạn không có quyền xem hoặc task không tồn tại</span>
           </div>
         )}
 

@@ -4,7 +4,11 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTmStore, selectApiFilters } from '@/stores/tmStore';
 import type { PaginatedResult, TmTask } from '@/lib/task-management/types';
 
-const fetcher = (url: string) => fetch(url).then(r => r.json()).then(d => d.data);
+const fetcher = (url: string) =>
+  fetch(url).then(r => r.json()).then(d => {
+    if (!d.success) throw new Error(d.error || 'Lỗi tải dữ liệu');
+    return d.data;
+  });
 
 function buildUrl(params: Partial<Record<string, string>>) {
   const sp = new URLSearchParams();
