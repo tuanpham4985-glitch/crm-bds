@@ -121,6 +121,12 @@ export class TaskService {
 
     await this.uow.activityLogs.log(taskId, 'task', ctx.user_id, 'updated', old as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>);
     this.invalidateTaskCache(task);
+
+    // Notify new owner when assignment changes
+    if (input.owner_id && input.owner_id !== old.owner_id && input.owner_id !== ctx.user_id) {
+      await this.notif.notifyTaskAssigned(updated, ctx.user_id).catch(() => {});
+    }
+
     return updated;
   }
 
