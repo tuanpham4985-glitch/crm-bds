@@ -156,6 +156,24 @@ export function useTmUsers() {
   return { users, userMap, isLoading };
 }
 
+export function useTmDepartments() {
+  const { data } = useSWR<{ dept_id: string; name: string; code: string }[]>(
+    '/api/tm/departments',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 300_000 },
+  );
+  return data ?? [];
+}
+
+export function useTmProjects() {
+  const { data } = useSWR<{ project_id: string; name: string; code: string }[]>(
+    '/api/tm/projects',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 300_000 },
+  );
+  return data ?? [];
+}
+
 export async function apiToggleChecklist(checklistId: string, isDone: boolean) {
   const res = await fetch(`/api/tm/checklists/${checklistId}/toggle`, {
     method:  'PATCH',
