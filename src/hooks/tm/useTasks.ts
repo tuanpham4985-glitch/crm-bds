@@ -156,6 +156,15 @@ export function useTmUsers() {
   return { users, userMap, isLoading };
 }
 
+export function useCurrentTmUser() {
+  const { data } = useSWR<{ user_id: string; full_name: string; email: string; role: string; department_id: string }>(
+    '/api/tm/me',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 600_000 },
+  );
+  return data ?? null;
+}
+
 export function useTmDepartments() {
   const { data } = useSWR<{ dept_id: string; name: string; code: string }[]>(
     '/api/tm/departments',

@@ -4,7 +4,7 @@ import { X, Loader2, ThumbsUp, ThumbsDown, RotateCcw, AlertCircle } from 'lucide
 import { useTmStore } from '@/stores/tmStore';
 import {
   useTaskDetail, apiUpdateTaskStatus, apiApproveTask, apiRejectTask,
-  apiUpdateTask, useTmUsers, useTmDepartments, useTmProjects,
+  apiUpdateTask, useTmUsers, useTmDepartments, useTmProjects, useCurrentTmUser,
 } from '@/hooks/tm/useTasks';
 import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
 import ChecklistPanel from './ChecklistPanel';
@@ -261,6 +261,7 @@ export default function TaskDetail() {
   const { users, userMap } = useTmUsers();
   const departments = useTmDepartments();
   const projects    = useTmProjects();
+  const currentUser = useCurrentTmUser();
 
   const save = useCallback(async (field: string, value: unknown) => {
     if (!task) return;
@@ -579,7 +580,7 @@ export default function TaskDetail() {
 
               {activeTab === 'checklist' && <ChecklistPanel taskId={task.task_id} />}
               {activeTab === 'subtasks'  && <SubtaskList    taskId={task.task_id} />}
-              {activeTab === 'comments'  && <CommentSection  taskId={task.task_id} />}
+              {activeTab === 'comments'  && <CommentSection  taskId={task.task_id} currentUserId={currentUser?.user_id} userMap={userMap} />}
               {activeTab === 'activity'  && <ActivityTimeline taskId={task.task_id} />}
             </div>
           </>

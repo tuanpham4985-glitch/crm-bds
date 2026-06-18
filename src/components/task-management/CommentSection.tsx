@@ -17,9 +17,13 @@ function timeAgo(iso: string) {
   return `${d} ngày trước`;
 }
 
-interface Props { taskId: string; }
+interface Props {
+  taskId: string;
+  currentUserId?: string;
+  userMap?: Record<string, string>;
+}
 
-export default function CommentSection({ taskId }: Props) {
+export default function CommentSection({ taskId, currentUserId, userMap = {} }: Props) {
   const { data: comments = [], isLoading } = useSWR<TmComment[]>(`/api/tm/tasks/${taskId}/comments`, fetcher);
   const [body, setBody] = useState('');
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -59,7 +63,9 @@ export default function CommentSection({ taskId }: Props) {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-title)' }}>
-              {c.user_id}
+              {currentUserId && c.user_id === currentUserId
+                ? 'Tôi'
+                : (userMap[c.user_id] || c.user_id)}
             </span>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{timeAgo(c.created_at)}</span>
           </div>
