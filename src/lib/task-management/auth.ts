@@ -29,8 +29,17 @@ function mapRole(session: CrmSession): UserRole {
   const et = (session.employee_type || '').trim();
   const etL = et.toLowerCase();
 
-  // Director: vai_tro=Admin, hoặc chức vụ Giám đốc (GĐ...)
-  if (vt === 'Admin' || etL.startsWith('gđ') || etL.startsWith('giám đốc') || etL.startsWith('giam doc')) return 'director';
+  // Director: Admin, Giám đốc (GĐ/GD), Chủ tịch, Tổng giám đốc, Phó giám đốc
+  if (
+    vt === 'Admin' ||
+    etL.startsWith('gđ') || etL.startsWith('gd') ||
+    etL.startsWith('giám đốc') || etL.startsWith('giam doc') ||
+    etL.startsWith('chủ tịch') || etL.startsWith('chu tich') || etL === 'ct' ||
+    etL.startsWith('tổng') || etL.startsWith('tong') ||
+    etL.startsWith('tgđ') || etL.startsWith('tgd') ||
+    etL.startsWith('pgđ') || etL.startsWith('pgd') ||
+    etL.startsWith('phó giám') || etL.startsWith('pho giam')
+  ) return 'director';
 
   // Manager: chức vụ Trưởng phòng (TP...) hoặc có từ "truong phong"/"trưởng phòng"
   if (etL.startsWith('tp') || etL.includes('trưởng phòng') || etL.includes('truong phong') || etL.includes('tkkd') || vt === 'manager') return 'manager';

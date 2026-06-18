@@ -21,7 +21,16 @@ function getRole(vai_tro: string, employee_type: string): string {
   const vt  = (vai_tro || '').trim();
   const etL = (employee_type || '').trim().toLowerCase();
 
-  if (vt === 'Admin' || etL.startsWith('gđ') || etL.startsWith('giám đốc') || etL.startsWith('giam doc')) return 'director';
+  if (
+    vt === 'Admin' ||
+    etL.startsWith('gđ') || etL.startsWith('gd') ||
+    etL.startsWith('giám đốc') || etL.startsWith('giam doc') ||
+    etL.startsWith('chủ tịch') || etL.startsWith('chu tich') || etL === 'ct' ||
+    etL.startsWith('tổng') || etL.startsWith('tong') ||
+    etL.startsWith('tgđ') || etL.startsWith('tgd') ||
+    etL.startsWith('pgđ') || etL.startsWith('pgd') ||
+    etL.startsWith('phó giám') || etL.startsWith('pho giam')
+  ) return 'director';
   if (etL.startsWith('tp') || etL.includes('trưởng phòng') || etL.includes('truong phong') || etL.includes('tkkd') || vt === 'manager') return 'manager';
   if (etL.includes('leader') || etL.includes('team lead') || vt === 'leader') return 'team_leader';
   return 'staff';
