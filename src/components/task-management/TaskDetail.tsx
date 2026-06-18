@@ -262,7 +262,7 @@ export default function TaskDetail() {
               {editing && (
                 <div style={{ marginBottom: 10 }}>
                   <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
-                    Tiến độ: {editForm.progress_pct ?? 0}%
+                    Tiến độ: {Number(editForm.progress_pct ?? 0)}%
                   </label>
                   <input
                     type="range" min={0} max={100} step={5}
