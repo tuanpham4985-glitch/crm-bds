@@ -16,14 +16,12 @@ interface CrmSession {
   team_id?: string;
 }
 
-// Emails được cấp quyền director dù chức vụ là gì.
-// Thêm vào env var TM_ADMIN_EMAILS="email1,email2" trên Vercel để dùng.
-const ADMIN_EMAILS = (process.env.TM_ADMIN_EMAILS || '')
-  .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+// DEV_ADMIN_EMAIL (từ .env.local / Vercel env) được cấp quyền director dù chức vụ là gì
+const DEV_ADMIN_EMAIL = (process.env.DEV_ADMIN_EMAIL || '').toLowerCase();
 
 function mapRole(session: CrmSession): UserRole {
-  // Admin email override — luôn là director (quyền cao nhất)
-  if (ADMIN_EMAILS.length && ADMIN_EMAILS.includes((session.email || '').toLowerCase())) {
+  // Dev/admin account override — luôn là director (quyền cao nhất)
+  if (DEV_ADMIN_EMAIL && (session.email || '').toLowerCase() === DEV_ADMIN_EMAIL) {
     return 'director';
   }
 
