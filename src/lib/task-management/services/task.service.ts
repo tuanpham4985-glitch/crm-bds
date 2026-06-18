@@ -64,14 +64,14 @@ export class TaskService {
     if (!rbac.canReadTask(ctx, task)) throw new UnauthorizedError('Cannot read this task');
 
     const [subtasks, checklists, comments, attachments] = await Promise.all([
-      cached(CK.subtasks(taskId),   TTL.TASK_DETAIL, () => this.uow.subtasks.findByParentTask(taskId)),
-      cached(CK.checklists(taskId), TTL.TASK_DETAIL, () => this.uow.checklists.findByTask(taskId)),
-      cached(CK.comments(taskId),   TTL.TASK_DETAIL, () => this.uow.comments.findByTask(taskId)),
-      this.uow.attachments.findByTask(taskId),
+      cached(CK.subtasks(taskId),   TTL.TASK_DETAIL, () => this.uow.subtasks.findByParentTask(taskId)).catch(() => []),
+      cached(CK.checklists(taskId), TTL.TASK_DETAIL, () => this.uow.checklists.findByTask(taskId)).catch(() => []),
+      cached(CK.comments(taskId),   TTL.TASK_DETAIL, () => this.uow.comments.findByTask(taskId)).catch(() => []),
+      this.uow.attachments.findByTask(taskId).catch(() => []),
     ]);
 
     const checklistProgress = {
-      done:  checklists.filter(c => c.is_done).length,
+      done:  (checklists as { is_done: boolean }[]).filter(c => c.is_done).length,
       total: checklists.length,
     };
 

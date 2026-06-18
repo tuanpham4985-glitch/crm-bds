@@ -181,6 +181,8 @@ export class RbacService {
   /** Can user READ this task? */
   canReadTask(ctx: RbacContext, task: Pick<TmTask, 'owner_id' | 'department_id' | 'collaborator_ids'>): boolean {
     if (ctx.role === 'director') return true;
+    // Tasks with no owner/dept (e.g. setup-script demo tasks) are visible to all
+    if (!task.owner_id && !task.department_id) return true;
     if (task.owner_id === ctx.user_id) return true;
 
     // Is collaborator?

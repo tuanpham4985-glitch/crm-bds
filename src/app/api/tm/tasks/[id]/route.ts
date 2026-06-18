@@ -20,8 +20,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const err = e as Error;
     if (err.name === 'TaskNotFoundError') return errorResponse('Không tìm thấy công việc', 404);
     if (err.name === 'UnauthorizedError') return errorResponse(err.message, 403);
-    console.error('[TM Task GET]', err);
-    return errorResponse('Lỗi tải công việc');
+    console.error('[TM Task GET]', err.name, err.message, err.stack?.slice(0, 400));
+    return errorResponse(`Lỗi tải công việc: ${err.message}`);
   }
 }
 
