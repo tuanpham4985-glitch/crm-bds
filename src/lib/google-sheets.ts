@@ -3841,34 +3841,39 @@ export async function syncEmployeesFromHrFile(): Promise<{
   // 3. Mở CRM NHAN_VIEN sheet
   const crmDoc = await getDoc();
   const nvSheet = await getSheet(crmDoc, 'NHAN_VIEN');
-  const crmRows = await nvSheet.getRows();
   const crmHeaders = nvSheet.headerValues as string[];
+  const crmRows = await nvSheet.getRows();
 
-  // Tạo lookup map id_nhan_vien → row index (0-based trong crmRows)
-  const idColCRM = crmHeaders.indexOf('id_nhan_vien');
-  const targetMap = new Map<string, number>(); // id → index in crmRows
+  // Load cells để batch update (loadCells dùng 0-based index; header = row 0)
+  const loadEndRow = crmRows.length + 2; // header + data + buffer
+  await nvSheet.loadCells({
+    startRowIndex:    0,
+    endRowIndex:      loadEndRow,
+    startColumnIndex: 0,
+    endColumnIndex:   crmHeaders.length,
+  });
+
+  // Lookup map: id_nhan_vien → index trong crmRows
+  const targetMap = new Map<string, number>();
   crmRows.forEach((row, idx) => {
     const id = padEmployeeId(str(row.get('id_nhan_vien')));
     if (id) targetMap.set(id, idx);
   });
 
-  // Xây dựng column mapping CRM → src index
+  // Column mapping CRM → src index
   const colMap: Record<string, number> = {};
   crmHeaders.forEach(h => { colMap[h] = findSrcCol(h); });
 
   console.log('[syncEmployees] HR headers:', srcHeaders.slice(0, 15).join(' | '));
-  console.log('[syncEmployees] Col map (first 10):', Object.entries(colMap).slice(0, 10).map(([k,v]) => `${k}→${v}`).join(', '));
 
-  // Helper đọc giá trị ô
-  function getCell(rowIdx: number, colIdx: number): string {
+  // Helper đọc giá trị ô HR
+  function getHrCell(rowIdx: number, colIdx: number): string {
     if (colIdx < 0 || colIdx >= hrColCount) return '';
     const cell = hrSheet.getCell(rowIdx, colIdx);
-    const displayVal = cell.formattedValue ?? '';
-    const rawVal = cell.value ?? '';
-    return str(displayVal || rawVal);
+    return str(cell.formattedValue ?? cell.value ?? '');
   }
 
-  // Helper parse ngày DD/MM/YYYY
+  // Helper parse ngày DD/MM/YYYY → YYYY-MM-DD
   function parseDate(s: string): string {
     const p = s.split('/');
     if (p.length === 3) {
@@ -3877,9 +3882,7 @@ export async function syncEmployeesFromHrFile(): Promise<{
       const y = parseInt(p[2].split(' ')[0], 10);
       if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
         const dt = new Date(y, m, d);
-        if (!isNaN(dt.getTime())) {
-          return dt.toISOString().split('T')[0]; // YYYY-MM-DD
-        }
+        if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
       }
     }
     return s;
@@ -3887,22 +3890,21 @@ export async function syncEmployeesFromHrFile(): Promise<{
 
   const now = new Date();
   const nowStr = now.toISOString().replace('T', ' ').substring(0, 19);
-  let inserted = 0, updated = 0, skipped = 0;
+  let updated = 0, skipped = 0;
+  const rowsToInsert: Record<string, string>[] = [];
+  let hasUpdates = false;
 
   // 4. Duyệt từng dòng nguồn (từ HEADER_ROW_IDX + 1)
   for (let rowIdx = HEADER_ROW_IDX + 1; rowIdx < hrRowCount; rowIdx++) {
-    // Lấy MNV
     const idSrcIdx = colMap['id_nhan_vien'];
-    const maNVRaw = idSrcIdx >= 0 ? getCell(rowIdx, idSrcIdx) : '';
-    const maNV = padEmployeeId(maNVRaw);
+    const maNV = padEmployeeId(idSrcIdx >= 0 ? getHrCell(rowIdx, idSrcIdx) : '');
     if (!maNV || maNV === '0000') { skipped++; continue; }
 
-    // Lấy họ tên
     const tenSrcIdx = colMap['ho_ten'];
-    const hoTen = tenSrcIdx >= 0 ? getCell(rowIdx, tenSrcIdx) : '';
+    const hoTen = tenSrcIdx >= 0 ? getHrCell(rowIdx, tenSrcIdx) : '';
     if (!hoTen) { skipped++; continue; }
 
-    // Build object ghi
+    // Build object giá trị cho dòng này
     const obj: Record<string, string> = {
       id_nhan_vien: maNV,
       ho_ten:       hoTen,
@@ -3916,8 +3918,7 @@ export async function syncEmployeesFromHrFile(): Promise<{
       if (th === 'id_nhan_vien' || th === 'ho_ten') return;
       const ci = colMap[th];
       if (ci < 0) return;
-
-      const raw = getCell(rowIdx, ci);
+      const raw = getHrCell(rowIdx, ci);
       if (th === 'ngay_sinh' || th === 'ngay_cap') {
         obj[th] = raw ? parseDate(raw) : '';
       } else if (th === 'so_nguoi_phu_thuoc') {
@@ -3929,29 +3930,42 @@ export async function syncEmployeesFromHrFile(): Promise<{
 
     const existingIdx = targetMap.get(maNV);
     if (existingIdx !== undefined) {
-      // Cập nhật — bảo lưu mat_khau và vai_tro đã thiết lập trên CRM
+      // Update qua cell trực tiếp (sẽ batch bằng saveUpdatedCells)
       const existRow = crmRows[existingIdx];
       const curPass = str(existRow.get('mat_khau'));
       const curRole = str(existRow.get('vai_tro'));
+      // rowNumber là 1-based trong sheet; loadCells dùng 0-based → getCell(rowNumber - 1, colIdx)
+      const sheetRowIdx = existRow.rowNumber - 1;
 
-      Object.entries(obj).forEach(([k, v]) => {
-        if (k === 'mat_khau' && curPass && curPass !== '123456') return;
-        if (k === 'vai_tro' && curRole) return;
-        existRow.set(k, v);
+      crmHeaders.forEach((h, colIdx) => {
+        if (h === 'mat_khau' && curPass && curPass !== '123456') return;
+        if (h === 'vai_tro' && curRole) return;
+        const val = obj[h];
+        if (val === undefined) return;
+        if (sheetRowIdx < loadEndRow) {
+          nvSheet.getCell(sheetRowIdx, colIdx).value = val;
+          hasUpdates = true;
+        }
       });
-      await existRow.save();
       updated++;
     } else {
-      // Thêm mới
+      // Gom lại để batch insert
       const newRowData: Record<string, string> = {};
       crmHeaders.forEach(h => { newRowData[h] = obj[h] ?? ''; });
-      const newRow = await nvSheet.addRow(newRowData);
-      const newId = padEmployeeId(str(newRow.get('id_nhan_vien')));
-      if (newId) targetMap.set(newId, crmRows.length + inserted);
-      inserted++;
+      rowsToInsert.push(newRowData);
     }
   }
 
-  console.log(`[syncEmployees] Done — inserted:${inserted}, updated:${updated}, skipped:${skipped}`);
-  return { inserted, updated, skipped };
+  // Một lần batchUpdate cho tất cả updates
+  if (hasUpdates) {
+    await nvSheet.saveUpdatedCells();
+  }
+
+  // Một lần append cho tất cả inserts
+  if (rowsToInsert.length > 0) {
+    await nvSheet.addRows(rowsToInsert);
+  }
+
+  console.log(`[syncEmployees] Done — inserted:${rowsToInsert.length}, updated:${updated}, skipped:${skipped}`);
+  return { inserted: rowsToInsert.length, updated, skipped };
 }
