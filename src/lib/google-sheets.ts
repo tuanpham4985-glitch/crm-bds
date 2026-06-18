@@ -3742,3 +3742,216 @@ export async function getManagerForEmployee(
   return '';
 }
 
+// ============================================================
+// SYNC NHÂN VIÊN từ file HR ngoài → NHAN_VIEN (bypass GAS web app)
+// ============================================================
+
+export async function syncEmployeesFromHrFile(): Promise<{
+  inserted: number;
+  updated: number;
+  skipped: number;
+}> {
+  const hrSheetId = process.env.NHAN_SU_SHEET_ID;
+  if (!hrSheetId) {
+    throw new Error(
+      'Biến môi trường NHAN_SU_SHEET_ID chưa được cấu hình. ' +
+      'Thêm vào Vercel → Settings → Environment Variables: ' +
+      'NHAN_SU_SHEET_ID = 1jbrf9uC6K_k-VRQyFwMzFk8qiU845wsqSszNXdnyJZw'
+    );
+  }
+
+  const HR_SHEET_NAME  = 'DATA NHÂN SỰ';
+  const HEADER_ROW_IDX = 3; // hàng 4 (0-based = 3) — 3 dòng đầu là logo/tiêu đề/trống
+
+  // Helper chuẩn hóa chuỗi (bỏ dấu, chữ thường, bỏ khoảng trắng)
+  const normH = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/đ/g, 'd').trim().replace(/\s+/g, '');
+
+  // 1. Mở file HR
+  const hrDoc = await getDocBySheetId(hrSheetId);
+  const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
+  if (!hrSheet) {
+    throw new Error(
+      `Không tìm thấy sheet "${HR_SHEET_NAME}" trong file nhân sự. ` +
+      `Đảm bảo file đã chia sẻ với: ${process.env.GOOGLE_CLIENT_EMAIL}`
+    );
+  }
+
+  const hrRowCount = Math.min(hrSheet.rowCount, 1500);
+  const hrColCount = Math.min(hrSheet.columnCount, 50);
+
+  await hrSheet.loadCells({
+    startRowIndex: HEADER_ROW_IDX,
+    endRowIndex:   hrRowCount,
+    startColumnIndex: 0,
+    endColumnIndex:   hrColCount,
+  });
+
+  // 2. Đọc headers từ hàng 4 (index 3)
+  const srcHeaders: string[] = [];
+  for (let c = 0; c < hrColCount; c++) {
+    srcHeaders.push(str(hrSheet.getCell(HEADER_ROW_IDX, c).value));
+  }
+
+  // Bảng alias: key = cột CRM, value = danh sách alias từ file nguồn
+  const ALIASES: Record<string, string[]> = {
+    id_nhan_vien: ['mnv','manv','manhansự','manhânvien','manhânviên','mãnv','mãnhânvien','mãnhânviên','idnhânviên'],
+    ho_ten:       ['hoten','hovaten','hotenvaten','hovaten','tennhanvien','tennhânvien'],
+    so_dien_thoai:['diendong','didong','sodienthoai','sdt','sđt','phone','dtdd','dtdi','sodienthoại'],
+    email:        ['email','mail','thudientu','emailcanhan'],
+    employee_type:['chucdanh','chucdanh','vitrị','vitri','loainhânvien','chucvu'],
+    trang_thai:   ['trangthai','tinhtrang'],
+    so_cccd:      ['socmtnd','cmtnd','socmnd','cmnd','socccd','cccd','cmnd/cccd'],
+    ngay_cap:     ['ngaycap','ngaycapcmt','ngaycapcccd'],
+    noi_cap:      ['noicap','noicapcmt','noicapcccd'],
+    HKTT:         ['hktt','hokhauthruongtru','diachihuongtru','thuongtru','diachihktt','hokhauthườngtrú'],
+    ngay_sinh:    ['ngaysinh','sinhnhat','ngaythangnamsinh'],
+    gioi_tinh:    ['gioitinh','giơitinh','nam/nu','phai'],
+    ma_so_thue:   ['masothue','mst','taxcode'],
+    so_tk_ngan_hang:    ['sotaikhoan','stk','sotk'],
+    ten_ngan_hang_thu_huong: ['nganhang','tennganghang','tennganhang'],
+    phong_KD:     ['phongkd','phongban','bophan','nhom','team','phong/donvi'],
+    khu_vuc:      ['khuvuc','chinanh','vung'],
+    so_nguoi_phu_thuoc: ['songuoiphuthuoc','sonpt','npt'],
+  };
+
+  // Tìm index cột nguồn theo alias
+  function findSrcCol(fieldName: string): number {
+    const aliasList = (ALIASES[fieldName] || [fieldName]).map(a => normH(a));
+    // exact match
+    for (let ci = 0; ci < srcHeaders.length; ci++) {
+      const cleanH = normH(srcHeaders[ci]);
+      if (aliasList.some(a => cleanH === a)) {
+        if (fieldName === 'so_cccd' && ci > 25) continue;
+        return ci;
+      }
+    }
+    // includes (chỉ alias >= 4 ký tự)
+    for (let ci = 0; ci < srcHeaders.length; ci++) {
+      const cleanH = normH(srcHeaders[ci]);
+      if (aliasList.some(a => a.length >= 4 && cleanH.includes(a))) {
+        if (fieldName === 'so_cccd' && ci > 25) continue;
+        return ci;
+      }
+    }
+    return -1;
+  }
+
+  // 3. Mở CRM NHAN_VIEN sheet
+  const crmDoc = await getDoc();
+  const nvSheet = await getSheet(crmDoc, 'NHAN_VIEN');
+  const crmRows = await nvSheet.getRows();
+  const crmHeaders = nvSheet.headerValues as string[];
+
+  // Tạo lookup map id_nhan_vien → row index (0-based trong crmRows)
+  const idColCRM = crmHeaders.indexOf('id_nhan_vien');
+  const targetMap = new Map<string, number>(); // id → index in crmRows
+  crmRows.forEach((row, idx) => {
+    const id = padEmployeeId(str(row.get('id_nhan_vien')));
+    if (id) targetMap.set(id, idx);
+  });
+
+  // Xây dựng column mapping CRM → src index
+  const colMap: Record<string, number> = {};
+  crmHeaders.forEach(h => { colMap[h] = findSrcCol(h); });
+
+  console.log('[syncEmployees] HR headers:', srcHeaders.slice(0, 15).join(' | '));
+  console.log('[syncEmployees] Col map (first 10):', Object.entries(colMap).slice(0, 10).map(([k,v]) => `${k}→${v}`).join(', '));
+
+  // Helper đọc giá trị ô
+  function getCell(rowIdx: number, colIdx: number): string {
+    if (colIdx < 0 || colIdx >= hrColCount) return '';
+    const cell = hrSheet.getCell(rowIdx, colIdx);
+    const displayVal = cell.formattedValue ?? '';
+    const rawVal = cell.value ?? '';
+    return str(displayVal || rawVal);
+  }
+
+  // Helper parse ngày DD/MM/YYYY
+  function parseDate(s: string): string {
+    const p = s.split('/');
+    if (p.length === 3) {
+      const d = parseInt(p[0], 10);
+      const m = parseInt(p[1], 10) - 1;
+      const y = parseInt(p[2].split(' ')[0], 10);
+      if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+        const dt = new Date(y, m, d);
+        if (!isNaN(dt.getTime())) {
+          return dt.toISOString().split('T')[0]; // YYYY-MM-DD
+        }
+      }
+    }
+    return s;
+  }
+
+  const now = new Date();
+  const nowStr = now.toISOString().replace('T', ' ').substring(0, 19);
+  let inserted = 0, updated = 0, skipped = 0;
+
+  // 4. Duyệt từng dòng nguồn (từ HEADER_ROW_IDX + 1)
+  for (let rowIdx = HEADER_ROW_IDX + 1; rowIdx < hrRowCount; rowIdx++) {
+    // Lấy MNV
+    const idSrcIdx = colMap['id_nhan_vien'];
+    const maNVRaw = idSrcIdx >= 0 ? getCell(rowIdx, idSrcIdx) : '';
+    const maNV = padEmployeeId(maNVRaw);
+    if (!maNV || maNV === '0000') { skipped++; continue; }
+
+    // Lấy họ tên
+    const tenSrcIdx = colMap['ho_ten'];
+    const hoTen = tenSrcIdx >= 0 ? getCell(rowIdx, tenSrcIdx) : '';
+    if (!hoTen) { skipped++; continue; }
+
+    // Build object ghi
+    const obj: Record<string, string> = {
+      id_nhan_vien: maNV,
+      ho_ten:       hoTen,
+      ngay_tao:     nowStr,
+      trang_thai:   'Đang làm',
+      vai_tro:      'Sale',
+      mat_khau:     '123456',
+    };
+
+    crmHeaders.forEach(th => {
+      if (th === 'id_nhan_vien' || th === 'ho_ten') return;
+      const ci = colMap[th];
+      if (ci < 0) return;
+
+      const raw = getCell(rowIdx, ci);
+      if (th === 'ngay_sinh' || th === 'ngay_cap') {
+        obj[th] = raw ? parseDate(raw) : '';
+      } else if (th === 'so_nguoi_phu_thuoc') {
+        obj[th] = String(parseInt(raw.replace(/[^0-9]/g, ''), 10) || 0);
+      } else {
+        obj[th] = raw;
+      }
+    });
+
+    const existingIdx = targetMap.get(maNV);
+    if (existingIdx !== undefined) {
+      // Cập nhật — bảo lưu mat_khau và vai_tro đã thiết lập trên CRM
+      const existRow = crmRows[existingIdx];
+      const curPass = str(existRow.get('mat_khau'));
+      const curRole = str(existRow.get('vai_tro'));
+
+      Object.entries(obj).forEach(([k, v]) => {
+        if (k === 'mat_khau' && curPass && curPass !== '123456') return;
+        if (k === 'vai_tro' && curRole) return;
+        existRow.set(k, v);
+      });
+      await existRow.save();
+      updated++;
+    } else {
+      // Thêm mới
+      const newRowData: Record<string, string> = {};
+      crmHeaders.forEach(h => { newRowData[h] = obj[h] ?? ''; });
+      const newRow = await nvSheet.addRow(newRowData);
+      const newId = padEmployeeId(str(newRow.get('id_nhan_vien')));
+      if (newId) targetMap.set(newId, crmRows.length + inserted);
+      inserted++;
+    }
+  }
+
+  console.log(`[syncEmployees] Done — inserted:${inserted}, updated:${updated}, skipped:${skipped}`);
+  return { inserted, updated, skipped };
+}
