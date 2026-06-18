@@ -1,5 +1,6 @@
 'use client';
 import useSWR, { mutate } from 'swr';
+import { useShallow } from 'zustand/react/shallow';
 import { useTmStore, selectApiFilters } from '@/stores/tmStore';
 import type { PaginatedResult, TmTask } from '@/lib/task-management/types';
 
@@ -12,7 +13,9 @@ function buildUrl(params: Partial<Record<string, string>>) {
 }
 
 export function useTasks() {
-  const filters = useTmStore(selectApiFilters);
+  // useShallow prevents infinite loop: selectApiFilters returns a new object every call,
+  // which causes React 19's useSyncExternalStore commit-phase check to always see "changed".
+  const filters = useTmStore(useShallow(selectApiFilters));
   const url = buildUrl(filters);
 
   const { data, error, isLoading } = useSWR<PaginatedResult<TmTask>>(url, fetcher, {
