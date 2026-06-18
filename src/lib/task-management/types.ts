@@ -247,7 +247,7 @@ export interface CreateTaskInput {
   due_date: string;
   estimated_hours?: number;
   kpi_target?: KpiMetric[];
-  approval_level?: 1 | 2 | 3;
+  approval_level?: 0 | 1 | 2 | 3;
   tags?: string[];
   checklists?: { title: string; sort_order: number }[];
 }
@@ -264,6 +264,8 @@ export interface UpdateTaskInput {
   kpi_target?: KpiMetric[];
   kpi_actual?: KpiMetric[];
   tags?: string[];
+  approval_level?: 0 | 1 | 2 | 3;
+  approval_status?: string;
 }
 
 export interface TaskStatusTransition {

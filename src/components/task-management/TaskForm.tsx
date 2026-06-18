@@ -87,10 +87,9 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
       if (form.department_id)  body.department_id  = form.department_id;
       if (form.project_id)     body.project_id     = form.project_id;
       if (selectedTags.length) body.tags           = selectedTags;
-      if (form.approval_level !== '0') {
-        body.approval_level  = Number(form.approval_level);
-        body.approval_status = 'pending';
-      }
+      const lvl = Number(form.approval_level);
+      body.approval_level  = lvl;
+      body.approval_status = lvl > 0 ? 'pending' : 'not_required';
 
       const created = await apiCreateTask(body);
       onCreated?.(created.task_id);

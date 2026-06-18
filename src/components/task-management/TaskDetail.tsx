@@ -87,8 +87,10 @@ function ApprovalInfo({
   task: { approval_level: 1 | 2 | 3; approval_status: string; rejection_reason?: string };
   onSave: (field: string, value: unknown) => Promise<void>;
 }) {
-  const status = task.approval_status || 'not_required';
   const level  = Number(task.approval_level) || 0;
+  // Nếu level > 0 mà status vẫn là not_required (dữ liệu cũ) → hiện pending
+  const rawStatus = task.approval_status || 'not_required';
+  const status = (level > 0 && rawStatus === 'not_required') ? 'pending' : rawStatus;
   const style  = APPROVAL_STATUS_STYLE[status] ?? APPROVAL_STATUS_STYLE.not_required;
 
   return (

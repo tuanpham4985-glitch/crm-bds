@@ -34,7 +34,7 @@ export class TaskSheetsRepository
       progress_pct:    this.parseNumber(raw.progress_pct),
       estimated_hours: this.parseNumber(raw.estimated_hours),
       actual_hours:    this.parseNumber(raw.actual_hours),
-      approval_level:  (this.parseNumber(raw.approval_level, 1) as 1 | 2 | 3),
+      approval_level:  (this.parseNumber(raw.approval_level, 0) as 0 | 1 | 2 | 3),
     } as TmTask;
   }
 
@@ -168,8 +168,8 @@ export class TaskSheetsRepository
       actual_hours:     '0',
       kpi_target:       JSON.stringify(input.kpi_target ?? []),
       kpi_actual:       '[]',
-      approval_level:   String(input.approval_level ?? 1),
-      approval_status:  'pending',
+      approval_level:   String(input.approval_level ?? 0),
+      approval_status:  input.approval_level ? 'pending' : 'not_required',
       approved_by:      '',
       approved_at:      '',
       rejection_reason: '',
@@ -196,7 +196,9 @@ export class TaskSheetsRepository
     if (input.estimated_hours !== undefined) patch.estimated_hours = String(input.estimated_hours);
     if (input.kpi_target    !== undefined) patch.kpi_target     = JSON.stringify(input.kpi_target);
     if (input.kpi_actual    !== undefined) patch.kpi_actual     = JSON.stringify(input.kpi_actual);
-    if (input.tags          !== undefined) patch.tags           = input.tags.join(',');
+    if (input.tags             !== undefined) patch.tags            = input.tags.join(',');
+    if (input.approval_level  !== undefined) patch.approval_level  = String(input.approval_level);
+    if (input.approval_status !== undefined) patch.approval_status = input.approval_status;
 
     const updated = await updateRow(this.sheetName, 'task_id', taskId, patch);
     if (!updated) throw new Error(`Task ${taskId} not found`);
