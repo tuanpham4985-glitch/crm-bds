@@ -54,6 +54,15 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
+  function setOwner(userId: string) {
+    const person = users.find(u => u.user_id === userId);
+    setForm(f => ({
+      ...f,
+      owner_id:      userId,
+      department_id: person?.department_id || f.department_id,
+    }));
+  }
+
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
       prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag],
@@ -184,7 +193,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
           <div style={{ ...ROW2, marginBottom: 12 }}>
             <div>
               <label style={LABEL}>Người thực hiện</label>
-              <select value={form.owner_id} onChange={e => set('owner_id', e.target.value)} style={FIELD}>
+              <select value={form.owner_id} onChange={e => setOwner(e.target.value)} style={FIELD}>
                 <option value="">— Chưa phân công —</option>
                 {users.map(u => (
                   <option key={u.user_id} value={u.user_id}>
