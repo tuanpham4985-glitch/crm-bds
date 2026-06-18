@@ -1,19 +1,22 @@
 import { NextRequest } from 'next/server';
-import { getTaskService } from '@/lib/task-management';
-import { getCurrentTmUser, toRbacContext, unauthorizedResponse, errorResponse, okResponse } from '@/lib/task-management/auth';
+import { ChecklistSheetsRepository } from '@/lib/task-management/sheets/task.repository';
+import { getCurrentTmUser, unauthorizedResponse, errorResponse, okResponse } from '@/lib/task-management/auth';
 
 export const dynamic = 'force-dynamic';
 type Params = { params: Promise<{ id: string }> };
+
+// Query repo trực tiếp — bypass getTask() cache
+const repo = new ChecklistSheetsRepository();
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const user = await getCurrentTmUser();
     if (!user) return unauthorizedResponse();
     const { id } = await params;
-    const task = await getTaskService().getTask(toRbacContext(user), id);
-    return okResponse(task.checklists ?? []);
+    const items = await repo.findByTask(id, 'task');
+    return okResponse(items);
   } catch (e: unknown) {
-    console.error('[TM Checklists GET]', e);
+    console.error('[TM Checklists GET]', (e as Error).message);
     return errorResponse('Lỗi tải checklist');
   }
 }
@@ -23,17 +26,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     const user = await getCurrentTmUser();
     if (!user) return unauthorizedResponse();
     const { id } = await params;
-    const { items } = await req.json(); // items: [{title, sort_order}]
+    const { items } = await req.json();
     if (!Array.isArray(items) || !items.length) return errorResponse('items là bắt buộc', 400);
-
-    const { getTaskService: svc } = await import('@/lib/task-management');
-    // Access checklist repo via the UoW directly
-    const { ChecklistSheetsRepository } = await import('@/lib/task-management/sheets/task.repository');
-    const repo = new ChecklistSheetsRepository();
     const results = await repo.bulkCreate(id, 'task', items);
     return okResponse(results, 201);
   } catch (e: unknown) {
-    console.error('[TM Checklists POST]', e);
+    console.error('[TM Checklists POST]', (e as Error).message);
     return errorResponse('Lỗi thêm checklist');
   }
 }

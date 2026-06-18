@@ -1,19 +1,23 @@
 import { NextRequest } from 'next/server';
-import { loadRows } from '@/lib/task-management/sheets/client';
-import { SHEET_NAMES } from '@/lib/task-management/types';
+import { getDuAn } from '@/lib/google-sheets';
 import { getCurrentTmUser, unauthorizedResponse, okResponse, errorResponse } from '@/lib/task-management/auth';
 
 export const dynamic = 'force-dynamic';
 
+// Dự án lấy từ sheet DU_AN (cùng sheet với CRM chính)
 export async function GET(_req: NextRequest) {
   try {
     const user = await getCurrentTmUser();
     if (!user) return unauthorizedResponse();
 
-    const rows = await loadRows(SHEET_NAMES.PROJECTS, 'archived_at').catch(() => []);
-    const projects = rows
-      .filter(r => r.project_id && r.status !== 'cancelled')
-      .map(r => ({ project_id: r.project_id, name: r.name, code: r.code ?? '' }));
+    const list = await getDuAn().catch(() => []);
+    const projects = list
+      .filter(da => da.id_du_an)
+      .map(da => ({
+        project_id: da.id_du_an,
+        name:       da.ten_du_an,
+        code:       da.ma_du_an ?? '',
+      }));
 
     return okResponse(projects);
   } catch (e: unknown) {

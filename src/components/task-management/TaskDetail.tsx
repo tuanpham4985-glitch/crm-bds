@@ -6,7 +6,7 @@ import {
   useTaskDetail, apiUpdateTaskStatus, apiApproveTask, apiRejectTask,
   apiUpdateTask, useTmUsers, useTmDepartments, useTmProjects,
 } from '@/hooks/tm/useTasks';
-import { StatusBadge, PriorityBadge, ProgressBar, ApprovalBadge } from './StatusBadge';
+import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
 import ChecklistPanel from './ChecklistPanel';
 import SubtaskList from './SubtaskList';
 import CommentSection from './CommentSection';
@@ -64,6 +64,79 @@ const SELECT_STYLE: React.CSSProperties = {
   background: 'var(--bg-page)', outline: 'none', color: 'var(--text-body)',
   cursor: 'pointer',
 };
+
+// ── Approval info ─────────────────────────────────────────
+
+const APPROVAL_LEVEL_LABEL: Record<number, string> = {
+  1: 'Team Leader duyệt',
+  2: 'Trưởng phòng duyệt',
+  3: 'Giám đốc duyệt',
+};
+
+const APPROVAL_STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  not_required: { bg: '#f1f5f9', color: '#64748b', label: 'Không cần duyệt' },
+  pending:      { bg: '#fffbeb', color: '#b45309', label: 'Chờ phê duyệt' },
+  approved:     { bg: '#f0fdf4', color: '#15803d', label: '✓ Đã duyệt' },
+  rejected:     { bg: '#fef2f2', color: '#dc2626', label: '✗ Đã từ chối' },
+};
+
+function ApprovalInfo({
+  task,
+  onSave,
+}: {
+  task: { approval_level: 1 | 2 | 3; approval_status: string; rejection_reason?: string };
+  onSave: (field: string, value: unknown) => Promise<void>;
+}) {
+  const status = task.approval_status || 'not_required';
+  const level  = Number(task.approval_level) || 0;
+  const style  = APPROVAL_STATUS_STYLE[status] ?? APPROVAL_STATUS_STYLE.not_required;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Status badge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{
+          padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+          background: style.bg, color: style.color,
+        }}>
+          {style.label}
+        </span>
+        {level > 0 && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            — {APPROVAL_LEVEL_LABEL[level] ?? `Cấp ${level}`}
+          </span>
+        )}
+      </div>
+
+      {/* Rejection reason */}
+      {status === 'rejected' && task.rejection_reason && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#991b1b' }}>
+          <strong>Lý do:</strong> {task.rejection_reason}
+        </div>
+      )}
+
+      {/* Change approval level */}
+      <select
+        defaultValue={String(level)}
+        onChange={e => {
+          const v = Number(e.target.value);
+          onSave('approval_level', v || null);
+          onSave('approval_status', v ? 'pending' : 'not_required');
+        }}
+        style={{
+          height: 30, padding: '0 8px', borderRadius: 7, fontSize: 12,
+          border: '1.5px solid var(--border-light)', background: 'var(--bg-page)',
+          color: 'var(--text-muted)', cursor: 'pointer', width: 'fit-content',
+        }}
+      >
+        <option value="0">Không cần phê duyệt</option>
+        <option value="1">Cấp 1 — Team Leader duyệt</option>
+        <option value="2">Cấp 2 — Trưởng phòng duyệt</option>
+        <option value="3">Cấp 3 — Giám đốc duyệt</option>
+      </select>
+    </div>
+  );
+}
 
 // ── Inline text editor ─────────────────────────────────────
 
@@ -499,12 +572,7 @@ export default function TaskDetail() {
                   {/* Phê duyệt */}
                   <div>
                     <span style={LABEL}>Phê duyệt</span>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {[1, 2, 3].map(l => {
-                        const status = (task as Record<string, unknown>)[`approval_level${l}_status`] as string ?? 'not_required';
-                        return <ApprovalBadge key={l} level={l} status={status} />;
-                      })}
-                    </div>
+                    <ApprovalInfo task={task} onSave={save} />
                   </div>
                 </div>
               )}

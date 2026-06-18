@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { X, Loader2, Save } from 'lucide-react';
-import { apiCreateTask } from '@/hooks/tm/useTasks';
+import { apiCreateTask, useTmUsers, useTmDepartments, useTmProjects } from '@/hooks/tm/useTasks';
 import type { TaskPriority, TaskStatus } from '@/lib/task-management/types';
 
 interface Props {
@@ -19,33 +19,38 @@ const PREDEFINED_TAGS = [
 
 const FIELD: React.CSSProperties = {
   width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
-  border: '1.5px solid var(--border-light)', fontSize: 14,
+  border: '1.5px solid var(--border-light)', fontSize: 13,
   background: 'var(--bg-page)', outline: 'none', boxSizing: 'border-box',
+  color: 'var(--text-body)',
 };
 
 const LABEL: React.CSSProperties = {
-  display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700,
+  display: 'block', marginBottom: 5, fontSize: 11, fontWeight: 700,
   color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5,
 };
 
-const ROW: React.CSSProperties = {
-  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14,
-};
+const ROW2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
 
 export default function TaskForm({ onClose, onCreated, initialDepartmentId, initialProjectId }: Props) {
   const [form, setForm] = useState({
-    title:         '',
-    objective:     '',
-    description:   '',
-    priority:      'medium' as TaskPriority,
-    status:        'todo'   as TaskStatus,
-    due_date:      '',
-    department_id: initialDepartmentId ?? '',
-    project_id:    initialProjectId    ?? '',
+    title:          '',
+    objective:      '',
+    description:    '',
+    priority:       'medium'  as TaskPriority,
+    status:         'todo'    as TaskStatus,
+    due_date:       '',
+    owner_id:       '',
+    department_id:  initialDepartmentId ?? '',
+    project_id:     initialProjectId    ?? '',
+    approval_level: '0',   // 0 = không cần phê duyệt
   });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+
+  const { users }    = useTmUsers();
+  const departments  = useTmDepartments();
+  const projects     = useTmProjects();
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -66,12 +71,17 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
         priority: form.priority,
         status:   form.status,
       };
-      if (form.objective)     body.objective     = form.objective;
-      if (form.description)   body.description   = form.description;
-      if (form.due_date)      body.due_date      = form.due_date;
-      if (form.department_id) body.department_id = form.department_id;
-      if (form.project_id)    body.project_id    = form.project_id;
-      if (selectedTags.length) body.tags         = selectedTags;
+      if (form.objective)      body.objective      = form.objective;
+      if (form.description)    body.description    = form.description;
+      if (form.due_date)       body.due_date       = form.due_date;
+      if (form.owner_id)       body.owner_id       = form.owner_id;
+      if (form.department_id)  body.department_id  = form.department_id;
+      if (form.project_id)     body.project_id     = form.project_id;
+      if (selectedTags.length) body.tags           = selectedTags;
+      if (form.approval_level !== '0') {
+        body.approval_level  = Number(form.approval_level);
+        body.approval_status = 'pending';
+      }
 
       const created = await apiCreateTask(body);
       onCreated?.(created.task_id);
@@ -84,59 +94,57 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
-        background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 600,
-        maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 640,
+        maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
         boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
       }}>
         {/* Header */}
-        <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border-lighter)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--text-title)' }}>Tạo công việc mới</h2>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border-lighter)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-title)' }}>Tạo công việc mới</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
             <X size={20} />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={submit} style={{ overflowY: 'auto', flex: 1, padding: '18px 20px' }}>
+        {/* Form — scrollable */}
+        <form onSubmit={submit} style={{ overflowY: 'auto', flex: 1, padding: '16px 20px' }}>
           {error && (
-            <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, background: '#fef2f2', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>
+            <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: '#fef2f2', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>
               {error}
             </div>
           )}
 
-          {/* Title */}
-          <div style={{ marginBottom: 14 }}>
+          {/* Tiêu đề */}
+          <div style={{ marginBottom: 12 }}>
             <label style={LABEL}>Tiêu đề <span style={{ color: '#dc2626' }}>*</span></label>
-            <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="Nhập tiêu đề công việc..." style={FIELD} />
+            <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="Nhập tiêu đề công việc..." style={FIELD} autoFocus />
           </div>
 
-          {/* Objective */}
-          <div style={{ marginBottom: 14 }}>
+          {/* Mục tiêu */}
+          <div style={{ marginBottom: 12 }}>
             <label style={LABEL}>Mục tiêu</label>
-            <input value={form.objective} onChange={e => set('objective', e.target.value)} placeholder="Mục tiêu cần đạt được..." style={FIELD} />
+            <input value={form.objective} onChange={e => set('objective', e.target.value)} placeholder="Kết quả đo được, vd: Chốt 2 hợp đồng" style={FIELD} />
           </div>
 
-          {/* Description */}
-          <div style={{ marginBottom: 14 }}>
+          {/* Mô tả */}
+          <div style={{ marginBottom: 12 }}>
             <label style={LABEL}>Mô tả</label>
             <textarea
               value={form.description}
               onChange={e => set('description', e.target.value)}
-              placeholder="Chi tiết công việc..."
-              rows={3}
+              placeholder="Chi tiết, hướng dẫn, link tài liệu..."
+              rows={2}
               style={{ ...FIELD, height: 'auto', padding: '8px 12px', resize: 'vertical' }}
             />
           </div>
 
-          {/* Priority + Status */}
-          <div style={{ ...ROW, marginBottom: 14 }}>
+          {/* Row: Độ ưu tiên + Trạng thái */}
+          <div style={{ ...ROW2, marginBottom: 12 }}>
             <div>
               <label style={LABEL}>Độ ưu tiên</label>
               <select value={form.priority} onChange={e => set('priority', e.target.value)} style={FIELD}>
@@ -147,26 +155,70 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
               </select>
             </div>
             <div>
-              <label style={LABEL}>Trạng thái</label>
+              <label style={LABEL}>Trạng thái ban đầu</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} style={FIELD}>
-                <option value="todo">Chờ làm</option>
-                <option value="inprogress">Đang làm</option>
-                <option value="waiting">Đang chờ</option>
-                <option value="review">Chờ duyệt</option>
+                <option value="todo">📝 Chờ làm</option>
+                <option value="inprogress">⚡ Đang làm</option>
               </select>
             </div>
           </div>
 
-          {/* Due date (full width now) */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={LABEL}>Deadline</label>
-            <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} style={{ ...FIELD, maxWidth: 220 }} />
+          {/* Row: Deadline + Phê duyệt */}
+          <div style={{ ...ROW2, marginBottom: 12 }}>
+            <div>
+              <label style={LABEL}>Deadline</label>
+              <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} style={FIELD} />
+            </div>
+            <div>
+              <label style={LABEL}>Yêu cầu phê duyệt</label>
+              <select value={form.approval_level} onChange={e => set('approval_level', e.target.value)} style={FIELD}>
+                <option value="0">Không cần phê duyệt</option>
+                <option value="1">Cấp 1 — Team Leader duyệt</option>
+                <option value="2">Cấp 2 — Trưởng phòng duyệt</option>
+                <option value="3">Cấp 3 — Giám đốc duyệt</option>
+              </select>
+            </div>
           </div>
 
-          {/* Tags — predefined chips */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={LABEL}>Tags</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {/* Row: Người thực hiện + Phòng ban */}
+          <div style={{ ...ROW2, marginBottom: 12 }}>
+            <div>
+              <label style={LABEL}>Người thực hiện</label>
+              <select value={form.owner_id} onChange={e => set('owner_id', e.target.value)} style={FIELD}>
+                <option value="">— Chưa phân công —</option>
+                {users.map(u => (
+                  <option key={u.user_id} value={u.user_id}>
+                    {u.full_name}{u.position ? ` (${u.position})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={LABEL}>Phòng ban</label>
+              <select value={form.department_id} onChange={e => set('department_id', e.target.value)} style={FIELD}>
+                <option value="">— Chọn phòng ban —</option>
+                {departments.map(d => (
+                  <option key={d.dept_id} value={d.dept_id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Dự án */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={LABEL}>Dự án</label>
+            <select value={form.project_id} onChange={e => set('project_id', e.target.value)} style={FIELD}>
+              <option value="">— Chọn dự án —</option>
+              {projects.map(p => (
+                <option key={p.project_id} value={p.project_id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tags */}
+          <div style={{ marginBottom: 4 }}>
+            <label style={LABEL}>Tags — loại công việc</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {PREDEFINED_TAGS.map(tag => {
                 const active = selectedTags.includes(tag);
                 return (
@@ -175,7 +227,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
                     type="button"
                     onClick={() => toggleTag(tag)}
                     style={{
-                      padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      padding: '4px 11px', borderRadius: 20, fontSize: 12, fontWeight: 600,
                       cursor: 'pointer', transition: 'all 0.15s',
                       border: `1.5px solid ${active ? 'var(--primary)' : 'var(--border-light)'}`,
                       background: active ? 'var(--primary)' : 'transparent',
@@ -187,16 +239,11 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
                 );
               })}
             </div>
-            {selectedTags.length > 0 && (
-              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                Đã chọn: {selectedTags.join(', ')}
-              </p>
-            )}
           </div>
         </form>
 
         {/* Footer */}
-        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border-lighter)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-lighter)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
           <button onClick={onClose} style={{
             padding: '8px 20px', borderRadius: 8, border: '1.5px solid var(--border-light)',
             cursor: 'pointer', background: 'transparent', fontSize: 14, fontWeight: 600, color: 'var(--text-body)',
@@ -204,10 +251,9 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
             Hủy
           </button>
           <button onClick={submit} disabled={loading} style={{
-            padding: '8px 24px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            padding: '8px 24px', borderRadius: 8, border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
             background: 'var(--primary)', color: '#fff', fontSize: 14, fontWeight: 700,
-            display: 'flex', alignItems: 'center', gap: 6,
-            opacity: loading ? 0.7 : 1,
+            display: 'flex', alignItems: 'center', gap: 6, opacity: loading ? 0.7 : 1,
           }}>
             {loading ? <Loader2 size={15} className="tm-spin" /> : <Save size={15} />}
             Tạo công việc
