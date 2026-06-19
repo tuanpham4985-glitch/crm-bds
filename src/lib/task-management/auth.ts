@@ -4,6 +4,19 @@
 // ============================================================
 import { cookies } from 'next/headers';
 import type { TmUser, RbacContext, UserRole } from './types';
+import { loadRows } from './sheets/client';
+import { SHEET_NAMES } from './types';
+
+async function lookupTmUser(email: string): Promise<{ user_id: string; department_id: string } | null> {
+  try {
+    const rows = await loadRows(SHEET_NAMES.USERS);
+    const r = rows.find((r: Record<string, unknown>) => r.email === email);
+    if (!r) return null;
+    return { user_id: String(r.user_id ?? ''), department_id: String(r.department_id ?? '') };
+  } catch {
+    return null;
+  }
+}
 
 interface CrmSession {
   id_nhan_vien: string;
@@ -80,13 +93,17 @@ export async function getCurrentTmUser(): Promise<TmUser | null> {
 
     const role = mapRole(session);
 
+    // Tra cứu TM_Users theo email để lấy đúng user_id và department_id
+    // (tránh lệch format giữa id_nhan_vien "0002" và user_id "2" trong Sheets)
+    const tmRecord = await lookupTmUser(session.email);
+
     return {
-      user_id:       session.id_nhan_vien,
+      user_id:       tmRecord?.user_id || session.id_nhan_vien,
       employee_code: session.id_nhan_vien,
       full_name:     session.ho_ten,
       email:         session.email,
       phone:         '',
-      department_id: session.department_id || session.phong_KD || '',
+      department_id: tmRecord?.department_id || session.department_id || session.phong_KD || '',
       team_id:       session.team_id || '',
       role,
       position:      session.employee_type,
