@@ -43,11 +43,10 @@ export class NotificationService {
     });
   }
 
-  async notifyReviewRequired(task: TmTask, submittedBy: string): Promise<void> {
-    // Notify reviewer based on approval_level
-    // In production: resolve reviewer from role lookup
+  async notifyReviewRequired(task: TmTask, submittedBy: string, approverId: string | null): Promise<void> {
+    const recipientId = approverId ?? task.owner_id;
     await this.send({
-      user_id:   task.owner_id, // placeholder — real: lookup approver by level
+      user_id:   recipientId,
       type:      'review_required',
       title:     `Task ${task.task_code} cần được duyệt (Cấp ${task.approval_level})`,
       body:      `"${task.title}" — Đã hoàn thành 100%, chờ phê duyệt cấp ${task.approval_level}.`,

@@ -162,7 +162,14 @@ export class TaskService {
 
     // Notifications
     if (newStatus === 'review') {
-      await this.notif.notifyReviewRequired(updated, ctx.user_id);
+      const approverIds = await this.resolveApprovers(updated);
+      if (approverIds.length > 0) {
+        for (const uid of approverIds) {
+          await this.notif.notifyReviewRequired(updated, ctx.user_id, uid);
+        }
+      } else {
+        await this.notif.notifyReviewRequired(updated, ctx.user_id, null);
+      }
     }
     if (newStatus === 'waiting' && blockedByUserId) {
       await this.notif.notifyBlocked(updated, blockedByUserId);
@@ -339,6 +346,42 @@ export class TaskService {
     const task = await this.uow.tasks.findById(taskId);
     if (!task) throw new TaskNotFoundError(taskId);
     return task;
+  }
+
+  // Tìm danh sách user_id có thể duyệt task dựa trên approval_level và department_id
+  private async resolveApprovers(task: TmTask): Promise<string[]> {
+    try {
+      const level = Number(task.approval_level ?? 1);
+      const allUsers = await this.uow.users.findAll();
+      const results: string[] = [];
+
+      for (const u of allUsers) {
+        if (!u.user_id) continue;
+        // director duyệt mọi cấp
+        if (u.role === 'director') {
+          if (level >= 3) results.push(u.user_id);
+          continue;
+        }
+        // manager (cấp 2): cùng phòng ban
+        if (u.role === 'manager' && level >= 2 && u.department_id === task.department_id) {
+          results.push(u.user_id);
+          continue;
+        }
+        // team_leader (cấp 1): cùng phòng ban
+        if (u.role === 'team_leader' && level === 1 && u.department_id === task.department_id) {
+          results.push(u.user_id);
+        }
+      }
+
+      // Fallback: nếu không tìm được approver cùng phòng, gửi cho tất cả director
+      if (results.length === 0) {
+        allUsers.filter(u => u.role === 'director').forEach(u => results.push(u.user_id));
+      }
+
+      return [...new Set(results)]; // loại trùng
+    } catch {
+      return [];
+    }
   }
 
   private applyScopeFilter(ctx: RbacContext, filters: TaskFilters): TaskFilters {
