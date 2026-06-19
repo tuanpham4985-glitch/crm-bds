@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { X, Loader2, Save } from 'lucide-react';
-import { apiCreateTask, useTmUsers, useTmDepartments, useTmProjects } from '@/hooks/tm/useTasks';
+import { apiCreateTask, useTmUsers, useTmDepartments, useTmProjects, useCurrentTmUser } from '@/hooks/tm/useTasks';
 import type { TaskPriority, TaskStatus } from '@/lib/task-management/types';
 
 interface Props {
@@ -51,6 +51,22 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
   const { users }    = useTmUsers();
   const departments  = useTmDepartments();
   const projects     = useTmProjects();
+  const currentUser  = useCurrentTmUser();
+  const userRole     = currentUser?.role ?? 'staff';
+
+  // Approval levels a user can set = levels they themselves can approve
+  const approvalOptions = [
+    { value: '0', label: 'Không cần phê duyệt' },
+    { value: '1', label: 'Cấp 1 — Team Leader duyệt' },
+    { value: '2', label: 'Cấp 2 — Trưởng phòng duyệt' },
+    { value: '3', label: 'Cấp 3 — Giám đốc duyệt' },
+  ].filter(opt => {
+    if (opt.value === '0') return true;
+    if (opt.value === '1') return ['team_leader', 'manager', 'director'].includes(userRole);
+    if (opt.value === '2') return ['manager', 'director'].includes(userRole);
+    if (opt.value === '3') return userRole === 'director';
+    return false;
+  });
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -180,10 +196,9 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
             <div>
               <label style={LABEL}>Yêu cầu phê duyệt</label>
               <select value={form.approval_level} onChange={e => set('approval_level', e.target.value)} style={FIELD}>
-                <option value="0">Không cần phê duyệt</option>
-                <option value="1">Cấp 1 — Team Leader duyệt</option>
-                <option value="2">Cấp 2 — Trưởng phòng duyệt</option>
-                <option value="3">Cấp 3 — Giám đốc duyệt</option>
+                {approvalOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>
