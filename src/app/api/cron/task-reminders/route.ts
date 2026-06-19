@@ -8,20 +8,18 @@ import { SHEET_NAMES } from '@/lib/task-management/types';
 export const dynamic = 'force-dynamic';
 
 function getTransporter() {
-  return nodemailer.createTransport({
-    host:   process.env.SMTP_HOST,
-    port:   Number(process.env.SMTP_PORT) || 465,
-    secure: (Number(process.env.SMTP_PORT) || 465) === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+  const host = process.env.REMINDER_SMTP_HOST || process.env.SMTP_HOST;
+  const port = Number(process.env.REMINDER_SMTP_PORT || process.env.SMTP_PORT) || 465;
+  const user = process.env.REMINDER_SMTP_USER || process.env.SMTP_USER;
+  const pass = process.env.REMINDER_SMTP_PASS || process.env.SMTP_PASS;
+  return nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
 }
 
 async function sendReminderEmail(to: string, ownerName: string, taskCode: string, taskTitle: string, dueDate: string): Promise<boolean> {
   try {
-    const from = `"${process.env.SMTP_FROM || 'Victory Holdings CRM'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`;
+    const fromName  = process.env.REMINDER_SMTP_FROM  || process.env.SMTP_FROM  || 'Victory Holdings CRM';
+    const fromEmail = process.env.REMINDER_SMTP_USER  || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
+    const from = `"${fromName}" <${fromEmail}>`;
     const dueFmt = new Date(dueDate).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
 
     await getTransporter().sendMail({
@@ -65,8 +63,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    return Response.json({ success: false, error: 'Chưa cấu hình SMTP' }, { status: 503 });
+  const smtpUser = process.env.REMINDER_SMTP_USER || process.env.SMTP_USER;
+  const smtpPass = process.env.REMINDER_SMTP_PASS || process.env.SMTP_PASS;
+  const smtpHost = process.env.REMINDER_SMTP_HOST || process.env.SMTP_HOST;
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    return Response.json({ success: false, error: 'Chưa cấu hình SMTP cho nhắc lịch' }, { status: 503 });
   }
 
   const tomorrow = new Date();
