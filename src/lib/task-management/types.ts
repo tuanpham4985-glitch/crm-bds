@@ -115,6 +115,8 @@ export interface TmTask {
   approved_at: string;
   rejection_reason: string;
   tags: string;              // comma-separated
+  zalo_reminder: string;     // '1' = bật nhắc Zalo trước 1 ngày
+  zalo_reminder_sent: string; // '1' = đã gửi nhắc
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -249,6 +251,7 @@ export interface CreateTaskInput {
   kpi_target?: KpiMetric[];
   approval_level?: 0 | 1 | 2 | 3;
   tags?: string[];
+  zalo_reminder?: boolean;
   checklists?: { title: string; sort_order: number }[];
 }
 
@@ -376,8 +379,8 @@ export const SHEET_COLUMNS = {
     'priority', 'status', 'progress_pct', 'start_date', 'due_date',
     'estimated_hours', 'actual_hours', 'kpi_target', 'kpi_actual',
     'approval_level', 'approval_status', 'approved_by', 'approved_at',
-    'rejection_reason', 'tags', 'created_by', 'created_at',
-    'updated_at', 'closed_at', 'deleted_at',
+    'rejection_reason', 'tags', 'zalo_reminder', 'zalo_reminder_sent',
+    'created_by', 'created_at', 'updated_at', 'closed_at', 'deleted_at',
   ] as const,
 
   SUBTASKS: [

@@ -43,6 +43,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     department_id:  initialDepartmentId ?? '',
     project_id:     initialProjectId    ?? '',
     approval_level: '0',   // 0 = không cần phê duyệt
+    zalo_reminder:  false,
   });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -103,6 +104,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
       if (form.department_id)  body.department_id  = form.department_id;
       if (form.project_id)     body.project_id     = form.project_id;
       if (selectedTags.length) body.tags           = selectedTags;
+      if (form.zalo_reminder)  body.zalo_reminder  = true;
       const lvl = Number(form.approval_level);
       body.approval_level  = lvl;
       body.approval_status = lvl > 0 ? 'pending' : 'not_required';
@@ -237,6 +239,26 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
               ))}
             </select>
           </div>
+
+          {/* Zalo Reminder — chỉ hiện khi có deadline */}
+          {form.due_date && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-body)' }}>
+                <input
+                  type="checkbox"
+                  checked={form.zalo_reminder}
+                  onChange={e => setForm(f => ({ ...f, zalo_reminder: e.target.checked }))}
+                  style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }}
+                />
+                <span>
+                  <span style={{ fontWeight: 600 }}>Nhắc Zalo trước 1 ngày</span>
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 12 }}>
+                    — OA sẽ nhắn tin vào 8:00 sáng ngày {new Date(new Date(form.due_date).getTime() - 86400000).toLocaleDateString('vi-VN')}
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Tags */}
           <div style={{ marginBottom: 4 }}>
