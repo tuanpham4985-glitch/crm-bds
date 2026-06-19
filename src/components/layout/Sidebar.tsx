@@ -53,7 +53,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const { data: tmBadgeData } = useSWR(
     user ? '/api/tm/badge' : null,
     swrFetcher,
-    { refreshInterval: 30_000 },
+    { refreshInterval: 60_000, revalidateOnFocus: false },
   );
   const tmBadge: number = tmBadgeData?.data?.count ?? 0;
   const [logo, setLogo] = useState<string | null>(null);

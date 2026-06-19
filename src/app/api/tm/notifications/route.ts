@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getCurrentTmUser, unauthorizedResponse, errorResponse, okResponse } from '@/lib/task-management/auth';
 import { SHEET_NAMES } from '@/lib/task-management/types';
-import { loadAllRows, updateRow } from '@/lib/task-management/sheets/client';
+import { loadAllRows, updateRow, batchUpdateRows } from '@/lib/task-management/sheets/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,11 +34,11 @@ export async function PATCH(req: NextRequest) {
     if (read_all) {
       const rows = await loadAllRows(SHEET_NAMES.NOTIFICATIONS);
       const userNotifs = rows.filter(r => r.user_id === user.user_id && r.status !== 'read');
-      await Promise.all(
-        userNotifs.map(n =>
-          updateRow(SHEET_NAMES.NOTIFICATIONS, 'notif_id', n.notif_id, { status: 'read', read_at: now }),
-        ),
-      );
+      if (userNotifs.length > 0) {
+        await batchUpdateRows(SHEET_NAMES.NOTIFICATIONS, 'notif_id',
+          userNotifs.map(n => ({ keyValue: n.notif_id, data: { status: 'read', read_at: now } })),
+        );
+      }
       return okResponse({ marked: userNotifs.length });
     }
 

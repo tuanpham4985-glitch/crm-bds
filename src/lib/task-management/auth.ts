@@ -7,12 +7,21 @@ import type { TmUser, RbacContext, UserRole } from './types';
 import { loadRows } from './sheets/client';
 import { SHEET_NAMES } from './types';
 
+// Module-level cache: email → TM user info, TTL 5 phút
+// Tránh gọi loadRows(TM_Users) lặp lại trên mỗi API request trong cùng 1 serverless instance
+const _emailCache = new Map<string, { data: { user_id: string; department_id: string } | null; ts: number }>();
+const EMAIL_CACHE_TTL = 5 * 60_000;
+
 async function lookupTmUser(email: string): Promise<{ user_id: string; department_id: string } | null> {
+  const hit = _emailCache.get(email);
+  if (hit && Date.now() - hit.ts < EMAIL_CACHE_TTL) return hit.data;
+
   try {
     const rows = await loadRows(SHEET_NAMES.USERS);
     const r = rows.find((r: Record<string, unknown>) => r.email === email);
-    if (!r) return null;
-    return { user_id: String(r.user_id ?? ''), department_id: String(r.department_id ?? '') };
+    const result = r ? { user_id: String(r.user_id ?? ''), department_id: String(r.department_id ?? '') } : null;
+    _emailCache.set(email, { data: result, ts: Date.now() });
+    return result;
   } catch {
     return null;
   }

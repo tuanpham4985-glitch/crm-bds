@@ -59,7 +59,8 @@ export function useTaskDetail(taskId: string | null) {
 export function useOverdueTasks() {
   const url = '/api/tm/tasks?overdue_only=true&limit=999';
   const { data, isLoading } = useSWR<PaginatedResult<TmTask>>(url, fetcher, {
-    refreshInterval: 60_000,
+    refreshInterval: 120_000,
+    revalidateOnFocus: false,
   });
   return { tasks: data?.data ?? [], isLoading };
 }
@@ -69,7 +70,8 @@ export function useOverdueTasks() {
 export function usePendingApprovals() {
   const url = '/api/tm/tasks?status=review&limit=999';
   const { data, isLoading } = useSWR<PaginatedResult<TmTask>>(url, fetcher, {
-    refreshInterval: 30_000,
+    refreshInterval: 60_000,
+    revalidateOnFocus: false,
   });
   return { tasks: data?.data ?? [], isLoading };
 }
