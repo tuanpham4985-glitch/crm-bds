@@ -49,6 +49,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
     { refreshInterval: 30_000 },
   );
   const pendingCount: number = pendingData?.count ?? 0;
+
+  const { data: tmBadgeData } = useSWR(
+    user ? '/api/tm/badge' : null,
+    swrFetcher,
+    { refreshInterval: 30_000 },
+  );
+  const tmBadge: number = tmBadgeData?.data?.count ?? 0;
   const [logo, setLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -285,7 +292,19 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
             title="Quản lý công việc"
           >
             <ClipboardList size={20} />
-            <span>Giao việc</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+              <span style={{ flex: 1 }}>Giao việc</span>
+              {tmBadge > 0 && (
+                <span style={{
+                  background: '#ef4444', color: '#fff',
+                  fontSize: 10, fontWeight: 700,
+                  lineHeight: '16px', minWidth: 16, height: 16,
+                  padding: '0 4px', borderRadius: 8, textAlign: 'center', flexShrink: 0,
+                }}>
+                  {tmBadge > 9 ? '9+' : tmBadge}
+                </span>
+              )}
+            </span>
           </Link>
         </div>
 

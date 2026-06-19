@@ -47,10 +47,12 @@ export default function KpiDashboard() {
   const priorityData = Object.entries(kpi.by_priority ?? {}).map(([name, value]) => ({ name, value: value as number }));
   const deptData = (kpi.by_department ?? []).map((d: Record<string, unknown>) => ({
     name: String(d.department_name ?? d.department_id ?? '').slice(0, 8),
-    total: d.total, completed: d.completed, overdue: d.overdue,
+    total:     Number(d.active_tasks ?? 0),
+    completed: Number(d.completed_tasks ?? 0),
+    overdue:   Number(d.overdue_tasks ?? 0),
   }));
 
-  const completionRate = kpi.total_tasks > 0
+  const completionRate = (kpi.total_tasks ?? 0) > 0
     ? Math.round(((kpi.completed_tasks ?? 0) / kpi.total_tasks) * 100)
     : 0;
 
@@ -58,9 +60,9 @@ export default function KpiDashboard() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <StatCard label="Tổng công việc" value={kpi.total_tasks ?? 0} icon={<TrendingUp size={18} />} color="#6366f1" />
+        <StatCard label="Tổng công việc" value={kpi.total_tasks ?? kpi.total_active_tasks ?? 0} icon={<TrendingUp size={18} />} color="#6366f1" />
         <StatCard label="Hoàn thành" value={kpi.completed_tasks ?? 0} sub={`${completionRate}% tỷ lệ`} icon={<CheckCircle2 size={18} />} color="#16a34a" />
-        <StatCard label="Quá hạn" value={kpi.overdue_tasks ?? 0} icon={<AlertTriangle size={18} />} color="#dc2626" />
+        <StatCard label="Quá hạn" value={kpi.overdue_tasks ?? kpi.total_overdue_tasks ?? 0} icon={<AlertTriangle size={18} />} color="#dc2626" />
         <StatCard label="Chờ duyệt" value={kpi.pending_approval ?? 0} icon={<Clock size={18} />} color="#f59e0b" />
       </div>
 

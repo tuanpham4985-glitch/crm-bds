@@ -108,12 +108,38 @@ export class KpiService {
         .sort((a, b) => a.due_date.localeCompare(b.due_date))
         .slice(0, 10);
 
+      // Aggregations by status
+      const STATUS_LABELS: Record<string, string> = {
+        todo: 'Chờ làm', in_progress: 'Đang làm', review: 'Chờ duyệt',
+        completed: 'Hoàn thành', closed: 'Đã đóng',
+      };
+      const byStatus: Record<string, number> = {};
+      for (const t of allTasks) {
+        const label = STATUS_LABELS[t.status] ?? t.status;
+        byStatus[label] = (byStatus[label] ?? 0) + 1;
+      }
+
+      const PRIORITY_LABELS: Record<string, string> = {
+        urgent: 'Khẩn', high: 'Cao', medium: 'Trung bình', low: 'Thấp',
+      };
+      const byPriority: Record<string, number> = {};
+      for (const t of allTasks) {
+        const label = PRIORITY_LABELS[t.priority] ?? t.priority;
+        byPriority[label] = (byPriority[label] ?? 0) + 1;
+      }
+
       return {
         snapshot_date:              today,
+        total_tasks:                allTasks.length,
         total_active_tasks:         activeTasks.length,
         total_overdue_tasks:        overdueTasks.length,
         total_completed_this_month: completedMonth.length,
+        completed_tasks:            allTasks.filter(t => t.status === 'completed').length,
+        overdue_tasks:              overdueTasks.length,
+        pending_approval:           allTasks.filter(t => t.approval_status === 'pending').length,
         overall_on_time_rate_pct:   onTimeRate,
+        by_status:                  byStatus,
+        by_priority:                byPriority,
         by_department:              byDepartment,
         top_overdue:                topOverdue,
         workload_distribution:      workloadDist,

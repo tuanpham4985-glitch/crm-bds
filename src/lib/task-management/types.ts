@@ -359,10 +359,16 @@ export interface UserWorkload {
 
 export interface CompanyKpiDashboard {
   snapshot_date: string;
+  total_tasks: number;
   total_active_tasks: number;
   total_overdue_tasks: number;
   total_completed_this_month: number;
+  completed_tasks: number;
+  overdue_tasks: number;
+  pending_approval: number;
   overall_on_time_rate_pct: number;
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
   by_department: DeptKpiSummary[];
   top_overdue: TmTask[];
   workload_distribution: UserWorkload[];
