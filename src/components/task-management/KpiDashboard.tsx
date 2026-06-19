@@ -104,7 +104,7 @@ export default function KpiDashboard() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={deptData} barCategoryGap="30%">
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="total"     name="Tổng"      fill="#6366f1" radius={[4,4,0,0]} />
