@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Loader2, Save } from 'lucide-react';
 import { apiCreateTask, useTmUsers, useTmDepartments, useTmProjects, useCurrentTmUser } from '@/hooks/tm/useTasks';
 import type { TaskPriority, TaskStatus } from '@/lib/task-management/types';
@@ -55,6 +55,14 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
   const currentUser  = useCurrentTmUser();
   const userRole     = currentUser?.role ?? 'staff';
 
+  // Pre-fill department từ người tạo khi currentUser load xong
+  useEffect(() => {
+    if (currentUser?.department_id && !form.department_id) {
+      setForm(f => ({ ...f, department_id: currentUser.department_id }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.department_id]);
+
   // Approval levels a user can set = levels they themselves can approve
   const approvalOptions = [
     { value: '0', label: 'Không cần phê duyệt' },
@@ -72,12 +80,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
   function setOwner(userId: string) {
-    const person = users.find(u => u.user_id === userId);
-    setForm(f => ({
-      ...f,
-      owner_id:      userId,
-      department_id: person?.department_id || f.department_id,
-    }));
+    setForm(f => ({ ...f, owner_id: userId }));
   }
 
   function toggleTag(tag: string) {
