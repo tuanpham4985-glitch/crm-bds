@@ -42,8 +42,9 @@ export class KpiService {
 
       const byDepartment: DeptKpiSummary[] = depts.map(dept => {
         const dTasks     = allTasks.filter(t => t.department_id === dept.dept_id);
-        const dActive    = dTasks.filter(t => !['closed'].includes(t.status));
-        const dCompleted = dTasks.filter(t => t.status === 'completed');
+        const dActive    = dTasks.filter(t => !['completed', 'closed'].includes(t.status));
+        // "hoàn thành" = completed + closed (cả hai đều là done)
+        const dCompleted = dTasks.filter(t => ['completed', 'closed'].includes(t.status));
         const dOverdue   = dTasks.filter(t =>
           t.due_date < today && !['completed', 'closed'].includes(t.status),
         );
@@ -52,7 +53,6 @@ export class KpiService {
           ? Math.round((dOnTime.length / dCompleted.length) * 100)
           : 0;
 
-        // KPI achievement: % of completed tasks where kpi_actual meets kpi_target
         const kpiAchieved = dCompleted.filter(t => this.kpiAchieved(t)).length;
         const kpiRate     = dCompleted.length
           ? Math.round((kpiAchieved / dCompleted.length) * 100)
@@ -69,8 +69,8 @@ export class KpiService {
         return {
           department_id:        dept.dept_id,
           department_name:      dept.name,
-          active_tasks:         dActive.length,
-          completed_tasks:      dCompleted.length,
+          active_tasks:         dTasks.length,       // tổng tất cả task của phòng
+          completed_tasks:      dCompleted.length,   // hoàn thành + đã đóng
           overdue_tasks:        dOverdue.length,
           on_time_rate_pct:     dOnTimeRate,
           avg_completion_days:  Math.round(avgDays),

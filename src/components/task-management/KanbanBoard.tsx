@@ -8,7 +8,7 @@ import { StatusBadge } from './StatusBadge';
 import { Loader2 } from 'lucide-react';
 import type { TaskStatus, TmTask } from '@/lib/task-management/types';
 
-const COLUMNS: TaskStatus[] = ['todo', 'inprogress', 'waiting', 'review', 'completed'];
+const COLUMNS: TaskStatus[] = ['todo', 'inprogress', 'waiting', 'review', 'completed', 'closed'];
 
 const COL_WIDTHS: Record<TaskStatus, string> = {
   todo:        '220px',
