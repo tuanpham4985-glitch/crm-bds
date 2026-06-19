@@ -342,10 +342,9 @@ export class TaskService {
   }
 
   private applyScopeFilter(ctx: RbacContext, filters: TaskFilters): TaskFilters {
-    if (ctx.role === 'director') return filters;
+    if (ctx.role === 'director')    return filters;
+    if (ctx.role === 'team_leader') return filters; // GĐKD thấy tất cả task, giống director
     if (ctx.role === 'manager')
-      return { ...filters, department_id: filters.department_id ?? ctx.department_id };
-    if (ctx.role === 'team_leader')
       return { ...filters, department_id: filters.department_id ?? ctx.department_id };
     // staff: only own tasks
     return { ...filters, owner_id: ctx.user_id };
