@@ -57,9 +57,9 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
   // Approval levels a user can set = levels they themselves can approve
   const approvalOptions = [
     { value: '0', label: 'Không cần phê duyệt' },
-    { value: '1', label: 'Cấp 1 — Team Leader duyệt' },
-    { value: '2', label: 'Cấp 2 — Trưởng phòng duyệt' },
-    { value: '3', label: 'Cấp 3 — Giám đốc duyệt' },
+    { value: '1', label: 'Cấp 1 — GĐKD duyệt' },
+    { value: '2', label: 'Cấp 2 — GĐ DA / Trưởng phòng duyệt' },
+    { value: '3', label: 'Cấp 3 — Chủ tịch / CEO duyệt' },
   ].filter(opt => {
     if (opt.value === '0') return true;
     if (opt.value === '1') return ['team_leader', 'manager', 'director'].includes(userRole);
