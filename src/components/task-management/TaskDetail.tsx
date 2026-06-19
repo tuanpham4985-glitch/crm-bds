@@ -282,8 +282,7 @@ export default function TaskDetail() {
   const isOverdue = task && !['completed', 'closed'].includes(task.status)
     && task.due_date && task.due_date < new Date().toISOString().slice(0, 10);
 
-  let currentTags: string[] = [];
-  try { currentTags = JSON.parse(task?.tags || '[]'); } catch { currentTags = []; }
+  const currentTags: string[] = (task?.tags || '').split(',').filter(Boolean);
 
   async function toggleTag(tag: string) {
     if (!task) return;
