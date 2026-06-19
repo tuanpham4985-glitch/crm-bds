@@ -1,10 +1,10 @@
 'use client';
 import { useState, useRef, useCallback } from 'react';
-import { X, Loader2, ThumbsUp, ThumbsDown, RotateCcw, AlertCircle } from 'lucide-react';
+import { X, Loader2, ThumbsUp, ThumbsDown, RotateCcw, AlertCircle, Trash2 } from 'lucide-react';
 import { useTmStore } from '@/stores/tmStore';
 import {
   useTaskDetail, apiUpdateTaskStatus, apiApproveTask, apiRejectTask,
-  apiUpdateTask, useTmUsers, useTmDepartments, useTmProjects, useCurrentTmUser,
+  apiUpdateTask, apiDeleteTask, useTmUsers, useTmDepartments, useTmProjects, useCurrentTmUser,
 } from '@/hooks/tm/useTasks';
 import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
 import ChecklistPanel from './ChecklistPanel';
@@ -295,6 +295,17 @@ export default function TaskDetail() {
     finally { setSavingTags(false); }
   }
 
+  async function handleDelete() {
+    if (!task) return;
+    if (!confirm(`Xóa công việc "${task.title}"?\nHành động này không thể hoàn tác.`)) return;
+    try {
+      await apiDeleteTask(task.task_id);
+      closeSidebar();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Xóa thất bại');
+    }
+  }
+
   async function handleTransition(newStatus: TaskStatus) {
     if (!task) return;
     setTrans(true);
@@ -344,6 +355,17 @@ export default function TaskDetail() {
             />
           )}
           <div style={{ flex: 1 }} />
+          {task && (currentUser?.role === 'director' || (task.status === 'todo' && task.owner_id === currentUser?.user_id)) && (
+            <button
+              onClick={handleDelete}
+              title="Xóa công việc"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4, borderRadius: 6, opacity: 0.7 }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
           <button onClick={closeSidebar} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
             <X size={18} />
           </button>

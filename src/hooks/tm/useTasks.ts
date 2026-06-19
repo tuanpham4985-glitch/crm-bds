@@ -132,6 +132,14 @@ export async function apiUpdateTask(taskId: string, data: Record<string, unknown
   return d.data;
 }
 
+export async function apiDeleteTask(taskId: string) {
+  const res = await fetch(`/api/tm/tasks/${taskId}`, { method: 'DELETE' });
+  const d = await res.json();
+  if (!d.success) throw new Error(d.error);
+  await mutate((key: string) => typeof key === 'string' && key.startsWith('/api/tm/tasks'), undefined, { revalidate: true });
+  return d.data;
+}
+
 // ── Users list (for dropdowns / name resolution) ──────────
 
 interface TmUserSummary {
