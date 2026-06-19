@@ -208,28 +208,40 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
             </div>
           </div>
 
-          {/* Row: Người thực hiện + Phòng ban */}
-          <div style={{ ...ROW2, marginBottom: 12 }}>
-            <div>
-              <label style={LABEL}>Người thực hiện</label>
-              <select value={form.owner_id} onChange={e => setOwner(e.target.value)} style={FIELD}>
-                <option value="">— Chưa phân công —</option>
-                {users.map(u => (
+          {/* Phòng ban — chọn trước để lọc người thực hiện */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={LABEL}>Phòng ban <span style={{ color: '#dc2626' }}>*</span></label>
+            <select
+              value={form.department_id}
+              onChange={e => { set('department_id', e.target.value); set('owner_id', ''); }}
+              style={FIELD}
+            >
+              <option value="">— Chọn phòng ban trước —</option>
+              {departments.map(d => (
+                <option key={d.dept_id} value={d.dept_id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Người thực hiện — lọc theo phòng ban đã chọn */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={LABEL}>Người thực hiện</label>
+            <select
+              value={form.owner_id}
+              onChange={e => setOwner(e.target.value)}
+              style={FIELD}
+              disabled={!form.department_id}
+            >
+              <option value="">— {form.department_id ? 'Chưa phân công' : 'Chọn phòng ban trước'} —</option>
+              {users
+                .filter(u => !form.department_id || u.department_id === form.department_id)
+                .map(u => (
                   <option key={u.user_id} value={u.user_id}>
                     {u.full_name}{u.position ? ` (${u.position})` : ''}
                   </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={LABEL}>Phòng ban</label>
-              <select value={form.department_id} onChange={e => set('department_id', e.target.value)} style={FIELD}>
-                <option value="">— Chọn phòng ban —</option>
-                {departments.map(d => (
-                  <option key={d.dept_id} value={d.dept_id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
+                ))
+              }
+            </select>
           </div>
 
           {/* Dự án */}
