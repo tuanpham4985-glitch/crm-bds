@@ -17,22 +17,47 @@ const now = new Date().toISOString();
 
 // ─── Role mapping ──────────────────────────────────────────
 // Khớp chính xác với toRbacContext() trong src/lib/task-management/auth.ts
+// Hierarchy công ty Victory Holdings — phải đồng bộ với auth.ts mapRole()
+// director   : Chủ tịch, CEO
+// manager    : GĐ DA, TP HCNS / TP TC-KT / TP Digital MKT (khối BO)
+// team_leader: GĐKD
+// staff      : NVKD, TPKD, TKKD, CV*
 function getRole(vai_tro: string, employee_type: string): string {
   const vt  = (vai_tro || '').trim();
   const etL = (employee_type || '').trim().toLowerCase();
 
+  // director
   if (
     vt === 'Admin' ||
-    etL.startsWith('gđ') || etL.startsWith('gd') ||
-    etL.startsWith('giám đốc') || etL.startsWith('giam doc') ||
-    etL.startsWith('chủ tịch') || etL.startsWith('chu tich') || etL === 'ct' ||
-    etL.startsWith('tổng') || etL.startsWith('tong') ||
+    etL === 'chủ tịch' || etL === 'chu tich' || etL === 'ct' ||
+    etL === 'ceo' ||
     etL.startsWith('tgđ') || etL.startsWith('tgd') ||
     etL.startsWith('pgđ') || etL.startsWith('pgd') ||
-    etL.startsWith('phó giám') || etL.startsWith('pho giam')
+    etL.startsWith('phó giám') || etL.startsWith('pho giam') ||
+    etL.startsWith('tổng') || etL.startsWith('tong')
   ) return 'director';
-  if (etL.startsWith('tp') || etL.includes('trưởng phòng') || etL.includes('truong phong') || etL.includes('tkkd') || vt === 'manager') return 'manager';
-  if (etL.includes('leader') || etL.includes('team lead') || vt === 'leader') return 'team_leader';
+
+  // staff — kiểm tra TRƯỚC manager để TPKD/TKKD không khớp nhầm tp*
+  if (
+    etL === 'tpkd' || etL === 'nvkd' || etL === 'tkkd' ||
+    etL.startsWith('cv ')
+  ) return 'staff';
+
+  // team_leader: GĐKD
+  if (
+    etL === 'gđkd' || etL === 'gdkd' ||
+    etL.includes('leader') || etL.includes('team lead') ||
+    vt === 'leader'
+  ) return 'team_leader';
+
+  // manager: GĐ DA + BO Trưởng phòng (TP*)
+  if (
+    etL === 'gđ da' || etL === 'gd da' ||
+    etL.startsWith('tp ') || etL.startsWith('tp-') ||
+    etL.includes('trưởng phòng') || etL.includes('truong phong') ||
+    vt === 'manager'
+  ) return 'manager';
+
   return 'staff';
 }
 

@@ -19,33 +19,52 @@ interface CrmSession {
 // DEV_ADMIN_EMAIL (từ .env.local / Vercel env) được cấp quyền director dù chức vụ là gì
 const DEV_ADMIN_EMAIL = (process.env.DEV_ADMIN_EMAIL || '').toLowerCase();
 
+// Hierarchy công ty Victory Holdings:
+// director   : Chủ tịch, CEO
+// manager    : GĐ DA (quản dự án), TP HCNS / TP TC-KT / TP Digital MKT (khối BO)
+// team_leader: GĐKD (giám đốc kinh doanh)
+// staff      : NVKD, TPKD, TKKD, CV* (chuyên viên)
 function mapRole(session: CrmSession): UserRole {
   // Dev/admin account override — luôn là director (quyền cao nhất)
   if (DEV_ADMIN_EMAIL && (session.email || '').toLowerCase() === DEV_ADMIN_EMAIL) {
     return 'director';
   }
 
-  const vt = (session.vai_tro || '').trim();
-  const et = (session.employee_type || '').trim();
+  const vt  = (session.vai_tro || '').trim();
+  const et  = (session.employee_type || '').trim();
   const etL = et.toLowerCase();
 
-  // Director: Admin, Giám đốc (GĐ/GD), Chủ tịch, Tổng giám đốc, Phó giám đốc
+  // ── director: Chủ tịch, CEO, Tổng GĐ, Phó GĐ, Admin
   if (
     vt === 'Admin' ||
-    etL.startsWith('gđ') || etL.startsWith('gd') ||
-    etL.startsWith('giám đốc') || etL.startsWith('giam doc') ||
-    etL.startsWith('chủ tịch') || etL.startsWith('chu tich') || etL === 'ct' ||
-    etL.startsWith('tổng') || etL.startsWith('tong') ||
+    etL === 'chủ tịch' || etL === 'chu tich' || etL === 'ct' ||
+    etL === 'ceo' ||
     etL.startsWith('tgđ') || etL.startsWith('tgd') ||
     etL.startsWith('pgđ') || etL.startsWith('pgd') ||
-    etL.startsWith('phó giám') || etL.startsWith('pho giam')
+    etL.startsWith('phó giám') || etL.startsWith('pho giam') ||
+    etL.startsWith('tổng') || etL.startsWith('tong')
   ) return 'director';
 
-  // Manager: chức vụ Trưởng phòng (TP...) hoặc có từ "truong phong"/"trưởng phòng"
-  if (etL.startsWith('tp') || etL.includes('trưởng phòng') || etL.includes('truong phong') || etL.includes('tkkd') || vt === 'manager') return 'manager';
+  // ── staff: kiểm tra TRƯỚC manager để TPKD / TKKD không khớp nhầm vào tp*
+  if (
+    etL === 'tpkd' || etL === 'nvkd' || etL === 'tkkd' ||
+    etL.startsWith('cv ')
+  ) return 'staff';
 
-  // Team Leader
-  if (etL.includes('leader') || etL.includes('team lead') || vt === 'leader') return 'team_leader';
+  // ── team_leader: GĐKD (Giám đốc Kinh doanh)
+  if (
+    etL === 'gđkd' || etL === 'gdkd' ||
+    etL.includes('leader') || etL.includes('team lead') ||
+    vt === 'leader'
+  ) return 'team_leader';
+
+  // ── manager: GĐ DA + BO Trưởng phòng (TP*)
+  if (
+    etL === 'gđ da' || etL === 'gd da' ||
+    etL.startsWith('tp ') || etL.startsWith('tp-') ||
+    etL.includes('trưởng phòng') || etL.includes('truong phong') ||
+    vt === 'manager'
+  ) return 'manager';
 
   return 'staff';
 }
