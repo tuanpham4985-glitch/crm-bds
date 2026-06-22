@@ -40,8 +40,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => mql.removeEventListener('change', handleChange);
   }, []);
 
-  // Đồng bộ logo từ localStorage + server (giống Sidebar)
+  // Đồng bộ logo từ localStorage + server — chỉ khi đã auth
+  // Dùng isLoginPage làm dependency: khi user navigate từ /login → dashboard,
+  // isLoginPage đổi từ true → false và effect tự re-run (lần mount đầu thường
+  // ở /login nên fetch sẽ 401, phải chờ sau khi login xong mới fetch lại)
   useEffect(() => {
+    if (isLoginPage) return;
     const cached = localStorage.getItem('company_logo');
     if (cached) setLogo(cached);
     fetch('/api/settings/logo')
@@ -53,7 +57,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isLoginPage]); // re-run khi chuyển từ login → app
 
   const handleToggleCollapse = () => {
     setSidebarCollapsed(prev => {
