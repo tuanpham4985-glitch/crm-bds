@@ -1662,6 +1662,14 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
 
 // ─── Global Champion Widget Component ───────────────────────────────────────
 function GlobalChampionWidget({ data }: { data: any[] }) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 768px)');
+    setIsMobile(mql.matches);
+    const h = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener('change', h);
+    return () => mql.removeEventListener('change', h);
+  }, []);
   // Mốc doanh thu
   const LEVELS = [
     {
@@ -1767,7 +1775,7 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
               }} />
 
               {/* Main Ticket Area */}
-              <div style={{ display: 'flex', height: '148px' }}>
+              <div style={{ display: 'flex', height: isMobile ? 'auto' : '148px', minHeight: isMobile ? '120px' : undefined }}>
                 {/* Left: Main Ticket Stub (72% width) */}
                 <div style={{
                   flex: 1,
@@ -1785,14 +1793,21 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                   </div>
 
                   {/* Destination Info & Destination Symbol Pic */}
-                  <div style={{ display: 'flex', gap: '14px', marginTop: '10px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: isMobile ? '10px' : '14px', marginTop: '10px', alignItems: 'center' }}>
                     {/* Destination Symbol Pic */}
                     <img
                       src={level.bgImg}
                       alt={level.title}
+                      loading="lazy"
+                      onError={e => {
+                        const el = e.currentTarget;
+                        el.style.display = 'none';
+                        const fb = el.nextElementSibling as HTMLElement | null;
+                        if (fb) fb.style.display = 'flex';
+                      }}
                       style={{
-                        width: '112px',
-                        height: '72px',
+                        width: isMobile ? '80px' : '112px',
+                        height: isMobile ? '56px' : '72px',
                         borderRadius: '8px',
                         objectFit: 'cover',
                         border: '1px solid #e2e8f0',
@@ -1800,12 +1815,27 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                         flexShrink: 0
                       }}
                     />
+                    {/* Fallback khi ảnh không load được */}
+                    <div style={{
+                      display: 'none',
+                      width: isMobile ? '80px' : '112px',
+                      height: isMobile ? '56px' : '72px',
+                      borderRadius: '8px',
+                      background: `linear-gradient(135deg, ${level.color}33, ${level.color}88)`,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: isMobile ? '22px' : '32px',
+                      flexShrink: 0,
+                      border: `1px solid ${level.color}55`,
+                    }}>
+                      {level.id === 'europe' ? '🗼' : level.id === 'japan' ? '🗾' : '🌴'}
+                    </div>
 
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.5px' }}>DESTINATION:</div>
                       <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.15, marginTop: 2 }}>{level.title}</div>
 
-                      <div style={{ display: 'flex', gap: '12px', marginTop: '6px', flexWrap: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: isMobile ? '8px' : '12px', marginTop: '6px', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                         <div style={{ flexShrink: 0 }}>
                           <span style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', fontWeight: 600, whiteSpace: 'nowrap' }}>FLIGHT</span>
                           <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap' }}>VIC2026</span>

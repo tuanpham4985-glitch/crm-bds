@@ -94,10 +94,20 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const [showNew, setShowNew] = useState(false);
 
   useEffect(() => {
-    const savedLogo = localStorage.getItem('company_logo');
-    if (savedLogo) {
-      setLogo(savedLogo);
-    }
+    // Hiển thị logo từ localStorage ngay lập tức (cache nhanh)
+    const cached = localStorage.getItem('company_logo');
+    if (cached) setLogo(cached);
+
+    // Đồng bộ logo từ server (để sync giữa các thiết bị)
+    fetch('/api/settings/logo')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.data) {
+          setLogo(d.data);
+          localStorage.setItem('company_logo', d.data);
+        }
+      })
+      .catch(() => {});
 
     // PWA Check
     setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone);
@@ -196,18 +206,12 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        const MAX_DIMENSION = 800;
-
+        // Logo chỉ hiển thị ~40px — nén xuống 128px để tiết kiệm dung lượng
+        const MAX_DIMENSION = 128;
         if (width > height) {
-          if (width > MAX_DIMENSION) {
-            height = Math.round((height * MAX_DIMENSION) / width);
-            width = MAX_DIMENSION;
-          }
+          if (width > MAX_DIMENSION) { height = Math.round((height * MAX_DIMENSION) / width); width = MAX_DIMENSION; }
         } else {
-          if (height > MAX_DIMENSION) {
-            width = Math.round((width * MAX_DIMENSION) / height);
-            height = MAX_DIMENSION;
-          }
+          if (height > MAX_DIMENSION) { width = Math.round((width * MAX_DIMENSION) / height); height = MAX_DIMENSION; }
         }
         canvas.width = width;
         canvas.height = height;
@@ -215,21 +219,28 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         if (!ctx) return;
         ctx.drawImage(img, 0, 0, width, height);
 
-        let quality = 0.9;
+        let quality = 0.85;
         const attemptCompress = () => {
           canvas.toBlob((blob) => {
             if (!blob) return;
-            // Target format is < 500KB for Logo
-            if (blob.size > 500 * 1024 && quality > 0.1) {
-              quality -= 0.1;
+            // Mục tiêu < 30KB để lưu được vào Google Sheets
+            if (blob.size > 30 * 1024 && quality > 0.2) {
+              quality -= 0.15;
               attemptCompress();
             } else {
               const readerBlob = new FileReader();
               readerBlob.readAsDataURL(blob);
               readerBlob.onloadend = () => {
                 const base64data = readerBlob.result as string;
+                // Hiển thị ngay
                 setLogo(base64data);
                 localStorage.setItem('company_logo', base64data);
+                // Đồng bộ lên server để sync mobile/desktop
+                fetch('/api/settings/logo', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ logo: base64data }),
+                }).catch(() => {});
               };
             }
           }, 'image/webp', quality);

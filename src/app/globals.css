@@ -1988,7 +1988,7 @@ select:focus {
     border-bottom: 1px solid var(--border-light);
     position: sticky;
     top: 0;
-    z-index: 50;
+    z-index: 800; /* phải cao hơn TaskDetail backdrop (500) và panel (600) */
   }
 
   .main-content {
@@ -2004,7 +2004,7 @@ select:focus {
     left: 0;
     height: 100vh;
     width: var(--sidebar-width);
-    z-index: 101;
+    z-index: 750; /* cao hơn TaskDetail panel (600) */
     transform: translateX(-100%);
     transition: transform var(--transition);
   }
@@ -2018,7 +2018,7 @@ select:focus {
     position: fixed;
     inset: 0;
     background: rgba(15, 23, 42, 0.5);
-    z-index: 100;
+    z-index: 700; /* cao hơn TaskDetail (600), thấp hơn sidebar-wrapper (750) */
   }
 
   /* Reset collapsed state on mobile — sidebar always full-width when opened via hamburger */

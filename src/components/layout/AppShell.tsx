@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
+import { useTmStore } from '@/stores/tmStore';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -11,11 +12,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const isLoginPage = pathname === '/login';
+  const closeTmSidebar = useTmStore(s => s.closeSidebar);
 
-  // Close mobile menu on route change
+  // Close mobile menu + reset TM task detail when navigating away
   useEffect(() => {
     setMobileMenuOpen(false);
-  }, [pathname]);
+    if (!pathname.startsWith('/quan-ly-cong-viec')) {
+      closeTmSidebar();
+    }
+  }, [pathname, closeTmSidebar]);
 
   // Restore collapse state from localStorage
   useEffect(() => {
