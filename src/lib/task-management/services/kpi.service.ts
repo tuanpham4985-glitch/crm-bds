@@ -110,8 +110,12 @@ export class KpiService {
 
       // Aggregations by status
       const STATUS_LABELS: Record<string, string> = {
-        todo: 'Chờ làm', in_progress: 'Đang làm', review: 'Chờ duyệt',
-        completed: 'Hoàn thành', closed: 'Đã đóng',
+        todo:       'Chờ làm',
+        inprogress: 'Đang làm',
+        waiting:    'Đang chờ',
+        review:     'Chờ duyệt',
+        completed:  'Hoàn thành',
+        closed:     'Đã đóng',
       };
       const byStatus: Record<string, number> = {};
       for (const t of allTasks) {
