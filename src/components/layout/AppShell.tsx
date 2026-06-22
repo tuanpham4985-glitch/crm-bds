@@ -64,13 +64,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <button className="btn-icon" onClick={() => setMobileMenuOpen(true)}>
             <Menu size={24} style={{ color: 'var(--text-title)' }} />
           </button>
-          {logo ? (
-            <img src={logo} alt="Logo" style={{ height: 'auto', maxHeight: 42, maxWidth: 160, width: 'auto', objectFit: 'contain' }} />
-          ) : (
-            <span style={{ fontWeight: 700, fontSize: '1.125rem', color: 'var(--text-title)' }}>
-              VICTORY HOLDINGS
-            </span>
-          )}
         </div>
         {user && (
           <div style={{
