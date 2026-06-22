@@ -207,8 +207,9 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        // Logo chỉ hiển thị ~40px — nén xuống 128px để tiết kiệm dung lượng
-        const MAX_DIMENSION = 128;
+        // Giữ ảnh đủ lớn để sắc nét khi hiển thị ở sidebar (~260px) và retina (2x)
+        // MAX_DIMENSION = 512 đảm bảo logo không bị mờ khi scale lên
+        const MAX_DIMENSION = 512;
         if (width > height) {
           if (width > MAX_DIMENSION) { height = Math.round((height * MAX_DIMENSION) / width); width = MAX_DIMENSION; }
         } else {
@@ -220,13 +221,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         if (!ctx) return;
         ctx.drawImage(img, 0, 0, width, height);
 
-        let quality = 0.85;
+        let quality = 0.82;
         const attemptCompress = () => {
           canvas.toBlob((blob) => {
             if (!blob) return;
-            // Mục tiêu < 30KB để lưu được vào Google Sheets
-            if (blob.size > 30 * 1024 && quality > 0.2) {
-              quality -= 0.15;
+            // Giới hạn ~36KB để base64 nằm dưới 50,000 ký tự (Google Sheets cell limit)
+            if (blob.size > 36 * 1024 && quality > 0.15) {
+              quality -= 0.12;
               attemptCompress();
             } else {
               const readerBlob = new FileReader();

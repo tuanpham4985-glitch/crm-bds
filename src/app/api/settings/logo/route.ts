@@ -71,9 +71,9 @@ export async function POST(req: NextRequest) {
     if (!logo || typeof logo !== 'string') {
       return NextResponse.json({ success: false, error: 'Thiếu dữ liệu logo' }, { status: 400 });
     }
-    // Giới hạn < 40KB base64 (tương đương ảnh ~30KB sau nén)
-    if (logo.length > 55_000) {
-      return NextResponse.json({ success: false, error: 'Logo quá lớn (tối đa 30KB)' }, { status: 400 });
+    // Giới hạn base64 < 49,000 ký tự (~36KB binary) để nằm dưới Google Sheets cell limit (50,000 chars)
+    if (logo.length > 49_000) {
+      return NextResponse.json({ success: false, error: 'Logo quá lớn. Vui lòng dùng ảnh nhỏ hơn.' }, { status: 400 });
     }
 
     const sheet = await getSettingsSheet();
