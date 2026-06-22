@@ -210,7 +210,7 @@ export class TaskService {
     }
 
     const updated = await this.uow.tasks.updateApproval(taskId, 'approved', ctx.user_id);
-    await this.uow.tasks.updateStatus(taskId, 'completed');
+    await this.uow.tasks.updateStatus(taskId, 'closed'); // duyệt = đóng luôn
     await this.uow.activityLogs.log(taskId, 'task', ctx.user_id, 'approved',
       { approval_status: 'pending' }, { approval_status: 'approved', approved_by: ctx.user_id },
     );
