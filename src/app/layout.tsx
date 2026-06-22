@@ -33,6 +33,9 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "VICTORY HOLDINGS",
   },
+  icons: {
+    apple: [{ url: '/api/pwa/icon', sizes: '512x512' }],
+  },
   formatDetection: {
     telephone: false,
   },
