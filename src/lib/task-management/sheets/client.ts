@@ -74,7 +74,7 @@ async function getSheet(sheetName: SheetName): Promise<GoogleSpreadsheetWorkshee
 // All write helpers (append/update/delete) must call invalidateRowCache().
 
 const _rowCache    = new Map<string, { rows: RawRow[]; ts: number }>();
-const ROW_CACHE_TTL = 45_000; // 45s — safe below Google's 60 req/min/user limit
+const ROW_CACHE_TTL = 300_000; // 5 phút — giảm thiểu Sheets API reads trong cùng instance
 
 // Dedup concurrent fetches for the same sheet
 const _pendingFetch = new Map<string, Promise<RawRow[]>>();

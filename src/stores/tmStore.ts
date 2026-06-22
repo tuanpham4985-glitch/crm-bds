@@ -69,8 +69,10 @@ interface TmState {
 
   // Notifications
   unreadCount:    number;
+  pendingCount:   number;
+  badgeTotal:     number;
   notifications:  TmNotification[];
-  setNotifications: (notifs: TmNotification[]) => void;
+  setNotifications: (notifs: TmNotification[], unread?: number, pending?: number) => void;
   markRead:        (notifId: string) => void;
   markAllRead:     () => void;
 
@@ -118,20 +120,28 @@ export const useTmStore = create<TmState>()(
 
     // Notifications
     unreadCount:    0,
+    pendingCount:   0,
+    badgeTotal:     0,
     notifications:  [],
-    setNotifications: (notifs) => set({
-      notifications: notifs,
-      unreadCount:   notifs.filter(n => n.status !== 'read').length,
+    setNotifications: (notifs, unread, pending) => set(s => {
+      const u = unread  ?? notifs.filter(n => n.status !== 'read').length;
+      const p = pending ?? s.pendingCount;
+      return { notifications: notifs, unreadCount: u, pendingCount: p, badgeTotal: u + p };
     }),
-    markRead: (notifId) => set(s => ({
-      notifications: s.notifications.map(n =>
-        n.notif_id === notifId ? { ...n, status: 'read' as const } : n,
-      ),
-      unreadCount: Math.max(0, s.unreadCount - 1),
-    })),
+    markRead: (notifId) => set(s => {
+      const u = Math.max(0, s.unreadCount - 1);
+      return {
+        notifications: s.notifications.map(n =>
+          n.notif_id === notifId ? { ...n, status: 'read' as const } : n,
+        ),
+        unreadCount: u,
+        badgeTotal: u + s.pendingCount,
+      };
+    }),
     markAllRead: () => set(s => ({
       notifications: s.notifications.map(n => ({ ...n, status: 'read' as const })),
       unreadCount: 0,
+      badgeTotal: s.pendingCount,
     })),
 
     // Optimistic status for kanban

@@ -2,19 +2,19 @@
 import { useRef, useState, useEffect } from 'react';
 import { Bell, CheckCheck, Loader2, ClipboardList } from 'lucide-react';
 import { useNotifications } from '@/hooks/tm/useNotifications';
-import { usePendingApprovals, useCurrentTmUser } from '@/hooks/tm/useTasks';
 import { useTmStore } from '@/stores/tmStore';
 import type { TmNotification } from '@/lib/task-management/types';
 
 const NOTIF_ICONS: Record<string, string> = {
-  assigned:       '📋',
-  status_changed: '🔄',
-  commented:      '💬',
-  due_soon:       '⏰',
-  overdue:        '⚠️',
-  approved:       '✅',
-  rejected:       '❌',
-  mentioned:      '📣',
+  task_assigned:    '📋',
+  review_required:  '🔔',
+  task_approved:    '✅',
+  task_rejected:    '❌',
+  task_overdue:     '⚠️',
+  collaborator_added: '👥',
+  task_blocked:     '🚫',
+  status_changed:   '🔄',
+  commented:        '💬',
 };
 
 function timeAgo(iso: string) {
@@ -29,23 +29,12 @@ function timeAgo(iso: string) {
 
 export default function NotificationCenter() {
   const { notifications, unreadCount, isLoading, markRead, markAllRead } = useNotifications();
-  const { tasks: pendingTasks } = usePendingApprovals();
-  const currentUser = useCurrentTmUser();
-  const { openSidebar } = useTmStore();
-  const [open, setOpen] = useState(false);
+  // pendingCount + badgeTotal đã được set vào store bởi useNotifications (từ /api/tm/combined)
+  const { openSidebar, pendingCount, badgeTotal } = useTmStore();
+
+  const [open, setOpen]         = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  // Task chờ phê duyệt liên quan đến current user
-  const pendingCount = pendingTasks.filter(t =>
-    t.approval_status === 'pending' && (
-      currentUser?.role === 'director' ||
-      (currentUser?.role === 'manager'     && Number(t.approval_level) <= 2) ||
-      (currentUser?.role === 'team_leader' && Number(t.approval_level) === 1)
-    )
-  ).length;
-
-  const totalBadge = unreadCount + pendingCount;
 
   // Close on outside click
   useEffect(() => {
@@ -62,6 +51,11 @@ export default function NotificationCenter() {
     finally { setMarkingAll(false); }
   }
 
+  // Lọc notifications dạng review_required để hiện trong section "Chờ phê duyệt"
+  const pendingNotifs = notifications
+    .filter(n => n.type === 'review_required')
+    .slice(0, 5);
+
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       {/* Bell button */}
@@ -76,7 +70,7 @@ export default function NotificationCenter() {
         }}
       >
         <Bell size={16} />
-        {totalBadge > 0 && (
+        {badgeTotal > 0 && (
           <span style={{
             position: 'absolute', top: -6, right: -6,
             width: 18, height: 18, borderRadius: '50%',
@@ -85,7 +79,7 @@ export default function NotificationCenter() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             border: '2px solid var(--bg-card)',
           }}>
-            {totalBadge > 9 ? '9+' : totalBadge}
+            {badgeTotal > 9 ? '9+' : badgeTotal}
           </span>
         )}
       </button>
@@ -116,45 +110,37 @@ export default function NotificationCenter() {
             )}
           </div>
 
-          {/* Pending approvals section */}
-          {pendingCount > 0 && (
+          {/* Pending approvals section — từ notifications type=review_required */}
+          {pendingCount > 0 && pendingNotifs.length > 0 && (
             <div style={{ borderBottom: '1px solid var(--border-lighter)' }}>
               <div style={{ padding: '8px 14px 4px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Task chờ phê duyệt
+                Task chờ phê duyệt ({pendingCount})
               </div>
-              {pendingTasks
-                .filter(t =>
-                  t.approval_status === 'pending' && (
-                    currentUser?.role === 'director' ||
-                    (currentUser?.role === 'manager'     && Number(t.approval_level) <= 2) ||
-                    (currentUser?.role === 'team_leader' && Number(t.approval_level) === 1)
-                  )
-                )
-                .slice(0, 5)
-                .map(t => (
-                  <div
-                    key={t.task_id}
-                    onClick={() => { openSidebar(t.task_id); setOpen(false); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '8px 14px', cursor: 'pointer',
-                      borderBottom: '1px solid var(--border-lighter)',
-                      background: 'var(--primary-light)',
-                      transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#e0e7ff')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'var(--primary-light)')}
-                  >
-                    <ClipboardList size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {t.task_code}: {t.title}
-                      </p>
-                      <span style={{ fontSize: 11, color: '#b45309' }}>Chờ phê duyệt cấp {t.approval_level}</span>
-                    </div>
+              {pendingNotifs.map(n => (
+                <div
+                  key={n.notif_id}
+                  onClick={() => {
+                    if (n.task_id) { openSidebar(n.task_id); setOpen(false); }
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 14px', cursor: 'pointer',
+                    borderBottom: '1px solid var(--border-lighter)',
+                    background: n.status !== 'read' ? 'var(--primary-light)' : 'transparent',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#e0e7ff')}
+                  onMouseLeave={e => (e.currentTarget.style.background = n.status !== 'read' ? 'var(--primary-light)' : 'transparent')}
+                >
+                  <ClipboardList size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {n.title}
+                    </p>
+                    <span style={{ fontSize: 11, color: '#b45309' }}>{timeAgo(n.created_at)}</span>
                   </div>
-                ))
-              }
+                </div>
+              ))}
             </div>
           )}
 

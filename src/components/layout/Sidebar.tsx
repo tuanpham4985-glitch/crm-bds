@@ -11,6 +11,21 @@ import {
 import useSWR from 'swr';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
+import { useTmStore } from '@/stores/tmStore';
+
+// Hook: trả về badge count cho sidebar
+// - Nếu đang ở trang TM: lấy từ Zustand (đã được cập nhật bởi useNotifications)
+// - Nếu ở trang khác: fetch 1 lần, không refresh tự động
+function useTmBadge(loggedIn: boolean, onTmPage: boolean): number {
+  const badgeFromStore = useTmStore(s => s.badgeTotal);
+  const { data } = useSWR(
+    !loggedIn || onTmPage ? null : '/api/tm/badge',
+    (url: string) => fetch(url).then(r => r.json()),
+    { revalidateOnFocus: false, refreshInterval: 0, dedupingInterval: 300_000 },
+  );
+  if (onTmPage) return badgeFromStore;
+  return data?.data?.count ?? 0;
+}
 
 const swrFetcher = (url: string) => fetch(url).then(r => r.json());
 interface BeforeInstallPromptEvent extends Event {
@@ -50,12 +65,9 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   );
   const pendingCount: number = pendingData?.count ?? 0;
 
-  const { data: tmBadgeData } = useSWR(
-    user ? '/api/tm/badge' : null,
-    swrFetcher,
-    { refreshInterval: 60_000, revalidateOnFocus: false },
-  );
-  const tmBadge: number = tmBadgeData?.data?.count ?? 0;
+  // Badge từ Zustand store (được set bởi useNotifications khi ở trang TM)
+  // Khi không ở trang TM: fetch 1 lần lúc mount, không auto-refresh
+  const tmBadge: number = useTmBadge(!!user, pathname.startsWith('/quan-ly-cong-viec'));
   const [logo, setLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);

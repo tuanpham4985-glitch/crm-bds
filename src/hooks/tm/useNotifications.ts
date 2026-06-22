@@ -4,7 +4,7 @@ import useSWR, { mutate } from 'swr';
 import { useTmStore } from '@/stores/tmStore';
 import type { TmNotification } from '@/lib/task-management/types';
 
-const fetcher = (url: string) => fetch(url).then(r => r.json()).then(d => d.data ?? []);
+const fetcher = (url: string) => fetch(url).then(r => r.json()).then(d => d.data ?? {});
 
 export function useNotifications() {
   const setNotifications = useTmStore(s => s.setNotifications);
@@ -13,13 +13,17 @@ export function useNotifications() {
   const notifications    = useTmStore(s => s.notifications);
   const unreadCount      = useTmStore(s => s.unreadCount);
 
-  const { data, isLoading } = useSWR<TmNotification[]>('/api/tm/notifications', fetcher, {
-    refreshInterval: 60_000,
-    revalidateOnFocus: false,
+  // Dùng /api/tm/combined thay cho 3 calls riêng lẻ
+  const { data, isLoading } = useSWR('/api/tm/combined', fetcher, {
+    refreshInterval:    120_000, // 2 phút
+    revalidateOnFocus:  false,
+    dedupingInterval:   60_000,
   });
 
   useEffect(() => {
-    if (data) setNotifications(data);
+    if (!data) return;
+    const notifs: TmNotification[] = Array.isArray(data.notifications) ? data.notifications : [];
+    setNotifications(notifs, data.unread_count ?? 0, data.pending_count ?? 0);
   }, [data, setNotifications]);
 
   const markRead = useCallback(async (notifId: string) => {
@@ -38,7 +42,7 @@ export function useNotifications() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ read_all: true }),
     });
-    await mutate('/api/tm/notifications');
+    await mutate('/api/tm/combined');
   }, [markAllStore]);
 
   return { notifications, unreadCount, isLoading, markRead, markAllRead };
