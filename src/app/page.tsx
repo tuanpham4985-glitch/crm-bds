@@ -528,7 +528,7 @@ export default function DashboardPage() {
 
       {/* ── Bảng tổng hợp so sánh — admin only ── */}
       {isAdmin && data.tonghop && (
-        <TongHopTables tonghop={data.tonghop} />
+        <TongHopTables tonghop={data.tonghop} isMobile={isMobile} />
       )}
 
       {/* Hà Nội vs TP.HCM + Doanh thu theo thời gian — cùng hàng */}
@@ -1129,7 +1129,7 @@ export default function DashboardPage() {
 
 // ─── TongHop Tables ──────────────────────────────────────────────────────────
 
-function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tonghop']> }) {
+function TongHopTables({ tonghop, isMobile }: { tonghop: NonNullable<DashboardData['tonghop']>; isMobile?: boolean }) {
   const fmtTy = (v: number) => {
     if (v >= 1e9) return `${(v / 1e9).toFixed(1)} TỶ`;
     if (v >= 1e6) return `${(v / 1e6).toFixed(0)} TR`;
@@ -1153,22 +1153,26 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
     const colors = [color1, color2, '#94a3b8', '#f59e0b'];
     const pieData = items.map(x => ({ name: x.loai, value: x.doanh_so }));
 
+    const donutSize  = isMobile ? 120 : 160;
+    const innerR     = isMobile ? 30  : 42;
+    const outerR     = isMobile ? 54  : 74;
+
     return (
       <div className="chart-card" style={{ padding: '18px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           {icon}
           <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-title)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</span>
         </div>
-        <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-          {/* Donut */}
-          <div style={{ width: 160, height: 160, flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 20, alignItems: isMobile ? 'center' : 'center' }}>
+          {/* Donut — nhỏ hơn trên mobile để tránh tràn */}
+          <div style={{ width: donutSize, height: donutSize, flexShrink: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={pieData}
                   dataKey="value"
                   cx="50%" cy="50%"
-                  innerRadius={42} outerRadius={74}
+                  innerRadius={innerR} outerRadius={outerR}
                   strokeWidth={2} stroke="#fff"
                   labelLine={false}
                   label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
@@ -1179,7 +1183,7 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
                     const y = cy + r * Math.sin(-midAngle * RADIAN);
                     return (
                       <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central"
-                            fontSize={11} fontWeight={700} style={{ pointerEvents: 'none' }}>
+                            fontSize={isMobile ? 10 : 11} fontWeight={700} style={{ pointerEvents: 'none' }}>
                         {`${(percent * 100).toFixed(1)}%`}
                       </text>
                     );
@@ -1192,8 +1196,8 @@ function TongHopTables({ tonghop }: { tonghop: NonNullable<DashboardData['tongho
             </ResponsiveContainer>
           </div>
           {/* Table — single grid so all rows share the same column widths */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 44px 88px', rowGap: 8, columnGap: 12, alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 38px 76px' : '1fr 44px 88px', rowGap: 8, columnGap: isMobile ? 8 : 12, alignItems: 'center' }}>
               {/* Header */}
               <span style={{ fontSize: '0.78rem', color: 'var(--text-label)', fontWeight: 600 }}>Loại</span>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-label)', fontWeight: 600, textAlign: 'right' }}>Số căn</span>

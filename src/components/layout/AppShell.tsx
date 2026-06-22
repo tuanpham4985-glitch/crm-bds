@@ -5,12 +5,15 @@ import { usePathname } from 'next/navigation';
 import { Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import { useTmStore } from '@/stores/tmStore';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [logo, setLogo] = useState<string | null>(null);
   const isLoginPage = pathname === '/login';
   const closeTmSidebar = useTmStore(s => s.closeSidebar);
 
@@ -37,6 +40,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => mql.removeEventListener('change', handleChange);
   }, []);
 
+  // Đồng bộ logo từ localStorage + server (giống Sidebar)
+  useEffect(() => {
+    const cached = localStorage.getItem('company_logo');
+    if (cached) setLogo(cached);
+    fetch('/api/settings/logo')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.data) {
+          setLogo(d.data);
+          localStorage.setItem('company_logo', d.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const handleToggleCollapse = () => {
     setSidebarCollapsed(prev => {
       const next = !prev;
@@ -60,10 +78,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <button className="btn-icon" onClick={() => setMobileMenuOpen(true)}>
             <Menu size={24} style={{ color: 'var(--text-title)' }} />
           </button>
-          <span style={{ fontWeight: 700, fontSize: '1.125rem', color: 'var(--text-title)' }}>
-            VICTORY HOLDINGS
-          </span>
+          {logo ? (
+            <img src={logo} alt="Logo" style={{ height: 34, width: 'auto', objectFit: 'contain', borderRadius: 6 }} />
+          ) : (
+            <span style={{ fontWeight: 700, fontSize: '1.125rem', color: 'var(--text-title)' }}>
+              VICTORY HOLDINGS
+            </span>
+          )}
         </div>
+        {user && (
+          <div style={{
+            width: 34, height: 34, borderRadius: '50%',
+            background: 'var(--primary)', color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '0.875rem', fontWeight: 700, flexShrink: 0,
+          }}>
+            {user.ho_ten?.split(' ').pop()?.charAt(0).toUpperCase() || '?'}
+          </div>
+        )}
       </div>
 
       {/* Sidebar Overlay */}
