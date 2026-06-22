@@ -241,7 +241,12 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ logo: base64data }),
-                }).catch(() => {});
+                })
+                  .then(r => r.json())
+                  .then(d => {
+                    if (!d.success) alert('Lưu logo thất bại: ' + (d.error ?? 'Lỗi server'));
+                  })
+                  .catch(() => alert('Không thể kết nối server để lưu logo. Vui lòng thử lại.'));
               };
             }
           }, 'image/webp', quality);
