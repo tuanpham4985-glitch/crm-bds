@@ -6,14 +6,15 @@ import { Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import { useTmStore } from '@/stores/tmStore';
 import { useAuth } from '@/hooks/useAuth';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const logo = useSettingsStore(s => s.logo);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [logo, setLogo] = useState<string | null>(null);
   const isLoginPage = pathname === '/login';
   const closeTmSidebar = useTmStore(s => s.closeSidebar);
 
@@ -39,25 +40,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     mql.addEventListener('change', handleChange);
     return () => mql.removeEventListener('change', handleChange);
   }, []);
-
-  // Đồng bộ logo từ localStorage + server — chỉ khi đã auth
-  // Dùng isLoginPage làm dependency: khi user navigate từ /login → dashboard,
-  // isLoginPage đổi từ true → false và effect tự re-run (lần mount đầu thường
-  // ở /login nên fetch sẽ 401, phải chờ sau khi login xong mới fetch lại)
-  useEffect(() => {
-    if (isLoginPage) return;
-    const cached = localStorage.getItem('company_logo');
-    if (cached) setLogo(cached);
-    fetch('/api/settings/logo')
-      .then(r => r.json())
-      .then(d => {
-        if (d.success && d.data) {
-          setLogo(d.data);
-          localStorage.setItem('company_logo', d.data);
-        }
-      })
-      .catch(() => {});
-  }, [isLoginPage]); // re-run khi chuyển từ login → app
 
   const handleToggleCollapse = () => {
     setSidebarCollapsed(prev => {

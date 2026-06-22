@@ -12,6 +12,7 @@ import useSWR from 'swr';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
 import { useTmStore } from '@/stores/tmStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 // Hook: trả về badge count cho sidebar
 // - Nếu đang ở trang TM: lấy từ Zustand (đã được cập nhật bởi useNotifications)
@@ -68,7 +69,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   // Badge từ Zustand store (được set bởi useNotifications khi ở trang TM)
   // Khi không ở trang TM: fetch 1 lần lúc mount, không auto-refresh
   const tmBadge: number = useTmBadge(!!user, pathname.startsWith('/quan-ly-cong-viec'));
-  const [logo, setLogo] = useState<string | null>(null);
+  const { logo, setLogo } = useSettingsStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOS, setIsIOS] = useState(false);
