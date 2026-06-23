@@ -823,12 +823,15 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
     const colChiNhanh = findCol('chinhanh', 'vuongkd', 'khuvuc', 'region', 'mien', 'vung');
     const colPhongKD = findCol('phongkd', 'phongban', 'khoikd', 'nhomkd', 'team');
     const colDuAn    = findCol('duan', 'tenduan', 'tenduan', 'project');
-    // Find date column with strict priority: signing-date patterns first, then generic date.
-    // Do NOT fall back to 'thang' (month column) — normVi("Tháng") = "thang" would be matched
-    // by a loose 'thang' pattern and produce Invalid Date when used as a date filter.
-    const colNgay = h.find(c => { const n = normVi(c); return n.includes('ngaycoc') || n.includes('ngayky') || n.includes('ngayttdc') || n.includes('ngayvbtt'); })
-      || h.find(c => { const n = normVi(c); return (n.includes('ngay') || n.includes('date')) && !n.includes('thang') && !n.includes('tuan'); })
+    // Ưu tiên tuyệt đối: "Ngày cọc" (cột E) → dùng làm mốc tính doanh số
+    // Pass 1: tìm ĐÚNG cột "Ngày cọc" (normVi → "ngaycoc")
+    const colNgayCocStrict = h.find(c => normVi(c) === 'ngaycoc')
+      || h.find(c => normVi(c).startsWith('ngaycoc'));
+    // Pass 2: fallback sang "Ngày ký TTĐC/VBTT" (cột F) nếu không có cột E
+    const colNgayFallback = h.find(c => { const n = normVi(c); return n.includes('ngayttdc') || n.includes('ngayvbtt') || n.includes('ngayky'); })
+      || h.find(c => { const n = normVi(c); return (n.includes('ngay') || n.includes('date')) && !n.includes('thang') && !n.includes('tuan') && !n.includes('coc'); })
       || null;
+    const colNgay = colNgayCocStrict || colNgayFallback;
 
     console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colDuAn, colNgay });
 
@@ -838,22 +841,24 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
         const gTri = colGiaTri ? num(v[colGiaTri]) : 0;
         if (!gTri || gTri <= 0) return null;
 
+        // Chỉ lấy hàng CÓ Ngày cọc — đây là điều kiện bắt buộc để coi là "Ký HĐ"
+        // Hàng chưa có Ngày cọc = chưa chốt deal → bỏ qua
+        const rawNgayCoc = colNgay ? str(v[colNgay]) : '';
+        if (colNgay && !rawNgayCoc) return null;
+
         // Date filter — parse as Vietnamese DD/MM/YYYY (handles D/M/YYYY with single digits too)
-        if ((fromDate || toDate) && colNgay) {
-          const rawDate = str(v[colNgay]);
-          if (rawDate) {
-            let d: Date;
-            if (rawDate.includes('/')) {
-              const parts = rawDate.split('/');
-              // parts: [DD, MM, YYYY] in Vietnamese format
-              d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-            } else {
-              d = new Date(rawDate);
-            }
-            if (!isNaN(d.getTime())) {
-              if (fromDate && d < fromDate) return null;
-              if (toDate && d > toDate) return null;
-            }
+        if ((fromDate || toDate) && colNgay && rawNgayCoc) {
+          let d: Date;
+          if (rawNgayCoc.includes('/')) {
+            const parts = rawNgayCoc.split('/');
+            // parts: [DD, MM, YYYY] in Vietnamese format
+            d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+          } else {
+            d = new Date(rawNgayCoc);
+          }
+          if (!isNaN(d.getTime())) {
+            if (fromDate && d < fromDate) return null;
+            if (toDate && d > toDate) return null;
           }
         }
 
