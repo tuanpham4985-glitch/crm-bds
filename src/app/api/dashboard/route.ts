@@ -264,8 +264,14 @@ export async function GET(request: NextRequest) {
     const toWithBuffer = new Date(dateRange.to);
     toWithBuffer.setDate(toWithBuffer.getDate() + 1);
 
-    // Filter current period — PRIMARY: thang column (timezone-safe); FALLBACK: ngay_cap_nhat
+    // Filter current period — PRIMARY: ngay_coc; FALLBACK 1: thang column (timezone-safe); FALLBACK 2: ngay_cap_nhat
     const currentPipelines = allPipelines.filter(pl => {
+      if (pl.ngay_coc) {
+        const d = safeParseDate(pl.ngay_coc);
+        if (d && !isNaN(d.getTime())) {
+          return d >= dateRange.from && d <= toWithBuffer;
+        }
+      }
       // Primary: match by thang (format YYYY-MM or MM-YYYY) — no timezone issues
       // Only use thang as primary if it actually matches a known key format.
       // If thang is present but in an unrecognized format (e.g. "6/2026", "6", "T6-2026"),
@@ -287,6 +293,19 @@ export async function GET(request: NextRequest) {
     // Filter previous period for comparison
     const prevThangKeys = compare ? buildThangKeysInRange(dateRange.prevFrom, dateRange.prevTo) : new Set<string>();
     const prevPipelines = compare ? allPipelines.filter(pl => {
+      if (pl.ngay_coc) {
+        const d = safeParseDate(pl.ngay_coc);
+        if (d && !isNaN(d.getTime())) {
+          if (compare === 'yoy') {
+            const yoyFrom = new Date(dateRange.from);
+            yoyFrom.setFullYear(yoyFrom.getFullYear() - 1);
+            const yoyTo = new Date(dateRange.to);
+            yoyTo.setFullYear(yoyTo.getFullYear() - 1);
+            return d >= yoyFrom && d <= yoyTo;
+          }
+          return d >= dateRange.prevFrom && d <= dateRange.prevTo;
+        }
+      }
       if (pl.ngay_cap_nhat) {
         const d = safeParseDate(pl.ngay_cap_nhat);
         if (d && !isNaN(d.getTime())) {
@@ -359,13 +378,27 @@ export async function GET(request: NextRequest) {
     const thangMap = new Map<string, number>();
     const thangPrevMap = new Map<string, number>();
     daKy.forEach(pl => {
-      if (pl.thang) {
-        thangMap.set(pl.thang, (thangMap.get(pl.thang) || 0) + pl.gia_tri_thuc_te);
+      let t = pl.thang;
+      if (pl.ngay_coc) {
+        const d = safeParseDate(pl.ngay_coc);
+        if (d && !isNaN(d.getTime())) {
+          t = `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+        }
+      }
+      if (t) {
+        thangMap.set(t, (thangMap.get(t) || 0) + pl.gia_tri_thuc_te);
       }
     });
     prevDaKy.forEach(pl => {
-      if (pl.thang) {
-        thangPrevMap.set(pl.thang, (thangPrevMap.get(pl.thang) || 0) + pl.gia_tri_thuc_te);
+      let t = pl.thang;
+      if (pl.ngay_coc) {
+        const d = safeParseDate(pl.ngay_coc);
+        if (d && !isNaN(d.getTime())) {
+          t = `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+        }
+      }
+      if (t) {
+        thangPrevMap.set(t, (thangPrevMap.get(t) || 0) + pl.gia_tri_thuc_te);
       }
     });
 

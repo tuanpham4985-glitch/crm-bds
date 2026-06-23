@@ -80,6 +80,7 @@ model Pipeline {
   hoa_hong         Float    @default(0)
   tien_hoa_hong    Float    @default(0)
   ngay_cap_nhat    String?
+  ngay_coc         String?
   thang            String?
   ma_can           String?
   loai_can         String?

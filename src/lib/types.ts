@@ -116,6 +116,7 @@ export interface Pipeline {
   hoa_hong: number;
   tien_hoa_hong: number;
   ngay_cap_nhat: string;
+  ngay_coc?: string;
   thang: string;
 
   // Các trường bổ sung đồng bộ từ Victory

@@ -567,6 +567,14 @@ export async function getPipeline(): Promise<Pipeline[]> {
           if (aliasKey) return str(v[aliasKey]);
         }
 
+        if (colName === 'ngay_coc') {
+          const aliasKey = Object.keys(v).find(k => {
+            const ck = k.replace(/\s+/g, '').toLowerCase();
+            return ck === 'ngaycoc' || ck === 'ngàycọc' || ck === 'ngay_coc' || ck.includes('ngàycọc');
+          });
+          if (aliasKey) return str(v[aliasKey]);
+        }
+
         // Fallback backward-compatibility
         const idx = [
           'id_pipeline', 'id_khach_hang', 'giai_doan', 'gia_tri_thuc_te',
@@ -633,6 +641,7 @@ export async function getPipeline(): Promise<Pipeline[]> {
         hoa_hong: getNum('hoa_hong'),
         tien_hoa_hong: getNum('tien_hoa_hong'),
         ngay_cap_nhat: ngayCapNhat,
+        ngay_coc: getVal('ngay_coc'),
         thang,
 
         // Các cột mới đồng bộ từ Victory
