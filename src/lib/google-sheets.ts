@@ -590,6 +590,14 @@ export async function getPipeline(): Promise<Pipeline[]> {
         const actualKey = Object.keys(v).find(k => k.replace(/\s+/g, '').toLowerCase() === cleanCol);
         if (actualKey) return num(v[actualKey]);
 
+        if (colName === 'gia_tri_thuc_te') {
+          const aliasKey = Object.keys(v).find(k => {
+            const ck = k.replace(/\s+/g, '').toLowerCase();
+            return ck === 'giatrithucte' || ck === 'giatinhhh' || ck.includes('giátínhhh') || ck.includes('giatinhhh');
+          });
+          if (aliasKey) return num(v[aliasKey]);
+        }
+
         if (colName === 'thuong_nong') {
           const aliasKey = Object.keys(v).find(k => {
             const ck = k.replace(/\s+/g, '').toLowerCase();
@@ -805,7 +813,7 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
       return null;
     };
 
-    const colGiaTri  = findCol('giatri', 'doanhso', 'giaban', 'tongtien', 'giatrihd', 'doanhso');
+    const colGiaTri  = findCol('giatinhhh', 'giatri', 'doanhso', 'giaban', 'tongtien', 'giatrihd', 'doanhso');
     // Prioritize exact "Loại căn" column (apartment type codes: 1BR, 2BR, etc.)
     // before broader "Loại hình" patterns, to avoid grabbing the wrong column
     const colLoaiHinh = h.find(c => normVi(c) === 'loaican')
@@ -818,7 +826,7 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
     // Find date column with strict priority: signing-date patterns first, then generic date.
     // Do NOT fall back to 'thang' (month column) — normVi("Tháng") = "thang" would be matched
     // by a loose 'thang' pattern and produce Invalid Date when used as a date filter.
-    const colNgay = h.find(c => { const n = normVi(c); return n.includes('ngayky') || n.includes('ngayttdc') || n.includes('ngayvbtt'); })
+    const colNgay = h.find(c => { const n = normVi(c); return n.includes('ngaycoc') || n.includes('ngayky') || n.includes('ngayttdc') || n.includes('ngayvbtt'); })
       || h.find(c => { const n = normVi(c); return (n.includes('ngay') || n.includes('date')) && !n.includes('thang') && !n.includes('tuan'); })
       || null;
 

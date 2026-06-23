@@ -327,14 +327,14 @@ export async function GET(request: NextRequest) {
     console.log(`[Dashboard] currentThangKeys: ${[...currentThangKeys].join(', ')}`);
 
     // KPI calculations
-    const daKy = currentPipelines.filter(pl => pl.giai_doan === 'Ký HĐ');
+    const daKy = currentPipelines.filter(pl => pl.giai_doan === 'Ký HĐ' || (pl.ngay_coc && pl.ngay_coc.trim() !== ''));
     const dangXuLy = currentPipelines.filter(pl => 
-      !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan)
+      !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan) && !(pl.ngay_coc && pl.ngay_coc.trim() !== '')
     );
 
-    const prevDaKy = prevPipelines.filter(pl => pl.giai_doan === 'Ký HĐ');
+    const prevDaKy = prevPipelines.filter(pl => pl.giai_doan === 'Ký HĐ' || (pl.ngay_coc && pl.ngay_coc.trim() !== ''));
     const prevDangXuLy = prevPipelines.filter(pl => 
-      !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan)
+      !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan) && !(pl.ngay_coc && pl.ngay_coc.trim() !== '')
     );
 
     // Doanh thu theo sale — loại trừ "Đối tác" (không tính vào bảng xếp hạng nội bộ)
