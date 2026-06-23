@@ -1,14 +1,20 @@
 // ============================================================
 // CRM BĐS — DataSource Factory
 //
-// Đây là entry point duy nhất để lấy repository.
-// API routes import từ đây — không import google-sheets.ts trực tiếp.
+// Entry point duy nhất cho mọi data access.
+// API routes import từ đây — KHÔNG import google-sheets.ts trực tiếp.
 //
-// Feature flag (env PG_ENABLED_MODULES) quyết định adapter nào được dùng.
-// Default: Google Sheets (an toàn, rollback = xóa module khỏi env var)
+// Lifecycle per module:
+//   1. (default)            → Google Sheets only
+//   2. SHADOW_WRITE_MODULES → GS primary + PG shadow write (Phase 1)
+//   3. PG_ENABLED_MODULES   → PostgreSQL primary (Phase 2+)
+//
+// Rollback: xóa module khỏi env var → revert ngay, không cần deploy
 // ============================================================
 
 import { isPostgresEnabled } from '../db/feature-flags';
+import { isShadowWriteEnabled } from '../db/shadow-write-flags';
+import { createShadowRepository } from './shadow-write';
 
 // ── Google Sheets adapters ────────────────────────────────────
 import { GoogleSheetsEmployeeRepository }         from './google-sheets/employee.repo';
@@ -21,16 +27,16 @@ import { GoogleSheetsAttendanceOutsideRepository } from './google-sheets/attenda
 import { GoogleSheetsPayrollRepository }           from './google-sheets/payroll.repo';
 
 // ── PostgreSQL adapters ───────────────────────────────────────
-import { PostgresEmployeeRepository }         from './postgresql/employee.repo';
-import { PostgresCustomerRepository }          from './postgresql/customer.repo';
-import { PostgresPipelineRepository }          from './postgresql/pipeline.repo';
-import { PostgresProjectRepository }           from './postgresql/project.repo';
-import { PostgresCrmTaskRepository }           from './postgresql/crm-task.repo';
-import { PostgresContractRepository }          from './postgresql/contract.repo';
-import { PostgresAttendanceOutsideRepository } from './postgresql/attendance-outside.repo';
-import { PostgresPayrollRepository }           from './postgresql/payroll.repo';
+import { PostgresEmployeeRepository }              from './postgresql/employee.repo';
+import { PostgresCustomerRepository }              from './postgresql/customer.repo';
+import { PostgresPipelineRepository }              from './postgresql/pipeline.repo';
+import { PostgresProjectRepository }               from './postgresql/project.repo';
+import { PostgresCrmTaskRepository }               from './postgresql/crm-task.repo';
+import { PostgresContractRepository }              from './postgresql/contract.repo';
+import { PostgresAttendanceOutsideRepository }     from './postgresql/attendance-outside.repo';
+import { PostgresPayrollRepository }               from './postgresql/payroll.repo';
 
-// ── Re-export interfaces for convenience ─────────────────────
+// ── Re-export interfaces ──────────────────────────────────────
 export type {
   IEmployeeRepository,
   ICustomerRepository,
@@ -45,52 +51,87 @@ export type {
   BangLuongUpdateFields,
 } from './interfaces';
 
+// ── Helpers ───────────────────────────────────────────────────
+//
+// resolve(module, gs, pg):
+//   PG_ENABLED  → pg
+//   SHADOW      → shadow(gs, pg)
+//   default     → gs
+//
+function resolve<T extends object>(
+  module: Parameters<typeof isPostgresEnabled>[0],
+  gs: () => T,
+  pg: () => T,
+): T {
+  if (isPostgresEnabled(module))    return pg();
+  if (isShadowWriteEnabled(module)) return createShadowRepository(module, gs(), pg());
+  return gs();
+}
+
 // ── Factory functions ─────────────────────────────────────────
 
 export function getEmployeeRepository() {
-  return isPostgresEnabled('hrm') || isPostgresEnabled('auth')
-    ? new PostgresEmployeeRepository()
-    : new GoogleSheetsEmployeeRepository();
+  // 'hrm' flag controls employee read/write; 'auth' only needs read (covered by hrm flag)
+  const module = 'hrm';
+  return resolve(
+    module,
+    () => new GoogleSheetsEmployeeRepository(),
+    () => new PostgresEmployeeRepository(),
+  );
 }
 
 export function getCustomerRepository() {
-  return isPostgresEnabled('crm')
-    ? new PostgresCustomerRepository()
-    : new GoogleSheetsCustomerRepository();
+  return resolve(
+    'crm',
+    () => new GoogleSheetsCustomerRepository(),
+    () => new PostgresCustomerRepository(),
+  );
 }
 
 export function getPipelineRepository() {
-  return isPostgresEnabled('crm')
-    ? new PostgresPipelineRepository()
-    : new GoogleSheetsPipelineRepository();
+  return resolve(
+    'crm',
+    () => new GoogleSheetsPipelineRepository(),
+    () => new PostgresPipelineRepository(),
+  );
 }
 
 export function getProjectRepository() {
-  return isPostgresEnabled('crm')
-    ? new PostgresProjectRepository()
-    : new GoogleSheetsProjectRepository();
+  return resolve(
+    'crm',
+    () => new GoogleSheetsProjectRepository(),
+    () => new PostgresProjectRepository(),
+  );
 }
 
 export function getCrmTaskRepository() {
-  return isPostgresEnabled('crm')
-    ? new PostgresCrmTaskRepository()
-    : new GoogleSheetsCrmTaskRepository();
+  return resolve(
+    'crm',
+    () => new GoogleSheetsCrmTaskRepository(),
+    () => new PostgresCrmTaskRepository(),
+  );
 }
 
 export function getContractRepository() {
-  return isPostgresEnabled('contracts')
-    ? new PostgresContractRepository()
-    : new GoogleSheetsContractRepository();
+  return resolve(
+    'contracts',
+    () => new GoogleSheetsContractRepository(),
+    () => new PostgresContractRepository(),
+  );
 }
 
 export function getAttendanceOutsideRepository() {
-  return isPostgresEnabled('attendance')
-    ? new PostgresAttendanceOutsideRepository()
-    : new GoogleSheetsAttendanceOutsideRepository();
+  return resolve(
+    'attendance',
+    () => new GoogleSheetsAttendanceOutsideRepository(),
+    () => new PostgresAttendanceOutsideRepository(),
+  );
 }
 
 export function getPayrollRepository() {
-  return isPostgresEnabled('payroll')
-    ? new PostgresPayrollRepository()
-    : new GoogleSheetsPayrollRepository();
+  return resolve(
+    'payroll',
+    () => new GoogleSheetsPayrollRepository(),
+    () => new PostgresPayrollRepository(),
+  );
 }
