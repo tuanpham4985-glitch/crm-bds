@@ -1,0 +1,484 @@
+// ============================================================
+// CRM BĐS — Prisma Schema
+// Maps 1:1 to existing Google Sheets tabs
+// Migration-ready: keep existing string IDs from Sheets
+// ============================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── CRM CORE ────────────────────────────────────────────────
+
+model NhanVien {
+  id_nhan_vien             String   @id
+  ho_ten                   String
+  so_dien_thoai            String?
+  email                    String   @unique
+  vai_tro                  String   @default("Sale")
+  employee_type            String?
+  gioi_tinh                String?
+  khu_vuc                  String?
+  phong_KD                 String?
+  ql_truc_tiep             String?
+  so_cccd                  String?
+  ngay_cap                 String?
+  noi_cap                  String?
+  HKTT                     String?
+  ngay_sinh                String?
+  ma_so_thue               String?
+  so_nguoi_phu_thuoc       Int?
+  trang_thai               String   @default("đang làm")
+  ngay_tao                 String
+  avatar_url               String?
+  mat_khau                 String?
+  so_tk_ngan_hang          String?
+  ten_ngan_hang_thu_huong  String?
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+
+  hop_dongs   HopDong[]
+
+  @@map("nhan_vien")
+}
+
+model KhachHang {
+  id_khach_hang   String   @id
+  ngay_tao        String
+  ten_KH          String
+  so_dien_thoai   String?
+  email           String?
+  nguon           String?
+  nhu_cau         String?
+  ghi_chu         String?
+  sale_phu_trach  String
+  label_khach     String?
+  du_an           String?
+  sale_lan_1      String?
+  ghi_chu_lan_1   String?
+  sale_lan_2      String?
+  ghi_chu_lan_2   String?
+  sale_lan_3      String?
+  ghi_chu_lan_3   String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  pipelines       Pipeline[]
+
+  @@map("khach_hang")
+}
+
+model Pipeline {
+  id_pipeline      String   @id
+  id_khach_hang    String
+  giai_doan        String
+  gia_tri_thuc_te  Float    @default(0)
+  sale_phu_trach   String
+  id_du_an         String?
+  ten_du_an        String?
+  hoa_hong         Float    @default(0)
+  tien_hoa_hong    Float    @default(0)
+  ngay_cap_nhat    String?
+  thang            String?
+  ma_can           String?
+  loai_can         String?
+  gdda             String?
+  gdkd             String?
+  phong_kd         String?
+  ty_le_tra_sale   Float?
+  ty_le_kh         Float?
+  ty_le_gdda       Float?
+  ty_le_gdkd       Float?
+  ty_le_mkt        Float?
+  phi_tra_sale     Float?
+  phi_tra_kh       Float?
+  phi_tra_gdda     Float?
+  phi_tra_gdkd     Float?
+  phi_tra_mkt      Float?
+  phi_admin        Float?
+  loi_nhuan        Float?
+  thuong_nong      Float?
+  tkkd             String?
+  phi_tkkd         Float?
+  ho_ten_kh        String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  khach_hang       KhachHang? @relation(fields: [id_khach_hang], references: [id_khach_hang])
+  cong_viecs       CongViec[]
+
+  @@map("pipeline")
+}
+
+model DuAn {
+  id_du_an           String   @id
+  ma_du_an           String?
+  ten_du_an          String
+  hien_thi           Int      @default(1)
+  hoa_hong_mac_dinh  Float    @default(0)
+  link_tai_lieu      String?
+  chu_dau_tu         String?
+  link_du_an         String?
+  stacking_config    String?
+  truong_nhom        String?
+  ds_sale            String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  @@map("du_an")
+}
+
+model CongViec {
+  id_cong_viec    String   @id
+  ngay_tao        String
+  ghi_chu         String?
+  id_pipeline     String
+  trang_thai      String
+  ngay_hen        String?
+  sale_phu_trach  String
+  ket_qua         String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  pipeline        Pipeline? @relation(fields: [id_pipeline], references: [id_pipeline])
+
+  @@map("cong_viec")
+}
+
+model HopDong {
+  id              String   @id
+  id_nhan_vien    String
+  ten_nhan_vien   String?
+  so_hop_dong     String   @unique
+  phong_KD        String?
+  employee_type   String?
+  department      String
+  contract_type   String
+  template_file   String?
+  ngay_bat_dau    String
+  ngay_ket_thuc   String?
+  luong_co_ban    Float    @default(0)
+  ghi_chu         String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  nhan_vien       NhanVien? @relation(fields: [id_nhan_vien], references: [id_nhan_vien])
+
+  @@map("hop_dong")
+}
+
+// ─── PAYROLL ─────────────────────────────────────────────────
+
+model BangLuong {
+  id                        String   @id
+  id_nhan_vien              String
+  thang                     Int
+  nam                       Int
+  luong_co_ban              Float    @default(0)
+  doanh_thu                 Float    @default(0)
+  hoa_hong                  Float    @default(0)
+  thuong                    Float    @default(0)
+  phat                      Float    @default(0)
+  so_ngay_cong_chuan        Float    @default(0)
+  so_ngay_lam_viec_thuc_te  Float    @default(0)
+  so_ngay_nghi_khong_luong  Float    @default(0)
+  so_gio_ot                 Float    @default(0)
+  salary_by_day             Float    @default(0)
+  ot_pay                    Float    @default(0)
+  bao_hiem                  Float    @default(0)
+  bh_company                Float    @default(0)
+  thue                      Float    @default(0)
+  tong_luong                Float    @default(0)
+  gross                     Float?
+  isProbation               Boolean  @default(false)
+  isCollaborator            Boolean  @default(false)
+  isIntern                  Boolean  @default(false)
+  trang_thai                String   @default("draft")
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+
+  @@unique([id_nhan_vien, thang, nam])
+  @@map("bang_luong")
+}
+
+model PayrollRecord {
+  id                  String   @id
+  id_nhan_vien        String
+  thang               Int
+  nam                 Int
+  gross               Float    @default(0)
+  total_deduction     Float    @default(0)
+  net                 Float    @default(0)
+  luong_dong_bh       Float    @default(0)
+  thu_nhap_chiu_thue  Float    @default(0)
+  tong_chi_phi        Float    @default(0)
+  trang_thai          String   @default("draft")
+  locked_at           String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  items               PayrollItemRecord[]
+
+  @@unique([id_nhan_vien, thang, nam])
+  @@map("payroll_records")
+}
+
+model PayrollItemRecord {
+  id           String   @id
+  payroll_id   String
+  loai_khoan   String
+  nhom         String
+  so_tien      Float    @default(0)
+  ghi_chu      String?
+  tinh_bhxh    Boolean  @default(false)
+  tinh_thue    Boolean  @default(false)
+
+  payroll      PayrollRecord @relation(fields: [payroll_id], references: [id])
+
+  @@map("payroll_items")
+}
+
+model PayrollAdjustment {
+  id           String   @id
+  id_nhan_vien String
+  thang        Int
+  nam          Int
+  type         String
+  amount       Float    @default(0)
+  reason       String?
+  created_at   DateTime @default(now())
+
+  @@map("payroll_adjustments")
+}
+
+// ─── ATTENDANCE ──────────────────────────────────────────────
+
+model ChamCongNgoai {
+  id                String   @id
+  id_nhan_vien      String
+  ho_ten            String?
+  ngay              String
+  gio_bat_dau       String
+  gio_ket_thuc      String
+  du_an_khach_hang  String
+  dia_diem          String?
+  ghi_chu           String?
+  hinh_anh          String?
+  vi_tri_gps        String?
+  ql_truc_tiep      String?
+  trang_thai        String   @default("cho_duyet")
+  nguoi_duyet       String?
+  ghi_chu_duyet     String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@map("cham_cong_ngoai")
+}
+
+// ─── TASK MANAGEMENT ─────────────────────────────────────────
+// NOTE: IDs come from UUID format already used in TM sheets
+
+model TmUser {
+  user_id        String    @id @default(uuid())
+  employee_code  String    @unique
+  full_name      String
+  email          String    @unique
+  phone          String?
+  department_id  String
+  team_id        String?
+  role           String    @default("staff")
+  position       String?
+  avatar_url     String?
+  zalo_id        String?
+  is_active      Boolean   @default(true)
+  last_active_at DateTime?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  owned_tasks     TmTask[]         @relation("task_owner")
+  created_tasks   TmTask[]         @relation("task_creator")
+  notifications   TmNotification[]
+  activity_logs   TmActivityLog[]  @relation("user_logs")
+
+  @@map("tm_users")
+}
+
+model TmDepartment {
+  dept_id        String   @id @default(uuid())
+  name           String
+  code           String   @unique
+  manager_id     String?
+  parent_dept_id String?
+  description    String?
+  is_active      Boolean  @default(true)
+  sort_order     Int      @default(0)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  tasks          TmTask[]
+
+  @@map("tm_departments")
+}
+
+model TmProject {
+  project_id     String    @id @default(uuid())
+  name           String
+  code           String?
+  description    String?
+  owner_id       String
+  department_ids String?
+  member_ids     String?
+  status         String    @default("active")
+  start_date     String?
+  end_date       String?
+  budget         Float?
+  tags           String?
+  created_by     String
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  archived_at    DateTime?
+
+  tasks          TmTask[]
+
+  @@map("tm_projects")
+}
+
+model TmTask {
+  task_id           String    @id @default(uuid())
+  task_code         String    @unique
+  title             String
+  objective         String?
+  description       String?
+  project_id        String?
+  department_id     String?
+  owner_id          String
+  collaborator_ids  String?
+  priority          String    @default("medium")
+  status            String    @default("todo")
+  progress_pct      Int       @default(0)
+  start_date        String?
+  due_date          String?
+  estimated_hours   Float?
+  actual_hours      Float     @default(0)
+  kpi_target        String?
+  kpi_actual        String?
+  approval_level    Int       @default(1)
+  approval_status   String    @default("not_required")
+  approved_by       String?
+  approved_at       String?
+  rejection_reason  String?
+  tags              String?
+  email_reminder    String?
+  email_reminder_sent String?
+  created_by        String
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  closed_at         DateTime?
+  deleted_at        DateTime?
+
+  project      TmProject?    @relation(fields: [project_id], references: [project_id])
+  department   TmDepartment? @relation(fields: [department_id], references: [dept_id])
+  owner        TmUser?       @relation("task_owner", fields: [owner_id], references: [user_id])
+  creator      TmUser?       @relation("task_creator", fields: [created_by], references: [user_id])
+  subtasks     TmSubtask[]
+
+  @@map("tm_tasks")
+}
+
+model TmSubtask {
+  subtask_id       String    @id @default(uuid())
+  subtask_code     String    @unique
+  parent_task_id   String
+  title            String
+  objective        String?
+  description      String?
+  owner_id         String
+  collaborator_ids String?
+  priority         String    @default("medium")
+  status           String    @default("todo")
+  progress_pct     Int       @default(0)
+  start_date       String?
+  due_date         String?
+  estimated_hours  Float?
+  actual_hours     Float     @default(0)
+  created_by       String
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  deleted_at       DateTime?
+
+  parent_task      TmTask    @relation(fields: [parent_task_id], references: [task_id])
+
+  @@map("tm_subtasks")
+}
+
+// Polymorphic: task_id can ref TmTask.task_id OR TmSubtask.subtask_id
+// task_type discriminator: 'task' | 'subtask'
+model TmChecklist {
+  checklist_id  String    @id @default(uuid())
+  task_id       String
+  task_type     String    @default("task")
+  title         String
+  is_done       Boolean   @default(false)
+  done_by       String?
+  done_at       DateTime?
+  sort_order    Int       @default(0)
+  created_at    DateTime  @default(now())
+
+  @@map("tm_checklists")
+}
+
+model TmComment {
+  comment_id        String    @id @default(uuid())
+  task_id           String
+  task_type         String    @default("task")
+  user_id           String
+  body              String
+  mentions          String?
+  attachment_urls   String?
+  parent_comment_id String?
+  is_deleted        Boolean   @default(false)
+  created_at        DateTime  @default(now())
+  edited_at         DateTime?
+
+  @@map("tm_comments")
+}
+
+model TmNotification {
+  notif_id   String    @id @default(uuid())
+  user_id    String
+  task_id    String?
+  type       String
+  title      String
+  body       String?
+  channel    String    @default("inapp")
+  status     String    @default("pending")
+  sent_at    DateTime?
+  read_at    DateTime?
+  created_at DateTime  @default(now())
+
+  user       TmUser    @relation(fields: [user_id], references: [user_id])
+
+  @@map("tm_notifications")
+}
+
+model TmActivityLog {
+  log_id     String   @id @default(uuid())
+  task_id    String?
+  task_type  String?
+  user_id    String
+  action     String
+  old_value  String?
+  new_value  String?
+  metadata   String?
+  ip_address String?
+  created_at DateTime @default(now())
+
+  user       TmUser   @relation("user_logs", fields: [user_id], references: [user_id])
+
+  @@map("tm_activity_logs")
+}

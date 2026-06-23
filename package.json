@@ -7,12 +7,14 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "prisma generate",
     "migrate": "node scripts/migrate-to-gsheets.mjs",
     "repair": "node scripts/repair-gsheets.mjs"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
     "@hello-pangea/dnd": "^18.0.1",
+    "@prisma/adapter-pg": "^7.8.0",
     "@types/nodemailer": "^8.0.0",
     "date-fns": "^4.1.0",
     "docx": "^9.6.1",
@@ -24,6 +26,7 @@
     "lucide-react": "^1.7.0",
     "next": "16.2.2",
     "nodemailer": "^8.0.10",
+    "pg": "^8.22.0",
     "pizzip": "^3.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -35,11 +38,14 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
+    "@prisma/client": "^7.8.0",
     "@types/node": "^20.19.39",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "prisma": "^7.8.0",
     "typescript": "^5",
     "typescript-eslint": "^8.61.1"
   }
