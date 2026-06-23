@@ -12,10 +12,6 @@
 // Requires DATABASE_URL in .env.local
 // ============================================================
 
-import 'dotenv/config';
-import { config } from 'dotenv';
-config({ path: '.env.local' });
-
 import { prisma } from '../src/lib/db/client';
 import {
   getNhanVien,
@@ -496,8 +492,52 @@ async function syncTm() {
       });
       synced++;
     } catch (e) {
-      err('tm:tasks', `upsert ${t.task_id}`, e);
-      errors++;
+      // Retry without project_id if FK violation (orphan project reference in GS)
+      const msg = e instanceof Error ? e.message : '';
+      if (msg.includes('tm_tasks_project_id_fkey')) {
+        try {
+          await prisma.tmTask.upsert({
+            where:  { task_id: t.task_id },
+            create: {
+              task_id:         t.task_id,
+              task_code:       t.task_code || t.task_id,
+              title:           t.title || '',
+              objective:       t.objective,
+              description:     t.description,
+              project_id:      undefined,
+              department_id:   t.department_id || undefined,
+              owner_id:        t.owner_id || 'system',
+              collaborator_ids: t.collaborator_ids,
+              priority:        t.priority || 'medium',
+              status:          t.status || 'todo',
+              progress_pct:    parseInt(t.progress_pct || '0', 10),
+              start_date:      t.start_date,
+              due_date:        t.due_date,
+              estimated_hours: t.estimated_hours ? parseFloat(t.estimated_hours) : undefined,
+              actual_hours:    parseFloat(t.actual_hours || '0'),
+              approval_level:  parseInt(t.approval_level || '1', 10),
+              approval_status: t.approval_status || 'not_required',
+              approved_by:     t.approved_by || undefined,
+              approved_at:     t.approved_at || undefined,
+              rejection_reason: t.rejection_reason || undefined,
+              tags:            t.tags,
+              email_reminder:  t.email_reminder,
+              email_reminder_sent: t.email_reminder_sent,
+              created_by:      t.created_by || 'system',
+              deleted_at:      t.deleted_at ? new Date(t.deleted_at) : undefined,
+            },
+            update: { title: t.title, status: t.status, priority: t.priority },
+          });
+          synced++;
+          console.warn(`[sync:tm:tasks] orphan project_id cleared for ${t.task_id} (was: ${t.project_id})`);
+        } catch (e2) {
+          err('tm:tasks', `retry ${t.task_id}`, e2);
+          errors++;
+        }
+      } else {
+        err('tm:tasks', `upsert ${t.task_id}`, e);
+        errors++;
+      }
     }
   }
   log('tm', `Tasks: ${synced} synced`);

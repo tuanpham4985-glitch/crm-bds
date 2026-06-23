@@ -12,10 +12,6 @@
 // Output: báo cáo divergence, exit code 1 nếu có sai lệch
 // ============================================================
 
-import 'dotenv/config';
-import { config } from 'dotenv';
-config({ path: '.env.local' });
-
 import { prisma } from '../src/lib/db/client';
 import {
   getNhanVien,

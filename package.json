@@ -11,9 +11,9 @@
     "migrate": "node scripts/migrate-to-gsheets.mjs",
     "repair": "node scripts/repair-gsheets.mjs",
     "db:migrate": "prisma migrate dev",
-    "db:sync": "ts-node scripts/sync-sheets-to-pg.ts",
-    "db:verify": "ts-node scripts/verify-data-integrity.ts",
-    "db:sync:tm": "ts-node scripts/sync-sheets-to-pg.ts --module=tm",
+    "db:sync": "tsx --env-file=.env.local scripts/sync-sheets-to-pg.ts",
+    "db:verify": "tsx --env-file=.env.local scripts/verify-data-integrity.ts",
+    "db:sync:tm": "tsx --env-file=.env.local scripts/sync-sheets-to-pg.ts --module=tm",
     "db:push": "prisma db push"
   },
   "dependencies": {
@@ -52,6 +52,7 @@
     "eslint-config-next": "16.2.2",
     "prisma": "^7.8.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
     "typescript": "^5",
     "typescript-eslint": "^8.61.1"
   }
