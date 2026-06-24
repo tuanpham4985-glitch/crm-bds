@@ -798,7 +798,12 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
       return [];
     }
 
-    await sheet.loadHeaderRow();
+    // Headers are at row 3 (rows 1–2 are decorative/merged). Same layout as getTinhTrangGiaoDich.
+    try {
+      await sheet.loadHeaderRow(3);
+    } catch {
+      await sheet.loadHeaderRow(1);
+    }
     const rows = await sheet.getRows();
     const h = sheet.headerValues;
 
@@ -833,7 +838,7 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
       || null;
     const colNgay = colNgayCocStrict || colNgayFallback;
 
-    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colDuAn, colNgay });
+    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colDuAn, colNgayCocStrict, colNgayFallback });
 
     return rows
       .map(row => {
@@ -841,17 +846,18 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
         const gTri = colGiaTri ? num(v[colGiaTri]) : 0;
         if (!gTri || gTri <= 0) return null;
 
-        // Chỉ lấy hàng CÓ Ngày cọc — đây là điều kiện bắt buộc để coi là "Ký HĐ"
-        // Hàng chưa có Ngày cọc = chưa chốt deal → bỏ qua
-        const rawNgayCoc = colNgay ? str(v[colNgay]) : '';
-        if (colNgay && !rawNgayCoc) return null;
+        // Per-row fallback: ưu tiên cột E "Ngày cọc"; nếu cột E trống thì dùng cột F "Ngày ký TTĐC"
+        // Hàng không có giá trị ở cả 2 cột = chưa chốt deal → bỏ qua
+        const rawStrict   = colNgayCocStrict ? str(v[colNgayCocStrict]) : '';
+        const rawFallback = colNgayFallback  ? str(v[colNgayFallback])  : '';
+        const rawNgayCoc  = rawStrict || rawFallback;
+        if (!rawNgayCoc) return null;
 
         // Date filter — parse as Vietnamese DD/MM/YYYY (handles D/M/YYYY with single digits too)
-        if ((fromDate || toDate) && colNgay && rawNgayCoc) {
+        if (fromDate || toDate) {
           let d: Date;
           if (rawNgayCoc.includes('/')) {
             const parts = rawNgayCoc.split('/');
-            // parts: [DD, MM, YYYY] in Vietnamese format
             d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
           } else {
             d = new Date(rawNgayCoc);
@@ -869,7 +875,7 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
           gia_tri:    gTri,
           chi_nhanh:  colChiNhanh ? str(v[colChiNhanh]) : '',
           phong_kd:   colPhongKD  ? str(v[colPhongKD])  : '',
-          ngay_ky:    colNgay     ? str(v[colNgay])     : '',
+          ngay_ky:    rawNgayCoc,
         } as TongHopRow;
       })
       .filter((r): r is TongHopRow => r !== null);
