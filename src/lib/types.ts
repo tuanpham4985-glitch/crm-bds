@@ -290,6 +290,7 @@ export interface DashboardData {
   crm_totals?: CrmTotals;
   tonghop?: TongHopStats;
   nhan_su_bien_dong?: NhanSuBienDongItem[];
+  report_mode?: 'standard' | 'race' | 'default';
 }
 
 // === FILTERS ===

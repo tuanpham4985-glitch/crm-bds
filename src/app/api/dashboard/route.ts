@@ -416,6 +416,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'month';
     const compare = searchParams.get('compare') || '';
+    const reportModeParam = searchParams.get('report_mode') || '';
+    const reportMode: 'default' | 'standard' | 'race' =
+      reportModeParam === 'standard' || reportModeParam === 'race'
+        ? reportModeParam
+        : 'default';
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
 
@@ -468,11 +473,13 @@ export async function GET(request: NextRequest) {
       dateRange.to = new Date(toParam + 'T23:59:59');
     }
 
-    // Fetch tonghop data with date filter (silent fail if sheet not configured)
-    try {
-      tongHopRows = await getTongHopGiaoDich(dateRange.from, dateRange.to);
-    } catch {
-      tongHopRows = [];
+    // Fetch tonghop data with date filter when needed (silent fail if sheet not configured)
+    if (reportMode !== 'standard') {
+      try {
+        tongHopRows = await getTongHopGiaoDich(dateRange.from, dateRange.to);
+      } catch {
+        tongHopRows = [];
+      }
     }
 
     // Debug: log first 3 pipelines to trace what data arrives from Sheets
@@ -514,9 +521,11 @@ export async function GET(request: NextRequest) {
     const toWithBuffer = new Date(dateRange.to);
     toWithBuffer.setDate(toWithBuffer.getDate() + 1);
 
-    // Filter current period — PRIMARY: ngay_coc; FALLBACK 1: thang column (timezone-safe); FALLBACK 2: ngay_cap_nhat
+    const includeNgayCocInPipeline = reportMode !== 'standard';
+
+    // Filter current period — STANDARD: thang/ngay_cap_nhat; RACE/DEFAULT: ưu tiên ngay_coc
     const currentPipelines = allPipelines.filter(pl => {
-      if (pl.ngay_coc) {
+      if (includeNgayCocInPipeline && pl.ngay_coc) {
         const d = safeParseDate(pl.ngay_coc);
         if (d && !isNaN(d.getTime())) {
           return d >= dateRange.from && d <= toWithBuffer;
@@ -543,7 +552,7 @@ export async function GET(request: NextRequest) {
     // Filter previous period for comparison
     const prevThangKeys = compare ? buildThangKeysInRange(dateRange.prevFrom, dateRange.prevTo) : new Set<string>();
     const prevPipelines = compare ? allPipelines.filter(pl => {
-      if (pl.ngay_coc) {
+      if (includeNgayCocInPipeline && pl.ngay_coc) {
         const d = safeParseDate(pl.ngay_coc);
         if (d && !isNaN(d.getTime())) {
           if (compare === 'yoy') {
@@ -577,14 +586,24 @@ export async function GET(request: NextRequest) {
     console.log(`[Dashboard] currentThangKeys: ${[...currentThangKeys].join(', ')}`);
 
     // KPI calculations
-    const daKy = currentPipelines.filter(pl => pl.giai_doan === 'Ký HĐ' || (pl.ngay_coc && pl.ngay_coc.trim() !== ''));
+    const daKy = currentPipelines.filter(pl =>
+      reportMode === 'standard'
+        ? pl.giai_doan === 'Ký HĐ'
+        : (pl.giai_doan === 'Ký HĐ' || (pl.ngay_coc && pl.ngay_coc.trim() !== ''))
+    );
     const dangXuLy = currentPipelines.filter(pl => 
-      !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan) && !(pl.ngay_coc && pl.ngay_coc.trim() !== '')
+      !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan)
+      && !(includeNgayCocInPipeline && pl.ngay_coc && pl.ngay_coc.trim() !== '')
     );
 
-    const prevDaKy = prevPipelines.filter(pl => pl.giai_doan === 'Ký HĐ' || (pl.ngay_coc && pl.ngay_coc.trim() !== ''));
+    const prevDaKy = prevPipelines.filter(pl =>
+      reportMode === 'standard'
+        ? pl.giai_doan === 'Ký HĐ'
+        : (pl.giai_doan === 'Ký HĐ' || (pl.ngay_coc && pl.ngay_coc.trim() !== ''))
+    );
     const prevDangXuLy = prevPipelines.filter(pl => 
-      !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan) && !(pl.ngay_coc && pl.ngay_coc.trim() !== '')
+      !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan)
+      && !(includeNgayCocInPipeline && pl.ngay_coc && pl.ngay_coc.trim() !== '')
     );
 
     // Doanh thu theo sale — loại trừ "Đối tác" (không tính vào bảng xếp hạng nội bộ)
@@ -629,7 +648,7 @@ export async function GET(request: NextRequest) {
     const thangPrevMap = new Map<string, number>();
     daKy.forEach(pl => {
       let t = pl.thang;
-      if (pl.ngay_coc) {
+      if (includeNgayCocInPipeline && pl.ngay_coc) {
         const d = safeParseDate(pl.ngay_coc);
         if (d && !isNaN(d.getTime())) {
           t = `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
@@ -641,7 +660,7 @@ export async function GET(request: NextRequest) {
     });
     prevDaKy.forEach(pl => {
       let t = pl.thang;
-      if (pl.ngay_coc) {
+      if (includeNgayCocInPipeline && pl.ngay_coc) {
         const d = safeParseDate(pl.ngay_coc);
         if (d && !isNaN(d.getTime())) {
           t = `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
@@ -760,8 +779,70 @@ export async function GET(request: NextRequest) {
       return null;
     };
 
-    const buildTongHopStats = (): TongHopStats => {
-      if (tongHopRows.length > 0) {
+    const getTongHopMonthKey = (rawDate: string): string => {
+      const d = safeParseDate(rawDate);
+      if (!d || isNaN(d.getTime())) return '';
+      return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    };
+
+    const buildRaceSaleLeaderboard = (rows: typeof tongHopRows): DoanhThuTheoSale[] => {
+      const raceSaleMap = new Map<string, DoanhThuTheoSale>();
+
+      rows.forEach(row => {
+        const isDoiTac = isDoiTacStr(row.loai_nguon || '') || isDoiTacStr(row.phong_kd || '');
+        if (isDoiTac) return;
+
+        const key = (row.sale_phu_trach || '').trim() || 'Chưa phân';
+        const existing = raceSaleMap.get(key) || {
+          nhan_vien: key,
+          doanh_thu: 0,
+          hoa_hong: 0,
+          so_deal: 0,
+        };
+
+        if (!existing.avatar_url && key !== 'Chưa phân') {
+          const emp = allEmployees.find(nv => nv.ho_ten === key);
+          if (emp?.avatar_url) existing.avatar_url = emp.avatar_url;
+        }
+
+        existing.doanh_thu += row.gia_tri;
+        existing.so_deal += 1;
+        raceSaleMap.set(key, existing);
+      });
+
+      return Array.from(raceSaleMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
+    };
+
+    const buildRaceDuAn = (rows: typeof tongHopRows): DoanhThuTheoDuAn[] => {
+      const raceDuAnMap = new Map<string, DoanhThuTheoDuAn>();
+
+      rows.forEach(row => {
+        const key = normalizeProjectNameForReport(row.du_an || 'Chưa xác định');
+        const existing = raceDuAnMap.get(key) || { du_an: key, doanh_thu: 0, hoa_hong: 0, so_deal: 0 };
+        existing.doanh_thu += row.gia_tri;
+        existing.so_deal += 1;
+        raceDuAnMap.set(key, existing);
+      });
+
+      return Array.from(raceDuAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
+    };
+
+    const buildRaceTheoThang = (rows: typeof tongHopRows): DoanhThuTheoThang[] => {
+      const raceThangMap = new Map<string, number>();
+
+      rows.forEach(row => {
+        const key = getTongHopMonthKey(row.ngay_ky);
+        if (!key) return;
+        raceThangMap.set(key, (raceThangMap.get(key) || 0) + row.gia_tri);
+      });
+
+      return Array.from(raceThangMap.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([thang, doanh_thu]) => ({ thang, doanh_thu }));
+    };
+
+    const buildTongHopStats = (useExternalSource = true): TongHopStats => {
+      if (useExternalSource && tongHopRows.length > 0) {
         // Aggregate from external sheet
         const tong_doanh_so = tongHopRows.reduce((s, r) => s + r.gia_tri, 0);
         const tong_so_can   = tongHopRows.length;
@@ -905,47 +986,78 @@ export async function GET(request: NextRequest) {
       };
     };
 
-    const tonghop = isAdmin ? buildTongHopStats() : undefined;
+    const raceLeaderboard = buildRaceSaleLeaderboard(tongHopRows);
+    const raceDuAn = buildRaceDuAn(tongHopRows);
+    const raceTheoThang = buildRaceTheoThang(tongHopRows);
+    const tonghop = isAdmin
+      ? buildTongHopStats(reportMode !== 'standard')
+      : undefined;
     const nhanSuBienDong = isAdmin
       ? (process.env.NHAN_SU_SHEET_ID
           ? buildNhanSuFromHrData(hrBienDongData, dateRange.from, dateRange.to)
           : buildNhanSuTheoThang(allEmployeesRaw, allContracts, dateRange.from, dateRange.to))
       : undefined;
+    const useRaceSource = reportMode === 'race' && tongHopRows.length > 0;
+
+    const selectedLeaderboard = useRaceSource ? raceLeaderboard : leaderboard;
+    const selectedDuAn = useRaceSource
+      ? raceDuAn
+      : Array.from(duAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
+    const selectedTheoThang = useRaceSource ? raceTheoThang : doanhThuTheoThang;
+    const selectedKpi = useRaceSource
+      ? {
+          tong_deal: tongHopRows.length,
+          dang_xu_ly: 0,
+          da_ky: tongHopRows.length,
+          doanh_thu: tongHopRows.reduce((sum, row) => sum + row.gia_tri, 0),
+          hoa_hong: 0,
+          kh_chua_assign,
+          ...(compare ? {
+            tong_deal_prev: 0,
+            dang_xu_ly_prev: 0,
+            da_ky_prev: 0,
+            doanh_thu_prev: 0,
+            hoa_hong_prev: 0,
+          } : {}),
+        }
+      : {
+          tong_deal: currentPipelines.length,
+          dang_xu_ly: dangXuLy.length,
+          da_ky: daKy.length,
+          doanh_thu: daKy.reduce((sum, pl) => sum + pl.gia_tri_thuc_te, 0),
+          hoa_hong: daKy.reduce((sum, pl) => sum + pl.tien_hoa_hong, 0),
+          kh_chua_assign,
+          ...(compare ? {
+            tong_deal_prev: prevPipelines.length,
+            dang_xu_ly_prev: prevDangXuLy.length,
+            da_ky_prev: prevDaKy.length,
+            doanh_thu_prev: prevDaKy.reduce((sum, pl) => sum + pl.gia_tri_thuc_te, 0),
+            hoa_hong_prev: prevDaKy.reduce((sum, pl) => sum + pl.tien_hoa_hong, 0),
+          } : {}),
+        };
 
     const data: DashboardData = isAdmin ? {
-      kpi: {
-        tong_deal: currentPipelines.length,
-        dang_xu_ly: dangXuLy.length,
-        da_ky: daKy.length,
-        doanh_thu: daKy.reduce((sum, pl) => sum + pl.gia_tri_thuc_te, 0),
-        hoa_hong: daKy.reduce((sum, pl) => sum + pl.tien_hoa_hong, 0),
-        kh_chua_assign,
-        ...(compare ? {
-          tong_deal_prev: prevPipelines.length,
-          dang_xu_ly_prev: prevDangXuLy.length,
-          da_ky_prev: prevDaKy.length,
-          doanh_thu_prev: prevDaKy.reduce((sum, pl) => sum + pl.gia_tri_thuc_te, 0),
-          hoa_hong_prev: prevDaKy.reduce((sum, pl) => sum + pl.tien_hoa_hong, 0),
-        } : {}),
-      },
-      doanh_thu_theo_sale: leaderboard,
-      doanh_thu_theo_du_an: Array.from(duAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu),
-      doanh_thu_theo_thang: doanhThuTheoThang,
+      kpi: selectedKpi,
+      doanh_thu_theo_sale: selectedLeaderboard,
+      doanh_thu_theo_du_an: selectedDuAn,
+      doanh_thu_theo_thang: selectedTheoThang,
       nguon_khach_hang: nguonKhachHang,
       sinh_nhat_thang_nay: sinhNhatThangNay,
       pipeline_funnel,
       crm_totals,
       tonghop,
       nhan_su_bien_dong: nhanSuBienDong,
+      report_mode: reportMode,
     } : {
       kpi: { tong_deal: 0, dang_xu_ly: 0, da_ky: 0, doanh_thu: 0, hoa_hong: 0, kh_chua_assign: 0 },
-      doanh_thu_theo_sale: leaderboard,
+      doanh_thu_theo_sale: selectedLeaderboard,
       doanh_thu_theo_du_an: [],
       doanh_thu_theo_thang: [],
       nguon_khach_hang: [],
       sinh_nhat_thang_nay: sinhNhatThangNay,
       pipeline_funnel: [],
       nhan_su_bien_dong: [],
+      report_mode: reportMode,
     };
 
     return NextResponse.json({ success: true, data });

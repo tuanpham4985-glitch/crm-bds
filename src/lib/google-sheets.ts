@@ -762,6 +762,7 @@ export interface TongHopRow {
   gia_tri: number;
   chi_nhanh: string;   // Chi nhánh / Vùng KD
   phong_kd: string;    // Phòng KD
+  sale_phu_trach: string;
   ngay_ky: string;     // Ngày ký (for date filtering)
 }
 
@@ -827,6 +828,7 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
     const colNguon   = findCol('nguon', 'loainguon', 'loaigd', 'noibo', 'doitac', 'phanloaigd', 'loaihinhtd');
     const colChiNhanh = findCol('chinhanh', 'vuongkd', 'khuvuc', 'region', 'mien', 'vung');
     const colPhongKD = findCol('phongkd', 'phongban', 'khoikd', 'nhomkd', 'team');
+    const colSale = findCol('salephutrach', 'sale', 'nhanvien', 'nguoiphutrach', 'tuvan', 'chamsoc');
     const colDuAn    = findCol('duan', 'tenduan', 'tenduan', 'project');
     // Ưu tiên tuyệt đối: "Ngày cọc" (cột E) → dùng làm mốc tính doanh số
     // Pass 1: tìm ĐÚNG cột "Ngày cọc" (normVi → "ngaycoc")
@@ -838,7 +840,7 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
       || null;
     const colNgay = colNgayCocStrict || colNgayFallback;
 
-    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colDuAn, colNgayCocStrict, colNgayFallback });
+    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colSale, colDuAn, colNgayCocStrict, colNgayFallback });
 
     return rows
       .map(row => {
@@ -875,6 +877,7 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
           gia_tri:    gTri,
           chi_nhanh:  colChiNhanh ? str(v[colChiNhanh]) : '',
           phong_kd:   colPhongKD  ? str(v[colPhongKD])  : '',
+          sale_phu_trach: colSale ? str(v[colSale]) : '',
           ngay_ky:    rawNgayCoc,
         } as TongHopRow;
       })

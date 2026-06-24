@@ -42,6 +42,7 @@ function thangLabel(key: string): string {
 }
 
 type Ky = 'h1' | 'h2' | 'full';
+type ReportMode = 'standard' | 'race';
 
 const KY_CONFIG: Record<Ky, { label: string; tieu_de: string; range: (y: number) => { from: string; to: string } }> = {
   h1: {
@@ -422,6 +423,7 @@ export default function BaoCaoPage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(() => currentYear);
   const [ky, setKy] = useState<Ky | 'custom'>('h1');
+  const [reportMode, setReportMode] = useState<ReportMode>('standard');
   const [fromMonth, setFromMonth] = useState(1);
   const [fromYear, setFromYear] = useState(() => currentYear);
   const [toMonth, setToMonth] = useState(6);
@@ -431,7 +433,13 @@ export default function BaoCaoPage() {
   const from = `${fromYear}-${pad2(fromMonth)}-01`;
   const to = `${toYear}-${pad2(toMonth)}-${pad2(lastDayOfMonth(toYear, toMonth))}`;
   const cfg = ky === 'custom' ? null : KY_CONFIG[ky];
-  const reportTitle = cfg ? `${cfg.tieu_de} ${year}` : 'BÁO CÁO TỔNG KẾT THEO KỲ';
+  const reportTitle = reportMode === 'race'
+    ? (cfg ? `BÁO CÁO THI ĐUA THEO NGÀY CỌC ${year}` : 'BÁO CÁO THI ĐUA THEO NGÀY CỌC')
+    : (cfg ? `${cfg.tieu_de} ${year}` : 'BÁO CÁO TỔNG KẾT THEO KỲ');
+  const reportBasisText = reportMode === 'race'
+    ? 'Doanh số ghi nhận theo ngày cọc'
+    : 'Doanh số ghi nhận theo ngày ký VBTT/TTĐC / Ký HĐ';
+  const dealLabel = reportMode === 'race' ? 'Số giao dịch đã cọc' : 'Số giao dịch đã ký HĐ';
   const yearOptions = Array.from(
     { length: Math.max(4, currentYear - 2024 + 2) },
     (_, i) => currentYear + 1 - i
@@ -463,7 +471,7 @@ export default function BaoCaoPage() {
         setData(null);
         return;
       }
-      const params = new URLSearchParams({ period: 'custom', from, to });
+      const params = new URLSearchParams({ period: 'custom', from, to, report_mode: reportMode });
       const res = await fetch(`/api/dashboard?${params}`);
       const result = await res.json();
       if (result.success) setData(result.data);
@@ -472,7 +480,7 @@ export default function BaoCaoPage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, rangeInvalid]);
+  }, [from, to, rangeInvalid, reportMode]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -532,6 +540,20 @@ export default function BaoCaoPage() {
         </button>
         <div className="bc-toolbar-right">
           <div className="toggle-group">
+            <button
+              className={`toggle-btn ${reportMode === 'standard' ? 'active' : ''}`}
+              onClick={() => setReportMode('standard')}
+            >
+              Báo cáo chuẩn
+            </button>
+            <button
+              className={`toggle-btn ${reportMode === 'race' ? 'active' : ''}`}
+              onClick={() => setReportMode('race')}
+            >
+              Thi đua ngày cọc
+            </button>
+          </div>
+          <div className="toggle-group">
             {(Object.keys(KY_CONFIG) as Ky[]).map(k => (
               <button
                 key={k}
@@ -586,7 +608,7 @@ export default function BaoCaoPage() {
             <div className="bc-company">VICTORY HOLDINGS</div>
             <h1 className="bc-title">{reportTitle}</h1>
             <div className="bc-period">
-              Kỳ báo cáo: {formatMonthYear(fromMonth, fromYear)} - {formatMonthYear(toMonth, toYear)} ({fmtDate(from)} - {fmtDate(to)}) &nbsp;·&nbsp; Doanh số ghi nhận theo ngày cọc
+              Kỳ báo cáo: {formatMonthYear(fromMonth, fromYear)} - {formatMonthYear(toMonth, toYear)} ({fmtDate(from)} - {fmtDate(to)}) &nbsp;·&nbsp; {reportBasisText}
             </div>
             <div className="bc-export-date">Ngày xuất báo cáo: {ngayXuat}</div>
           </div>
@@ -602,7 +624,7 @@ export default function BaoCaoPage() {
             <div className="bc-kpi">
               <div className="bc-kpi-label">Tổng số căn</div>
               <div className="bc-kpi-value" style={{ color: '#d97706' }}>{tongSoCan.toLocaleString('vi-VN')} <span style={{ fontSize: '0.9rem' }}>căn</span></div>
-              <div className="bc-kpi-sub">Số giao dịch đã cọc</div>
+              <div className="bc-kpi-sub">{dealLabel}</div>
             </div>
             <div className="bc-kpi">
               <div className="bc-kpi-label">Giá trị TB / căn</div>
@@ -797,7 +819,7 @@ export default function BaoCaoPage() {
               <FileText size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
               Báo cáo được tạo tự động từ hệ thống CRM VICTORY HOLDINGS
             </div>
-            <div>Doanh số được ghi nhận theo Ngày cọc · Đơn vị: VNĐ</div>
+            <div>{reportBasisText} · Đơn vị: VNĐ</div>
           </div>
         </div>
       )}
