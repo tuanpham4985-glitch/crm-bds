@@ -189,6 +189,110 @@ function ReportBar({
   );
 }
 
+function MonthlyRevenueTrendChart({
+  items,
+}: {
+  items: Array<{ thang: string; doanh_thu: number }>;
+}) {
+  if (!items || items.length === 0) return null;
+
+  const maxValue = Math.max(1, ...items.map(item => item.doanh_thu));
+  const width = Math.max(680, items.length * 92 + 90);
+  const height = 300;
+  const padding = { top: 28, right: 26, bottom: 64, left: 58 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const step = items.length > 1 ? plotWidth / (items.length - 1) : plotWidth;
+
+  const points = items.map((item, index) => {
+    const x = padding.left + (items.length === 1 ? plotWidth / 2 : step * index);
+    const y = padding.top + plotHeight - ((item.doanh_thu / maxValue) * (plotHeight - 10));
+    return { x, y, value: item.doanh_thu, thang: item.thang };
+  });
+
+  const linePath = points.map((point, index) => {
+    if (index === 0) return `M ${point.x} ${point.y}`;
+    const prev = points[index - 1];
+    const midX = (prev.x + point.x) / 2;
+    return `C ${midX} ${prev.y}, ${midX} ${point.y}, ${point.x} ${point.y}`;
+  }).join(' ');
+
+  const areaPath = `${linePath} L ${points[points.length - 1].x} ${padding.top + plotHeight} L ${points[0].x} ${padding.top + plotHeight} Z`;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(ratio => ({
+    ratio,
+    value: Math.round(maxValue * ratio),
+    y: padding.top + plotHeight - ratio * plotHeight,
+  }));
+
+  return (
+    <div className="bc-trend-card">
+      <div className="bc-trend-header">
+        <div className="bc-trend-title">Doanh số theo thời gian</div>
+        <div className="bc-trend-subtitle">Xu hướng doanh thu qua các tháng trong kỳ báo cáo</div>
+      </div>
+      <div className="bc-trend-chart-wrap">
+        <svg viewBox={`0 0 ${width} ${height}`} className="bc-trend-chart" role="img" aria-label="Biểu đồ doanh số theo tháng">
+          <defs>
+            <linearGradient id="bcTrendArea" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgba(99, 102, 241, 0.22)" />
+              <stop offset="100%" stopColor="rgba(99, 102, 241, 0.02)" />
+            </linearGradient>
+          </defs>
+
+          {yTicks.map(tick => (
+            <g key={tick.ratio}>
+              <line
+                x1={padding.left}
+                y1={tick.y}
+                x2={width - padding.right}
+                y2={tick.y}
+                stroke="#e7ecf5"
+                strokeDasharray="4 4"
+              />
+              <text
+                x={padding.left - 10}
+                y={tick.y}
+                textAnchor="end"
+                dominantBaseline="central"
+                className="bc-trend-y-label"
+              >
+                {tick.ratio === 0 ? '0' : fmtShort(tick.value)}
+              </text>
+            </g>
+          ))}
+
+          {points.map(point => (
+            <line
+              key={`${point.thang}-grid`}
+              x1={point.x}
+              y1={padding.top}
+              x2={point.x}
+              y2={padding.top + plotHeight}
+              stroke="#eef2f7"
+              strokeDasharray="3 5"
+            />
+          ))}
+
+          <path d={areaPath} fill="url(#bcTrendArea)" />
+          <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+
+          {points.map(point => (
+            <g key={point.thang}>
+              <circle cx={point.x} cy={point.y} r="5.5" fill="#6366f1" stroke="#fff" strokeWidth="2.5" />
+              <text x={point.x} y={point.y - 14} textAnchor="middle" className="bc-trend-point-label">
+                {fmtShort(point.value)}
+              </text>
+              <text x={point.x} y={height - 18} textAnchor="middle" className="bc-trend-x-label">
+                {point.thang}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function _StaffMovementChart({
   items,
 }: {
@@ -657,6 +761,7 @@ export default function BaoCaoPage() {
           {theoThang.length > 0 && (
             <>
               <h2 className="bc-section-title">III. Doanh số theo tháng</h2>
+              <MonthlyRevenueTrendChart items={theoThang.map(t => ({ thang: thangLabel(t.thang), doanh_thu: t.doanh_thu }))} />
               <table className="bc-table">
                 <thead>
                   <tr>
@@ -948,6 +1053,33 @@ const printStyles = `
   height: 100%; border-radius: 999px;
 }
 
+.bc-trend-card {
+  border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 18px 10px;
+  background: #fff; margin-bottom: 14px;
+}
+.bc-trend-header { margin-bottom: 8px; }
+.bc-trend-title {
+  font-size: 0.96rem; font-weight: 800; color: #111827;
+}
+.bc-trend-subtitle {
+  font-size: 0.76rem; color: #64748b; margin-top: 4px;
+}
+.bc-trend-chart-wrap {
+  width: 100%; overflow: hidden;
+}
+.bc-trend-chart {
+  width: 100%; height: auto; display: block;
+}
+.bc-trend-y-label {
+  fill: #64748b; font-size: 10px; font-weight: 700;
+}
+.bc-trend-x-label {
+  fill: #64748b; font-size: 11px; font-weight: 700;
+}
+.bc-trend-point-label {
+  fill: #6366f1; font-size: 10px; font-weight: 800;
+}
+
 .bc-staff-card {
   border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px 14px 10px;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
@@ -1014,6 +1146,7 @@ const printStyles = `
   .bc-donut-content { grid-template-columns: 118px minmax(0, 1fr); }
   .bc-donut-chart,
   .bc-donut-chart svg { width: 118px; height: 118px; }
+  .bc-trend-card { padding: 14px 12px 8px; }
   .bc-staff-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -1032,6 +1165,7 @@ const printStyles = `
   .bc-table { break-inside: auto; }
   .bc-table tr { break-inside: avoid; }
   .bc-kpi-grid { break-inside: avoid; }
+  .bc-trend-card { break-inside: avoid; }
   .bc-staff-card, .bc-staff-summary { break-inside: avoid; }
 }
 `;
