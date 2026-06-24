@@ -195,12 +195,12 @@ function buildMonthBuckets(from: Date, to: Date): Array<{ key: string; start: Da
   return buckets;
 }
 
-function buildNhanSuBienDong(
+function _buildNhanSuBienDong(
   employeesRaw: Awaited<ReturnType<typeof getNhanVien>>,
   contracts: Awaited<ReturnType<typeof getHopDong>>,
   from: Date,
   to: Date
-): NhanSuBienDongItem[] {
+): Array<{ thang: string; dau_ky: number; tang_moi: number; giam: number; cuoi_ky: number }> {
   const buckets = buildMonthBuckets(from, to);
   if (buckets.length === 0) return [];
 
@@ -282,6 +282,75 @@ function buildNhanSuBienDong(
       cuoi_ky: closingHeadcount,
     };
   });
+}
+
+function buildNhanSuChinhThucTheoThang(
+  employeesRaw: Awaited<ReturnType<typeof getNhanVien>>,
+  contracts: Awaited<ReturnType<typeof getHopDong>>,
+  from: Date,
+  to: Date
+): NhanSuBienDongItem[] {
+  const buckets = buildMonthBuckets(from, to);
+  if (buckets.length === 0) return [];
+
+  const employeeMap = new Map(employeesRaw.map(emp => [emp.id_nhan_vien, emp]));
+  const officialContractMap = new Map<string, Array<{ start: Date; end: Date | null }>>();
+  const normalize = (value: string): string =>
+    (value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  const isOfficial = (value: string): boolean => normalize(value).includes('chinh thuc');
+
+  for (const hd of contracts) {
+    const start = safeParseDate(hd.ngay_bat_dau || '');
+    if (!hd.id_nhan_vien || !start || isNaN(start.getTime()) || !isOfficial(hd.contract_type || '')) continue;
+
+    const end = hd.ngay_ket_thuc ? safeParseDate(hd.ngay_ket_thuc) : null;
+    const list = officialContractMap.get(hd.id_nhan_vien) ?? [];
+    list.push({ start, end: end && !isNaN(end.getTime()) ? end : null });
+    officialContractMap.set(hd.id_nhan_vien, list);
+  }
+
+  const periodStart = buckets[0].start;
+  const fallbackOfficialIds = new Set(
+    employeesRaw
+      .filter(emp =>
+        isOfficial(emp.trang_thai || '') &&
+        emp.trang_thai !== 'Nghỉ việc' &&
+        !officialContractMap.has(emp.id_nhan_vien)
+      )
+      .map(emp => emp.id_nhan_vien)
+  );
+
+  const monthlyTotals = buckets.map(bucket => {
+    const activeOfficialIds = new Set<string>();
+
+    for (const [employeeId, ranges] of officialContractMap.entries()) {
+      const isActive = ranges.some(range =>
+        range.start <= bucket.end && (!range.end || range.end >= bucket.start)
+      );
+      if (isActive) activeOfficialIds.add(employeeId);
+    }
+
+    for (const employeeId of fallbackOfficialIds) {
+      const emp = employeeMap.get(employeeId);
+      const createdAt = safeParseDate(emp?.ngay_tao || '');
+      if (createdAt && !isNaN(createdAt.getTime())) {
+        if (createdAt < periodStart) activeOfficialIds.add(employeeId);
+      } else {
+        activeOfficialIds.add(employeeId);
+      }
+    }
+
+    return activeOfficialIds.size;
+  });
+
+  return buckets.map((bucket, index) => ({
+    thang: bucket.key,
+    tong_chinh_thuc: monthlyTotals[index],
+    bien_dong: index === 0 ? 0 : monthlyTotals[index] - monthlyTotals[index - 1],
+  }));
 }
 
 export async function GET(request: NextRequest) {
@@ -781,7 +850,7 @@ export async function GET(request: NextRequest) {
 
     const tonghop = isAdmin ? buildTongHopStats() : undefined;
     const nhanSuBienDong = isAdmin
-      ? buildNhanSuBienDong(allEmployeesRaw, allContracts, dateRange.from, dateRange.to)
+      ? buildNhanSuChinhThucTheoThang(allEmployeesRaw, allContracts, dateRange.from, dateRange.to)
       : undefined;
 
     const data: DashboardData = isAdmin ? {

@@ -274,10 +274,8 @@ export interface TongHopStats {
 
 export interface NhanSuBienDongItem {
   thang: string;
-  dau_ky: number;
-  tang_moi: number;
-  giam: number;
-  cuoi_ky: number;
+  tong_chinh_thuc: number;
+  bien_dong: number;
 }
 
 export interface DashboardData {
