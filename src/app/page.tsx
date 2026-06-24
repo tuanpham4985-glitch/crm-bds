@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   TrendingUp, TrendingDown, BarChart3,
   DollarSign, Home, Layers, ToggleLeft, ToggleRight, Cake, ChevronDown,
-  Users, GitBranch, CheckSquare, ExternalLink,
+  Users, GitBranch, CheckSquare, ExternalLink, FileText,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -206,6 +207,7 @@ const RACE_START_DATE = '2025-12-23';
 
 export default function DashboardPage() {
   const { isAdmin } = useAuth();
+  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [raceData, setRaceData] = useState<any[] | null>(null);
   const [period, setPeriod] = useState('month');
@@ -490,6 +492,17 @@ export default function DashboardPage() {
             >
               {compare ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
               So sánh
+            </button>
+          )}
+          {/* Báo cáo tổng kết PDF — admin only */}
+          {isAdmin && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => router.push('/bao-cao')}
+              title="Báo cáo tổng kết 6 tháng (xuất PDF)"
+            >
+              <FileText size={16} />
+              Báo cáo
             </button>
           )}
         </div>
