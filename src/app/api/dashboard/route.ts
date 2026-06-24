@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong } from '@/lib/google-sheets';
+import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong, getDataNhanSuForReport } from '@/lib/google-sheets';
+import type { HrEmployeeRecord } from '@/lib/google-sheets';
 import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
@@ -284,6 +285,55 @@ function _buildNhanSuBienDong(
   });
 }
 
+function buildNhanSuFromHrData(
+  hrData: HrEmployeeRecord[],
+  from: Date,
+  to: Date
+): NhanSuBienDongItem[] {
+  const buckets = buildMonthBuckets(from, to);
+  if (buckets.length === 0) return [];
+
+  const normS = (s: string) =>
+    s.toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/đ/g, 'd')
+      .trim();
+
+  const isInactive = (s: string) => {
+    const n = normS(s);
+    return n.includes('nghi viec') || n.includes('da nghi') || n.includes('thoi viec');
+  };
+
+  const withDate = hrData.filter(e => e.ngay_vao_lam !== null);
+
+  const monthlyData = buckets.map(bucket => {
+    let total = 0;
+    let nvVao = 0;
+
+    for (const emp of withDate) {
+      const joinDate = emp.ngay_vao_lam!;
+      // Còn làm và đã vào trước/trong tháng này → đếm vào tổng
+      if (joinDate <= bucket.end && !isInactive(emp.trang_thai)) {
+        total += 1;
+      }
+      // Vào đúng tháng này (kể cả người đã nghỉ sau đó)
+      if (joinDate >= bucket.start && joinDate <= bucket.end) {
+        nvVao += 1;
+      }
+    }
+
+    return { total, nvVao };
+  });
+
+  return buckets.map((bucket, index) => ({
+    thang:          bucket.key,
+    tong_chinh_thuc: monthlyData[index].total,
+    bien_dong:      index === 0 ? 0 : monthlyData[index].total - monthlyData[index - 1].total,
+    nv_vao:         monthlyData[index].nvVao,
+  }));
+}
+
 function buildNhanSuTheoThang(
   employeesRaw: Awaited<ReturnType<typeof getNhanVien>>,
   contracts: Awaited<ReturnType<typeof getHopDong>>,
@@ -369,12 +419,13 @@ export async function GET(request: NextRequest) {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
 
-    const [allPipelines, allCustomers, allEmployeesRaw, allCongViec, allContracts] = await Promise.all([
+    const [allPipelines, allCustomers, allEmployeesRaw, allCongViec, allContracts, hrBienDongData] = await Promise.all([
       getPipeline(),
       getKhachHang(),
       getNhanVien(),
       getCongViec(),
       getHopDong(),
+      isAdmin ? getDataNhanSuForReport().catch((): HrEmployeeRecord[] => []) : Promise.resolve([] as HrEmployeeRecord[]),
     ]);
 
     // Fetch external Tổng hợp sheet in parallel (non-blocking if env not set)
@@ -856,7 +907,9 @@ export async function GET(request: NextRequest) {
 
     const tonghop = isAdmin ? buildTongHopStats() : undefined;
     const nhanSuBienDong = isAdmin
-      ? buildNhanSuTheoThang(allEmployeesRaw, allContracts, dateRange.from, dateRange.to)
+      ? (process.env.NHAN_SU_SHEET_ID
+          ? buildNhanSuFromHrData(hrBienDongData, dateRange.from, dateRange.to)
+          : buildNhanSuTheoThang(allEmployeesRaw, allContracts, dateRange.from, dateRange.to))
       : undefined;
 
     const data: DashboardData = isAdmin ? {

@@ -349,7 +349,7 @@ function OfficialStaffTrendChart({ items }: { items: NhanSuBienDongItem[] }) {
       </div>
 
       <div className="bc-staff-note">
-        Bao gồm nhân sự Chính thức, Học việc/Học viên và Thử việc.
+        Nguồn: VIC_DATA NHÂN SỰ — lọc theo Ngày vào làm việc và Trạng thái NV.
       </div>
 
       <div className="bc-staff-legend">
@@ -390,8 +390,9 @@ function OfficialStaffTrendChart({ items }: { items: NhanSuBienDongItem[] }) {
         <thead>
           <tr>
             <th>Tháng</th>
-            <th style={{ textAlign: 'center', width: 160 }}>Tổng nhân sự</th>
-            <th style={{ textAlign: 'center', width: 130 }}>Biến động</th>
+            <th style={{ textAlign: 'center', width: 140 }}>Tổng nhân sự</th>
+            <th style={{ textAlign: 'center', width: 120 }}>NV mới vào</th>
+            <th style={{ textAlign: 'center', width: 120 }}>Biến động</th>
           </tr>
         </thead>
         <tbody>
@@ -399,6 +400,9 @@ function OfficialStaffTrendChart({ items }: { items: NhanSuBienDongItem[] }) {
             <tr key={item.thang}>
               <td>{thangLabel(item.thang)}</td>
               <td style={{ textAlign: 'center', color: '#d97706', fontWeight: 700 }}>{item.tong_chinh_thuc}</td>
+              <td style={{ textAlign: 'center', color: '#10b981', fontWeight: 700 }}>
+                {item.nv_vao != null ? (item.nv_vao > 0 ? `+${item.nv_vao}` : '—') : '—'}
+              </td>
               <td style={{ textAlign: 'center', color: item.bien_dong >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }}>
                 {item.bien_dong >= 0 ? '+' : ''}{item.bien_dong}
               </td>

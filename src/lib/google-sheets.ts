@@ -3997,3 +3997,115 @@ export async function syncEmployeesFromHrFile(): Promise<{
   console.log(`[syncEmployees] Done — inserted:${rowsToInsert.length}, updated:${updated}, skipped:${skipped}`);
   return { inserted: rowsToInsert.length, updated, skipped };
 }
+
+// ============================================================
+// BÁO CÁO BIẾN ĐỘNG NHÂN SỰ — đọc DATA NHÂN SỰ từ file HR ngoài
+// ============================================================
+
+export interface HrEmployeeRecord {
+  mnv: string;
+  ho_ten: string;
+  ngay_vao_lam: Date | null;       // Ngày vào làm việc
+  ngay_ket_thuc_thu_viec: Date | null; // Ngày kết thúc thử việc
+  trang_thai: string;              // Trạng thái NV
+}
+
+export async function getDataNhanSuForReport(): Promise<HrEmployeeRecord[]> {
+  const hrSheetId = process.env.NHAN_SU_SHEET_ID;
+  if (!hrSheetId) return [];
+
+  const HR_SHEET_NAME  = 'DATA NHÂN SỰ';
+  const HEADER_ROW_IDX = 3; // hàng 4 (0-based = 3)
+
+  const hrDoc   = await getDocBySheetId(hrSheetId);
+  const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
+  if (!hrSheet) return [];
+
+  const rowCount = Math.min(hrSheet.rowCount, 2000);
+  const colCount = Math.min(hrSheet.columnCount, 60);
+
+  await hrSheet.loadCells({
+    startRowIndex:    HEADER_ROW_IDX,
+    endRowIndex:      rowCount,
+    startColumnIndex: 0,
+    endColumnIndex:   colCount,
+  });
+
+  const normH = (s: string) =>
+    s.toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/đ/g, 'd')
+      .trim()
+      .replace(/\s+/g, '');
+
+  const headers: string[] = [];
+  for (let c = 0; c < colCount; c++) {
+    headers.push(str(hrSheet.getCell(HEADER_ROW_IDX, c).value));
+  }
+
+  const findCol = (aliases: string[], fallback = -1): number => {
+    const norm = aliases.map(normH);
+    for (let c = 0; c < headers.length; c++) {
+      const h = normH(headers[c]);
+      if (norm.includes(h)) return c;
+    }
+    for (let c = 0; c < headers.length; c++) {
+      const h = normH(headers[c]);
+      if (norm.some(a => a.length >= 6 && h.includes(a))) return c;
+    }
+    return fallback;
+  };
+
+  const colMNV      = findCol(['mnv', 'manv', 'manhânvien', 'mãnv'], 1);
+  const colHoTen    = findCol(['hoten', 'hovaten', 'hotennhanvien'], 2);
+  const colVaoLam   = findCol(['ngayvaolamviec', 'ngayvaolam', 'vaolamviec', 'ngaybatdaulamviec', 'ngaytuyendung']);
+  const colKTTV     = findCol(['ngayketthucthuviec', 'ngaykttv', 'kttv', 'ketthucthuviec', 'ngayhetthuviec']);
+  const colTrangThai = findCol(['trangthainv', 'trangthai', 'tinhtrangnv', 'tinhtrang']);
+
+  const parseDate = (raw: string): Date | null => {
+    if (!raw) return null;
+    const s = raw.trim();
+    if (!s) return null;
+    // DD/MM/YYYY
+    const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m1) {
+      const d = new Date(+m1[3], +m1[2] - 1, +m1[1]);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    // DD-MM-YYYY or DD.MM.YYYY
+    const m2 = s.match(/^(\d{1,2})[-.](\d{1,2})[-.](\d{4})/);
+    if (m2) {
+      const d = new Date(+m2[3], +m2[2] - 1, +m2[1]);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    // ISO or native parse (YYYY-MM-DD, etc.)
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const results: HrEmployeeRecord[] = [];
+
+  for (let r = HEADER_ROW_IDX + 1; r < rowCount; r++) {
+    const mnvRaw   = str(hrSheet.getCell(r, colMNV).value);
+    const hoTenRaw = str(hrSheet.getCell(r, colHoTen).value);
+    if (!mnvRaw && !hoTenRaw) continue;
+
+    results.push({
+      mnv:    mnvRaw,
+      ho_ten: hoTenRaw,
+      ngay_vao_lam:           colVaoLam    >= 0 ? parseDate(str(hrSheet.getCell(r, colVaoLam).value))   : null,
+      ngay_ket_thuc_thu_viec: colKTTV      >= 0 ? parseDate(str(hrSheet.getCell(r, colKTTV).value))     : null,
+      trang_thai:             colTrangThai >= 0 ? str(hrSheet.getCell(r, colTrangThai).value) : '',
+    });
+  }
+
+  console.log(
+    `[getDataNhanSuForReport] ${results.length} records — ` +
+    `VaoLam:${colVaoLam}(${headers[colVaoLam] ?? '?'}), ` +
+    `KTTV:${colKTTV}(${headers[colKTTV] ?? '?'}), ` +
+    `TrangThai:${colTrangThai}(${headers[colTrangThai] ?? '?'})`
+  );
+
+  return results;
+}

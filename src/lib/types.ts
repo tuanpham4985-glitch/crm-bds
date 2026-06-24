@@ -276,6 +276,7 @@ export interface NhanSuBienDongItem {
   thang: string;
   tong_chinh_thuc: number;
   bien_dong: number;
+  nv_vao?: number;
 }
 
 export interface DashboardData {
