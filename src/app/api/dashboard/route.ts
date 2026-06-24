@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich } from '@/lib/google-sheets';
-import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopPhongKD, TongHopDuAn } from '@/lib/types';
+import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
@@ -40,7 +40,7 @@ function parseBirthDate(raw: string): { day: number; month: number; year: number
   }
 
   // Split on / - or . (handle DD/MM/YYYY, YYYY-MM-DD, DD.MM.YYYY)
-  const parts = s.split(/[\/\-\.]/);
+  const parts = s.split(/[/.-]/);
   if (parts.length !== 3) return null;
 
   const p1 = parseInt(parts[0], 10);
@@ -98,7 +98,7 @@ function safeParseDate(s: string): Date | null {
   if (!isNaN(d.getTime())) return d;
 
   // 3. Try DD-MM-YYYY or DD.MM.YYYY
-  const match = strVal.match(/^(\d{1,2})[\-\.](\d{1,2})[\-\.](\d{4})(?:\s+(\d{1,2}):(\d{1,2}):?(\d{1,2})?)?/);
+  const match = strVal.match(/^(\d{1,2})[-.](\d{1,2})[-.](\d{4})(?:\s+(\d{1,2}):(\d{1,2}):?(\d{1,2})?)?/);
   if (match) {
     const day   = parseInt(match[1], 10);
     const month = parseInt(match[2], 10) - 1;
@@ -111,6 +111,21 @@ function safeParseDate(s: string): Date | null {
   }
 
   return null;
+}
+
+const GLOBAL_CITY_PROJECT_NAME = 'The Global City';
+const GLOBAL_CITY_PROJECT_ALIASES = new Set([
+  'masteri cosmo central nexus',
+  'masteri cosmo central',
+  'masteri park place',
+]);
+
+function normalizeProjectNameForReport(projectName: string): string {
+  const cleaned = (projectName || '').trim().replace(/\s+/g, ' ');
+  if (!cleaned) return '';
+  return GLOBAL_CITY_PROJECT_ALIASES.has(cleaned.toLowerCase())
+    ? GLOBAL_CITY_PROJECT_NAME
+    : cleaned;
 }
 
 function getDateRange(period: string): { from: Date; to: Date; prevFrom: Date; prevTo: Date } {
@@ -212,7 +227,7 @@ export async function GET(request: NextRequest) {
       }, [])
       .sort((a, b) => a.ngay - b.ngay); // Sắp xếp theo ngày tăng dần
 
-    let dateRange = getDateRange(period);
+    const dateRange = getDateRange(period);
     if (fromParam && toParam) {
       dateRange.from = new Date(fromParam);
       dateRange.to = new Date(toParam + 'T23:59:59');
@@ -366,7 +381,7 @@ export async function GET(request: NextRequest) {
     // Doanh thu theo dự án
     const duAnMap = new Map<string, DoanhThuTheoDuAn>();
     daKy.forEach(pl => {
-      const key = pl.ten_du_an || pl.id_du_an || 'Chưa xác định';
+      const key = normalizeProjectNameForReport(pl.ten_du_an || pl.id_du_an || 'Chưa xác định');
       const existing = duAnMap.get(key) || { du_an: key, doanh_thu: 0, hoa_hong: 0, so_deal: 0 };
       existing.doanh_thu += pl.gia_tri_thuc_te;
       existing.hoa_hong += pl.tien_hoa_hong;
@@ -543,8 +558,9 @@ export async function GET(request: NextRequest) {
         const topDuAnMap = new Map<string, { so_can: number; doanh_so: number }>();
         tongHopRows.forEach(r => {
           if (!r.du_an) return;
-          const cur = topDuAnMap.get(r.du_an) ?? { so_can: 0, doanh_so: 0 };
-          topDuAnMap.set(r.du_an, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
+          const key = normalizeProjectNameForReport(r.du_an);
+          const cur = topDuAnMap.get(key) ?? { so_can: 0, doanh_so: 0 };
+          topDuAnMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
         });
 
         const toArr = (m: Map<string, { so_can: number; doanh_so: number }>): TongHopCompareItem[] =>
