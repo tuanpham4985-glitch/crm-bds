@@ -348,8 +348,12 @@ function OfficialStaffTrendChart({ items }: { items: NhanSuBienDongItem[] }) {
         </div>
       </div>
 
+      <div className="bc-staff-note">
+        Bao gồm nhân sự Chính thức, Học việc/Học viên và Thử việc.
+      </div>
+
       <div className="bc-staff-legend">
-        <span><i style={{ background: '#d4a106' }} /> Tổng nhân sự chính thức</span>
+        <span><i style={{ background: '#d4a106' }} /> Tổng nhân sự theo tháng</span>
         <span><i style={{ background: '#2563eb' }} /> Đường biến động theo tháng</span>
       </div>
 
@@ -386,7 +390,7 @@ function OfficialStaffTrendChart({ items }: { items: NhanSuBienDongItem[] }) {
         <thead>
           <tr>
             <th>Tháng</th>
-            <th style={{ textAlign: 'center', width: 160 }}>Tổng nhân sự chính thức</th>
+            <th style={{ textAlign: 'center', width: 160 }}>Tổng nhân sự</th>
             <th style={{ textAlign: 'center', width: 130 }}>Biến động</th>
           </tr>
         </thead>
@@ -778,7 +782,7 @@ export default function BaoCaoPage() {
 
           {nhanSuBienDong.length > 0 && (
             <>
-              <h2 className="bc-section-title">VIII. Biến động nhân sự chính thức</h2>
+              <h2 className="bc-section-title">VIII. Biến động nhân sự</h2>
               <OfficialStaffTrendChart items={nhanSuBienDong} />
             </>
           )}
@@ -937,6 +941,9 @@ const printStyles = `
 .bc-staff-legend {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px;
   font-size: 0.72rem; font-weight: 700; color: #475569;
+}
+.bc-staff-note {
+  margin-bottom: 8px; font-size: 0.72rem; color: #64748b; font-style: italic;
 }
 .bc-staff-legend span {
   display: inline-flex; align-items: center; gap: 6px;

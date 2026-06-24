@@ -284,7 +284,7 @@ function _buildNhanSuBienDong(
   });
 }
 
-function buildNhanSuChinhThucTheoThang(
+function buildNhanSuTheoThang(
   employeesRaw: Awaited<ReturnType<typeof getNhanVien>>,
   contracts: Awaited<ReturnType<typeof getHopDong>>,
   from: Date,
@@ -300,11 +300,17 @@ function buildNhanSuChinhThucTheoThang(
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
-  const isOfficial = (value: string): boolean => normalize(value).includes('chinh thuc');
+  const isIncludedStatus = (value: string): boolean => {
+    const normalized = normalize(value);
+    return normalized.includes('chinh thuc')
+      || normalized.includes('thu viec')
+      || normalized.includes('hoc viec')
+      || normalized.includes('hoc vien');
+  };
 
   for (const hd of contracts) {
     const start = safeParseDate(hd.ngay_bat_dau || '');
-    if (!hd.id_nhan_vien || !start || isNaN(start.getTime()) || !isOfficial(hd.contract_type || '')) continue;
+    if (!hd.id_nhan_vien || !start || isNaN(start.getTime()) || !isIncludedStatus(hd.contract_type || '')) continue;
 
     const end = hd.ngay_ket_thuc ? safeParseDate(hd.ngay_ket_thuc) : null;
     const list = officialContractMap.get(hd.id_nhan_vien) ?? [];
@@ -313,10 +319,10 @@ function buildNhanSuChinhThucTheoThang(
   }
 
   const periodStart = buckets[0].start;
-  const fallbackOfficialIds = new Set(
+  const fallbackIncludedIds = new Set(
     employeesRaw
       .filter(emp =>
-        isOfficial(emp.trang_thai || '') &&
+        isIncludedStatus(emp.trang_thai || '') &&
         emp.trang_thai !== 'Nghỉ việc' &&
         !officialContractMap.has(emp.id_nhan_vien)
       )
@@ -324,26 +330,26 @@ function buildNhanSuChinhThucTheoThang(
   );
 
   const monthlyTotals = buckets.map(bucket => {
-    const activeOfficialIds = new Set<string>();
+    const activeIncludedIds = new Set<string>();
 
     for (const [employeeId, ranges] of officialContractMap.entries()) {
       const isActive = ranges.some(range =>
         range.start <= bucket.end && (!range.end || range.end >= bucket.start)
       );
-      if (isActive) activeOfficialIds.add(employeeId);
+      if (isActive) activeIncludedIds.add(employeeId);
     }
 
-    for (const employeeId of fallbackOfficialIds) {
+    for (const employeeId of fallbackIncludedIds) {
       const emp = employeeMap.get(employeeId);
       const createdAt = safeParseDate(emp?.ngay_tao || '');
       if (createdAt && !isNaN(createdAt.getTime())) {
-        if (createdAt < periodStart) activeOfficialIds.add(employeeId);
+        if (createdAt < periodStart) activeIncludedIds.add(employeeId);
       } else {
-        activeOfficialIds.add(employeeId);
+        activeIncludedIds.add(employeeId);
       }
     }
 
-    return activeOfficialIds.size;
+    return activeIncludedIds.size;
   });
 
   return buckets.map((bucket, index) => ({
@@ -850,7 +856,7 @@ export async function GET(request: NextRequest) {
 
     const tonghop = isAdmin ? buildTongHopStats() : undefined;
     const nhanSuBienDong = isAdmin
-      ? buildNhanSuChinhThucTheoThang(allEmployeesRaw, allContracts, dateRange.from, dateRange.to)
+      ? buildNhanSuTheoThang(allEmployeesRaw, allContracts, dateRange.from, dateRange.to)
       : undefined;
 
     const data: DashboardData = isAdmin ? {
