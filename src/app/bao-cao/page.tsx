@@ -95,7 +95,10 @@ function DonutCompareCard({
 
   const totalCan = items.reduce((sum, item) => sum + item.so_can, 0);
   const totalDoanhSo = items.reduce((sum, item) => sum + item.doanh_so, 0);
+  const center = 70;
   const radius = 48;
+  const ringWidth = 28;
+  const labelRadius = radius - ringWidth / 2 + 3;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
 
@@ -107,8 +110,8 @@ function DonutCompareCard({
       </div>
       <div className="bc-donut-content">
         <div className="bc-donut-chart">
-          <svg viewBox="0 0 140 140" role="img" aria-label={title}>
-            <circle cx="70" cy="70" r={radius} fill="none" stroke="#eef2f7" strokeWidth="28" />
+          <svg viewBox="-12 -12 164 164" role="img" aria-label={title}>
+            <circle cx={center} cy={center} r={radius} fill="none" stroke="#eef2f7" strokeWidth={ringWidth} />
             {items.map((item, index) => {
               const pct = totalDoanhSo > 0 ? item.doanh_so / totalDoanhSo : 0;
               const dash = pct * circumference;
@@ -117,19 +120,19 @@ function DonutCompareCard({
               return (
                 <circle
                   key={item.loai}
-                  cx="70"
-                  cy="70"
+                  cx={center}
+                  cy={center}
                   r={radius}
                   fill="none"
                   stroke={colors[index % colors.length]}
-                  strokeWidth="28"
+                  strokeWidth={ringWidth}
                   strokeDasharray={`${dash} ${circumference - dash}`}
                   strokeDashoffset={-currentOffset}
-                  transform="rotate(-90 70 70)"
+                  transform={`rotate(-90 ${center} ${center})`}
                 />
               );
             })}
-            <circle cx="70" cy="70" r="28" fill="#fff" />
+            <circle cx={center} cy={center} r={28} fill="#fff" />
             {items.map((item, index) => {
               const pct = totalDoanhSo > 0 ? item.doanh_so / totalDoanhSo : 0;
               if (pct < 0.06) return null;
@@ -137,10 +140,17 @@ function DonutCompareCard({
                 .slice(0, index)
                 .reduce((sum, x) => sum + (totalDoanhSo > 0 ? x.doanh_so / totalDoanhSo : 0), 0);
               const angle = (priorPct + pct / 2) * Math.PI * 2 - Math.PI / 2;
-              const x = 70 + Math.cos(angle) * 54;
-              const y = 70 + Math.sin(angle) * 54;
+              const x = center + Math.cos(angle) * labelRadius;
+              const y = center + Math.sin(angle) * labelRadius;
               return (
-                <text key={`${item.loai}-label`} x={x} y={y} textAnchor="middle" dominantBaseline="central">
+                <text
+                  key={`${item.loai}-label`}
+                  x={x}
+                  y={y}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  style={{ fontSize: pct < 0.1 ? 10 : 11 }}
+                >
                   {(pct * 100).toFixed(1)}%
                 </text>
               );
