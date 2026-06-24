@@ -921,7 +921,7 @@ export default function BaoCaoPage() {
             </>
           )}
 
-          {nhanSuBienDong.length > 0 && (
+          {false && nhanSuBienDong.length > 0 && (
             <>
               <h2 className="bc-section-title">VIII. Biến động nhân sự</h2>
               <OfficialStaffTrendChart items={nhanSuBienDong} />
