@@ -500,8 +500,20 @@ export async function GET(request: NextRequest) {
     const classifyLoaiCan = (loaiCan: string): 'Cao tầng' | 'Thấp tầng' =>
       /^([1-9]BR[+]?|penh?ouse|studio)/i.test((loaiCan || '').trim()) ? 'Cao tầng' : 'Thấp tầng';
 
+    const normText = (s: string): string =>
+      (s || '').toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd');
+
     // Check if a string indicates Đối tác (partner, not internal team)
-    const isDoiTacStr = (s: string): boolean => s.toLowerCase().includes('đối tác');
+    const isDoiTacStr = (s: string): boolean => {
+      const n = normText(s);
+      return n.includes('doi tac') || n.includes('doitac') || n.includes('partner');
+    };
+
+    const classifyNguonGiaoDich = (loaiNguon: string, phongKd = ''): 'Nội bộ' | 'Đối tác' =>
+      isDoiTacStr(loaiNguon) || isDoiTacStr(phongKd) ? 'Đối tác' : 'Nội bộ';
 
     // Classify phong_kd by region: VIC-01..VIC-05 = TP.HCM, VIC-06..VIC-12 = Hà Nội
     const classifyKhuVucByPhongKD = (phongKd: string): string | null => {
@@ -531,7 +543,7 @@ export async function GET(request: NextRequest) {
         // Nguồn (Nội bộ / Đối tác)
         const nguonMap = new Map<string, { so_can: number; doanh_so: number }>();
         tongHopRows.forEach(r => {
-          const key = r.loai_nguon || 'Khác';
+          const key = classifyNguonGiaoDich(r.loai_nguon, r.phong_kd);
           const cur = nguonMap.get(key) ?? { so_can: 0, doanh_so: 0 };
           nguonMap.set(key, { so_can: cur.so_can + 1, doanh_so: cur.doanh_so + r.gia_tri });
         });

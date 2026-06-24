@@ -128,6 +128,7 @@ function DonutCompareCard({
                 />
               );
             })}
+            <circle cx="70" cy="70" r="28" fill="#fff" />
             {items.map((item, index) => {
               const pct = totalDoanhSo > 0 ? item.doanh_so / totalDoanhSo : 0;
               if (pct < 0.06) return null;
@@ -135,15 +136,14 @@ function DonutCompareCard({
                 .slice(0, index)
                 .reduce((sum, x) => sum + (totalDoanhSo > 0 ? x.doanh_so / totalDoanhSo : 0), 0);
               const angle = (priorPct + pct / 2) * Math.PI * 2 - Math.PI / 2;
-              const x = 70 + Math.cos(angle) * 49;
-              const y = 70 + Math.sin(angle) * 49;
+              const x = 70 + Math.cos(angle) * 54;
+              const y = 70 + Math.sin(angle) * 54;
               return (
                 <text key={`${item.loai}-label`} x={x} y={y} textAnchor="middle" dominantBaseline="central">
                   {(pct * 100).toFixed(1)}%
                 </text>
               );
             })}
-            <circle cx="70" cy="70" r="28" fill="#fff" />
           </svg>
         </div>
         <div className="bc-donut-table">
