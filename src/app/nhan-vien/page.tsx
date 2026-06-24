@@ -54,6 +54,7 @@ export default function NhanVienPage() {
   // Avatar upload state
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [avatarPreviewFailed, setAvatarPreviewFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form
@@ -265,6 +266,7 @@ export default function NhanVienPage() {
       so_nguoi_phu_thuoc: 0,
     });
     setUploadError('');
+    setAvatarPreviewFailed(false);
     setShowModal(true);
   };
 
@@ -273,7 +275,7 @@ export default function NhanVienPage() {
     if (!dateVal) return '';
     try {
       const str = String(dateVal).trim();
-      const parts = str.split(/[\/\-]/);
+      const parts = str.split(/[/-]/);
       if (parts.length === 3) {
         const p1 = parseInt(parts[0], 10);
         const p2 = parseInt(parts[1], 10);
@@ -284,7 +286,9 @@ export default function NhanVienPage() {
       }
       const d = new Date(str);
       if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-    } catch (e) {}
+    } catch {
+      return '';
+    }
     return '';
   };
 
@@ -312,6 +316,7 @@ export default function NhanVienPage() {
       so_nguoi_phu_thuoc: nv.so_nguoi_phu_thuoc || 0,
     });
     setUploadError('');
+    setAvatarPreviewFailed(false);
     setShowModal(true);
   };
 
@@ -418,6 +423,7 @@ export default function NhanVienPage() {
       if (data.url) {
         setForm(prev => ({ ...prev, avatar_url: data.url }));
         setUploadError('');
+        setAvatarPreviewFailed(false);
       } else {
         setUploadError('Upload thất bại: không nhận được URL');
       }
@@ -856,7 +862,7 @@ export default function NhanVienPage() {
               <div className="form-group" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
                 <div style={{ position: 'relative', marginBottom: 12 }}>
                   {/* Avatar preview */}
-                   {form.avatar_url ? (
+                   {form.avatar_url && !avatarPreviewFailed ? (
                     <div style={{
                       width: 80, height: 80, borderRadius: '50%',
                       overflow: 'hidden', display: 'flex',
@@ -871,21 +877,26 @@ export default function NhanVienPage() {
                           objectFit: 'cover',
                         }}
                         onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          const container = target.parentElement as HTMLElement;
-                          if (container) container.style.display = 'none';
+                          e.currentTarget.style.display = 'none';
+                          setAvatarPreviewFailed(true);
                         }}
                       />
                     </div>
                   ) : (
                     <div style={{
                       width: 80, height: 80, borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)',
+                      background: form.avatar_url
+                        ? 'linear-gradient(135deg, #10b981 0%, #34d399 100%)'
+                        : 'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      border: '3px dashed var(--border)',
-                      color: 'var(--text-label)', fontSize: 28,
+                      border: form.avatar_url ? '3px solid var(--border)' : '3px dashed var(--border)',
+                      color: form.avatar_url ? '#fff' : 'var(--text-label)',
+                      fontSize: form.avatar_url ? 30 : 28,
+                      fontWeight: 700,
                     }}>
-                      <Upload size={28} />
+                      {form.avatar_url
+                        ? (form.ho_ten.split(' ').pop()?.charAt(0).toUpperCase() || '?')
+                        : <Upload size={28} />}
                     </div>
                   )}
 
@@ -925,7 +936,10 @@ export default function NhanVienPage() {
                 {form.avatar_url && !uploading && (
                   <button
                     type="button"
-                    onClick={() => setForm(prev => ({ ...prev, avatar_url: '' }))}
+                    onClick={() => {
+                      setForm(prev => ({ ...prev, avatar_url: '' }));
+                      setAvatarPreviewFailed(false);
+                    }}
                     style={{
                       marginTop: 4, background: 'none', border: 'none',
                       color: 'var(--danger-text)', cursor: 'pointer',

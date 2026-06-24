@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Printer, ArrowLeft, FileText, Layers, Users } from 'lucide-react';
-import type { DashboardData, TongHopCompareItem } from '@/lib/types';
+import type { DashboardData, TongHopCompareItem, NhanSuBienDongItem } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 
 // Định dạng số tiền đầy đủ (VND) — dùng cho báo cáo in
@@ -188,6 +188,116 @@ function ReportBar({
   );
 }
 
+function StaffMovementChart({ items }: { items: NhanSuBienDongItem[] }) {
+  if (!items || items.length === 0) return null;
+
+  const totalTang = items.reduce((sum, item) => sum + item.tang_moi, 0);
+  const totalGiam = items.reduce((sum, item) => sum + item.giam, 0);
+  const dauKy = items[0]?.dau_ky ?? 0;
+  const cuoiKy = items[items.length - 1]?.cuoi_ky ?? 0;
+  const maxFlow = Math.max(1, ...items.map(item => Math.max(item.tang_moi, item.giam)));
+  const maxHeadcount = Math.max(1, ...items.map(item => Math.max(item.dau_ky, item.cuoi_ky)));
+  const width = Math.max(640, items.length * 72 + 90);
+  const height = 260;
+  const padding = { top: 20, right: 24, bottom: 72, left: 30 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const step = items.length > 1 ? plotWidth / (items.length - 1) : plotWidth;
+  const barWidth = Math.min(18, step * 0.24);
+
+  const linePoints = items
+    .map((item, index) => {
+      const x = padding.left + (items.length === 1 ? plotWidth / 2 : step * index);
+      const y = padding.top + plotHeight - ((item.cuoi_ky / maxHeadcount) * (plotHeight - 20));
+      return `${x},${y}`;
+    })
+    .join(' ');
+
+  return (
+    <div className="bc-staff-card">
+      <div className="bc-staff-summary">
+        <div className="bc-staff-kpi">
+          <div className="bc-staff-kpi-label">Đầu kỳ</div>
+          <div className="bc-staff-kpi-value">{dauKy}</div>
+        </div>
+        <div className="bc-staff-kpi">
+          <div className="bc-staff-kpi-label">Tăng mới</div>
+          <div className="bc-staff-kpi-value" style={{ color: '#10b981' }}>+{totalTang}</div>
+        </div>
+        <div className="bc-staff-kpi">
+          <div className="bc-staff-kpi-label">Giảm</div>
+          <div className="bc-staff-kpi-value" style={{ color: '#ef4444' }}>-{totalGiam}</div>
+        </div>
+        <div className="bc-staff-kpi">
+          <div className="bc-staff-kpi-label">Cuối kỳ</div>
+          <div className="bc-staff-kpi-value" style={{ color: '#2563eb' }}>{cuoiKy}</div>
+        </div>
+      </div>
+
+      <div className="bc-staff-legend">
+        <span><i style={{ background: '#10b981' }} /> Tăng mới</span>
+        <span><i style={{ background: '#ef4444' }} /> Giảm</span>
+        <span><i style={{ background: '#2563eb' }} /> Nhân sự cuối kỳ</span>
+      </div>
+
+      <div className="bc-staff-chart-wrap">
+        <svg viewBox={`0 0 ${width} ${height}`} className="bc-staff-chart" role="img" aria-label="Biểu đồ biến động nhân sự">
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+            const y = padding.top + plotHeight - ratio * plotHeight;
+            return <line key={ratio} x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#e5e7eb" strokeDasharray="4 4" />;
+          })}
+
+          {items.map((item, index) => {
+            const x = padding.left + (items.length === 1 ? plotWidth / 2 : step * index);
+            const tangHeight = (item.tang_moi / maxFlow) * (plotHeight - 28);
+            const giamHeight = (item.giam / maxFlow) * (plotHeight - 28);
+            const tangY = padding.top + plotHeight - tangHeight;
+            const giamY = padding.top + plotHeight - giamHeight;
+            const lineY = padding.top + plotHeight - ((item.cuoi_ky / maxHeadcount) * (plotHeight - 20));
+
+            return (
+              <g key={item.thang}>
+                <rect x={x - barWidth - 3} y={tangY} width={barWidth} height={Math.max(4, tangHeight)} rx="4" fill="#10b981" />
+                <rect x={x + 3} y={giamY} width={barWidth} height={Math.max(4, giamHeight)} rx="4" fill="#ef4444" />
+                <circle cx={x} cy={lineY} r="4.5" fill="#2563eb" stroke="#fff" strokeWidth="2" />
+                <text x={x} y={lineY - 10} textAnchor="middle" className="bc-staff-point-label">{item.cuoi_ky}</text>
+                <text x={x} y={height - 18} textAnchor="end" transform={`rotate(-35 ${x} ${height - 18})`} className="bc-staff-axis-label">
+                  {thangLabel(item.thang)}
+                </text>
+              </g>
+            );
+          })}
+
+          <polyline fill="none" stroke="#2563eb" strokeWidth="3" points={linePoints} />
+        </svg>
+      </div>
+
+      <table className="bc-table bc-staff-table">
+        <thead>
+          <tr>
+            <th>Tháng</th>
+            <th style={{ textAlign: 'center', width: 90 }}>Đầu kỳ</th>
+            <th style={{ textAlign: 'center', width: 90 }}>Tăng mới</th>
+            <th style={{ textAlign: 'center', width: 90 }}>Giảm</th>
+            <th style={{ textAlign: 'center', width: 90 }}>Cuối kỳ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(item => (
+            <tr key={item.thang}>
+              <td>{thangLabel(item.thang)}</td>
+              <td style={{ textAlign: 'center' }}>{item.dau_ky}</td>
+              <td style={{ textAlign: 'center', color: '#10b981', fontWeight: 700 }}>{item.tang_moi}</td>
+              <td style={{ textAlign: 'center', color: '#ef4444', fontWeight: 700 }}>{item.giam}</td>
+              <td style={{ textAlign: 'center', color: '#2563eb', fontWeight: 700 }}>{item.cuoi_ky}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function BaoCaoPage() {
   const router = useRouter();
   const { isAdmin, isLoading: authLoading } = useAuth();
@@ -292,6 +402,7 @@ export default function BaoCaoPage() {
   const maxKhuVuc = Math.max(...(th?.khu_vuc.map(k => k.doanh_so) ?? []), 1);
   const maxPhongKD = Math.max(...(th?.top_phong_kd.map(p => p.doanh_so) ?? []), 1);
   const maxDuAn = Math.max(...(th?.top_du_an.map(p => p.doanh_so) ?? []), 1);
+  const nhanSuBienDong = data?.nhan_su_bien_dong ?? [];
   const reportBarColors = ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444', '#14b8a6'];
 
   return (
@@ -557,6 +668,13 @@ export default function BaoCaoPage() {
             </>
           )}
 
+          {nhanSuBienDong.length > 0 && (
+            <>
+              <h2 className="bc-section-title">VIII. Biến động nhân sự</h2>
+              <StaffMovementChart items={nhanSuBienDong} />
+            </>
+          )}
+
           {/* ── Footer ── */}
           <div className="bc-footer">
             <div>
@@ -692,6 +810,48 @@ const printStyles = `
   height: 100%; border-radius: 999px;
 }
 
+.bc-staff-card {
+  border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px 14px 10px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+.bc-staff-summary {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px;
+}
+.bc-staff-kpi {
+  border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; background: #fff;
+}
+.bc-staff-kpi-label {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #6b7280;
+}
+.bc-staff-kpi-value {
+  font-size: 1.2rem; font-weight: 800; color: #111827; margin-top: 3px;
+}
+.bc-staff-legend {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px;
+  font-size: 0.72rem; font-weight: 700; color: #475569;
+}
+.bc-staff-legend span {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.bc-staff-legend i {
+  width: 10px; height: 10px; border-radius: 999px; display: inline-block;
+}
+.bc-staff-chart-wrap {
+  width: 100%; overflow: hidden; margin-bottom: 8px;
+}
+.bc-staff-chart {
+  width: 100%; height: auto; display: block;
+}
+.bc-staff-axis-label {
+  fill: #64748b; font-size: 10px; font-weight: 700;
+}
+.bc-staff-point-label {
+  fill: #1d4ed8; font-size: 10px; font-weight: 800;
+}
+.bc-staff-table tbody tr:nth-child(even) {
+  background: rgba(255,255,255,0.65);
+}
+
 .bc-rank {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; border-radius: 6px;
@@ -713,6 +873,7 @@ const printStyles = `
   .bc-donut-content { grid-template-columns: 118px minmax(0, 1fr); }
   .bc-donut-chart,
   .bc-donut-chart svg { width: 118px; height: 118px; }
+  .bc-staff-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media print {
@@ -730,5 +891,6 @@ const printStyles = `
   .bc-table { break-inside: auto; }
   .bc-table tr { break-inside: avoid; }
   .bc-kpi-grid { break-inside: avoid; }
+  .bc-staff-card, .bc-staff-summary { break-inside: avoid; }
 }
 `;

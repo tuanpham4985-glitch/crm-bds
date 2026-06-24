@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   TrendingUp, TrendingDown, BarChart3,
@@ -16,6 +17,49 @@ import { formatCurrency, formatChange, calcChange } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 
 const CHART_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((w: string) => w[0])
+    .slice(-2)
+    .join('');
+}
+
+function SafeAvatar({
+  src,
+  name,
+  imgClassName,
+  fallbackClassName,
+  imgStyle,
+  fallbackStyle,
+}: {
+  src?: string;
+  name: string;
+  imgClassName?: string;
+  fallbackClassName?: string;
+  imgStyle?: CSSProperties;
+  fallbackStyle?: CSSProperties;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        className={imgClassName}
+        style={imgStyle}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div className={fallbackClassName} style={fallbackStyle}>
+      {getInitials(name)}
+    </div>
+  );
+}
 
 // ─── Cinematic 3D Rank Number ─────────────────────────────────────────────────
 // Layered SVG: bloom → extrusion depth → metallic face → specular → rim light
@@ -702,9 +746,6 @@ export default function DashboardPage() {
                       if (!sale) return null;
                       const rank = (rankIdx + 1) as 1|2|3;
 
-                      const initials = sale.nhan_vien
-                        .split(' ').map((w: string) => w[0]).slice(-2).join('');
-
                       // Ring frame + number below + pedestal — matches reference image
                       // Desktop sizes scaled to fit within 1fr column (~152px/slot on 1440px)
                       const ringSize = isMobile
@@ -933,21 +974,18 @@ export default function DashboardPage() {
                               overflow: 'hidden',
                               background: tc.avBg,
                             }}>
-                              {sale.avatar_url ? (
-                                <img src={sale.avatar_url} alt={sale.nhan_vien}
-                                  style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center' }}
-                                />
-                              ) : (
-                                <div style={{
+                              <SafeAvatar
+                                src={sale.avatar_url}
+                                name={sale.nhan_vien}
+                                imgStyle={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center' }}
+                                fallbackStyle={{
                                   width:'100%', height:'100%',
                                   display:'flex', alignItems:'center', justifyContent:'center',
                                   background: tc.avBg,
                                   fontSize: Math.round((ringSize - ringThick * 2) * 0.36),
                                   fontWeight: 800, color: '#fff', letterSpacing: '-1px',
-                                }}>
-                                  {initials}
-                                </div>
-                              )}
+                                }}
+                              />
                             </div>
                           </div>
 
@@ -1039,29 +1077,16 @@ export default function DashboardPage() {
                       const rank = i + 4;
                       const AVATAR_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#14b8a6'];
                       const color = AVATAR_COLORS[(rank - 1) % AVATAR_COLORS.length];
-                      const initials = sale.nhan_vien
-                        .split(' ')
-                        .map((w: string) => w[0])
-                        .slice(-2)
-                        .join('');
-
                       return (
                         <div key={sale.nhan_vien} className="leaderboard-row">
                           <div className="leaderboard-rank">{rank}</div>
-                          {sale.avatar_url ? (
-                            <img 
-                              src={sale.avatar_url} 
-                              alt={sale.nhan_vien}
-                              className="leaderboard-avatar-initials"
-                            />
-                          ) : (
-                            <div
-                              className="leaderboard-avatar-initials"
-                              style={{ background: color }}
-                            >
-                              {initials}
-                            </div>
-                          )}
+                          <SafeAvatar
+                            src={sale.avatar_url}
+                            name={sale.nhan_vien}
+                            imgClassName="leaderboard-avatar-initials"
+                            fallbackClassName="leaderboard-avatar-initials"
+                            fallbackStyle={{ background: color }}
+                          />
                           <div className="leaderboard-info">
                             <div className="leaderboard-name">{sale.nhan_vien}</div>
                             <div className="leaderboard-detail">{sale.so_deal} deal đã ký</div>
@@ -1083,27 +1108,18 @@ export default function DashboardPage() {
               {data.doanh_thu_theo_sale.length === 1 && (
                 <div className="leaderboard-list">
                   {data.doanh_thu_theo_sale.map((sale, i) => {
-                    const initials = sale.nhan_vien
-                      .split(' ')
-                      .map((w: string) => w[0])
-                      .slice(-2)
-                      .join('');
                     return (
                       <div key={sale.nhan_vien} className="leaderboard-row">
                         <div className="leaderboard-rank" style={{ background: '#fffbeb', color: '#b45309' }}>
                           {i + 1}
                         </div>
-                        {sale.avatar_url ? (
-                          <img 
-                            src={sale.avatar_url} 
-                            alt={sale.nhan_vien}
-                            className="leaderboard-avatar-initials"
-                          />
-                        ) : (
-                          <div className="leaderboard-avatar-initials" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
-                            {initials}
-                          </div>
-                        )}
+                        <SafeAvatar
+                          src={sale.avatar_url}
+                          name={sale.nhan_vien}
+                          imgClassName="leaderboard-avatar-initials"
+                          fallbackClassName="leaderboard-avatar-initials"
+                          fallbackStyle={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+                        />
                         <div className="leaderboard-info">
                           <div className="leaderboard-name">{sale.nhan_vien}</div>
                           <div className="leaderboard-detail">{sale.so_deal} deal đã ký</div>
@@ -1559,7 +1575,6 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
           gap: 16,
         }}>
           {employees.map((emp, idx) => {
-            const initials = emp.ho_ten.split(' ').map(w => w[0]).slice(-2).join('');
             const grad = BD_COLORS[idx % BD_COLORS.length];
             const isToday = emp.la_hom_nay;
 
@@ -1611,19 +1626,16 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
                 )}
 
                 {/* Avatar */}
-                {emp.avatar_url ? (
-                  <img
-                    src={emp.avatar_url}
-                    alt={emp.ho_ten}
-                    style={{
+                <SafeAvatar
+                  src={emp.avatar_url}
+                  name={emp.ho_ten}
+                  imgStyle={{
                       width: 64, height: 64, borderRadius: '50%',
                       objectFit: 'cover',
                       border: isToday ? '3px solid #f59e0b' : '3px solid #e2e8f0',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                     }}
-                  />
-                ) : (
-                  <div style={{
+                  fallbackStyle={{
                     width: 64, height: 64, borderRadius: '50%',
                     background: grad,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1631,10 +1643,8 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
                     border: isToday ? '3px solid #f59e0b' : '3px solid transparent',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                     flexShrink: 0,
-                  }}>
-                    {initials}
-                  </div>
-                )}
+                  }}
+                />
 
                 {/* Name */}
                 <div style={{
@@ -1924,7 +1934,6 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                 ) : (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                     {list.map(emp => {
-                      const initials = emp.nhan_vien.split(' ').map((w: string) => w[0]).slice(-2).join('');
                       return (
                         <div key={emp.nhan_vien} style={{
                           display: 'flex',
@@ -1936,10 +1945,11 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                           border: '1px solid #e2e8f0',
                           boxShadow: '0 1px 4px rgba(0,0,0,0.07)'
                         }}>
-                          {emp.avatar_url ? (
-                            <img src={emp.avatar_url} alt={emp.nhan_vien} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{
+                          <SafeAvatar
+                            src={emp.avatar_url}
+                            name={emp.nhan_vien}
+                            imgStyle={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }}
+                            fallbackStyle={{
                               width: 28,
                               height: 28,
                               borderRadius: '50%',
@@ -1950,10 +1960,8 @@ function GlobalChampionWidget({ data }: { data: any[] }) {
                               justifyContent: 'center',
                               fontSize: '0.7rem',
                               fontWeight: 700
-                            }}>
-                              {initials}
-                            </div>
-                          )}
+                            }}
+                          />
                           <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
                             {emp.nhan_vien}
                           </div>

@@ -272,6 +272,14 @@ export interface TongHopStats {
   top_du_an: TongHopDuAn[];          // Top dự án theo doanh số
 }
 
+export interface NhanSuBienDongItem {
+  thang: string;
+  dau_ky: number;
+  tang_moi: number;
+  giam: number;
+  cuoi_ky: number;
+}
+
 export interface DashboardData {
   kpi: DashboardKPI;
   doanh_thu_theo_sale: DoanhThuTheoSale[];
@@ -282,6 +290,7 @@ export interface DashboardData {
   pipeline_funnel: PipelineFunnelItem[];
   crm_totals?: CrmTotals;
   tonghop?: TongHopStats;
+  nhan_su_bien_dong?: NhanSuBienDongItem[];
 }
 
 // === FILTERS ===

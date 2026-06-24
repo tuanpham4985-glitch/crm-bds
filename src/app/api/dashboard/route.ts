@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich } from '@/lib/google-sheets';
-import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn } from '@/lib/types';
+import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong } from '@/lib/google-sheets';
+import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
@@ -176,6 +176,114 @@ function getDateRange(period: string): { from: Date; to: Date; prevFrom: Date; p
   return { from, to, prevFrom, prevTo };
 }
 
+function formatMonthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function buildMonthBuckets(from: Date, to: Date): Array<{ key: string; start: Date; end: Date }> {
+  const buckets: Array<{ key: string; start: Date; end: Date }> = [];
+  const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+  const last = new Date(to.getFullYear(), to.getMonth(), 1);
+
+  while (cursor <= last) {
+    const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59, 999);
+    buckets.push({ key: formatMonthKey(cursor), start, end });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return buckets;
+}
+
+function buildNhanSuBienDong(
+  employeesRaw: Awaited<ReturnType<typeof getNhanVien>>,
+  contracts: Awaited<ReturnType<typeof getHopDong>>,
+  from: Date,
+  to: Date
+): NhanSuBienDongItem[] {
+  const buckets = buildMonthBuckets(from, to);
+  if (buckets.length === 0) return [];
+
+  const hireMap = new Map<string, Set<string>>();
+  const exitMap = new Map<string, Set<string>>();
+  const employeeMap = new Map(employeesRaw.map(emp => [emp.id_nhan_vien, emp]));
+  const contractMap = new Map<string, Array<{ start: Date; end: Date | null }>>();
+
+  for (const hd of contracts) {
+    const start = safeParseDate(hd.ngay_bat_dau || '');
+    if (!hd.id_nhan_vien || !start || isNaN(start.getTime())) continue;
+
+    const end = hd.ngay_ket_thuc ? safeParseDate(hd.ngay_ket_thuc) : null;
+    const list = contractMap.get(hd.id_nhan_vien) ?? [];
+    list.push({ start, end: end && !isNaN(end.getTime()) ? end : null });
+    contractMap.set(hd.id_nhan_vien, list);
+  }
+
+  const addToMonthSet = (target: Map<string, Set<string>>, date: Date, employeeId: string) => {
+    const key = formatMonthKey(date);
+    const set = target.get(key) ?? new Set<string>();
+    set.add(employeeId);
+    target.set(key, set);
+  };
+
+  const seededEmployees = new Set<string>();
+
+  for (const [employeeId, employeeContracts] of contractMap.entries()) {
+    const sorted = [...employeeContracts].sort((a, b) => a.start.getTime() - b.start.getTime());
+    if (sorted.length === 0) continue;
+
+    seededEmployees.add(employeeId);
+    addToMonthSet(hireMap, sorted[0].start, employeeId);
+
+    const empStatus = (employeeMap.get(employeeId)?.trang_thai || '').trim().toLowerCase();
+    const lastEndedContract = [...sorted]
+      .reverse()
+      .find(item => item.end && !isNaN(item.end.getTime()));
+
+    if (empStatus === 'nghỉ việc' && lastEndedContract?.end) {
+      addToMonthSet(exitMap, lastEndedContract.end, employeeId);
+    }
+  }
+
+  const periodStart = buckets[0].start;
+  let closingHeadcount = 0;
+  for (const [employeeId, employeeContracts] of contractMap.entries()) {
+    const sorted = [...employeeContracts].sort((a, b) => a.start.getTime() - b.start.getTime());
+    const firstStart = sorted[0]?.start;
+    const lastEnd = [...sorted]
+      .reverse()
+      .find(item => item.end && !isNaN(item.end.getTime()))
+      ?.end ?? null;
+    const empStatus = (employeeMap.get(employeeId)?.trang_thai || '').trim().toLowerCase();
+    const hasExitedBeforeRange = empStatus === 'nghỉ việc' && lastEnd && lastEnd < periodStart;
+    if (firstStart && firstStart < periodStart && !hasExitedBeforeRange) {
+      closingHeadcount += 1;
+    }
+  }
+  for (const emp of employeesRaw) {
+    if (seededEmployees.has(emp.id_nhan_vien)) continue;
+    const createdAt = safeParseDate(emp.ngay_tao || '');
+    if (createdAt && !isNaN(createdAt.getTime()) && createdAt < periodStart && emp.trang_thai !== 'Nghỉ việc') {
+      closingHeadcount += 1;
+    }
+  }
+  closingHeadcount = Math.max(0, closingHeadcount);
+
+  return buckets.map(bucket => {
+    const tangMoi = hireMap.get(bucket.key)?.size ?? 0;
+    const giam = exitMap.get(bucket.key)?.size ?? 0;
+    const dauKy = closingHeadcount;
+    closingHeadcount = Math.max(0, closingHeadcount + tangMoi - giam);
+    return {
+      thang: bucket.key,
+      dau_ky: dauKy,
+      tang_moi: tangMoi,
+      giam,
+      cuoi_ky: closingHeadcount,
+    };
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const isAdmin = await getIsAdmin();
@@ -186,11 +294,12 @@ export async function GET(request: NextRequest) {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
 
-    const [allPipelines, allCustomers, allEmployeesRaw, allCongViec] = await Promise.all([
+    const [allPipelines, allCustomers, allEmployeesRaw, allCongViec, allContracts] = await Promise.all([
       getPipeline(),
       getKhachHang(),
       getNhanVien(),
       getCongViec(),
+      getHopDong(),
     ]);
 
     // Fetch external Tổng hợp sheet in parallel (non-blocking if env not set)
@@ -671,6 +780,9 @@ export async function GET(request: NextRequest) {
     };
 
     const tonghop = isAdmin ? buildTongHopStats() : undefined;
+    const nhanSuBienDong = isAdmin
+      ? buildNhanSuBienDong(allEmployeesRaw, allContracts, dateRange.from, dateRange.to)
+      : undefined;
 
     const data: DashboardData = isAdmin ? {
       kpi: {
@@ -696,6 +808,7 @@ export async function GET(request: NextRequest) {
       pipeline_funnel,
       crm_totals,
       tonghop,
+      nhan_su_bien_dong: nhanSuBienDong,
     } : {
       kpi: { tong_deal: 0, dang_xu_ly: 0, da_ky: 0, doanh_thu: 0, hoa_hong: 0, kh_chua_assign: 0 },
       doanh_thu_theo_sale: leaderboard,
@@ -704,6 +817,7 @@ export async function GET(request: NextRequest) {
       nguon_khach_hang: [],
       sinh_nhat_thang_nay: sinhNhatThangNay,
       pipeline_funnel: [],
+      nhan_su_bien_dong: [],
     };
 
     return NextResponse.json({ success: true, data });
