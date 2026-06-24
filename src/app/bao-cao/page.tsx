@@ -171,6 +171,23 @@ function DonutCompareCard({
   );
 }
 
+function ReportBar({
+  value,
+  max,
+  color = '#3b82f6',
+}: {
+  value: number;
+  max: number;
+  color?: string;
+}) {
+  const pct = max > 0 ? Math.max(3, Math.round((value / max) * 100)) : 0;
+  return (
+    <div className="bc-inline-bar-track">
+      <div className="bc-inline-bar-fill" style={{ width: `${pct}%`, background: color }} />
+    </div>
+  );
+}
+
 export default function BaoCaoPage() {
   const router = useRouter();
   const { isAdmin, isLoading: authLoading } = useAuth();
@@ -271,6 +288,11 @@ export default function BaoCaoPage() {
     return norm(pa) - norm(pb);
   });
   const maxThang = Math.max(...theoThang.map(t => t.doanh_thu), 1);
+  const maxSale = Math.max(...(data?.doanh_thu_theo_sale.map(s => s.doanh_thu) ?? []), 1);
+  const maxKhuVuc = Math.max(...(th?.khu_vuc.map(k => k.doanh_so) ?? []), 1);
+  const maxPhongKD = Math.max(...(th?.top_phong_kd.map(p => p.doanh_so) ?? []), 1);
+  const maxDuAn = Math.max(...(th?.top_du_an.map(p => p.doanh_so) ?? []), 1);
+  const reportBarColors = ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444', '#14b8a6'];
 
   return (
     <div className="bao-cao-wrap">
@@ -428,6 +450,7 @@ export default function BaoCaoPage() {
                   <tr>
                     <th style={{ width: 50 }}>#</th>
                     <th>Nhân viên</th>
+                    <th style={{ width: '28%' }}>Biểu đồ</th>
                     <th style={{ textAlign: 'center', width: 90 }}>Số deal</th>
                     <th style={{ textAlign: 'right', width: 160 }}>Doanh số</th>
                   </tr>
@@ -439,6 +462,7 @@ export default function BaoCaoPage() {
                         <span className={`bc-rank ${i < 3 ? `bc-rank-${i + 1}` : ''}`}>{i + 1}</span>
                       </td>
                       <td style={{ fontWeight: 500 }}>{s.nhan_vien}</td>
+                      <td><ReportBar value={s.doanh_thu} max={maxSale} color={reportBarColors[i % reportBarColors.length]} /></td>
                       <td style={{ textAlign: 'center' }}>{s.so_deal}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtVND(s.doanh_thu)}</td>
                     </tr>
@@ -456,6 +480,7 @@ export default function BaoCaoPage() {
                 <thead>
                   <tr>
                     <th>Khu vực</th>
+                    <th style={{ width: '34%' }}>Biểu đồ</th>
                     <th style={{ textAlign: 'center', width: 90 }}>Số căn</th>
                     <th style={{ textAlign: 'right', width: 160 }}>Doanh số</th>
                   </tr>
@@ -464,6 +489,7 @@ export default function BaoCaoPage() {
                   {th.khu_vuc.map(k => (
                     <tr key={k.loai}>
                       <td style={{ fontWeight: 500 }}>{k.loai}</td>
+                      <td><ReportBar value={k.doanh_so} max={maxKhuVuc} color="#10b981" /></td>
                       <td style={{ textAlign: 'center' }}>{k.so_can}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtVND(k.doanh_so)}</td>
                     </tr>
@@ -482,6 +508,7 @@ export default function BaoCaoPage() {
                   <tr>
                     <th style={{ width: 50 }}>#</th>
                     <th>Phòng kinh doanh</th>
+                    <th style={{ width: '28%' }}>Biểu đồ</th>
                     <th style={{ textAlign: 'center', width: 90 }}>Số căn</th>
                     <th style={{ textAlign: 'right', width: 160 }}>Doanh số</th>
                   </tr>
@@ -491,6 +518,7 @@ export default function BaoCaoPage() {
                     <tr key={p.ten}>
                       <td><span className={`bc-rank ${i < 3 ? `bc-rank-${i + 1}` : ''}`}>{i + 1}</span></td>
                       <td style={{ fontWeight: 500 }}>{p.ten}</td>
+                      <td><ReportBar value={p.doanh_so} max={maxPhongKD} color={reportBarColors[i % reportBarColors.length]} /></td>
                       <td style={{ textAlign: 'center' }}>{p.so_can}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtVND(p.doanh_so)}</td>
                     </tr>
@@ -509,6 +537,7 @@ export default function BaoCaoPage() {
                   <tr>
                     <th style={{ width: 50 }}>#</th>
                     <th>Dự án</th>
+                    <th style={{ width: '28%' }}>Biểu đồ</th>
                     <th style={{ textAlign: 'center', width: 90 }}>Số căn</th>
                     <th style={{ textAlign: 'right', width: 160 }}>Doanh số</th>
                   </tr>
@@ -518,6 +547,7 @@ export default function BaoCaoPage() {
                     <tr key={p.ten}>
                       <td><span className={`bc-rank ${i < 3 ? `bc-rank-${i + 1}` : ''}`}>{i + 1}</span></td>
                       <td style={{ fontWeight: 500 }}>{p.ten}</td>
+                      <td><ReportBar value={p.doanh_so} max={maxDuAn} color={reportBarColors[i % reportBarColors.length]} /></td>
                       <td style={{ textAlign: 'center' }}>{p.so_can}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtVND(p.doanh_so)}</td>
                     </tr>
@@ -654,6 +684,13 @@ const printStyles = `
 
 .bc-bar-track { height: 12px; background: #e5e7eb; border-radius: 6px; overflow: hidden; }
 .bc-bar-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #6366f1); border-radius: 6px; }
+.bc-inline-bar-track {
+  height: 10px; width: 100%; min-width: 90px;
+  background: #e5e7eb; border-radius: 999px; overflow: hidden;
+}
+.bc-inline-bar-fill {
+  height: 100%; border-radius: 999px;
+}
 
 .bc-rank {
   display: inline-flex; align-items: center; justify-content: center;
