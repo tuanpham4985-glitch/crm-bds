@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Printer, ArrowLeft, FileText } from 'lucide-react';
-import type { DashboardData } from '@/lib/types';
+import { Printer, ArrowLeft, FileText, Layers, Users } from 'lucide-react';
+import type { DashboardData, TongHopCompareItem } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 
 // Định dạng số tiền đầy đủ (VND) — dùng cho báo cáo in
@@ -61,20 +61,165 @@ const KY_CONFIG: Record<Ky, { label: string; tieu_de: string; range: (y: number)
   },
 };
 
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function lastDayOfMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+function monthKey(year: number, month: number): number {
+  return year * 12 + month;
+}
+
+function formatMonthYear(month: number, year: number): string {
+  return `Tháng ${month}/${year}`;
+}
+
+function DonutCompareCard({
+  title,
+  icon,
+  items,
+  colors,
+}: {
+  title: string;
+  icon: ReactNode;
+  items: TongHopCompareItem[];
+  colors: string[];
+}) {
+  if (!items || items.length === 0) return null;
+
+  const totalCan = items.reduce((sum, item) => sum + item.so_can, 0);
+  const totalDoanhSo = items.reduce((sum, item) => sum + item.doanh_so, 0);
+  const radius = 48;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  return (
+    <div className="bc-donut-card">
+      <div className="bc-donut-title">
+        {icon}
+        <span>{title}</span>
+      </div>
+      <div className="bc-donut-content">
+        <div className="bc-donut-chart">
+          <svg viewBox="0 0 140 140" role="img" aria-label={title}>
+            <circle cx="70" cy="70" r={radius} fill="none" stroke="#eef2f7" strokeWidth="28" />
+            {items.map((item, index) => {
+              const pct = totalDoanhSo > 0 ? item.doanh_so / totalDoanhSo : 0;
+              const dash = pct * circumference;
+              const currentOffset = offset;
+              offset += dash;
+              return (
+                <circle
+                  key={item.loai}
+                  cx="70"
+                  cy="70"
+                  r={radius}
+                  fill="none"
+                  stroke={colors[index % colors.length]}
+                  strokeWidth="28"
+                  strokeDasharray={`${dash} ${circumference - dash}`}
+                  strokeDashoffset={-currentOffset}
+                  transform="rotate(-90 70 70)"
+                />
+              );
+            })}
+            {items.map((item, index) => {
+              const pct = totalDoanhSo > 0 ? item.doanh_so / totalDoanhSo : 0;
+              if (pct < 0.06) return null;
+              const priorPct = items
+                .slice(0, index)
+                .reduce((sum, x) => sum + (totalDoanhSo > 0 ? x.doanh_so / totalDoanhSo : 0), 0);
+              const angle = (priorPct + pct / 2) * Math.PI * 2 - Math.PI / 2;
+              const x = 70 + Math.cos(angle) * 49;
+              const y = 70 + Math.sin(angle) * 49;
+              return (
+                <text key={`${item.loai}-label`} x={x} y={y} textAnchor="middle" dominantBaseline="central">
+                  {(pct * 100).toFixed(1)}%
+                </text>
+              );
+            })}
+            <circle cx="70" cy="70" r="28" fill="#fff" />
+          </svg>
+        </div>
+        <div className="bc-donut-table">
+          <div className="bc-donut-head">Loại</div>
+          <div className="bc-donut-head bc-num">Số căn</div>
+          <div className="bc-donut-head bc-num">Doanh số</div>
+          {items.map((item, index) => (
+            <div className="bc-donut-row" key={item.loai}>
+              <div className="bc-donut-name">
+                <span className="bc-donut-swatch" style={{ background: colors[index % colors.length] }} />
+                <span>{item.loai}</span>
+              </div>
+              <div className="bc-num">{item.so_can}</div>
+              <div className="bc-num" style={{ color: colors[index % colors.length] }}>{fmtShort(item.doanh_so)}</div>
+            </div>
+          ))}
+          <div className="bc-donut-total">
+            <div>Tổng</div>
+            <div className="bc-num">{totalCan}</div>
+            <div className="bc-num">{fmtShort(totalDoanhSo)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BaoCaoPage() {
   const router = useRouter();
   const { isAdmin, isLoading: authLoading } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [ky, setKy] = useState<Ky>('h1');
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(() => currentYear);
+  const [ky, setKy] = useState<Ky | 'custom'>('h1');
+  const [fromMonth, setFromMonth] = useState(1);
+  const [fromYear, setFromYear] = useState(() => currentYear);
+  const [toMonth, setToMonth] = useState(6);
+  const [toYear, setToYear] = useState(() => currentYear);
 
-  const cfg = KY_CONFIG[ky];
-  const { from, to } = cfg.range(year);
+  const rangeInvalid = monthKey(fromYear, fromMonth) > monthKey(toYear, toMonth);
+  const from = `${fromYear}-${pad2(fromMonth)}-01`;
+  const to = `${toYear}-${pad2(toMonth)}-${pad2(lastDayOfMonth(toYear, toMonth))}`;
+  const cfg = ky === 'custom' ? null : KY_CONFIG[ky];
+  const reportTitle = cfg ? `${cfg.tieu_de} ${year}` : 'BÁO CÁO TỔNG KẾT THEO KỲ';
+  const yearOptions = Array.from(
+    { length: Math.max(4, currentYear - 2024 + 2) },
+    (_, i) => currentYear + 1 - i
+  );
+
+  const applyPreset = (preset: Ky, presetYear = year) => {
+    const nextRange = KY_CONFIG[preset].range(presetYear);
+    setKy(preset);
+    setYear(presetYear);
+    setFromYear(Number(nextRange.from.slice(0, 4)));
+    setFromMonth(Number(nextRange.from.slice(5, 7)));
+    setToYear(Number(nextRange.to.slice(0, 4)));
+    setToMonth(Number(nextRange.to.slice(5, 7)));
+  };
+
+  const markCustom = () => setKy('custom');
+
+  useEffect(() => {
+    if (rangeInvalid) {
+      setToYear(fromYear);
+      setToMonth(fromMonth);
+    }
+  }, [rangeInvalid, fromYear, fromMonth]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      if (rangeInvalid) {
+        setData(null);
+        return;
+      }
       const params = new URLSearchParams({ period: 'custom', from, to });
       const res = await fetch(`/api/dashboard?${params}`);
       const result = await res.json();
@@ -84,7 +229,7 @@ export default function BaoCaoPage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, rangeInvalid]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -142,19 +287,39 @@ export default function BaoCaoPage() {
               <button
                 key={k}
                 className={`toggle-btn ${ky === k ? 'active' : ''}`}
-                onClick={() => setKy(k)}
+                onClick={() => applyPreset(k)}
               >{KY_CONFIG[k].label}</button>
             ))}
           </div>
           <select
             className="bc-year-select"
             value={year}
-            onChange={e => setYear(Number(e.target.value))}
+            onChange={e => {
+              const nextYear = Number(e.target.value);
+              setYear(nextYear);
+              if (ky !== 'custom') applyPreset(ky, nextYear);
+            }}
           >
-            {[year + 1, new Date().getFullYear(), 2025, 2024].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => b - a).map(y => (
+            {yearOptions.map(y => (
               <option key={y} value={y}>Năm {y}</option>
             ))}
           </select>
+          <div className="bc-range-controls">
+            <span className="bc-range-label">Từ</span>
+            <select className="bc-date-select" value={fromMonth} onChange={e => { markCustom(); setFromMonth(Number(e.target.value)); }}>
+              {MONTH_OPTIONS.map(m => <option key={m} value={m}>Tháng {m}</option>)}
+            </select>
+            <select className="bc-date-select" value={fromYear} onChange={e => { markCustom(); setFromYear(Number(e.target.value)); }}>
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <span className="bc-range-label">Đến</span>
+            <select className="bc-date-select" value={toMonth} onChange={e => { markCustom(); setToMonth(Number(e.target.value)); }}>
+              {MONTH_OPTIONS.map(m => <option key={m} value={m}>Tháng {m}</option>)}
+            </select>
+            <select className="bc-date-select" value={toYear} onChange={e => { markCustom(); setToYear(Number(e.target.value)); }}>
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
           <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={loading || !data}>
             <Printer size={16} /> In / Lưu PDF
           </button>
@@ -170,9 +335,9 @@ export default function BaoCaoPage() {
           {/* ── Tiêu đề báo cáo ── */}
           <div className="bc-header">
             <div className="bc-company">VICTORY HOLDINGS</div>
-            <h1 className="bc-title">{cfg.tieu_de} {year}</h1>
+            <h1 className="bc-title">{reportTitle}</h1>
             <div className="bc-period">
-              Kỳ báo cáo: {fmtDate(from)} – {fmtDate(to)} &nbsp;·&nbsp; Doanh số ghi nhận theo ngày cọc
+              Kỳ báo cáo: {formatMonthYear(fromMonth, fromYear)} - {formatMonthYear(toMonth, toYear)} ({fmtDate(from)} - {fmtDate(to)}) &nbsp;·&nbsp; Doanh số ghi nhận theo ngày cọc
             </div>
             <div className="bc-export-date">Ngày xuất báo cáo: {ngayXuat}</div>
           </div>
@@ -198,9 +363,29 @@ export default function BaoCaoPage() {
           </div>
 
           {/* ── Doanh số theo tháng ── */}
+          {(th?.loai_hinh?.length || th?.loai_nguon?.length) ? (
+            <>
+              <h2 className="bc-section-title">II. Cơ cấu doanh số</h2>
+              <div className="bc-donut-grid">
+                <DonutCompareCard
+                  title="Cao tầng vs Thấp tầng"
+                  icon={<Layers size={15} style={{ color: '#6366f1' }} />}
+                  items={th?.loai_hinh ?? []}
+                  colors={['#6366f1', '#f59e0b', '#94a3b8', '#10b981']}
+                />
+                <DonutCompareCard
+                  title="Nội bộ vs Đối tác"
+                  icon={<Users size={15} style={{ color: '#10b981' }} />}
+                  items={th?.loai_nguon ?? []}
+                  colors={['#10b981', '#f472b6', '#94a3b8', '#f59e0b']}
+                />
+              </div>
+            </>
+          ) : null}
+
           {theoThang.length > 0 && (
             <>
-              <h2 className="bc-section-title">II. Doanh số theo tháng</h2>
+              <h2 className="bc-section-title">III. Doanh số theo tháng</h2>
               <table className="bc-table">
                 <thead>
                   <tr>
@@ -237,7 +422,7 @@ export default function BaoCaoPage() {
           {/* ── Bảng xếp hạng sale ── */}
           {data.doanh_thu_theo_sale.length > 0 && (
             <>
-              <h2 className="bc-section-title">III. Bảng xếp hạng nhân viên kinh doanh</h2>
+              <h2 className="bc-section-title">IV. Bảng xếp hạng nhân viên kinh doanh</h2>
               <table className="bc-table">
                 <thead>
                   <tr>
@@ -266,7 +451,7 @@ export default function BaoCaoPage() {
           {/* ── Khu vực ── */}
           {th?.khu_vuc && th.khu_vuc.length > 0 && (
             <>
-              <h2 className="bc-section-title">IV. Doanh số theo khu vực</h2>
+              <h2 className="bc-section-title">V. Doanh số theo khu vực</h2>
               <table className="bc-table">
                 <thead>
                   <tr>
@@ -291,7 +476,7 @@ export default function BaoCaoPage() {
           {/* ── Top phòng KD ── */}
           {th?.top_phong_kd && th.top_phong_kd.length > 0 && (
             <>
-              <h2 className="bc-section-title">V. Top phòng kinh doanh</h2>
+              <h2 className="bc-section-title">VI. Top phòng kinh doanh</h2>
               <table className="bc-table">
                 <thead>
                   <tr>
@@ -318,7 +503,7 @@ export default function BaoCaoPage() {
           {/* ── Top dự án ── */}
           {th?.top_du_an && th.top_du_an.length > 0 && (
             <>
-              <h2 className="bc-section-title">VI. Top dự án theo doanh số</h2>
+              <h2 className="bc-section-title">VII. Top dự án theo doanh số</h2>
               <table className="bc-table">
                 <thead>
                   <tr>
@@ -369,6 +554,19 @@ const printStyles = `
   background: var(--bg-surface); color: var(--text-body); font-size: 13px; font-weight: 600;
   cursor: pointer;
 }
+.bc-range-controls {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.bc-range-label {
+  font-size: 12px; font-weight: 700; color: var(--text-label); padding: 0 2px;
+}
+.bc-date-select {
+  padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-light);
+  background: #fff; color: var(--text-body); font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
 
 .bc-page {
   background: #fff; color: #1a1a1a;
@@ -396,6 +594,52 @@ const printStyles = `
 .bc-kpi-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; }
 .bc-kpi-value { font-size: 1.5rem; font-weight: 800; margin: 6px 0 2px; }
 .bc-kpi-sub { font-size: 0.72rem; color: #9ca3af; }
+
+.bc-donut-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
+  break-inside: avoid;
+}
+.bc-donut-card {
+  border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px;
+  background: #fff;
+}
+.bc-donut-title {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  font-size: 0.78rem; font-weight: 800; color: #111827; text-transform: uppercase;
+}
+.bc-donut-content {
+  display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10px; align-items: center;
+}
+.bc-donut-chart { width: 104px; height: 104px; }
+.bc-donut-chart svg { width: 104px; height: 104px; display: block; overflow: visible; }
+.bc-donut-chart text { fill: #fff; font-size: 11px; font-weight: 800; }
+.bc-donut-table {
+  display: grid; grid-template-columns: minmax(0, 1fr) 38px 62px;
+  column-gap: 6px; row-gap: 7px; align-items: center; min-width: 0;
+}
+.bc-donut-head {
+  font-size: 0.66rem; color: #94a3b8; font-weight: 800;
+}
+.bc-donut-row,
+.bc-donut-total {
+  display: contents;
+}
+.bc-donut-name {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: 0.72rem; font-weight: 700; color: #1f2937;
+}
+.bc-donut-name span:last-child {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bc-donut-swatch {
+  width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0;
+}
+.bc-num {
+  text-align: right; font-size: 0.72rem; font-weight: 800; color: #111827;
+}
+.bc-donut-total > div {
+  border-top: 1px solid #e5e7eb; padding-top: 7px; font-weight: 800; color: #111827;
+}
 
 .bc-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
 .bc-table th {
@@ -427,6 +671,13 @@ const printStyles = `
 }
 
 /* ── Print: A4, ẩn UI thừa ── */
+@media (max-width: 760px) {
+  .bc-donut-grid { grid-template-columns: 1fr; }
+  .bc-donut-content { grid-template-columns: 118px minmax(0, 1fr); }
+  .bc-donut-chart,
+  .bc-donut-chart svg { width: 118px; height: 118px; }
+}
+
 @media print {
   @page { size: A4; margin: 14mm; }
   body { background: #fff !important; }
