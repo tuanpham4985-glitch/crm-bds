@@ -95,12 +95,58 @@ function DonutCompareCard({
 
   const totalCan = items.reduce((sum, item) => sum + item.so_can, 0);
   const totalDoanhSo = items.reduce((sum, item) => sum + item.doanh_so, 0);
-  const center = 70;
-  const radius = 48;
-  const ringWidth = 28;
-  const labelRadius = radius - ringWidth / 2 + 3;
+  const centerX = 82;
+  const centerY = 75;
+  const radius = 42;
+  const ringWidth = 24;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
+
+  const segments = items.map((item, index) => {
+    const pct = totalDoanhSo > 0 ? item.doanh_so / totalDoanhSo : 0;
+    const dash = pct * circumference;
+    const currentOffset = offset;
+    const priorPct = items
+      .slice(0, index)
+      .reduce((sum, x) => sum + (totalDoanhSo > 0 ? x.doanh_so / totalDoanhSo : 0), 0);
+    const angle = (priorPct + pct / 2) * Math.PI * 2 - Math.PI / 2;
+    offset += dash;
+
+    return {
+      item,
+      index,
+      pct,
+      dash,
+      currentOffset,
+      angle,
+    };
+  });
+
+  const minLabelGap = 18;
+  const buildLabelLayout = (side: 'left' | 'right') => {
+    const sideItems = segments
+      .filter(segment => side === 'right' ? Math.cos(segment.angle) >= 0 : Math.cos(segment.angle) < 0)
+      .map(segment => ({
+        ...segment,
+        baseY: centerY + Math.sin(segment.angle) * (radius + 18),
+      }))
+      .sort((a, b) => a.baseY - b.baseY);
+
+    let prevY = 18;
+    return sideItems.map(segment => {
+      const adjustedY = Math.max(segment.baseY, prevY + minLabelGap);
+      prevY = adjustedY;
+      return {
+        ...segment,
+        labelY: Math.min(132, adjustedY),
+      };
+    });
+  };
+
+  const labelMap = new Map<number, { labelY: number }>();
+  [...buildLabelLayout('left'), ...buildLabelLayout('right')].forEach(segment => {
+    labelMap.set(segment.index, { labelY: segment.labelY });
+  });
 
   return (
     <div className="bc-donut-card">
@@ -110,49 +156,54 @@ function DonutCompareCard({
       </div>
       <div className="bc-donut-content">
         <div className="bc-donut-chart">
-          <svg viewBox="-12 -12 164 164" role="img" aria-label={title}>
-            <circle cx={center} cy={center} r={radius} fill="none" stroke="#eef2f7" strokeWidth={ringWidth} />
-            {items.map((item, index) => {
-              const pct = totalDoanhSo > 0 ? item.doanh_so / totalDoanhSo : 0;
-              const dash = pct * circumference;
-              const currentOffset = offset;
-              offset += dash;
+          <svg viewBox="0 0 220 150" role="img" aria-label={title}>
+            <circle cx={centerX} cy={centerY} r={radius} fill="none" stroke="#eef2f7" strokeWidth={ringWidth} />
+            {segments.map(segment => {
               return (
                 <circle
-                  key={item.loai}
-                  cx={center}
-                  cy={center}
+                  key={segment.item.loai}
+                  cx={centerX}
+                  cy={centerY}
                   r={radius}
                   fill="none"
-                  stroke={colors[index % colors.length]}
+                  stroke={colors[segment.index % colors.length]}
                   strokeWidth={ringWidth}
-                  strokeDasharray={`${dash} ${circumference - dash}`}
-                  strokeDashoffset={-currentOffset}
-                  transform={`rotate(-90 ${center} ${center})`}
+                  strokeDasharray={`${segment.dash} ${circumference - segment.dash}`}
+                  strokeDashoffset={-segment.currentOffset}
+                  transform={`rotate(-90 ${centerX} ${centerY})`}
                 />
               );
             })}
-            <circle cx={center} cy={center} r={28} fill="#fff" />
-            {items.map((item, index) => {
-              const pct = totalDoanhSo > 0 ? item.doanh_so / totalDoanhSo : 0;
-              if (pct < 0.06) return null;
-              const priorPct = items
-                .slice(0, index)
-                .reduce((sum, x) => sum + (totalDoanhSo > 0 ? x.doanh_so / totalDoanhSo : 0), 0);
-              const angle = (priorPct + pct / 2) * Math.PI * 2 - Math.PI / 2;
-              const x = center + Math.cos(angle) * labelRadius;
-              const y = center + Math.sin(angle) * labelRadius;
+            <circle cx={centerX} cy={centerY} r="28" fill="#fff" />
+            {segments.map(segment => {
+              if (segment.pct < 0.04) return null;
+              const isRight = Math.cos(segment.angle) >= 0;
+              const outerX = centerX + Math.cos(segment.angle) * (radius + ringWidth / 2 - 1);
+              const outerY = centerY + Math.sin(segment.angle) * (radius + ringWidth / 2 - 1);
+              const elbowX = centerX + Math.cos(segment.angle) * (radius + 18);
+              const labelY = labelMap.get(segment.index)?.labelY ?? outerY;
+              const endX = isRight ? 202 : 18;
+              const textX = isRight ? endX + 4 : endX - 4;
               return (
-                <text
-                  key={`${item.loai}-label`}
-                  x={x}
-                  y={y}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  style={{ fontSize: pct < 0.1 ? 10 : 11 }}
-                >
-                  {(pct * 100).toFixed(1)}%
-                </text>
+                <g key={`${segment.item.loai}-label`}>
+                  <path
+                    d={`M ${outerX} ${outerY} L ${elbowX} ${labelY} L ${endX} ${labelY}`}
+                    fill="none"
+                    stroke={colors[segment.index % colors.length]}
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <text
+                    x={textX}
+                    y={labelY}
+                    textAnchor={isRight ? 'start' : 'end'}
+                    dominantBaseline="central"
+                    className="bc-donut-callout"
+                  >
+                    {(segment.pct * 100).toFixed(1)}%
+                  </text>
+                </g>
               );
             })}
           </svg>
@@ -1009,11 +1060,11 @@ const printStyles = `
   font-size: 0.78rem; font-weight: 800; color: #111827; text-transform: uppercase;
 }
 .bc-donut-content {
-  display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10px; align-items: center;
+  display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 10px; align-items: center;
 }
-.bc-donut-chart { width: 104px; height: 104px; }
-.bc-donut-chart svg { width: 104px; height: 104px; display: block; overflow: visible; }
-.bc-donut-chart text { fill: #fff; font-size: 11px; font-weight: 800; }
+.bc-donut-chart { width: 168px; height: 118px; }
+.bc-donut-chart svg { width: 168px; height: 118px; display: block; overflow: visible; }
+.bc-donut-callout { fill: #475569; font-size: 10px; font-weight: 800; }
 .bc-donut-table {
   display: grid; grid-template-columns: minmax(0, 1fr) 38px 62px;
   column-gap: 6px; row-gap: 7px; align-items: center; min-width: 0;
@@ -1153,9 +1204,9 @@ const printStyles = `
 /* ── Print: A4, ẩn UI thừa ── */
 @media (max-width: 760px) {
   .bc-donut-grid { grid-template-columns: 1fr; }
-  .bc-donut-content { grid-template-columns: 118px minmax(0, 1fr); }
+  .bc-donut-content { grid-template-columns: 152px minmax(0, 1fr); }
   .bc-donut-chart,
-  .bc-donut-chart svg { width: 118px; height: 118px; }
+  .bc-donut-chart svg { width: 152px; height: 112px; }
   .bc-trend-card { padding: 14px 12px 8px; }
   .bc-staff-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
