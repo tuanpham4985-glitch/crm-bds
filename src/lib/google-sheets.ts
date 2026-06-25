@@ -764,6 +764,7 @@ export interface TongHopRow {
   phong_kd: string;    // Phòng KD
   sale_phu_trach: string;
   ngay_ky: string;     // Ngày ký (for date filtering)
+  ngay_coc?: string;
 }
 
 // Normalize Vietnamese header text for flexible column matching
@@ -776,7 +777,11 @@ function normVi(s: string): string {
     .replace(/\s+/g, '');
 }
 
-export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promise<TongHopRow[]> {
+export async function getTongHopGiaoDich(
+  fromDate?: Date,
+  toDate?: Date,
+  dateSource: 'signed' | 'deposit' = 'signed'
+): Promise<TongHopRow[]> {
   const sheetId = process.env.TONG_HOP_SHEET_ID;
   if (!sheetId) {
     console.warn('[GSheets] TONG_HOP_SHEET_ID not set — skipping getTongHopGiaoDich');
@@ -830,17 +835,13 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
     const colPhongKD = findCol('phongkd', 'phongban', 'khoikd', 'nhomkd', 'team');
     const colSale = findCol('salephutrach', 'sale', 'nhanvien', 'nguoiphutrach', 'tuvan', 'chamsoc');
     const colDuAn    = findCol('duan', 'tenduan', 'tenduan', 'project');
-    // Ưu tiên tuyệt đối: "Ngày cọc" (cột E) → dùng làm mốc tính doanh số
-    // Pass 1: tìm ĐÚNG cột "Ngày cọc" (normVi → "ngaycoc")
     const colNgayCocStrict = h.find(c => normVi(c) === 'ngaycoc')
       || h.find(c => normVi(c).startsWith('ngaycoc'));
-    // Pass 2: fallback sang "Ngày ký TTĐC/VBTT" (cột F) nếu không có cột E
-    const colNgayFallback = h.find(c => { const n = normVi(c); return n.includes('ngayttdc') || n.includes('ngayvbtt') || n.includes('ngayky'); })
+    const colNgaySigned = h.find(c => { const n = normVi(c); return n.includes('ngayttdc') || n.includes('ngayvbtt') || n.includes('ngayky'); })
       || h.find(c => { const n = normVi(c); return (n.includes('ngay') || n.includes('date')) && !n.includes('thang') && !n.includes('tuan') && !n.includes('coc'); })
       || null;
-    const colNgay = colNgayCocStrict || colNgayFallback;
 
-    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colSale, colDuAn, colNgayCocStrict, colNgayFallback });
+    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colSale, colDuAn, colNgayCocStrict, colNgaySigned, dateSource });
 
     return rows
       .map(row => {
@@ -848,26 +849,23 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
         const gTri = colGiaTri ? num(v[colGiaTri]) : 0;
         if (!gTri || gTri <= 0) return null;
 
-        // Per-row fallback: ưu tiên cột E "Ngày cọc"; nếu cột E trống thì dùng cột F "Ngày ký TTĐC"
-        // Hàng không có giá trị ở cả 2 cột = chưa chốt deal → bỏ qua
-        const rawStrict   = colNgayCocStrict ? str(v[colNgayCocStrict]) : '';
-        const rawFallback = colNgayFallback  ? str(v[colNgayFallback])  : '';
-        const rawNgayCoc  = rawStrict || rawFallback;
-        if (!rawNgayCoc) return null;
+        const rawNgayCoc = colNgayCocStrict ? str(v[colNgayCocStrict]) : '';
+        const rawNgayKy = colNgaySigned ? str(v[colNgaySigned]) : '';
+        const rawNgayTinhDoanhSo = dateSource === 'deposit' ? rawNgayCoc : rawNgayKy;
+        if (!rawNgayTinhDoanhSo) return null;
 
         // Date filter — parse as Vietnamese DD/MM/YYYY (handles D/M/YYYY with single digits too)
         if (fromDate || toDate) {
           let d: Date;
-          if (rawNgayCoc.includes('/')) {
-            const parts = rawNgayCoc.split('/');
+          if (rawNgayTinhDoanhSo.includes('/')) {
+            const parts = rawNgayTinhDoanhSo.split('/');
             d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
           } else {
-            d = new Date(rawNgayCoc);
+            d = new Date(rawNgayTinhDoanhSo);
           }
-          if (!isNaN(d.getTime())) {
-            if (fromDate && d < fromDate) return null;
-            if (toDate && d > toDate) return null;
-          }
+          if (isNaN(d.getTime())) return null;
+          if (fromDate && d < fromDate) return null;
+          if (toDate && d > toDate) return null;
         }
 
         return {
@@ -878,7 +876,8 @@ export async function getTongHopGiaoDich(fromDate?: Date, toDate?: Date): Promis
           chi_nhanh:  colChiNhanh ? str(v[colChiNhanh]) : '',
           phong_kd:   colPhongKD  ? str(v[colPhongKD])  : '',
           sale_phu_trach: colSale ? str(v[colSale]) : '',
-          ngay_ky:    rawNgayCoc,
+          ngay_ky:    rawNgayTinhDoanhSo,
+          ngay_coc:   rawNgayCoc,
         } as TongHopRow;
       })
       .filter((r): r is TongHopRow => r !== null);

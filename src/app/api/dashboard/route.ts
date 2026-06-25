@@ -473,10 +473,13 @@ export async function GET(request: NextRequest) {
       dateRange.to = new Date(toParam + 'T23:59:59');
     }
 
+    const useDepositDateForRevenue = reportMode === 'race';
+    const revenueDateSource = useDepositDateForRevenue ? 'deposit' : 'signed';
+
     // Fetch tonghop data with date filter when needed (silent fail if sheet not configured)
     if (reportMode !== 'standard') {
       try {
-        tongHopRows = await getTongHopGiaoDich(dateRange.from, dateRange.to);
+        tongHopRows = await getTongHopGiaoDich(dateRange.from, dateRange.to, revenueDateSource);
       } catch {
         tongHopRows = [];
       }
@@ -496,100 +499,50 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build current-period thang keys — all common formats including non-padded variants
-    function buildThangKeysInRange(from: Date, to: Date): Set<string> {
-      const keys = new Set<string>();
-      const cur = new Date(from.getFullYear(), from.getMonth(), 1);
-      while (cur <= to) {
-        const mm   = String(cur.getMonth() + 1).padStart(2, '0');
-        const m    = String(cur.getMonth() + 1);  // no leading zero
-        const yyyy = String(cur.getFullYear());
-        keys.add(`${mm}-${yyyy}`);   // 09-2026
-        keys.add(`${yyyy}-${mm}`);   // 2026-09
-        keys.add(`${m}-${yyyy}`);    // 9-2026  (no leading zero, from some GAS scripts)
-        keys.add(`${yyyy}-${m}`);    // 2026-9
-        cur.setMonth(cur.getMonth() + 1);
-      }
-      return keys;
-    }
-
-    const currentThangKeys = buildThangKeysInRange(dateRange.from, dateRange.to);
-
     // Extend "to" by 1 day buffer to absorb UTC+7 timezone offset.
     // (Deals created at e.g. 11:00 VN time = 04:00 UTC, so server's "now" at 04:50 UTC
     //  would place a 11:00 VN deal *in the future* if naively compared in UTC)
     const toWithBuffer = new Date(dateRange.to);
     toWithBuffer.setDate(toWithBuffer.getDate() + 1);
 
-    const includeNgayCocInPipeline = reportMode !== 'standard';
+    const includeNgayCocInPipeline = useDepositDateForRevenue;
 
-    // Filter current period — STANDARD: thang/ngay_cap_nhat; RACE/DEFAULT: ưu tiên ngay_coc
+    const getPipelineRevenueDate = (pl: typeof allPipelines[number]): Date | null => {
+      const rawDate = includeNgayCocInPipeline ? pl.ngay_coc : pl.ngay_cap_nhat;
+      if (!rawDate) return null;
+      const d = safeParseDate(rawDate);
+      return d && !isNaN(d.getTime()) ? d : null;
+    };
+
+    const isInRange = (d: Date, from: Date, to: Date): boolean => d >= from && d <= to;
+
+    // Filter current period: RACE uses deposit date; all other modes use signed TTĐC/VBTT date.
     const currentPipelines = allPipelines.filter(pl => {
-      if (includeNgayCocInPipeline && pl.ngay_coc) {
-        const d = safeParseDate(pl.ngay_coc);
-        if (d && !isNaN(d.getTime())) {
-          return d >= dateRange.from && d <= toWithBuffer;
-        }
-      }
-      // Primary: match by thang (format YYYY-MM or MM-YYYY) — no timezone issues
-      // Only use thang as primary if it actually matches a known key format.
-      // If thang is present but in an unrecognized format (e.g. "6/2026", "6", "T6-2026"),
-      // fall through to the ngay_cap_nhat fallback instead of silently dropping the deal.
-      if (pl.thang && currentThangKeys.has(pl.thang)) {
-        return true;
-      }
-      // Fallback: try to parse ngay_cap_nhat (add 1-day buffer to handle UTC+7 offset)
-      if (pl.ngay_cap_nhat) {
-        const d = safeParseDate(pl.ngay_cap_nhat);
-        if (d && !isNaN(d.getTime())) {
-          return d >= dateRange.from && d <= toWithBuffer;
-        }
-      }
-      // No date info at all → exclude (cannot assign to any period)
-      return false;
+      const d = getPipelineRevenueDate(pl);
+      return d ? isInRange(d, dateRange.from, toWithBuffer) : false;
     });
 
     // Filter previous period for comparison
-    const prevThangKeys = compare ? buildThangKeysInRange(dateRange.prevFrom, dateRange.prevTo) : new Set<string>();
     const prevPipelines = compare ? allPipelines.filter(pl => {
-      if (includeNgayCocInPipeline && pl.ngay_coc) {
-        const d = safeParseDate(pl.ngay_coc);
-        if (d && !isNaN(d.getTime())) {
-          if (compare === 'yoy') {
-            const yoyFrom = new Date(dateRange.from);
-            yoyFrom.setFullYear(yoyFrom.getFullYear() - 1);
-            const yoyTo = new Date(dateRange.to);
-            yoyTo.setFullYear(yoyTo.getFullYear() - 1);
-            return d >= yoyFrom && d <= yoyTo;
-          }
-          return d >= dateRange.prevFrom && d <= dateRange.prevTo;
-        }
+      const d = getPipelineRevenueDate(pl);
+      if (!d) return false;
+      if (compare === 'yoy') {
+        const yoyFrom = new Date(dateRange.from);
+        yoyFrom.setFullYear(yoyFrom.getFullYear() - 1);
+        const yoyTo = new Date(dateRange.to);
+        yoyTo.setFullYear(yoyTo.getFullYear() - 1);
+        return isInRange(d, yoyFrom, yoyTo);
       }
-      if (pl.ngay_cap_nhat) {
-        const d = safeParseDate(pl.ngay_cap_nhat);
-        if (d && !isNaN(d.getTime())) {
-          if (compare === 'yoy') {
-            const yoyFrom = new Date(dateRange.from);
-            yoyFrom.setFullYear(yoyFrom.getFullYear() - 1);
-            const yoyTo = new Date(dateRange.to);
-            yoyTo.setFullYear(yoyTo.getFullYear() - 1);
-            return d >= yoyFrom && d <= yoyTo;
-          }
-          return d >= dateRange.prevFrom && d <= dateRange.prevTo;
-        }
-      }
-      if (pl.thang) return prevThangKeys.has(pl.thang);
-      return false;
+      return isInRange(d, dateRange.prevFrom, dateRange.prevTo);
     }) : [];
 
     console.log(`[Dashboard] Period: ${period}, current: ${currentPipelines.length} pipelines, prevPipelines: ${prevPipelines.length}`);
-    console.log(`[Dashboard] currentThangKeys: ${[...currentThangKeys].join(', ')}`);
 
     // KPI calculations
     const daKy = currentPipelines.filter(pl =>
-      reportMode === 'standard'
-        ? pl.giai_doan === 'Ký HĐ'
-        : (pl.giai_doan === 'Ký HĐ' || (pl.ngay_coc && pl.ngay_coc.trim() !== ''))
+      includeNgayCocInPipeline
+        ? Boolean(pl.ngay_coc && pl.ngay_coc.trim() !== '')
+        : pl.giai_doan === 'Ký HĐ'
     );
     const dangXuLy = currentPipelines.filter(pl => 
       !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan)
@@ -597,9 +550,9 @@ export async function GET(request: NextRequest) {
     );
 
     const prevDaKy = prevPipelines.filter(pl =>
-      reportMode === 'standard'
-        ? pl.giai_doan === 'Ký HĐ'
-        : (pl.giai_doan === 'Ký HĐ' || (pl.ngay_coc && pl.ngay_coc.trim() !== ''))
+      includeNgayCocInPipeline
+        ? Boolean(pl.ngay_coc && pl.ngay_coc.trim() !== '')
+        : pl.giai_doan === 'Ký HĐ'
     );
     const prevDangXuLy = prevPipelines.filter(pl => 
       !['Ký HĐ', 'Hủy - Không nghe máy', 'Hủy - Không đủ tiền', 'Hủy - Không thích'].includes(pl.giai_doan)
@@ -647,25 +600,15 @@ export async function GET(request: NextRequest) {
     const thangMap = new Map<string, number>();
     const thangPrevMap = new Map<string, number>();
     daKy.forEach(pl => {
-      let t = pl.thang;
-      if (includeNgayCocInPipeline && pl.ngay_coc) {
-        const d = safeParseDate(pl.ngay_coc);
-        if (d && !isNaN(d.getTime())) {
-          t = `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-        }
-      }
+      const d = getPipelineRevenueDate(pl);
+      const t = d ? `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}` : '';
       if (t) {
         thangMap.set(t, (thangMap.get(t) || 0) + pl.gia_tri_thuc_te);
       }
     });
     prevDaKy.forEach(pl => {
-      let t = pl.thang;
-      if (includeNgayCocInPipeline && pl.ngay_coc) {
-        const d = safeParseDate(pl.ngay_coc);
-        if (d && !isNaN(d.getTime())) {
-          t = `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-        }
-      }
+      const d = getPipelineRevenueDate(pl);
+      const t = d ? `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}` : '';
       if (t) {
         thangPrevMap.set(t, (thangPrevMap.get(t) || 0) + pl.gia_tri_thuc_te);
       }

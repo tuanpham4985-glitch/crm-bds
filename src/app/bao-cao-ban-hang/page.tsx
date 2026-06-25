@@ -58,6 +58,8 @@ const parseDate = (s: string): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+const hasSignedRevenueDate = (pl: Pipeline): boolean => Boolean(parseDate(pl.ngay_cap_nhat || ''));
+
 const TASK_STATUS: Record<string, { bg: string; text: string; border: string }> = {
   'Chưa xử lý': { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
   'Đang xử lý':  { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
@@ -128,7 +130,7 @@ export default function BaoCaoBanHangPage() {
       const [plData, khData, daData, nvData] = await Promise.all([
         plRes.json(), khRes.json(), daRes.json(), nvRes.json(),
       ]);
-      if (plData.success) setPipelines(plData.data);
+      if (plData.success) setPipelines((plData.data as Pipeline[]).filter(hasSignedRevenueDate));
       if (khData.success) setCustomers(khData.data);
       if (daData.success) setProjects(daData.data);
       if (nvData.success) setEmployees(nvData.data);
