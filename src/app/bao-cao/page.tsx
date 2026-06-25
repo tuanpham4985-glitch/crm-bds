@@ -99,6 +99,10 @@ function DonutCompareCard({
   const centerY = 75;
   const radius = 42;
   const ringWidth = 24;
+  const labelInnerRadius = radius + 12;
+  const labelEndX = { left: 42, right: 156 };
+  const labelTextPadding = 4;
+  const labelYBounds = { top: 28, bottom: 122 };
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
 
@@ -128,17 +132,17 @@ function DonutCompareCard({
       .filter(segment => side === 'right' ? Math.cos(segment.angle) >= 0 : Math.cos(segment.angle) < 0)
       .map(segment => ({
         ...segment,
-        baseY: centerY + Math.sin(segment.angle) * (radius + 18),
+        baseY: centerY + Math.sin(segment.angle) * labelInnerRadius,
       }))
       .sort((a, b) => a.baseY - b.baseY);
 
-    let prevY = 18;
+    let prevY = labelYBounds.top - minLabelGap;
     return sideItems.map(segment => {
       const adjustedY = Math.max(segment.baseY, prevY + minLabelGap);
       prevY = adjustedY;
       return {
         ...segment,
-        labelY: Math.min(132, adjustedY),
+        labelY: Math.min(labelYBounds.bottom, adjustedY),
       };
     });
   };
@@ -180,10 +184,10 @@ function DonutCompareCard({
               const isRight = Math.cos(segment.angle) >= 0;
               const outerX = centerX + Math.cos(segment.angle) * (radius + ringWidth / 2 - 1);
               const outerY = centerY + Math.sin(segment.angle) * (radius + ringWidth / 2 - 1);
-              const elbowX = centerX + Math.cos(segment.angle) * (radius + 18);
+              const elbowX = centerX + Math.cos(segment.angle) * labelInnerRadius;
               const labelY = labelMap.get(segment.index)?.labelY ?? outerY;
-              const endX = isRight ? 202 : 18;
-              const textX = isRight ? endX + 4 : endX - 4;
+              const endX = isRight ? labelEndX.right : labelEndX.left;
+              const textX = isRight ? endX + labelTextPadding : endX - labelTextPadding;
               return (
                 <g key={`${segment.item.loai}-label`}>
                   <path
@@ -692,6 +696,7 @@ export default function BaoCaoPage() {
   const maxPhongKD = Math.max(...(th?.top_phong_kd.map(p => p.doanh_so) ?? []), 1);
   const maxDuAn = Math.max(...(th?.top_du_an.map(p => p.doanh_so) ?? []), 1);
   const nhanSuBienDong = data?.nhan_su_bien_dong ?? [];
+  const showNhanSuBienDong = false;
   const reportBarColors = ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444', '#14b8a6'];
 
   return (
@@ -972,7 +977,7 @@ export default function BaoCaoPage() {
             </>
           )}
 
-          {false && nhanSuBienDong.length > 0 && (
+          {showNhanSuBienDong && nhanSuBienDong.length > 0 && (
             <>
               <h2 className="bc-section-title">VIII. Biến động nhân sự</h2>
               <OfficialStaffTrendChart items={nhanSuBienDong} />
@@ -1063,7 +1068,7 @@ const printStyles = `
   display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 10px; align-items: center;
 }
 .bc-donut-chart { width: 168px; height: 118px; }
-.bc-donut-chart svg { width: 168px; height: 118px; display: block; overflow: visible; }
+.bc-donut-chart svg { width: 168px; height: 118px; display: block; overflow: hidden; }
 .bc-donut-callout { fill: #475569; font-size: 10px; font-weight: 800; }
 .bc-donut-table {
   display: grid; grid-template-columns: minmax(0, 1fr) 38px 62px;
