@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { syncEmployeesFromHrFile } from '@/lib/google-sheets';
+import { syncEmployeesFromHrFile } from '@/lib/data-access';
 
 export async function POST() {
   try {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getNhiemVu } from '@/lib/google-sheets';
+import { getNhiemVu } from '@/lib/data-access';
 
 /**
  * GET /api/nhiem-vu

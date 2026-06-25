@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong, getDataNhanSuForReport } from '@/lib/google-sheets';
-import type { HrEmployeeRecord } from '@/lib/google-sheets';
+import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong, getDataNhanSuForReport } from '@/lib/data-access';
+import type { HrEmployeeRecord } from '@/lib/data-access';
 import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';

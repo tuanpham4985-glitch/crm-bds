@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCongViec, addCongViec, updateCongViec, deleteCongViec } from '@/lib/google-sheets';
+import { getCongViec, addCongViec, updateCongViec, deleteCongViec } from '@/lib/data-access';
 import { generateId } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {

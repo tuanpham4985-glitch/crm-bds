@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBangLuong, updateBangLuong, deleteBangLuong, getPayrollRecords, getPayrollItems } from '@/lib/google-sheets';
+import { getBangLuong, updateBangLuong, deleteBangLuong, getPayrollRecords, getPayrollItems } from '@/lib/data-access';
 import { savePayroll } from '@/lib/payroll';
 import type { PayrollEntry } from '@/lib/payroll';
 

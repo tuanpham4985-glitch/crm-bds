@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { findNhanVienByEmail } from '@/lib/google-sheets';
+import { findNhanVienByEmail } from '@/lib/data-access';
 
 // Simple session-based auth using cookies
 // POST /api/auth — Login

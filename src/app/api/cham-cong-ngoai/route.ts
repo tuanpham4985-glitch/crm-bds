@@ -6,7 +6,7 @@ import {
   updateChamCongNgoaiStatus,
   deleteChamCongNgoai,
   getManagerForEmployee,
-} from '@/lib/google-sheets';
+} from '@/lib/data-access';
 
 interface SessionUser {
   id_nhan_vien: string;

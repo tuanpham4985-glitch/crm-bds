@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getChamCongNgoai } from '@/lib/google-sheets';
+import { getChamCongNgoai } from '@/lib/data-access';
 
 interface SessionUser {
   id_nhan_vien: string;

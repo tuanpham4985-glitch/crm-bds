@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPhanKhachConfigs, addPhanKhachConfig, deletePhanKhachConfig } from '@/lib/google-sheets';
+import { getPhanKhachConfigs, addPhanKhachConfig, deletePhanKhachConfig } from '@/lib/data-access';
 
 export async function GET() {
   try {

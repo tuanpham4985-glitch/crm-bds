@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getHopDong, addHopDong, updateHopDong, deleteHopDong } from '@/lib/google-sheets';
+import { getHopDong, addHopDong, updateHopDong, deleteHopDong } from '@/lib/data-access';
 
 export async function GET() {
   try {

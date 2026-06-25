@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPipeline, getNhanVien } from '@/lib/google-sheets';
+import { getPipeline, getNhanVien } from '@/lib/data-access';
 
 // Temporary debug endpoint — xem raw pipeline data cho một sale cụ thể
 // Usage: GET /api/debug-sale?name=Vũ Thị Thu

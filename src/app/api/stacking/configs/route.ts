@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStackingConfigs, addStackingConfig, updateStackingConfig, deleteStackingConfig } from '@/lib/google-sheets';
+import { getStackingConfigs, addStackingConfig, updateStackingConfig, deleteStackingConfig } from '@/lib/data-access';
 
 // GET  /api/stacking/configs          — danh sách configs
 // POST /api/stacking/configs          — thêm config mới

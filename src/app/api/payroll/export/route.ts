@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPayrollRecords, getPayrollItems, getNhanVien } from '@/lib/google-sheets';
+import { getPayrollRecords, getPayrollItems, getNhanVien } from '@/lib/data-access';
 import { 
   Document, 
   Packer, 

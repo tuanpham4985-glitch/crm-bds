@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDuAn, addDuAn, updateDuAn, deleteDuAn } from '@/lib/google-sheets';
+import { getDuAn, addDuAn, updateDuAn, deleteDuAn } from '@/lib/data-access';
 import { generateId } from '@/lib/utils';
 
 export async function GET() {

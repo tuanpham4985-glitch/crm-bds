@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getDuAn } from '@/lib/google-sheets';
+import { getDuAn } from '@/lib/data-access';
 import { getCurrentTmUser, unauthorizedResponse, okResponse, errorResponse } from '@/lib/task-management/auth';
 
 export const dynamic = 'force-dynamic';

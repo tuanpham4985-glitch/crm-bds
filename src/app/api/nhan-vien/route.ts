@@ -4,7 +4,7 @@ import {
   addNhanVien,
   updateNhanVien,
   deleteNhanVien
-} from '@/lib/google-sheets';
+} from '@/lib/data-access';
 import { generateId } from '@/lib/utils';
 
 // ==============================

@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { getNhanVien } from '@/lib/google-sheets';
+import { getNhanVien } from '@/lib/data-access';
 
 export async function POST(request: NextRequest) {
   try {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
-import { getKhachHang, addKhachHang } from '@/lib/google-sheets';
+import { getKhachHang, addKhachHang } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 
 // Column indices (0-based) matching the export format from the lead funnel

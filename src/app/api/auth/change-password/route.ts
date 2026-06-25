@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getNhanVien, updateNhanVien } from '@/lib/google-sheets';
+import { getNhanVien, updateNhanVien } from '@/lib/data-access';
 
 export async function POST(request: NextRequest) {
   try {

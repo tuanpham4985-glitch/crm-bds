@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getTonCoc } from '@/lib/google-sheets';
+import { getTonCoc } from '@/lib/data-access';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
 async function isLeader(): Promise<boolean> {

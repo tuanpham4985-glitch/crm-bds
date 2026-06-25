@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as xlsx from 'xlsx';
-import { saveTaiChinhHistory } from '@/lib/google-sheets';
+import { saveTaiChinhHistory } from '@/lib/data-access';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

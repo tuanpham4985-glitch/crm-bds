@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
-import { getKhachHang, addKhachHangBatch, getNhanVien } from '@/lib/google-sheets';
+import { getKhachHang, addKhachHangBatch, getNhanVien } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 
 // ─── Source configs ───────────────────────────────────────────────────────────

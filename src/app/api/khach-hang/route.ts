@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getKhachHang, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/google-sheets';
+import { getKhachHang, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/data-access';
 import { generateId } from '@/lib/utils';
 import type { KhachHang } from '@/lib/types';
 

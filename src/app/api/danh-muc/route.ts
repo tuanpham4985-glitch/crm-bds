@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDanhMuc } from '@/lib/google-sheets';
+import { getDanhMuc } from '@/lib/data-access';
 
 export async function GET() {
   try {

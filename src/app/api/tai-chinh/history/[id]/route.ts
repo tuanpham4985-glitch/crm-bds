@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTaiChinhHistory } from '@/lib/google-sheets';
+import { getTaiChinhHistory } from '@/lib/data-access';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

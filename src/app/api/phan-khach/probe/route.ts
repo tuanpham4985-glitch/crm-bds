@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { probePhanKhachSheet } from '@/lib/google-sheets';
+import { probePhanKhachSheet } from '@/lib/data-access';
 
 export async function POST(request: NextRequest) {
   try {

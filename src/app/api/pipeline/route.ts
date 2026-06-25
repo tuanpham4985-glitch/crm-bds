@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, addPipeline, updatePipeline, deletePipeline, addCongViec } from '@/lib/google-sheets';
+import { getPipeline, addPipeline, updatePipeline, deletePipeline, addCongViec } from '@/lib/data-access';
 import { generateId, getMonthKey } from '@/lib/utils';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 
