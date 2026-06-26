@@ -110,6 +110,7 @@ export type BangLuongUpdateFields = Partial<
 
 export interface IPayrollRepository {
   getBangLuong(): Promise<BangLuong[]>;
+  addBangLuong(bl: Omit<BangLuong, 'id' | 'created_at'>): Promise<string>;
   getPayrollRecords(thang: number, nam: number): Promise<PayrollRecord[]>;
   getPayrollItems(payrollIds: string[]): Promise<PayrollItemRecord[]>;
   getPayrollAdjustments(thang: number, nam: number): Promise<PayrollAdjustment[]>;

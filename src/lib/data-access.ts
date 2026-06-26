@@ -18,6 +18,7 @@ import {
   getCrmTaskRepository,
   getContractRepository,
   getAttendanceOutsideRepository,
+  getPayrollRepository,
 } from './repository';
 import type {
   NhanVien, KhachHang, Pipeline, DuAn,
@@ -76,13 +77,6 @@ export const deletePhanKhachConfig     = GS.deletePhanKhachConfig;
 export const getTonCoc                 = GS.getTonCoc;
 export const getTinhTrangGiaoDich      = GS.getTinhTrangGiaoDich;
 export const getTongHopGiaoDich        = GS.getTongHopGiaoDich;
-
-// Payroll (Phase 3 — chưa migrate)
-export const getBangLuong              = GS.getBangLuong;
-export const updateBangLuong           = GS.updateBangLuong;
-export const deleteBangLuong           = GS.deleteBangLuong;
-export const getPayrollRecords         = GS.getPayrollRecords;
-export const getPayrollItems           = GS.getPayrollItems;
 
 // Finance / misc
 export const getTaiChinhHistory        = GS.getTaiChinhHistory;
@@ -354,5 +348,86 @@ export function deleteChamCongNgoai(id: string, employeeId: string): Promise<boo
   return withPgFallback('attendance', 'deleteChamCongNgoai',
     () => getAttendanceOutsideRepository().delete(id, employeeId),
     () => GS.deleteChamCongNgoai(id, employeeId),
+  );
+}
+
+// ── Payroll ───────────────────────────────────────────────────
+
+export function getBangLuong(): Promise<import('./types').BangLuong[]> {
+  if (!isPostgresEnabled('payroll')) return GS.getBangLuong();
+  return withPgFallback('payroll', 'getBangLuong',
+    () => getPayrollRepository().getBangLuong(),
+    () => GS.getBangLuong(),
+  );
+}
+
+export function addBangLuong(
+  bl: Omit<import('./types').BangLuong, 'id' | 'created_at'>,
+): Promise<string> {
+  if (!isPostgresEnabled('payroll')) return GS.addBangLuong(bl);
+  return withPgFallback('payroll', 'addBangLuong',
+    () => getPayrollRepository().addBangLuong(bl),
+    () => GS.addBangLuong(bl),
+  );
+}
+
+export function updateBangLuong(
+  id: string,
+  updates: import('./repository/interfaces').BangLuongUpdateFields,
+): Promise<boolean> {
+  if (!isPostgresEnabled('payroll')) return GS.updateBangLuong(id, updates);
+  return withPgFallback('payroll', 'updateBangLuong',
+    () => getPayrollRepository().updateBangLuong(id, updates),
+    () => GS.updateBangLuong(id, updates),
+  );
+}
+
+export function deleteBangLuong(id: string): Promise<boolean> {
+  if (!isPostgresEnabled('payroll')) return GS.deleteBangLuong(id);
+  return withPgFallback('payroll', 'deleteBangLuong',
+    () => getPayrollRepository().deleteBangLuong(id),
+    () => GS.deleteBangLuong(id),
+  );
+}
+
+export function getPayrollRecords(
+  thang: number,
+  nam: number,
+): Promise<import('./types').PayrollRecord[]> {
+  if (!isPostgresEnabled('payroll')) return GS.getPayrollRecords(thang, nam);
+  return withPgFallback('payroll', 'getPayrollRecords',
+    () => getPayrollRepository().getPayrollRecords(thang, nam),
+    () => GS.getPayrollRecords(thang, nam),
+  );
+}
+
+export function getPayrollItems(
+  payrollIds: string[],
+): Promise<import('./types').PayrollItemRecord[]> {
+  if (!isPostgresEnabled('payroll')) return GS.getPayrollItems(payrollIds);
+  return withPgFallback('payroll', 'getPayrollItems',
+    () => getPayrollRepository().getPayrollItems(payrollIds),
+    () => GS.getPayrollItems(payrollIds),
+  );
+}
+
+export function getPayrollAdjustments(
+  thang: number,
+  nam: number,
+): Promise<import('./types').PayrollAdjustment[]> {
+  if (!isPostgresEnabled('payroll')) return GS.getPayrollAdjustments(thang, nam);
+  return withPgFallback('payroll', 'getPayrollAdjustments',
+    () => getPayrollRepository().getPayrollAdjustments(thang, nam),
+    () => GS.getPayrollAdjustments(thang, nam),
+  );
+}
+
+export function savePayrollBatch(
+  entries: import('./repository/interfaces').PayrollBatchEntry[],
+): Promise<{ savedIds: string[]; errors: string[] }> {
+  if (!isPostgresEnabled('payroll')) return GS.savePayrollBatch(entries);
+  return withPgFallback('payroll', 'savePayrollBatch',
+    () => getPayrollRepository().saveBatch(entries),
+    () => GS.savePayrollBatch(entries),
   );
 }

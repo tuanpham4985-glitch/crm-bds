@@ -2,6 +2,7 @@ import type { IPayrollRepository, PayrollBatchEntry, BangLuongUpdateFields } fro
 import type { BangLuong, PayrollRecord, PayrollItemRecord, PayrollAdjustment } from '../../types';
 import {
   getBangLuong,
+  addBangLuong,
   getPayrollRecords,
   getPayrollItems,
   getPayrollAdjustments,
@@ -13,6 +14,10 @@ import {
 export class GoogleSheetsPayrollRepository implements IPayrollRepository {
   getBangLuong(): Promise<BangLuong[]> {
     return getBangLuong();
+  }
+
+  addBangLuong(bl: Omit<BangLuong, 'id' | 'created_at'>): Promise<string> {
+    return addBangLuong(bl);
   }
 
   getPayrollRecords(thang: number, nam: number): Promise<PayrollRecord[]> {

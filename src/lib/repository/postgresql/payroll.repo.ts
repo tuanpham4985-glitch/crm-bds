@@ -78,6 +78,39 @@ export class PostgresPayrollRepository implements IPayrollRepository {
     return { savedIds, errors };
   }
 
+  async addBangLuong(bl: Omit<BangLuong, 'id' | 'created_at'>): Promise<string> {
+    const id = `BL_${Date.now()}`;
+    await prisma.bangLuong.create({
+      data: {
+        id,
+        id_nhan_vien:             bl.id_nhan_vien,
+        thang:                    bl.thang,
+        nam:                      bl.nam,
+        luong_co_ban:             bl.luong_co_ban,
+        doanh_thu:                bl.doanh_thu,
+        hoa_hong:                 bl.hoa_hong,
+        thuong:                   bl.thuong,
+        phat:                     bl.phat,
+        so_ngay_cong_chuan:       bl.so_ngay_cong_chuan,
+        so_ngay_lam_viec_thuc_te: bl.so_ngay_lam_viec_thuc_te,
+        so_ngay_nghi_khong_luong: bl.so_ngay_nghi_khong_luong,
+        so_gio_ot:                bl.so_gio_ot,
+        salary_by_day:            bl.salary_by_day,
+        ot_pay:                   bl.ot_pay,
+        bao_hiem:                 bl.bao_hiem,
+        bh_company:               bl.bh_company,
+        thue:                     bl.thue,
+        tong_luong:               bl.tong_luong,
+        gross:                    bl.gross,
+        isProbation:              bl.isProbation,
+        isCollaborator:           bl.isCollaborator,
+        isIntern:                 bl.isIntern,
+        trang_thai:               bl.trang_thai || 'draft',
+      },
+    });
+    return id;
+  }
+
   async updateBangLuong(id: string, updates: BangLuongUpdateFields): Promise<boolean> {
     try {
       await prisma.bangLuong.update({ where: { id }, data: updates });

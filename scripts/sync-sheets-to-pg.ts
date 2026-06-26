@@ -21,6 +21,10 @@ import {
   getCongViec,
   getHopDong,
   getChamCongNgoai,
+  getBangLuong,
+  getAllPayrollRecords,
+  getAllPayrollItems,
+  getAllPayrollAdjustments,
 } from '../src/lib/google-sheets';
 
 // Task Management sheets client
@@ -32,7 +36,7 @@ import { SHEET_NAMES } from '../src/lib/task-management/types';
 const args = process.argv.slice(2);
 const moduleArg = args.find(a => a.startsWith('--module='))?.replace('--module=', '') ?? 'all';
 const enabledModules = moduleArg === 'all'
-  ? ['tm', 'hrm', 'crm', 'attendance', 'contracts']
+  ? ['tm', 'hrm', 'crm', 'attendance', 'contracts', 'payroll']
   : moduleArg.split(',').map(s => s.trim());
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -585,6 +589,152 @@ async function syncTm() {
   return { synced, skipped, errors };
 }
 
+async function syncPayroll() {
+  let synced = 0; let skipped = 0; let errors = 0;
+
+  // 1. BangLuong (sheet might not exist yet — returns [] if so)
+  const bangLuongs = await getBangLuong();
+  for (const bl of bangLuongs) {
+    if (!bl.id) { skipped++; continue; }
+    try {
+      await prisma.bangLuong.upsert({
+        where:  { id: bl.id },
+        create: {
+          id:                       bl.id,
+          id_nhan_vien:             bl.id_nhan_vien,
+          thang:                    bl.thang,
+          nam:                      bl.nam,
+          luong_co_ban:             bl.luong_co_ban,
+          doanh_thu:                bl.doanh_thu,
+          hoa_hong:                 bl.hoa_hong,
+          thuong:                   bl.thuong,
+          phat:                     bl.phat,
+          so_ngay_cong_chuan:       bl.so_ngay_cong_chuan,
+          so_ngay_lam_viec_thuc_te: bl.so_ngay_lam_viec_thuc_te,
+          so_ngay_nghi_khong_luong: bl.so_ngay_nghi_khong_luong,
+          so_gio_ot:                bl.so_gio_ot,
+          salary_by_day:            bl.salary_by_day,
+          ot_pay:                   bl.ot_pay,
+          bao_hiem:                 bl.bao_hiem,
+          bh_company:               bl.bh_company,
+          thue:                     bl.thue,
+          tong_luong:               bl.tong_luong,
+          gross:                    bl.gross,
+          isProbation:              bl.isProbation,
+          isCollaborator:           bl.isCollaborator,
+          isIntern:                 bl.isIntern,
+          trang_thai:               bl.trang_thai || 'draft',
+        },
+        update: {
+          tong_luong:  bl.tong_luong,
+          trang_thai:  bl.trang_thai,
+          thuong:      bl.thuong,
+          phat:        bl.phat,
+        },
+      });
+      synced++;
+    } catch (e) {
+      err('payroll:bang-luong', `upsert ${bl.id}`, e);
+      errors++;
+    }
+  }
+  log('payroll', `BangLuong: ${synced} synced`);
+
+  // 2. PayrollRecords — đọc toàn bộ PAYROLL sheet một lần
+  const allRecords = await getAllPayrollRecords();
+  // Pre-load tất cả items một lần (1 API call thay vì N calls)
+  const allItems = await getAllPayrollItems();
+  const itemsByRecord = new Map<string, typeof allItems>();
+  for (const item of allItems) {
+    if (!itemsByRecord.has(item.payroll_id)) itemsByRecord.set(item.payroll_id, []);
+    itemsByRecord.get(item.payroll_id)!.push(item);
+  }
+
+  let recordsSynced = 0;
+  for (const record of allRecords) {
+    if (!record.id) { skipped++; continue; }
+    try {
+      await prisma.payrollRecord.upsert({
+        where:  { id: record.id },
+        create: {
+          id:                 record.id,
+          id_nhan_vien:       record.id_nhan_vien,
+          thang:              record.thang,
+          nam:                record.nam,
+          gross:              record.gross,
+          total_deduction:    record.total_deduction,
+          net:                record.net,
+          luong_dong_bh:      record.luong_dong_bh,
+          thu_nhap_chiu_thue: record.thu_nhap_chiu_thue,
+          tong_chi_phi:       record.tong_chi_phi,
+          trang_thai:         record.trang_thai,
+          locked_at:          record.locked_at,
+        },
+        update: {
+          gross:      record.gross,
+          net:        record.net,
+          trang_thai: record.trang_thai,
+          locked_at:  record.locked_at,
+        },
+      });
+
+      const items = itemsByRecord.get(record.id) ?? [];
+      if (items.length > 0) {
+        await prisma.payrollItemRecord.deleteMany({ where: { payroll_id: record.id } });
+        await prisma.payrollItemRecord.createMany({
+          data: items.map(item => ({
+            id:         item.id,
+            payroll_id: record.id,
+            loai_khoan: item.loai_khoan,
+            nhom:       item.nhom,
+            so_tien:    item.so_tien,
+            ghi_chu:    item.ghi_chu ?? '',
+            tinh_bhxh:  item.tinh_bhxh,
+            tinh_thue:  item.tinh_thue,
+          })),
+        });
+      }
+      recordsSynced++;
+    } catch (e) {
+      err('payroll:records', `upsert ${record.id}`, e);
+      errors++;
+    }
+  }
+  log('payroll', `PayrollRecords: ${recordsSynced} synced (${allItems.length} items)`);
+
+  // 3. PayrollAdjustments — đọc toàn bộ một lần
+  const allAdjs = await getAllPayrollAdjustments();
+  let adjSynced = 0;
+  for (const adj of allAdjs) {
+    if (!adj.id) { skipped++; continue; }
+    try {
+      await prisma.payrollAdjustment.upsert({
+        where:  { id: adj.id },
+        create: {
+          id:           adj.id,
+          id_nhan_vien: adj.id_nhan_vien,
+          thang:        adj.thang,
+          nam:          adj.nam,
+          type:         adj.type,
+          amount:       adj.amount,
+          reason:       adj.reason,
+        },
+        update: {
+          amount: adj.amount,
+          reason: adj.reason,
+        },
+      });
+      adjSynced++;
+    } catch (e) {
+      err('payroll:adj', `upsert ${adj.id}`, e);
+      errors++;
+    }
+  }
+  log('payroll', `Adjustments: ${adjSynced} synced`);
+
+  return { synced: synced + recordsSynced + adjSynced, skipped, errors };
+}
+
 // ── Main ─────────────────────────────────────────────────────
 
 async function main() {
@@ -608,6 +758,7 @@ async function main() {
   await syncModule('crm',        syncCrm);
   await syncModule('contracts',  syncContracts);
   await syncModule('attendance', syncAttendance);
+  await syncModule('payroll',    syncPayroll);
   await syncModule('tm',         syncTm);
 
   console.log('\n' + '='.repeat(50));

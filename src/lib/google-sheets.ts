@@ -2236,6 +2236,94 @@ export async function deleteBangLuong(id: string): Promise<boolean> {
   return true;
 }
 
+// Reads ALL rows from PAYROLL sheet — used by sync scripts only.
+export async function getAllPayrollRecords(): Promise<PayrollRecord[]> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.PAYROLL);
+  } catch {
+    return [];
+  }
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id: str(v.id),
+        id_nhan_vien: padEmployeeId(str(v.id_nhan_vien)),
+        thang: num(v.thang),
+        nam: num(v.nam),
+        gross: num(v.gross),
+        total_deduction: num(v.total_deduction),
+        net: num(v.net),
+        luong_dong_bh: num(v.luong_dong_bh),
+        thu_nhap_chiu_thue: num(v.thu_nhap_chiu_thue),
+        tong_chi_phi: num(v.tong_chi_phi),
+        trang_thai: (str(v.trang_thai) || 'draft') as any,
+        isProbation: str(v.isProbation) === 'TRUE' || str(v.isProbation) === 'true',
+        isCollaborator: str(v.isCollaborator) === 'TRUE' || str(v.isCollaborator) === 'true',
+        isIntern: str(v.isIntern) === 'TRUE' || str(v.isIntern) === 'true',
+        locked_at: str(v.locked_at) || undefined,
+        created_at: str(v.created_at),
+      };
+    })
+    .filter(p => !!p.id);
+}
+
+// Reads ALL rows from PAYROLL_ADJUSTMENTS — used by sync scripts only.
+export async function getAllPayrollAdjustments(): Promise<PayrollAdjustment[]> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.PAYROLL_ADJUSTMENTS);
+  } catch {
+    return [];
+  }
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id: str(v.id),
+        id_nhan_vien: str(v.id_nhan_vien),
+        thang: num(v.thang),
+        nam: num(v.nam),
+        type: str(v.type) as any,
+        amount: num(v.amount),
+        reason: str(v.reason),
+      };
+    })
+    .filter(adj => !!adj.id);
+}
+
+// Reads ALL rows from PAYROLL_ITEMS — used by sync scripts only.
+export async function getAllPayrollItems(): Promise<PayrollItemRecord[]> {
+  const doc = await getDoc();
+  let sheet: GoogleSpreadsheetWorksheet;
+  try {
+    sheet = await getSheet(doc, SHEETS.PAYROLL_ITEMS);
+  } catch {
+    return [];
+  }
+  const rows = await sheet.getRows();
+  return rows
+    .map(r => {
+      const v = r.toObject();
+      return {
+        id: str(v.id),
+        payroll_id: str(v.payroll_id),
+        loai_khoan: str(v.loai_khoan),
+        nhom: str(v.nhom) as any,
+        so_tien: num(v.so_tien),
+        ghi_chu: str(v.ghi_chu),
+        tinh_bhxh: str(v.tinh_bhxh) === 'TRUE' || str(v.tinh_bhxh) === 'true',
+        tinh_thue: str(v.tinh_thue) === 'TRUE' || str(v.tinh_thue) === 'true',
+      };
+    })
+    .filter(item => !!item.id && !!item.payroll_id);
+}
+
 // --- PAYROLL ADJUSTMENTS ---
 export async function getPayrollAdjustments(thang: number, nam: number): Promise<PayrollAdjustment[]> {
   const doc = await getDoc();
