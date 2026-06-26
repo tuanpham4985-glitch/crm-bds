@@ -424,17 +424,27 @@ export async function GET(request: NextRequest) {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
 
-    const [allPipelines, allCustomers, allEmployeesRaw, allCongViec, allContracts, hrBienDongData] = await Promise.all([
+    // Compute date range BEFORE Promise.all so tongHop can run in parallel
+    const dateRange = getDateRange(period);
+    if (fromParam && toParam) {
+      dateRange.from = new Date(fromParam);
+      dateRange.to = new Date(toParam + 'T23:59:59');
+    }
+    const useDepositDateForRevenue = reportMode === 'race';
+    const revenueDateSource = useDepositDateForRevenue ? 'deposit' : 'signed';
+
+    const [allPipelines, allCustomers, allEmployeesRaw, allCongViec, allContracts, hrBienDongData, tongHopRows] = await Promise.all([
       getPipeline(),
       getKhachHang(),
       getNhanVien(),
       getCongViec(),
       getHopDong(),
       isAdmin ? getDataNhanSuForReport().catch((): HrEmployeeRecord[] => []) : Promise.resolve([] as HrEmployeeRecord[]),
+      reportMode !== 'standard'
+        ? getTongHopGiaoDich(dateRange.from, dateRange.to, revenueDateSource).catch(() => [] as Awaited<ReturnType<typeof getTongHopGiaoDich>>)
+        : Promise.resolve([] as Awaited<ReturnType<typeof getTongHopGiaoDich>>),
     ]);
 
-    // Fetch external Tổng hợp sheet in parallel (non-blocking if env not set)
-    let tongHopRows: Awaited<ReturnType<typeof getTongHopGiaoDich>> = [];
     // Ẩn nhân viên "Nghỉ việc" khỏi dashboard
     const allEmployees = allEmployeesRaw.filter(nv => nv.trang_thai !== 'Nghỉ việc');
 
@@ -465,25 +475,7 @@ export async function GET(request: NextRequest) {
         });
         return acc;
       }, [])
-      .sort((a, b) => a.ngay - b.ngay); // Sắp xếp theo ngày tăng dần
-
-    const dateRange = getDateRange(period);
-    if (fromParam && toParam) {
-      dateRange.from = new Date(fromParam);
-      dateRange.to = new Date(toParam + 'T23:59:59');
-    }
-
-    const useDepositDateForRevenue = reportMode === 'race';
-    const revenueDateSource = useDepositDateForRevenue ? 'deposit' : 'signed';
-
-    // Fetch tonghop data with date filter when needed (silent fail if sheet not configured)
-    if (reportMode !== 'standard') {
-      try {
-        tongHopRows = await getTongHopGiaoDich(dateRange.from, dateRange.to, revenueDateSource);
-      } catch {
-        tongHopRows = [];
-      }
-    }
+      .sort((a, b) => a.ngay - b.ngay);
 
     // Debug: log first 3 pipelines to trace what data arrives from Sheets
     if (allPipelines.length > 0) {

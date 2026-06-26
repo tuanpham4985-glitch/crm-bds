@@ -8,6 +8,7 @@
 // API routes: thay '@/lib/google-sheets' → '@/lib/data-access'
 // ============================================================
 
+import { unstable_cache, revalidateTag } from 'next/cache';
 import * as GS from './google-sheets';
 import { isPostgresEnabled } from './db/feature-flags';
 import { cached, invalidate } from './mem-cache';
@@ -28,6 +29,16 @@ import type {
 
 // ── Re-export all types from google-sheets ────────────────────
 export type * from './google-sheets';
+
+// ── Vercel Data Cache wrappers (survive cold starts) ─────────
+// unstable_cache stores results in Vercel's shared Data Cache,
+// not in process memory — so they outlive container restarts.
+const _pgNhanVien  = unstable_cache(() => getEmployeeRepository().findAll(),  ['nv'],  { revalidate: 60,  tags: ['nv']  });
+const _pgKhachHang = unstable_cache(() => getCustomerRepository().findAll(),  ['kh'],  { revalidate: 30,  tags: ['kh']  });
+const _pgPipeline  = unstable_cache(() => getPipelineRepository().findAll(),  ['pl'],  { revalidate: 30,  tags: ['pl']  });
+const _pgCongViec  = unstable_cache(() => getCrmTaskRepository().findAll(),   ['cv'],  { revalidate: 30,  tags: ['cv']  });
+const _pgHopDong   = unstable_cache(() => getContractRepository().findAll(),  ['hd'],  { revalidate: 60,  tags: ['hd']  });
+const _pgDuAn      = unstable_cache(() => getProjectRepository().findAll(),   ['da'],  { revalidate: 120, tags: ['da']  });
 
 // ── Auto-fallback helper ──────────────────────────────────────
 // Nếu PG throw → log lỗi → tự về GS, user không bị ảnh hưởng.
@@ -114,10 +125,10 @@ export function getDataNhanSuForReport() {
 
 export function getNhanVien(): Promise<NhanVien[]> {
   if (!isPostgresEnabled('hrm')) return cached('gs:nv', 60_000, () => GS.getNhanVien());
-  return cached('pg:nv', 60_000, () => withPgFallback('hrm', 'getNhanVien',
-    () => getEmployeeRepository().findAll(),
-    () => GS.getNhanVien(),
-  ));
+  return _pgNhanVien().catch(e => {
+    console.error('[PG:hrm:getNhanVien] error, falling back to GS:', e instanceof Error ? e.message : e);
+    return GS.getNhanVien();
+  });
 }
 
 export function findNhanVienByEmail(email: string): Promise<NhanVien | null> {
@@ -129,7 +140,7 @@ export function findNhanVienByEmail(email: string): Promise<NhanVien | null> {
 }
 
 export function addNhanVien(data: NhanVien): Promise<void> {
-  invalidate('pg:nv'); invalidate('gs:nv');
+  revalidateTag('nv', {}); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.addNhanVien(data);
   return withPgFallback('hrm', 'addNhanVien',
     () => getEmployeeRepository().create(data),
@@ -138,7 +149,7 @@ export function addNhanVien(data: NhanVien): Promise<void> {
 }
 
 export function updateNhanVien(data: NhanVien): Promise<boolean> {
-  invalidate('pg:nv'); invalidate('gs:nv');
+  revalidateTag('nv', {}); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.updateNhanVien(data);
   return withPgFallback('hrm', 'updateNhanVien',
     () => getEmployeeRepository().update(data),
@@ -147,7 +158,7 @@ export function updateNhanVien(data: NhanVien): Promise<boolean> {
 }
 
 export function deleteNhanVien(id: string): Promise<boolean> {
-  invalidate('pg:nv'); invalidate('gs:nv');
+  revalidateTag('nv', {}); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.deleteNhanVien(id);
   return withPgFallback('hrm', 'deleteNhanVien',
     () => getEmployeeRepository().delete(id),
@@ -159,14 +170,14 @@ export function deleteNhanVien(id: string): Promise<boolean> {
 
 export function getKhachHang(): Promise<KhachHang[]> {
   if (!isPostgresEnabled('crm')) return cached('gs:kh', 30_000, () => GS.getKhachHang());
-  return cached('pg:kh', 30_000, () => withPgFallback('crm', 'getKhachHang',
-    () => getCustomerRepository().findAll(),
-    () => GS.getKhachHang(),
-  ));
+  return _pgKhachHang().catch(e => {
+    console.error('[PG:crm:getKhachHang] error, falling back to GS:', e instanceof Error ? e.message : e);
+    return GS.getKhachHang();
+  });
 }
 
 export function addKhachHang(data: KhachHang): Promise<void> {
-  invalidate('pg:kh'); invalidate('gs:kh');
+  revalidateTag('kh', {}); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.addKhachHang(data);
   return withPgFallback('crm', 'addKhachHang',
     () => getCustomerRepository().create(data),
@@ -175,7 +186,7 @@ export function addKhachHang(data: KhachHang): Promise<void> {
 }
 
 export function addKhachHangBatch(data: KhachHang[]): Promise<void> {
-  invalidate('pg:kh'); invalidate('gs:kh');
+  revalidateTag('kh', {}); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.addKhachHangBatch(data);
   return withPgFallback('crm', 'addKhachHangBatch',
     () => getCustomerRepository().createBatch(data),
@@ -184,7 +195,7 @@ export function addKhachHangBatch(data: KhachHang[]): Promise<void> {
 }
 
 export function updateKhachHang(data: KhachHang): Promise<boolean> {
-  invalidate('pg:kh'); invalidate('gs:kh');
+  revalidateTag('kh', {}); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.updateKhachHang(data);
   return withPgFallback('crm', 'updateKhachHang',
     () => getCustomerRepository().update(data),
@@ -193,7 +204,7 @@ export function updateKhachHang(data: KhachHang): Promise<boolean> {
 }
 
 export function deleteKhachHang(id: string): Promise<boolean> {
-  invalidate('pg:kh'); invalidate('gs:kh');
+  revalidateTag('kh', {}); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.deleteKhachHang(id);
   return withPgFallback('crm', 'deleteKhachHang',
     () => getCustomerRepository().delete(id),
@@ -205,14 +216,14 @@ export function deleteKhachHang(id: string): Promise<boolean> {
 
 export function getPipeline(): Promise<Pipeline[]> {
   if (!isPostgresEnabled('crm')) return cached('gs:pl', 30_000, () => GS.getPipeline());
-  return cached('pg:pl', 30_000, () => withPgFallback('crm', 'getPipeline',
-    () => getPipelineRepository().findAll(),
-    () => GS.getPipeline(),
-  ));
+  return _pgPipeline().catch(e => {
+    console.error('[PG:crm:getPipeline] error, falling back to GS:', e instanceof Error ? e.message : e);
+    return GS.getPipeline();
+  });
 }
 
 export function addPipeline(data: Pipeline): Promise<void> {
-  invalidate('pg:pl'); invalidate('gs:pl');
+  revalidateTag('pl', {}); invalidate('gs:pl');
   if (!isPostgresEnabled('crm')) return GS.addPipeline(data);
   return withPgFallback('crm', 'addPipeline',
     () => getPipelineRepository().create(data),
@@ -221,7 +232,7 @@ export function addPipeline(data: Pipeline): Promise<void> {
 }
 
 export function updatePipeline(data: Pipeline): Promise<{ updated: boolean; oldGiaiDoan: string }> {
-  invalidate('pg:pl'); invalidate('gs:pl');
+  revalidateTag('pl', {}); invalidate('gs:pl');
   if (!isPostgresEnabled('crm')) return GS.updatePipeline(data);
   return withPgFallback('crm', 'updatePipeline',
     () => getPipelineRepository().update(data),
@@ -230,7 +241,7 @@ export function updatePipeline(data: Pipeline): Promise<{ updated: boolean; oldG
 }
 
 export function deletePipeline(id: string): Promise<boolean> {
-  invalidate('pg:pl'); invalidate('gs:pl');
+  revalidateTag('pl', {}); invalidate('gs:pl');
   if (!isPostgresEnabled('crm')) return GS.deletePipeline(id);
   return withPgFallback('crm', 'deletePipeline',
     () => getPipelineRepository().delete(id),
@@ -242,14 +253,14 @@ export function deletePipeline(id: string): Promise<boolean> {
 
 export function getCongViec(): Promise<CongViec[]> {
   if (!isPostgresEnabled('crm')) return cached('gs:cv', 30_000, () => GS.getCongViec());
-  return cached('pg:cv', 30_000, () => withPgFallback('crm', 'getCongViec',
-    () => getCrmTaskRepository().findAll(),
-    () => GS.getCongViec(),
-  ));
+  return _pgCongViec().catch(e => {
+    console.error('[PG:crm:getCongViec] error, falling back to GS:', e instanceof Error ? e.message : e);
+    return GS.getCongViec();
+  });
 }
 
 export function addCongViec(data: CongViec): Promise<void> {
-  invalidate('pg:cv'); invalidate('gs:cv');
+  revalidateTag('cv', {}); invalidate('gs:cv');
   if (!isPostgresEnabled('crm')) return GS.addCongViec(data);
   return withPgFallback('crm', 'addCongViec',
     () => getCrmTaskRepository().create(data),
@@ -258,7 +269,7 @@ export function addCongViec(data: CongViec): Promise<void> {
 }
 
 export function updateCongViec(data: CongViec): Promise<boolean> {
-  invalidate('pg:cv'); invalidate('gs:cv');
+  revalidateTag('cv', {}); invalidate('gs:cv');
   if (!isPostgresEnabled('crm')) return GS.updateCongViec(data);
   return withPgFallback('crm', 'updateCongViec',
     () => getCrmTaskRepository().update(data),
@@ -267,7 +278,7 @@ export function updateCongViec(data: CongViec): Promise<boolean> {
 }
 
 export function deleteCongViec(id: string): Promise<boolean> {
-  invalidate('pg:cv'); invalidate('gs:cv');
+  revalidateTag('cv', {}); invalidate('gs:cv');
   if (!isPostgresEnabled('crm')) return GS.deleteCongViec(id);
   return withPgFallback('crm', 'deleteCongViec',
     () => getCrmTaskRepository().delete(id),
@@ -279,14 +290,14 @@ export function deleteCongViec(id: string): Promise<boolean> {
 
 export function getDuAn(): Promise<DuAn[]> {
   if (!isPostgresEnabled('crm')) return cached('gs:da', 120_000, () => GS.getDuAn());
-  return cached('pg:da', 120_000, () => withPgFallback('crm', 'getDuAn',
-    () => getProjectRepository().findAll(),
-    () => GS.getDuAn(),
-  ));
+  return _pgDuAn().catch(e => {
+    console.error('[PG:crm:getDuAn] error, falling back to GS:', e instanceof Error ? e.message : e);
+    return GS.getDuAn();
+  });
 }
 
 export function addDuAn(data: DuAn): Promise<void> {
-  invalidate('pg:da'); invalidate('gs:da');
+  revalidateTag('da', {}); invalidate('gs:da');
   if (!isPostgresEnabled('crm')) return GS.addDuAn(data);
   return withPgFallback('crm', 'addDuAn',
     () => getProjectRepository().create(data),
@@ -295,7 +306,7 @@ export function addDuAn(data: DuAn): Promise<void> {
 }
 
 export function updateDuAn(data: DuAn): Promise<boolean> {
-  invalidate('pg:da'); invalidate('gs:da');
+  revalidateTag('da', {}); invalidate('gs:da');
   if (!isPostgresEnabled('crm')) return GS.updateDuAn(data);
   return withPgFallback('crm', 'updateDuAn',
     () => getProjectRepository().update(data),
@@ -304,7 +315,7 @@ export function updateDuAn(data: DuAn): Promise<boolean> {
 }
 
 export function deleteDuAn(id: string): Promise<boolean> {
-  invalidate('pg:da'); invalidate('gs:da');
+  revalidateTag('da', {}); invalidate('gs:da');
   if (!isPostgresEnabled('crm')) return GS.deleteDuAn(id);
   return withPgFallback('crm', 'deleteDuAn',
     () => getProjectRepository().delete(id),
@@ -316,14 +327,14 @@ export function deleteDuAn(id: string): Promise<boolean> {
 
 export function getHopDong(): Promise<HopDong[]> {
   if (!isPostgresEnabled('contracts')) return cached('gs:hd', 60_000, () => GS.getHopDong());
-  return cached('pg:hd', 60_000, () => withPgFallback('contracts', 'getHopDong',
-    () => getContractRepository().findAll(),
-    () => GS.getHopDong(),
-  ));
+  return _pgHopDong().catch(e => {
+    console.error('[PG:contracts:getHopDong] error, falling back to GS:', e instanceof Error ? e.message : e);
+    return GS.getHopDong();
+  });
 }
 
 export function addHopDong(data: HopDong): Promise<void> {
-  invalidate('pg:hd'); invalidate('gs:hd');
+  revalidateTag('hd', {}); invalidate('gs:hd');
   if (!isPostgresEnabled('contracts')) return GS.addHopDong(data);
   return withPgFallback('contracts', 'addHopDong',
     () => getContractRepository().create(data),
@@ -332,7 +343,7 @@ export function addHopDong(data: HopDong): Promise<void> {
 }
 
 export function updateHopDong(data: HopDong): Promise<boolean> {
-  invalidate('pg:hd'); invalidate('gs:hd');
+  revalidateTag('hd', {}); invalidate('gs:hd');
   if (!isPostgresEnabled('contracts')) return GS.updateHopDong(data);
   return withPgFallback('contracts', 'updateHopDong',
     () => getContractRepository().update(data),
@@ -341,7 +352,7 @@ export function updateHopDong(data: HopDong): Promise<boolean> {
 }
 
 export function deleteHopDong(id: string): Promise<boolean> {
-  invalidate('pg:hd'); invalidate('gs:hd');
+  revalidateTag('hd', {}); invalidate('gs:hd');
   if (!isPostgresEnabled('contracts')) return GS.deleteHopDong(id);
   return withPgFallback('contracts', 'deleteHopDong',
     () => getContractRepository().delete(id),
