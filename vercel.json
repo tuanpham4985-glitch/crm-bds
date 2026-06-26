@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/health",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
