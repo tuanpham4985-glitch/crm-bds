@@ -10,6 +10,7 @@
 
 import * as GS from './google-sheets';
 import { isPostgresEnabled } from './db/feature-flags';
+import { cached, invalidate } from './mem-cache';
 import {
   getEmployeeRepository,
   getCustomerRepository,
@@ -73,26 +74,50 @@ export const importFromPhanKhachConfig = GS.importFromPhanKhachConfig;
 export const addPhanKhachConfig        = GS.addPhanKhachConfig;
 export const deletePhanKhachConfig     = GS.deletePhanKhachConfig;
 
-// CRM — misc
-export const getTonCoc                 = GS.getTonCoc;
-export const getTinhTrangGiaoDich      = GS.getTinhTrangGiaoDich;
-export const getTongHopGiaoDich        = GS.getTongHopGiaoDich;
+// CRM — misc (GS pass-through, cached to reduce API round-trips)
+export function getTonCoc() {
+  return cached('gs:ton_coc', 2 * 60_000, () => GS.getTonCoc());
+}
+export function getTinhTrangGiaoDich() {
+  return cached('gs:tinh_trang', 2 * 60_000, () => GS.getTinhTrangGiaoDich());
+}
+export function getTongHopGiaoDich(
+  from?: Date,
+  to?: Date,
+  source: 'signed' | 'deposit' = 'signed',
+) {
+  const key = `gs:tonghop:${from?.toISOString().slice(0, 10) ?? ''}:${to?.toISOString().slice(0, 10) ?? ''}:${source}`;
+  return cached(key, 5 * 60_000, () => GS.getTongHopGiaoDich(from, to, source));
+}
 
-// Finance / misc
-export const getTaiChinhHistory        = GS.getTaiChinhHistory;
-export const saveTaiChinhHistory       = GS.saveTaiChinhHistory;
-export const getDanhMuc                = GS.getDanhMuc;
-export const getNhiemVu                = GS.getNhiemVu;
-export const getDataNhanSuForReport    = GS.getDataNhanSuForReport;
+// Finance / misc (GS pass-through, cached)
+export function getTaiChinhHistory() {
+  return cached('gs:tai_chinh', 2 * 60_000, () => GS.getTaiChinhHistory());
+}
+export function saveTaiChinhHistory(
+  ...args: Parameters<typeof GS.saveTaiChinhHistory>
+): ReturnType<typeof GS.saveTaiChinhHistory> {
+  invalidate('gs:tai_chinh');
+  return GS.saveTaiChinhHistory(...args);
+}
+export function getDanhMuc() {
+  return cached('gs:danh_muc', 10 * 60_000, () => GS.getDanhMuc());
+}
+export function getNhiemVu() {
+  return cached('gs:nhiem_vu', 10 * 60_000, () => GS.getNhiemVu());
+}
+export function getDataNhanSuForReport() {
+  return cached('gs:nhan_su', 5 * 60_000, () => GS.getDataNhanSuForReport());
+}
 
 // ── HRM ──────────────────────────────────────────────────────
 
 export function getNhanVien(): Promise<NhanVien[]> {
-  if (!isPostgresEnabled('hrm')) return GS.getNhanVien();
-  return withPgFallback('hrm', 'getNhanVien',
+  if (!isPostgresEnabled('hrm')) return cached('gs:nv', 60_000, () => GS.getNhanVien());
+  return cached('pg:nv', 60_000, () => withPgFallback('hrm', 'getNhanVien',
     () => getEmployeeRepository().findAll(),
     () => GS.getNhanVien(),
-  );
+  ));
 }
 
 export function findNhanVienByEmail(email: string): Promise<NhanVien | null> {
@@ -104,6 +129,7 @@ export function findNhanVienByEmail(email: string): Promise<NhanVien | null> {
 }
 
 export function addNhanVien(data: NhanVien): Promise<void> {
+  invalidate('pg:nv'); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.addNhanVien(data);
   return withPgFallback('hrm', 'addNhanVien',
     () => getEmployeeRepository().create(data),
@@ -112,6 +138,7 @@ export function addNhanVien(data: NhanVien): Promise<void> {
 }
 
 export function updateNhanVien(data: NhanVien): Promise<boolean> {
+  invalidate('pg:nv'); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.updateNhanVien(data);
   return withPgFallback('hrm', 'updateNhanVien',
     () => getEmployeeRepository().update(data),
@@ -120,6 +147,7 @@ export function updateNhanVien(data: NhanVien): Promise<boolean> {
 }
 
 export function deleteNhanVien(id: string): Promise<boolean> {
+  invalidate('pg:nv'); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.deleteNhanVien(id);
   return withPgFallback('hrm', 'deleteNhanVien',
     () => getEmployeeRepository().delete(id),
@@ -130,14 +158,15 @@ export function deleteNhanVien(id: string): Promise<boolean> {
 // ── CRM: KhachHang ───────────────────────────────────────────
 
 export function getKhachHang(): Promise<KhachHang[]> {
-  if (!isPostgresEnabled('crm')) return GS.getKhachHang();
-  return withPgFallback('crm', 'getKhachHang',
+  if (!isPostgresEnabled('crm')) return cached('gs:kh', 30_000, () => GS.getKhachHang());
+  return cached('pg:kh', 30_000, () => withPgFallback('crm', 'getKhachHang',
     () => getCustomerRepository().findAll(),
     () => GS.getKhachHang(),
-  );
+  ));
 }
 
 export function addKhachHang(data: KhachHang): Promise<void> {
+  invalidate('pg:kh'); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.addKhachHang(data);
   return withPgFallback('crm', 'addKhachHang',
     () => getCustomerRepository().create(data),
@@ -146,6 +175,7 @@ export function addKhachHang(data: KhachHang): Promise<void> {
 }
 
 export function addKhachHangBatch(data: KhachHang[]): Promise<void> {
+  invalidate('pg:kh'); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.addKhachHangBatch(data);
   return withPgFallback('crm', 'addKhachHangBatch',
     () => getCustomerRepository().createBatch(data),
@@ -154,6 +184,7 @@ export function addKhachHangBatch(data: KhachHang[]): Promise<void> {
 }
 
 export function updateKhachHang(data: KhachHang): Promise<boolean> {
+  invalidate('pg:kh'); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.updateKhachHang(data);
   return withPgFallback('crm', 'updateKhachHang',
     () => getCustomerRepository().update(data),
@@ -162,6 +193,7 @@ export function updateKhachHang(data: KhachHang): Promise<boolean> {
 }
 
 export function deleteKhachHang(id: string): Promise<boolean> {
+  invalidate('pg:kh'); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.deleteKhachHang(id);
   return withPgFallback('crm', 'deleteKhachHang',
     () => getCustomerRepository().delete(id),
@@ -172,14 +204,15 @@ export function deleteKhachHang(id: string): Promise<boolean> {
 // ── CRM: Pipeline ─────────────────────────────────────────────
 
 export function getPipeline(): Promise<Pipeline[]> {
-  if (!isPostgresEnabled('crm')) return GS.getPipeline();
-  return withPgFallback('crm', 'getPipeline',
+  if (!isPostgresEnabled('crm')) return cached('gs:pl', 30_000, () => GS.getPipeline());
+  return cached('pg:pl', 30_000, () => withPgFallback('crm', 'getPipeline',
     () => getPipelineRepository().findAll(),
     () => GS.getPipeline(),
-  );
+  ));
 }
 
 export function addPipeline(data: Pipeline): Promise<void> {
+  invalidate('pg:pl'); invalidate('gs:pl');
   if (!isPostgresEnabled('crm')) return GS.addPipeline(data);
   return withPgFallback('crm', 'addPipeline',
     () => getPipelineRepository().create(data),
@@ -188,6 +221,7 @@ export function addPipeline(data: Pipeline): Promise<void> {
 }
 
 export function updatePipeline(data: Pipeline): Promise<{ updated: boolean; oldGiaiDoan: string }> {
+  invalidate('pg:pl'); invalidate('gs:pl');
   if (!isPostgresEnabled('crm')) return GS.updatePipeline(data);
   return withPgFallback('crm', 'updatePipeline',
     () => getPipelineRepository().update(data),
@@ -196,6 +230,7 @@ export function updatePipeline(data: Pipeline): Promise<{ updated: boolean; oldG
 }
 
 export function deletePipeline(id: string): Promise<boolean> {
+  invalidate('pg:pl'); invalidate('gs:pl');
   if (!isPostgresEnabled('crm')) return GS.deletePipeline(id);
   return withPgFallback('crm', 'deletePipeline',
     () => getPipelineRepository().delete(id),
@@ -206,14 +241,15 @@ export function deletePipeline(id: string): Promise<boolean> {
 // ── CRM: CongViec ────────────────────────────────────────────
 
 export function getCongViec(): Promise<CongViec[]> {
-  if (!isPostgresEnabled('crm')) return GS.getCongViec();
-  return withPgFallback('crm', 'getCongViec',
+  if (!isPostgresEnabled('crm')) return cached('gs:cv', 30_000, () => GS.getCongViec());
+  return cached('pg:cv', 30_000, () => withPgFallback('crm', 'getCongViec',
     () => getCrmTaskRepository().findAll(),
     () => GS.getCongViec(),
-  );
+  ));
 }
 
 export function addCongViec(data: CongViec): Promise<void> {
+  invalidate('pg:cv'); invalidate('gs:cv');
   if (!isPostgresEnabled('crm')) return GS.addCongViec(data);
   return withPgFallback('crm', 'addCongViec',
     () => getCrmTaskRepository().create(data),
@@ -222,6 +258,7 @@ export function addCongViec(data: CongViec): Promise<void> {
 }
 
 export function updateCongViec(data: CongViec): Promise<boolean> {
+  invalidate('pg:cv'); invalidate('gs:cv');
   if (!isPostgresEnabled('crm')) return GS.updateCongViec(data);
   return withPgFallback('crm', 'updateCongViec',
     () => getCrmTaskRepository().update(data),
@@ -230,6 +267,7 @@ export function updateCongViec(data: CongViec): Promise<boolean> {
 }
 
 export function deleteCongViec(id: string): Promise<boolean> {
+  invalidate('pg:cv'); invalidate('gs:cv');
   if (!isPostgresEnabled('crm')) return GS.deleteCongViec(id);
   return withPgFallback('crm', 'deleteCongViec',
     () => getCrmTaskRepository().delete(id),
@@ -240,14 +278,15 @@ export function deleteCongViec(id: string): Promise<boolean> {
 // ── CRM: DuAn ────────────────────────────────────────────────
 
 export function getDuAn(): Promise<DuAn[]> {
-  if (!isPostgresEnabled('crm')) return GS.getDuAn();
-  return withPgFallback('crm', 'getDuAn',
+  if (!isPostgresEnabled('crm')) return cached('gs:da', 120_000, () => GS.getDuAn());
+  return cached('pg:da', 120_000, () => withPgFallback('crm', 'getDuAn',
     () => getProjectRepository().findAll(),
     () => GS.getDuAn(),
-  );
+  ));
 }
 
 export function addDuAn(data: DuAn): Promise<void> {
+  invalidate('pg:da'); invalidate('gs:da');
   if (!isPostgresEnabled('crm')) return GS.addDuAn(data);
   return withPgFallback('crm', 'addDuAn',
     () => getProjectRepository().create(data),
@@ -256,6 +295,7 @@ export function addDuAn(data: DuAn): Promise<void> {
 }
 
 export function updateDuAn(data: DuAn): Promise<boolean> {
+  invalidate('pg:da'); invalidate('gs:da');
   if (!isPostgresEnabled('crm')) return GS.updateDuAn(data);
   return withPgFallback('crm', 'updateDuAn',
     () => getProjectRepository().update(data),
@@ -264,6 +304,7 @@ export function updateDuAn(data: DuAn): Promise<boolean> {
 }
 
 export function deleteDuAn(id: string): Promise<boolean> {
+  invalidate('pg:da'); invalidate('gs:da');
   if (!isPostgresEnabled('crm')) return GS.deleteDuAn(id);
   return withPgFallback('crm', 'deleteDuAn',
     () => getProjectRepository().delete(id),
@@ -274,14 +315,15 @@ export function deleteDuAn(id: string): Promise<boolean> {
 // ── Contracts: HopDong ────────────────────────────────────────
 
 export function getHopDong(): Promise<HopDong[]> {
-  if (!isPostgresEnabled('contracts')) return GS.getHopDong();
-  return withPgFallback('contracts', 'getHopDong',
+  if (!isPostgresEnabled('contracts')) return cached('gs:hd', 60_000, () => GS.getHopDong());
+  return cached('pg:hd', 60_000, () => withPgFallback('contracts', 'getHopDong',
     () => getContractRepository().findAll(),
     () => GS.getHopDong(),
-  );
+  ));
 }
 
 export function addHopDong(data: HopDong): Promise<void> {
+  invalidate('pg:hd'); invalidate('gs:hd');
   if (!isPostgresEnabled('contracts')) return GS.addHopDong(data);
   return withPgFallback('contracts', 'addHopDong',
     () => getContractRepository().create(data),
@@ -290,6 +332,7 @@ export function addHopDong(data: HopDong): Promise<void> {
 }
 
 export function updateHopDong(data: HopDong): Promise<boolean> {
+  invalidate('pg:hd'); invalidate('gs:hd');
   if (!isPostgresEnabled('contracts')) return GS.updateHopDong(data);
   return withPgFallback('contracts', 'updateHopDong',
     () => getContractRepository().update(data),
@@ -298,6 +341,7 @@ export function updateHopDong(data: HopDong): Promise<boolean> {
 }
 
 export function deleteHopDong(id: string): Promise<boolean> {
+  invalidate('pg:hd'); invalidate('gs:hd');
   if (!isPostgresEnabled('contracts')) return GS.deleteHopDong(id);
   return withPgFallback('contracts', 'deleteHopDong',
     () => getContractRepository().delete(id),
