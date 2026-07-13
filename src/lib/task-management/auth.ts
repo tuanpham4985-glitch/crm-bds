@@ -80,9 +80,11 @@ function mapRole(session: CrmSession): UserRole {
     vt === 'leader'
   ) return 'team_leader';
 
-  // ── manager: GĐ DA + BO Trưởng phòng (TP*)
+  // ── manager: GĐ DA, GĐ Marketing + BO Trưởng phòng (TP*)
   if (
     etL === 'gđ da' || etL === 'gd da' ||
+    etL === 'gđ marketing' || etL === 'gd marketing' ||
+    etL.includes('giám đốc marketing') || etL.includes('giam doc marketing') ||
     etL.startsWith('tp ') || etL.startsWith('tp-') ||
     etL.includes('trưởng phòng') || etL.includes('truong phong') ||
     vt === 'manager'
