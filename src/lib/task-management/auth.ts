@@ -73,9 +73,11 @@ function mapRole(session: CrmSession): UserRole {
     etL.startsWith('cv ')
   ) return 'staff';
 
-  // ── team_leader: GĐKD (Giám đốc Kinh doanh)
+  // ── team_leader: GĐKD + TP Marketing (quản team, báo cáo lên GĐ Marketing)
   if (
     etL === 'gđkd' || etL === 'gdkd' ||
+    etL === 'tp marketing' || etL === 'tp mkt' ||
+    etL.includes('trưởng phòng marketing') || etL.includes('truong phong marketing') ||
     etL.includes('leader') || etL.includes('team lead') ||
     vt === 'leader'
   ) return 'team_leader';
