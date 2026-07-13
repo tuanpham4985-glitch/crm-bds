@@ -96,6 +96,10 @@ function inferDeptName(nv: Record<string, string>): string {
   return 'Chưa phân công';
 }
 
+function cleanEmail(value: string): string {
+  return (value || '').trim().toLowerCase();
+}
+
 // ─── MAIN ──────────────────────────────────────────────────
 
 async function main() {
@@ -171,16 +175,22 @@ async function main() {
 
   // Map sang TM_Users
   const tmUsers = employees.map(nv => ({
-    user_id:       nv.id_nhan_vien.trim(),
-    email:         (nv.email || '').trim().toLowerCase(),
-    full_name:     (nv.ho_ten || '').trim(),
-    role:          getRole(nv.vai_tro || '', nv.employee_type || ''),
-    department_id: deptMap.get(inferDeptName(nv)) || '',
-    employee_type: (nv.employee_type || '').trim(),
-    is_active:     getIsActive(nv.trang_thai || ''),
-    avatar_url:    (nv.avatar_url || '').trim(),
-    created_at:    now,
-    updated_at:    now,
+    user_id:        nv.id_nhan_vien.trim(),
+    employee_code:  nv.id_nhan_vien.trim(),
+    email:          cleanEmail(nv.email || ''),
+    full_name:      (nv.ho_ten || '').trim(),
+    phone:          (nv.so_dien_thoai || '').trim(),
+    role:           getRole(nv.vai_tro || '', nv.employee_type || ''),
+    department_id:  deptMap.get(inferDeptName(nv)) || '',
+    team_id:        (nv.team_id || '').trim(),
+    position:       (nv.employee_type || '').trim(),
+    employee_type:  (nv.employee_type || '').trim(),
+    avatar_url:     (nv.avatar_url || '').trim(),
+    zalo_id:        (nv.zalo_id || '').trim(),
+    is_active:      getIsActive(nv.trang_thai || ''),
+    last_active_at: '',
+    created_at:     now,
+    updated_at:     now,
   }));
 
   // Ghi vào TM sheet

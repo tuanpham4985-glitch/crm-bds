@@ -14,7 +14,8 @@ export class PostgresEmployeeRepository implements IEmployeeRepository {
   }
 
   async findByEmail(email: string): Promise<NhanVien | null> {
-    const row = await prisma.nhanVien.findUnique({ where: { email } });
+    const normalizedEmail = email.trim().toLowerCase();
+    const row = await prisma.nhanVien.findUnique({ where: { email: normalizedEmail } });
     return row ? toNhanVien(row) : null;
   }
 
@@ -81,7 +82,7 @@ function fromNhanVien(nv: NhanVien) {
     id_nhan_vien:            nv.id_nhan_vien,
     ho_ten:                  nv.ho_ten,
     so_dien_thoai:           nv.so_dien_thoai,
-    email:                   nv.email,
+    email:                   nv.email.trim().toLowerCase(),
     vai_tro:                 nv.vai_tro,
     employee_type:           nv.employee_type,
     gioi_tinh:               nv.gioi_tinh,

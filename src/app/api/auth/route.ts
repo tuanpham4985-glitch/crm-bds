@@ -7,7 +7,8 @@ import { findNhanVienByEmail } from '@/lib/data-access';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, mat_khau } = body;
+    const email = String(body.email || '').trim().toLowerCase();
+    const { mat_khau } = body;
     
     if (!email) {
       return NextResponse.json({ success: false, error: 'Email là bắt buộc' }, { status: 400 });
