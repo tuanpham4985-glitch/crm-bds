@@ -68,9 +68,23 @@ const SELECT_STYLE: React.CSSProperties = {
 // ── Approval info ─────────────────────────────────────────
 
 const APPROVAL_LEVEL_LABEL: Record<number, string> = {
-  1: 'Team Leader duyệt',
-  2: 'Trưởng phòng duyệt',
-  3: 'Giám đốc duyệt',
+  1: 'TP / Team Lead duyệt',
+  2: 'GĐ bộ phận duyệt',
+  3: 'Ban giám đốc / CEO duyệt',
+};
+
+const APPROVAL_OPTIONS = [
+  { value: '0', label: 'Không cần phê duyệt', roles: ['staff', 'team_leader', 'manager', 'director'] },
+  { value: '1', label: 'TP / Team Lead duyệt', roles: ['team_leader', 'manager', 'director'] },
+  { value: '2', label: 'GĐ bộ phận duyệt', roles: ['manager', 'director'] },
+  { value: '3', label: 'Ban giám đốc / CEO duyệt', roles: ['director'] },
+];
+
+const MAX_APPROVAL_LEVEL_BY_ROLE: Record<string, number> = {
+  director: 3,
+  manager: 2,
+  team_leader: 1,
+  staff: 0,
 };
 
 const APPROVAL_STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
@@ -83,15 +97,23 @@ const APPROVAL_STATUS_STYLE: Record<string, { bg: string; color: string; label: 
 function ApprovalInfo({
   task,
   onSave,
+  userRole,
 }: {
   task: { approval_level: 1 | 2 | 3; approval_status: string; rejection_reason?: string };
   onSave: (field: string, value: unknown) => Promise<void>;
+  userRole: string;
 }) {
   const level  = Number(task.approval_level) || 0;
   // Nếu level > 0 mà status vẫn là not_required (dữ liệu cũ) → hiện pending
   const rawStatus = task.approval_status || 'not_required';
   const status = (level > 0 && rawStatus === 'not_required') ? 'pending' : rawStatus;
   const style  = APPROVAL_STATUS_STYLE[status] ?? APPROVAL_STATUS_STYLE.not_required;
+  const visibleOptions = APPROVAL_OPTIONS.filter(opt =>
+    opt.roles.includes(userRole) || opt.value === String(level),
+  );
+  const maxApprovalLevel = MAX_APPROVAL_LEVEL_BY_ROLE[userRole] ?? 0;
+  const canChangeApproval = level <= maxApprovalLevel &&
+    visibleOptions.some(opt => opt.value !== String(level) && opt.roles.includes(userRole));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -120,6 +142,7 @@ function ApprovalInfo({
       {/* Change approval level */}
       <select
         defaultValue={String(level)}
+        disabled={!canChangeApproval}
         onChange={e => {
           const v = Number(e.target.value);
           onSave('approval_level', v || null);
@@ -128,13 +151,12 @@ function ApprovalInfo({
         style={{
           height: 30, padding: '0 8px', borderRadius: 7, fontSize: 12,
           border: '1.5px solid var(--border-light)', background: 'var(--bg-page)',
-          color: 'var(--text-muted)', cursor: 'pointer', width: 'fit-content',
+          color: 'var(--text-muted)', cursor: canChangeApproval ? 'pointer' : 'not-allowed', width: 'fit-content',
         }}
       >
-        <option value="0">Không cần phê duyệt</option>
-        <option value="1">Cấp 1 — Team Leader duyệt</option>
-        <option value="2">Cấp 2 — Trưởng phòng duyệt</option>
-        <option value="3">Cấp 3 — Giám đốc duyệt</option>
+        {visibleOptions.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
       </select>
     </div>
   );
@@ -603,7 +625,7 @@ export default function TaskDetail() {
                   {/* Phê duyệt */}
                   <div>
                     <span style={LABEL}>Phê duyệt</span>
-                    <ApprovalInfo task={task} onSave={save} />
+                    <ApprovalInfo task={task} onSave={save} userRole={currentUser?.role ?? 'staff'} />
                   </div>
                 </div>
               )}

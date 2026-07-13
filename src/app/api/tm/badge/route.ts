@@ -10,6 +10,14 @@ const ROLE_APPROVAL_LEVEL: Record<string, number> = {
   team_leader:  1,
 };
 
+function canCountPendingApproval(user: { role: string; department_id?: string }, task: Record<string, string>): boolean {
+  if (task.approval_status !== 'pending' || task.deleted_at) return false;
+  const maxLevel = ROLE_APPROVAL_LEVEL[user.role] ?? 0;
+  if (maxLevel <= 0) return false;
+  if (Number(task.approval_level ?? 1) > maxLevel) return false;
+  return user.role === 'director' || task.department_id === user.department_id;
+}
+
 export async function GET() {
   try {
     const user = await getCurrentTmUser();
@@ -22,14 +30,7 @@ export async function GET() {
 
     const unread = notifs.filter(n => n.user_id === user.user_id && n.status !== 'read').length;
 
-    const maxLevel = ROLE_APPROVAL_LEVEL[user.role] ?? 0;
-    const pending = maxLevel > 0
-      ? tasks.filter(t =>
-          t.approval_status === 'pending' &&
-          Number(t.approval_level ?? 1) <= maxLevel &&
-          !t.deleted_at,
-        ).length
-      : 0;
+    const pending = tasks.filter(t => canCountPendingApproval(user, t)).length;
 
     return okResponse({ count: unread + pending, unread, pending });
   } catch {

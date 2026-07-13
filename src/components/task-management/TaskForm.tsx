@@ -57,18 +57,16 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
 
   // Pre-fill department từ người tạo khi currentUser load xong
   useEffect(() => {
-    if (currentUser?.department_id && !form.department_id) {
-      setForm(f => ({ ...f, department_id: currentUser.department_id }));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!currentUser?.department_id) return;
+    setForm(f => f.department_id ? f : { ...f, department_id: currentUser.department_id });
   }, [currentUser?.department_id]);
 
   // Approval levels a user can set = levels they themselves can approve
   const approvalOptions = [
     { value: '0', label: 'Không cần phê duyệt' },
-    { value: '1', label: 'Cấp 1 — GĐKD duyệt' },
-    { value: '2', label: 'Cấp 2 — GĐ DA / Trưởng phòng duyệt' },
-    { value: '3', label: 'Cấp 3 — Chủ tịch / CEO duyệt' },
+    { value: '1', label: 'TP / Team Lead duyệt' },
+    { value: '2', label: 'GĐ bộ phận duyệt' },
+    { value: '3', label: 'Ban giám đốc / CEO duyệt' },
   ].filter(opt => {
     if (opt.value === '0') return true;
     if (opt.value === '1') return ['team_leader', 'manager', 'director'].includes(userRole);
