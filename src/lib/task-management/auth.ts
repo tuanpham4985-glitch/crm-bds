@@ -160,6 +160,7 @@ function mapRole(session: CrmSession): UserRole {
   const vt  = (session.vai_tro || '').trim();
   const et  = (session.employee_type || '').trim();
   const etL = et.toLowerCase();
+  const etN = normalizeText(et);
 
   // ── director: Chủ tịch, CEO, Tổng GĐ, Phó GĐ, Admin
   if (
@@ -182,6 +183,8 @@ function mapRole(session: CrmSession): UserRole {
   if (
     etL === 'gđkd' || etL === 'gdkd' ||
     etL === 'tp marketing' || etL === 'tp mkt' ||
+    ((etN.startsWith('tp ') || etN.startsWith('tp-') || etN.includes('truong phong')) &&
+      (etN.includes('marketing') || etN.includes('mkt') || etN.includes('digital'))) ||
     etL.includes('trưởng phòng marketing') || etL.includes('truong phong marketing') ||
     etL.includes('leader') || etL.includes('team lead') ||
     vt === 'leader'

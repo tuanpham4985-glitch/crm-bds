@@ -25,6 +25,7 @@ const now = new Date().toISOString();
 function getRole(vai_tro: string, employee_type: string): string {
   const vt  = (vai_tro || '').trim();
   const etL = (employee_type || '').trim().toLowerCase();
+  const etN = normalizeText(employee_type || '');
 
   // director
   if (
@@ -47,6 +48,8 @@ function getRole(vai_tro: string, employee_type: string): string {
   if (
     etL === 'gđkd' || etL === 'gdkd' ||
     etL === 'tp marketing' || etL === 'tp mkt' ||
+    ((etN.startsWith('tp ') || etN.startsWith('tp-') || etN.includes('truong phong')) &&
+      (etN.includes('marketing') || etN.includes('mkt') || etN.includes('digital'))) ||
     etL.includes('trưởng phòng marketing') || etL.includes('truong phong marketing') ||
     etL.includes('leader') || etL.includes('team lead') ||
     vt === 'leader'

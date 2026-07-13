@@ -123,7 +123,6 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionCode[]> = {
 
   team_leader: [
     PERMISSIONS.TASK_CREATE_OWN_DEPT,
-    PERMISSIONS.TASK_CREATE_ANY,
     PERMISSIONS.TASK_READ_OWN,
     PERMISSIONS.TASK_READ_DEPT,
     PERMISSIONS.TASK_UPDATE_OWN,
@@ -191,7 +190,6 @@ export class RbacService {
   /** Can user READ this task? */
   canReadTask(ctx: RbacContext, task: Pick<TmTask, 'owner_id' | 'department_id' | 'collaborator_ids' | 'created_by'>): boolean {
     if (ctx.role === 'director')     return true;
-    if (ctx.role === 'team_leader')  return true; // GĐKD thấy tất cả task trong hệ thống
     // Tasks with no owner/dept visible to all
     if (!task.owner_id && !task.department_id) return true;
     if (this.isCurrentUser(ctx, task.owner_id)) return true;
@@ -204,16 +202,17 @@ export class RbacService {
     } catch { /* ignore */ }
 
     if (ctx.role === 'manager' && task.department_id === ctx.department_id) return true;
+    if (ctx.role === 'team_leader' && task.department_id === ctx.department_id) return true;
     return false;
   }
 
   /** Can user UPDATE this task? */
   canUpdateTask(ctx: RbacContext, task: Pick<TmTask, 'owner_id' | 'department_id' | 'created_by'>): boolean {
     if (ctx.role === 'director')    return true;
-    if (ctx.role === 'team_leader') return true;
     if (this.isCurrentUser(ctx, task.owner_id)) return true;
     if (this.isCurrentUser(ctx, task.created_by)) return true;
     if (ctx.role === 'manager' && task.department_id === ctx.department_id) return true;
+    if (ctx.role === 'team_leader' && task.department_id === ctx.department_id) return true;
     return false;
   }
 
