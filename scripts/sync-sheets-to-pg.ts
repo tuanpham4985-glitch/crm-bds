@@ -523,85 +523,108 @@ async function syncTm() {
 
   // TM_Tasks
   const tasks = await loadRows(SHEET_NAMES.TASKS);
+  const taskIdAliases = new Map<string, string>();
+  const canonicalTaskIds = new Set<string>();
   for (const t of tasks) {
     if (!t.task_id) { skipped++; continue; }
+    const taskCode = t.task_code || t.task_id;
+    const taskCreateData = (projectId: string | undefined) => ({
+      task_id:         t.task_id,
+      task_code:       taskCode,
+      title:           t.title || '',
+      objective:       t.objective,
+      description:     t.description,
+      project_id:      projectId,
+      department_id:   t.department_id || undefined,
+      owner_id:        t.owner_id || 'system',
+      collaborator_ids: t.collaborator_ids,
+      priority:        t.priority || 'medium',
+      status:          t.status || 'todo',
+      progress_pct:    parseInt(t.progress_pct || '0', 10),
+      start_date:      t.start_date,
+      due_date:        t.due_date,
+      estimated_hours: t.estimated_hours ? parseFloat(t.estimated_hours) : undefined,
+      actual_hours:    parseFloat(t.actual_hours || '0'),
+      approval_level:  parseInt(t.approval_level || '1', 10),
+      approval_status: t.approval_status || 'not_required',
+      approved_by:     t.approved_by || undefined,
+      approved_at:     t.approved_at || undefined,
+      rejection_reason: t.rejection_reason || undefined,
+      tags:            t.tags,
+      email_reminder:  t.email_reminder,
+      email_reminder_sent: t.email_reminder_sent,
+      created_by:      t.created_by || 'system',
+      deleted_at:      t.deleted_at ? new Date(t.deleted_at) : undefined,
+    });
+    const taskUpdateData = (projectId: string | undefined) => ({
+      task_code:       taskCode,
+      title:           t.title || '',
+      objective:       t.objective,
+      description:     t.description,
+      project_id:      projectId,
+      department_id:   t.department_id || undefined,
+      owner_id:        t.owner_id || 'system',
+      collaborator_ids: t.collaborator_ids,
+      priority:        t.priority || 'medium',
+      status:          t.status || 'todo',
+      progress_pct:    parseInt(t.progress_pct || '0', 10),
+      start_date:      t.start_date,
+      due_date:        t.due_date,
+      estimated_hours: t.estimated_hours ? parseFloat(t.estimated_hours) : undefined,
+      actual_hours:    parseFloat(t.actual_hours || '0'),
+      approval_level:  parseInt(t.approval_level || '1', 10),
+      approval_status: t.approval_status || 'not_required',
+      approved_by:     t.approved_by || undefined,
+      approved_at:     t.approved_at || undefined,
+      rejection_reason: t.rejection_reason || undefined,
+      tags:            t.tags,
+      email_reminder:  t.email_reminder,
+      email_reminder_sent: t.email_reminder_sent,
+      created_by:      t.created_by || 'system',
+      deleted_at:      t.deleted_at ? new Date(t.deleted_at) : undefined,
+    });
+
     try {
-      await prisma.tmTask.upsert({
-        where:  { task_id: t.task_id },
-        create: {
-          task_id:         t.task_id,
-          task_code:       t.task_code || t.task_id,
-          title:           t.title || '',
-          objective:       t.objective,
-          description:     t.description,
-          project_id:      t.project_id || undefined,
-          department_id:   t.department_id || undefined,
-          owner_id:        t.owner_id || 'system',
-          collaborator_ids: t.collaborator_ids,
-          priority:        t.priority || 'medium',
-          status:          t.status || 'todo',
-          progress_pct:    parseInt(t.progress_pct || '0', 10),
-          start_date:      t.start_date,
-          due_date:        t.due_date,
-          estimated_hours: t.estimated_hours ? parseFloat(t.estimated_hours) : undefined,
-          actual_hours:    parseFloat(t.actual_hours || '0'),
-          approval_level:  parseInt(t.approval_level || '1', 10),
-          approval_status: t.approval_status || 'not_required',
-          approved_by:     t.approved_by || undefined,
-          approved_at:     t.approved_at || undefined,
-          rejection_reason: t.rejection_reason || undefined,
-          tags:            t.tags,
-          email_reminder:  t.email_reminder,
-          email_reminder_sent: t.email_reminder_sent,
-          created_by:      t.created_by || 'system',
-          deleted_at:      t.deleted_at ? new Date(t.deleted_at) : undefined,
-        },
-        update: {
-          title:          t.title,
-          status:         t.status,
-          progress_pct:   parseInt(t.progress_pct || '0', 10),
-          approval_status: t.approval_status,
-          priority:       t.priority,
-        },
-      });
+      const existingByCode = await prisma.tmTask.findUnique({ where: { task_code: taskCode } });
+      if (existingByCode && existingByCode.task_id !== t.task_id) {
+        taskIdAliases.set(t.task_id, existingByCode.task_id);
+        canonicalTaskIds.add(existingByCode.task_id);
+        await prisma.tmTask.update({
+          where: { task_id: existingByCode.task_id },
+          data:  taskUpdateData(t.project_id || undefined),
+        });
+        console.warn(`[sync:tm:tasks] task_code ${taskCode} already exists; mapped ${t.task_id} → ${existingByCode.task_id}`);
+      } else {
+        canonicalTaskIds.add(t.task_id);
+        await prisma.tmTask.upsert({
+          where:  { task_id: t.task_id },
+          create: taskCreateData(t.project_id || undefined),
+          update: taskUpdateData(t.project_id || undefined),
+        });
+      }
       synced++;
     } catch (e) {
       // Retry without project_id if FK violation (orphan project reference in GS)
       const msg = e instanceof Error ? e.message : '';
       if (msg.includes('tm_tasks_project_id_fkey')) {
         try {
-          await prisma.tmTask.upsert({
-            where:  { task_id: t.task_id },
-            create: {
-              task_id:         t.task_id,
-              task_code:       t.task_code || t.task_id,
-              title:           t.title || '',
-              objective:       t.objective,
-              description:     t.description,
-              project_id:      undefined,
-              department_id:   t.department_id || undefined,
-              owner_id:        t.owner_id || 'system',
-              collaborator_ids: t.collaborator_ids,
-              priority:        t.priority || 'medium',
-              status:          t.status || 'todo',
-              progress_pct:    parseInt(t.progress_pct || '0', 10),
-              start_date:      t.start_date,
-              due_date:        t.due_date,
-              estimated_hours: t.estimated_hours ? parseFloat(t.estimated_hours) : undefined,
-              actual_hours:    parseFloat(t.actual_hours || '0'),
-              approval_level:  parseInt(t.approval_level || '1', 10),
-              approval_status: t.approval_status || 'not_required',
-              approved_by:     t.approved_by || undefined,
-              approved_at:     t.approved_at || undefined,
-              rejection_reason: t.rejection_reason || undefined,
-              tags:            t.tags,
-              email_reminder:  t.email_reminder,
-              email_reminder_sent: t.email_reminder_sent,
-              created_by:      t.created_by || 'system',
-              deleted_at:      t.deleted_at ? new Date(t.deleted_at) : undefined,
-            },
-            update: { title: t.title, status: t.status, priority: t.priority },
-          });
+          const existingByCode = await prisma.tmTask.findUnique({ where: { task_code: taskCode } });
+          if (existingByCode && existingByCode.task_id !== t.task_id) {
+            taskIdAliases.set(t.task_id, existingByCode.task_id);
+            canonicalTaskIds.add(existingByCode.task_id);
+            await prisma.tmTask.update({
+              where: { task_id: existingByCode.task_id },
+              data:  taskUpdateData(undefined),
+            });
+            console.warn(`[sync:tm:tasks] task_code ${taskCode} already exists; mapped ${t.task_id} → ${existingByCode.task_id}`);
+          } else {
+            canonicalTaskIds.add(t.task_id);
+            await prisma.tmTask.upsert({
+              where:  { task_id: t.task_id },
+              create: taskCreateData(undefined),
+              update: taskUpdateData(undefined),
+            });
+          }
           synced++;
           console.warn(`[sync:tm:tasks] orphan project_id cleared for ${t.task_id} (was: ${t.project_id})`);
         } catch (e2) {
@@ -614,45 +637,104 @@ async function syncTm() {
       }
     }
   }
+
+  const canonicalTaskIdList = [...canonicalTaskIds];
+  const staleTasks = await prisma.tmTask.findMany({
+    where:  canonicalTaskIdList.length ? { task_id: { notIn: canonicalTaskIdList } } : {},
+    select: { task_id: true, task_code: true },
+  });
+  if (staleTasks.length) {
+    const staleTaskIds = staleTasks.map(t => t.task_id);
+    await prisma.tmSubtask.deleteMany({ where: { parent_task_id: { in: staleTaskIds } } });
+    await prisma.tmTask.deleteMany({ where: { task_id: { in: staleTaskIds } } });
+    console.warn(`[sync:tm:tasks] removed ${staleTasks.length} stale task(s): ${staleTasks.map(t => t.task_code).join(', ')}`);
+  }
   log('tm', `Tasks: ${synced} synced`);
 
   // TM_Subtasks
   const subtasks = await loadRows(SHEET_NAMES.SUBTASKS);
+  const canonicalSubtaskIds = new Set<string>();
   for (const s of subtasks) {
     if (!s.subtask_id || !s.parent_task_id) { skipped++; continue; }
+    const subtaskCode = s.subtask_code || s.subtask_id;
+    const parentTaskId = taskIdAliases.get(s.parent_task_id) || s.parent_task_id;
+    const subtaskCreateData = {
+      subtask_id:      s.subtask_id,
+      subtask_code:    subtaskCode,
+      parent_task_id:  parentTaskId,
+      title:           s.title || '',
+      objective:       s.objective,
+      description:     s.description,
+      owner_id:        s.owner_id || 'system',
+      collaborator_ids: s.collaborator_ids,
+      priority:        s.priority || 'medium',
+      status:          s.status || 'todo',
+      progress_pct:    parseInt(s.progress_pct || '0', 10),
+      start_date:      s.start_date,
+      due_date:        s.due_date,
+      estimated_hours: s.estimated_hours ? parseFloat(s.estimated_hours) : undefined,
+      actual_hours:    parseFloat(s.actual_hours || '0'),
+      created_by:      s.created_by || 'system',
+      deleted_at:      s.deleted_at ? new Date(s.deleted_at) : undefined,
+    };
+    const subtaskUpdateData = {
+      subtask_code:    subtaskCode,
+      parent_task_id:  parentTaskId,
+      title:           s.title || '',
+      objective:       s.objective,
+      description:     s.description,
+      owner_id:        s.owner_id || 'system',
+      collaborator_ids: s.collaborator_ids,
+      priority:        s.priority || 'medium',
+      status:          s.status || 'todo',
+      progress_pct:    parseInt(s.progress_pct || '0', 10),
+      start_date:      s.start_date,
+      due_date:        s.due_date,
+      estimated_hours: s.estimated_hours ? parseFloat(s.estimated_hours) : undefined,
+      actual_hours:    parseFloat(s.actual_hours || '0'),
+      created_by:      s.created_by || 'system',
+      deleted_at:      s.deleted_at ? new Date(s.deleted_at) : undefined,
+    };
+
     try {
-      await prisma.tmSubtask.upsert({
-        where:  { subtask_id: s.subtask_id },
-        create: {
-          subtask_id:      s.subtask_id,
-          subtask_code:    s.subtask_code || s.subtask_id,
-          parent_task_id:  s.parent_task_id,
-          title:           s.title || '',
-          objective:       s.objective,
-          description:     s.description,
-          owner_id:        s.owner_id || 'system',
-          collaborator_ids: s.collaborator_ids,
-          priority:        s.priority || 'medium',
-          status:          s.status || 'todo',
-          progress_pct:    parseInt(s.progress_pct || '0', 10),
-          start_date:      s.start_date,
-          due_date:        s.due_date,
-          estimated_hours: s.estimated_hours ? parseFloat(s.estimated_hours) : undefined,
-          actual_hours:    parseFloat(s.actual_hours || '0'),
-          created_by:      s.created_by || 'system',
-          deleted_at:      s.deleted_at ? new Date(s.deleted_at) : undefined,
-        },
-        update: {
-          title:        s.title,
-          status:       s.status,
-          progress_pct: parseInt(s.progress_pct || '0', 10),
-        },
-      });
+      const existingParent = await prisma.tmTask.findUnique({ where: { task_id: parentTaskId } });
+      if (!existingParent) {
+        skipped++;
+        console.warn(`[sync:tm:subtasks] skipped ${s.subtask_id}; missing parent task ${s.parent_task_id}`);
+        continue;
+      }
+
+      const existingByCode = await prisma.tmSubtask.findUnique({ where: { subtask_code: subtaskCode } });
+      if (existingByCode && existingByCode.subtask_id !== s.subtask_id) {
+        canonicalSubtaskIds.add(existingByCode.subtask_id);
+        await prisma.tmSubtask.update({
+          where: { subtask_id: existingByCode.subtask_id },
+          data:  subtaskUpdateData,
+        });
+        console.warn(`[sync:tm:subtasks] subtask_code ${subtaskCode} already exists; updated ${existingByCode.subtask_id}`);
+      } else {
+        canonicalSubtaskIds.add(s.subtask_id);
+        await prisma.tmSubtask.upsert({
+          where:  { subtask_id: s.subtask_id },
+          create: subtaskCreateData,
+          update: subtaskUpdateData,
+        });
+      }
       synced++;
     } catch (e) {
       err('tm:subtasks', `upsert ${s.subtask_id}`, e);
       errors++;
     }
+  }
+
+  const canonicalSubtaskIdList = [...canonicalSubtaskIds];
+  const staleSubtasks = await prisma.tmSubtask.findMany({
+    where:  canonicalSubtaskIdList.length ? { subtask_id: { notIn: canonicalSubtaskIdList } } : {},
+    select: { subtask_id: true, subtask_code: true },
+  });
+  if (staleSubtasks.length) {
+    await prisma.tmSubtask.deleteMany({ where: { subtask_id: { in: staleSubtasks.map(s => s.subtask_id) } } });
+    console.warn(`[sync:tm:subtasks] removed ${staleSubtasks.length} stale subtask(s): ${staleSubtasks.map(s => s.subtask_code).join(', ')}`);
   }
   log('tm', `Subtasks: ${synced} synced`);
 
