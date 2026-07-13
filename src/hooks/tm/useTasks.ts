@@ -119,6 +119,8 @@ export async function apiCreateTask(data: unknown) {
   const d = await res.json();
   if (!d.success) throw new Error(d.error);
   await mutate((key: string) => typeof key === 'string' && key.startsWith('/api/tm/tasks'), undefined, { revalidate: true });
+  await mutate('/api/tm/users', undefined, { revalidate: true });
+  await mutate('/api/tm/me', undefined, { revalidate: true });
   return d.data;
 }
 
@@ -146,6 +148,7 @@ export async function apiDeleteTask(taskId: string) {
 
 interface TmUserSummary {
   user_id: string;
+  employee_code?: string;
   full_name: string;
   email: string;
   department_id: string;
@@ -160,14 +163,16 @@ export function useTmUsers() {
     { revalidateOnFocus: false, dedupingInterval: 300_000 },
   );
   const users = data ?? [];
-  const userMap: Record<string, string> = Object.fromEntries(
-    users.map(u => [u.user_id, u.full_name]),
-  );
+  const userMap: Record<string, string> = {};
+  for (const user of users) {
+    if (user.user_id) userMap[user.user_id] = user.full_name;
+    if (user.employee_code) userMap[user.employee_code] = user.full_name;
+  }
   return { users, userMap, isLoading };
 }
 
 export function useCurrentTmUser() {
-  const { data } = useSWR<{ user_id: string; full_name: string; email: string; role: string; department_id: string }>(
+  const { data } = useSWR<{ user_id: string; employee_code?: string; full_name: string; email: string; role: string; department_id: string }>(
     '/api/tm/me',
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 600_000 },

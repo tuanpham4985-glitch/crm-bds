@@ -273,7 +273,14 @@ export default function TaskDetail() {
 
   if (!sidebarOpen || !selectedTaskId) return null;
 
-  const resolveName = (id: string) => userMap[id] || id || '—';
+  const resolveName = (id: string) => {
+    if (!id) return '—';
+    if (userMap[id]) return userMap[id];
+    if (currentUser && (id === currentUser.user_id || id === currentUser.employee_code)) {
+      return currentUser.full_name;
+    }
+    return id;
+  };
 
   const userOptions    = users.map(u => ({ value: u.user_id, label: u.full_name + (u.position ? ` (${u.position})` : '') }));
   const deptOptions    = departments.map(d => ({ value: d.dept_id, label: d.name }));

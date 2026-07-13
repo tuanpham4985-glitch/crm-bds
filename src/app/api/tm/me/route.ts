@@ -7,6 +7,7 @@ export async function GET() {
   if (!user) return unauthorizedResponse();
   return okResponse({
     user_id:       user.user_id,
+    employee_code: user.employee_code ?? '',
     full_name:     user.full_name,
     email:         user.email,
     role:          user.role,

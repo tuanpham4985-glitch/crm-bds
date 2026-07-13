@@ -17,11 +17,12 @@ export async function GET(_req: NextRequest) {
       .filter(r => r.is_active !== 'FALSE' && r.user_id)
       .map(r => ({
         user_id:       r.user_id,
+        employee_code:  r.employee_code ?? '',
         full_name:     r.full_name,
         email:         r.email,
         department_id: r.department_id ?? '',
         role:          r.role ?? '',
-        position:      r.position ?? '',
+        position:      r.position ?? r.employee_type ?? '',
       }));
 
     return okResponse(users);
