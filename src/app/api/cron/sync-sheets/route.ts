@@ -1,20 +1,15 @@
 // Cron job: tự động sync Google Sheets → PostgreSQL
-// Chạy mỗi giờ để đảm bảo dữ liệu nhân viên và pipeline luôn được cập nhật
-// Vercel Cron gọi GET /api/cron/sync-sheets với header Authorization: Bearer CRON_SECRET
+// Chạy hàng ngày lúc 01:00 UTC (08:00 giờ VN)
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/client';
-import {
-  getNhanVien,
-  getKhachHang,
-  getPipeline,
-} from '@/lib/google-sheets';
+import { getNhanVien, getKhachHang, getPipeline } from '@/lib/google-sheets';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 function authorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // không set → không bảo vệ (dev)
+  if (!secret) return true;
   const auth = req.headers.get('authorization') ?? '';
   return auth === `Bearer ${secret}`;
 }
@@ -22,7 +17,6 @@ function authorized(req: NextRequest): boolean {
 async function syncHrm(): Promise<{ synced: number; errors: number }> {
   const rows = await getNhanVien();
   let synced = 0; let errors = 0;
-
   for (const nv of rows) {
     if (!nv.id_nhan_vien) continue;
     try {
@@ -66,17 +60,14 @@ async function syncHrm(): Promise<{ synced: number; errors: number }> {
         },
       });
       synced++;
-    } catch {
-      errors++;
-    }
+    } catch { errors++; }
   }
   return { synced, errors };
 }
 
-async function syncCrmCustomers(): Promise<{ synced: number; errors: number }> {
+async function syncKhachHang(): Promise<{ synced: number; errors: number }> {
   const rows = await getKhachHang();
   let synced = 0; let errors = 0;
-
   for (const kh of rows) {
     if (!kh.id_khach_hang) continue;
     try {
@@ -88,104 +79,102 @@ async function syncCrmCustomers(): Promise<{ synced: number; errors: number }> {
           ten_KH:         kh.ten_KH,
           so_dien_thoai:  kh.so_dien_thoai,
           email:          kh.email,
-          gioi_tinh:      kh.gioi_tinh,
-          ngay_sinh:      kh.ngay_sinh,
-          dia_chi:        kh.dia_chi,
+          nguon:          kh.nguon,
+          nhu_cau:        kh.nhu_cau,
           ghi_chu:        kh.ghi_chu,
-          nguon_khach:    kh.nguon_khach,
-          nhan_vien_phu_trach: kh.nhan_vien_phu_trach,
-          trang_thai:     kh.trang_thai,
+          sale_phu_trach: kh.sale_phu_trach,
+          label_khach:    kh.label_khach,
+          du_an:          kh.du_an,
+          sale_lan_1:     kh.sale_lan_1,
+          ghi_chu_lan_1:  kh.ghi_chu_lan_1,
+          sale_lan_2:     kh.sale_lan_2,
+          ghi_chu_lan_2:  kh.ghi_chu_lan_2,
+          sale_lan_3:     kh.sale_lan_3,
+          ghi_chu_lan_3:  kh.ghi_chu_lan_3,
         },
         update: {
           ten_KH:         kh.ten_KH,
-          so_dien_thoai:  kh.so_dien_thoai,
-          trang_thai:     kh.trang_thai,
+          sale_phu_trach: kh.sale_phu_trach,
+          label_khach:    kh.label_khach,
           ghi_chu:        kh.ghi_chu,
-          nhan_vien_phu_trach: kh.nhan_vien_phu_trach,
         },
       });
       synced++;
-    } catch {
-      errors++;
-    }
+    } catch { errors++; }
   }
   return { synced, errors };
 }
 
-async function syncCrmPipeline(): Promise<{ synced: number; errors: number }> {
+async function syncPipeline(): Promise<{ synced: number; errors: number }> {
   const rows = await getPipeline();
   let synced = 0; let errors = 0;
-
   for (const pl of rows) {
     if (!pl.id_pipeline) continue;
     try {
       await prisma.pipeline.upsert({
         where:  { id_pipeline: pl.id_pipeline },
         create: {
-          id_pipeline:    pl.id_pipeline,
-          ngay_tao:       pl.ngay_tao,
-          ten_KH:         pl.ten_KH,
-          so_dien_thoai:  pl.so_dien_thoai,
-          du_an:          pl.du_an,
-          san_pham:       pl.san_pham,
-          giai_doan:      pl.giai_doan,
-          nhan_vien_phu_trach: pl.nhan_vien_phu_trach,
-          ghi_chu:        pl.ghi_chu,
-          nguon_khach:    pl.nguon_khach,
-          gia_ban:        pl.gia_ban ?? 0,
-          phi_tra_sale:   pl.phi_tra_sale ?? 0,
-          phi_tra_kh:     pl.phi_tra_kh ?? 0,
-          phi_tra_gdda:   pl.phi_tra_gdda ?? 0,
-          phi_tra_gdkd:   pl.phi_tra_gdkd ?? 0,
-          phi_tra_mkt:    pl.phi_tra_mkt ?? 0,
-          phi_admin:      pl.phi_admin ?? 0,
-          loi_nhuan:      pl.loi_nhuan ?? 0,
-          thuong_nong:    pl.thuong_nong ?? 0,
-          tkkd:           pl.tkkd,
-          phi_tkkd:       pl.phi_tkkd ?? 0,
-          ty_le_ck:       pl.ty_le_ck ?? 0,
-          ty_le_gdda:     pl.ty_le_gdda ?? 0,
-          ty_le_gdkd:     pl.ty_le_gdkd ?? 0,
-          ty_le_mkt:      pl.ty_le_mkt ?? 0,
-          ty_le_admin:    pl.ty_le_admin ?? 0,
-          ngay_cap_nhat:  pl.ngay_cap_nhat,
-          ngay_coc:       pl.ngay_coc,
-          thang:          pl.thang,
-          ma_can:         pl.ma_can,
-          loai_can:       pl.loai_can,
-          gdda:           pl.gdda,
-          gdkd:           pl.gdkd,
-          phong_kd:       pl.phong_kd,
-          ho_ten_kh:      pl.ho_ten_kh,
+          id_pipeline:     pl.id_pipeline,
+          id_khach_hang:   pl.id_khach_hang,
+          giai_doan:       pl.giai_doan,
+          gia_tri_thuc_te: pl.gia_tri_thuc_te,
+          sale_phu_trach:  pl.sale_phu_trach,
+          id_du_an:        pl.id_du_an,
+          ten_du_an:       pl.ten_du_an,
+          hoa_hong:        pl.hoa_hong,
+          tien_hoa_hong:   pl.tien_hoa_hong,
+          ngay_cap_nhat:   pl.ngay_cap_nhat,
+          ngay_coc:        pl.ngay_coc,
+          thang:           pl.thang,
+          ma_can:          pl.ma_can,
+          loai_can:        pl.loai_can,
+          gdda:            pl.gdda,
+          gdkd:            pl.gdkd,
+          phong_kd:        pl.phong_kd,
+          tkkd:            pl.tkkd,
+          ho_ten_kh:       pl.ho_ten_kh,
+          ty_le_tra_sale:  pl.ty_le_tra_sale,
+          ty_le_kh:        pl.ty_le_kh,
+          ty_le_gdda:      pl.ty_le_gdda,
+          ty_le_gdkd:      pl.ty_le_gdkd,
+          ty_le_mkt:       pl.ty_le_mkt,
+          phi_tra_sale:    pl.phi_tra_sale,
+          phi_tra_kh:      pl.phi_tra_kh,
+          phi_tra_gdda:    pl.phi_tra_gdda,
+          phi_tra_gdkd:    pl.phi_tra_gdkd,
+          phi_tra_mkt:     pl.phi_tra_mkt,
+          phi_admin:       pl.phi_admin,
+          loi_nhuan:       pl.loi_nhuan,
+          thuong_nong:     pl.thuong_nong,
+          phi_tkkd:        pl.phi_tkkd,
         },
         update: {
-          ten_KH:         pl.ten_KH,
-          giai_doan:      pl.giai_doan,
-          ghi_chu:        pl.ghi_chu,
-          gia_ban:        pl.gia_ban ?? 0,
-          phi_tra_sale:   pl.phi_tra_sale ?? 0,
-          phi_tra_kh:     pl.phi_tra_kh ?? 0,
-          phi_tra_gdda:   pl.phi_tra_gdda ?? 0,
-          phi_tra_gdkd:   pl.phi_tra_gdkd ?? 0,
-          phi_tra_mkt:    pl.phi_tra_mkt ?? 0,
-          phi_admin:      pl.phi_admin ?? 0,
-          loi_nhuan:      pl.loi_nhuan ?? 0,
-          thuong_nong:    pl.thuong_nong ?? 0,
-          phi_tkkd:       pl.phi_tkkd ?? 0,
-          ngay_cap_nhat:  pl.ngay_cap_nhat,
-          ngay_coc:       pl.ngay_coc,
-          thang:          pl.thang,
-          ma_can:         pl.ma_can,
-          gdda:           pl.gdda,
-          gdkd:           pl.gdkd,
-          phong_kd:       pl.phong_kd,
-          ho_ten_kh:      pl.ho_ten_kh,
+          giai_doan:       pl.giai_doan,
+          gia_tri_thuc_te: pl.gia_tri_thuc_te,
+          hoa_hong:        pl.hoa_hong,
+          tien_hoa_hong:   pl.tien_hoa_hong,
+          ngay_cap_nhat:   pl.ngay_cap_nhat,
+          ngay_coc:        pl.ngay_coc,
+          thang:           pl.thang,
+          ma_can:          pl.ma_can,
+          gdda:            pl.gdda,
+          gdkd:            pl.gdkd,
+          phong_kd:        pl.phong_kd,
+          tkkd:            pl.tkkd,
+          ho_ten_kh:       pl.ho_ten_kh,
+          phi_tra_sale:    pl.phi_tra_sale,
+          phi_tra_kh:      pl.phi_tra_kh,
+          phi_tra_gdda:    pl.phi_tra_gdda,
+          phi_tra_gdkd:    pl.phi_tra_gdkd,
+          phi_tra_mkt:     pl.phi_tra_mkt,
+          phi_admin:       pl.phi_admin,
+          loi_nhuan:       pl.loi_nhuan,
+          thuong_nong:     pl.thuong_nong,
+          phi_tkkd:        pl.phi_tkkd,
         },
       });
       synced++;
-    } catch {
-      errors++;
-    }
+    } catch { errors++; }
   }
   return { synced, errors };
 }
@@ -196,24 +185,15 @@ export async function GET(req: NextRequest) {
   }
 
   const startMs = Date.now();
-
   try {
-    const [hrm, customers, pipeline] = await Promise.all([
+    const [hrm, khachHang, pipeline] = await Promise.all([
       syncHrm(),
-      syncCrmCustomers(),
-      syncCrmPipeline(),
+      syncKhachHang(),
+      syncPipeline(),
     ]);
-
     const elapsed = Math.round((Date.now() - startMs) / 1000);
-    console.log(`[cron:sync-sheets] done in ${elapsed}s`, { hrm, customers, pipeline });
-
-    return NextResponse.json({
-      ok: true,
-      elapsed_s: elapsed,
-      hrm,
-      customers,
-      pipeline,
-    });
+    console.log(`[cron:sync-sheets] done in ${elapsed}s`, { hrm, khachHang, pipeline });
+    return NextResponse.json({ ok: true, elapsed_s: elapsed, hrm, khachHang, pipeline });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[cron:sync-sheets] failed:', msg);
