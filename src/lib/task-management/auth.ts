@@ -4,7 +4,7 @@
 // ============================================================
 import { cookies } from 'next/headers';
 import type { TmUser, RbacContext, UserRole } from './types';
-import { loadRows } from './sheets/client';
+import { appendRow, loadRows } from './sheets/client';
 import { SHEET_NAMES } from './types';
 
 // Module-level cache: email/employee_code → TM user info, TTL 5 phút
@@ -12,10 +12,14 @@ import { SHEET_NAMES } from './types';
 const _emailCache = new Map<string, { data: { user_id: string; department_id: string } | null; ts: number }>();
 const EMAIL_CACHE_TTL = 5 * 60_000;
 
+function tmUserCacheKey(email: string, employeeCode: string): string {
+  return `${(email || '').trim().toLowerCase()}|${(employeeCode || '').trim()}`;
+}
+
 async function lookupTmUser(email: string, employeeCode: string): Promise<{ user_id: string; department_id: string } | null> {
   const normalizedEmail = (email || '').trim().toLowerCase();
   const normalizedEmployeeCode = (employeeCode || '').trim();
-  const cacheKey = `${normalizedEmail}|${normalizedEmployeeCode}`;
+  const cacheKey = tmUserCacheKey(normalizedEmail, normalizedEmployeeCode);
   const hit = _emailCache.get(cacheKey);
   if (hit && Date.now() - hit.ts < EMAIL_CACHE_TTL) return hit.data;
 
@@ -32,6 +36,99 @@ async function lookupTmUser(email: string, employeeCode: string): Promise<{ user
     return result;
   } catch {
     return null;
+  }
+}
+
+function normalizeText(value: string): string {
+  return (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function inferDepartmentCode(session: CrmSession): string {
+  const source = normalizeText([
+    session.department_id,
+    session.phong_KD,
+    session.employee_type,
+    session.vai_tro,
+  ].filter(Boolean).join(' '));
+
+  const vic = source.match(/\bvic[-\s]?(\d{1,2})\b/);
+  if (vic) return `VIC-${vic[1].padStart(2, '0')}`;
+  if (source.includes('marketing') || source.includes('mkt')) return 'MKT';
+  if (source.includes('tckt') || source.includes('ke toan') || source.includes('tai chinh')) return 'TCKT';
+  if (source.includes('hcns') || source.includes('nhan su') || source.includes('hanh chinh')) return 'HCNS';
+  if (source.includes('tkkd') || source.includes('thu ky kinh doanh')) return 'TKKD';
+  if (source.includes('chu tich') || source.includes('ceo') || source.includes('ban lanh dao') || source.includes('bld')) return 'BLD';
+  return '';
+}
+
+async function resolveDepartmentId(session: CrmSession, tmDepartmentId?: string): Promise<string> {
+  const candidates = [
+    tmDepartmentId || '',
+    session.department_id || '',
+    session.phong_KD || '',
+    inferDepartmentCode(session),
+  ].filter(Boolean);
+
+  try {
+    const rows = await loadRows(SHEET_NAMES.DEPARTMENTS);
+    for (const candidate of candidates) {
+      const normalizedCandidate = normalizeText(candidate).replace(/\s+/g, '');
+      const match = rows.find(row => {
+        const deptId = String(row.dept_id ?? '');
+        const code = String(row.code ?? '');
+        const name = String(row.name ?? '');
+        return normalizeText(deptId).replace(/\s+/g, '') === normalizedCandidate
+          || normalizeText(code).replace(/\s+/g, '') === normalizedCandidate
+          || normalizeText(name).replace(/\s+/g, '') === normalizedCandidate;
+      });
+      if (match?.dept_id) return String(match.dept_id);
+    }
+  } catch {
+    // Fallback below keeps auth usable even if TM_Departments cannot be read.
+  }
+
+  const inferredCode = inferDepartmentCode(session);
+  const fallbackByCode: Record<string, string> = {
+    MKT: 'dept-ph-ng-mkt',
+    TCKT: 'dept-ph-ng-tckt',
+    HCNS: 'dept-ph-ng-hcns',
+    TKKD: 'dept-ph-ng-tkkd',
+    BLD: 'dept-bl',
+  };
+  if (fallbackByCode[inferredCode]) return fallbackByCode[inferredCode];
+  if (/^VIC-\d{2}$/.test(inferredCode)) return `dept-${inferredCode.toLowerCase()}`;
+  return tmDepartmentId || session.department_id || session.phong_KD || '';
+}
+
+async function provisionTmUser(session: CrmSession, role: UserRole, departmentId: string): Promise<void> {
+  const now = new Date().toISOString();
+  try {
+    await appendRow(SHEET_NAMES.USERS, {
+      user_id:        session.id_nhan_vien,
+      employee_code:  session.id_nhan_vien,
+      email:          (session.email || '').trim().toLowerCase(),
+      full_name:      session.ho_ten || '',
+      phone:          '',
+      role,
+      department_id:  departmentId,
+      team_id:        session.team_id || '',
+      position:       session.employee_type || '',
+      employee_type:  session.employee_type || '',
+      avatar_url:     '',
+      zalo_id:        '',
+      is_active:      'TRUE',
+      last_active_at: now,
+      created_at:     now,
+      updated_at:     now,
+    });
+  } catch (err) {
+    console.warn('[TM Auth] Auto-provision TM_Users failed:', err instanceof Error ? err.message : err);
   }
 }
 
@@ -117,6 +214,15 @@ export async function getCurrentTmUser(): Promise<TmUser | null> {
     // Tra cứu TM_Users theo email để lấy đúng user_id và department_id
     // (tránh lệch format giữa id_nhan_vien "0002" và user_id "2" trong Sheets)
     const tmRecord = await lookupTmUser(session.email, session.id_nhan_vien);
+    const departmentId = await resolveDepartmentId(session, tmRecord?.department_id);
+
+    if (!tmRecord) {
+      await provisionTmUser(session, role, departmentId);
+      _emailCache.set(tmUserCacheKey(session.email, session.id_nhan_vien), {
+        data: { user_id: session.id_nhan_vien, department_id: departmentId },
+        ts: Date.now(),
+      });
+    }
 
     return {
       user_id:       tmRecord?.user_id || session.id_nhan_vien,
@@ -124,7 +230,7 @@ export async function getCurrentTmUser(): Promise<TmUser | null> {
       full_name:     session.ho_ten,
       email:         session.email,
       phone:         '',
-      department_id: tmRecord?.department_id || session.department_id || session.phong_KD || '',
+      department_id: departmentId,
       team_id:       session.team_id || '',
       role,
       position:      session.employee_type,

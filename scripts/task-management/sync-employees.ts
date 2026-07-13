@@ -46,13 +46,17 @@ function getRole(vai_tro: string, employee_type: string): string {
   // team_leader: GĐKD
   if (
     etL === 'gđkd' || etL === 'gdkd' ||
+    etL === 'tp marketing' || etL === 'tp mkt' ||
+    etL.includes('trưởng phòng marketing') || etL.includes('truong phong marketing') ||
     etL.includes('leader') || etL.includes('team lead') ||
     vt === 'leader'
   ) return 'team_leader';
 
-  // manager: GĐ DA + BO Trưởng phòng (TP*)
+  // manager: GĐ DA, GĐ Marketing + BO Trưởng phòng (TP*)
   if (
     etL === 'gđ da' || etL === 'gd da' ||
+    etL === 'gđ marketing' || etL === 'gd marketing' ||
+    etL.includes('giám đốc marketing') || etL.includes('giam doc marketing') ||
     etL.startsWith('tp ') || etL.startsWith('tp-') ||
     etL.includes('trưởng phòng') || etL.includes('truong phong') ||
     vt === 'manager'
@@ -67,6 +71,29 @@ function getIsActive(trang_thai: string): string {
   const tt = (trang_thai || '').toLowerCase().trim();
   if (!tt) return 'TRUE'; // Không có trạng thái → coi là còn làm
   return inactive.some(s => tt.includes(s)) ? 'FALSE' : 'TRUE';
+}
+
+function normalizeText(value: string): string {
+  return (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function inferDeptName(nv: Record<string, string>): string {
+  const explicit = (nv.phong_KD || nv.khu_vuc || '').trim();
+  if (explicit) return explicit;
+
+  const source = normalizeText(`${nv.employee_type || ''} ${nv.vai_tro || ''}`);
+  if (source.includes('marketing') || source.includes('mkt')) return 'Phòng MKT';
+  if (source.includes('tckt') || source.includes('ke toan') || source.includes('tai chinh')) return 'Phòng TCKT';
+  if (source.includes('hcns') || source.includes('nhan su') || source.includes('hanh chinh')) return 'Phòng HCNS';
+  if (source.includes('tkkd') || source.includes('thu ky kinh doanh')) return 'Phòng TKKD';
+  if (source.includes('chu tich') || source.includes('ceo') || source.includes('ban lanh dao') || source.includes('bld')) return 'BLĐ';
+  return 'Chưa phân công';
 }
 
 // ─── MAIN ──────────────────────────────────────────────────
@@ -124,7 +151,7 @@ async function main() {
   // Tạo phòng ban từ phong_KD
   const deptMap = new Map<string, string>();
   employees.forEach(nv => {
-    const dept = (nv.phong_KD || nv.khu_vuc || 'Chưa phân công').trim();
+    const dept = inferDeptName(nv);
     if (!deptMap.has(dept)) {
       const slug = dept.toLowerCase().replace(/[^\w]/g, '-').slice(0, 20).replace(/-+$/, '');
       deptMap.set(dept, `dept-${slug}`);
@@ -148,7 +175,7 @@ async function main() {
     email:         (nv.email || '').trim().toLowerCase(),
     full_name:     (nv.ho_ten || '').trim(),
     role:          getRole(nv.vai_tro || '', nv.employee_type || ''),
-    department_id: deptMap.get((nv.phong_KD || nv.khu_vuc || 'Chưa phân công').trim()) || '',
+    department_id: deptMap.get(inferDeptName(nv)) || '',
     employee_type: (nv.employee_type || '').trim(),
     is_active:     getIsActive(nv.trang_thai || ''),
     avatar_url:    (nv.avatar_url || '').trim(),
