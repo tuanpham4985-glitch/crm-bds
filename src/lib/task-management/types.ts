@@ -329,6 +329,7 @@ export interface Permission {
 
 export interface RbacContext {
   user_id: string;
+  employee_code?: string;
   role: UserRole;
   department_id: string;
   team_id: string;

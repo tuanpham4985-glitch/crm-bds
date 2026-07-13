@@ -7,20 +7,28 @@ import type { TmUser, RbacContext, UserRole } from './types';
 import { loadRows } from './sheets/client';
 import { SHEET_NAMES } from './types';
 
-// Module-level cache: email → TM user info, TTL 5 phút
+// Module-level cache: email/employee_code → TM user info, TTL 5 phút
 // Tránh gọi loadRows(TM_Users) lặp lại trên mỗi API request trong cùng 1 serverless instance
 const _emailCache = new Map<string, { data: { user_id: string; department_id: string } | null; ts: number }>();
 const EMAIL_CACHE_TTL = 5 * 60_000;
 
-async function lookupTmUser(email: string): Promise<{ user_id: string; department_id: string } | null> {
-  const hit = _emailCache.get(email);
+async function lookupTmUser(email: string, employeeCode: string): Promise<{ user_id: string; department_id: string } | null> {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const normalizedEmployeeCode = (employeeCode || '').trim();
+  const cacheKey = `${normalizedEmail}|${normalizedEmployeeCode}`;
+  const hit = _emailCache.get(cacheKey);
   if (hit && Date.now() - hit.ts < EMAIL_CACHE_TTL) return hit.data;
 
   try {
     const rows = await loadRows(SHEET_NAMES.USERS);
-    const r = rows.find((r: Record<string, unknown>) => r.email === email);
+    const r = rows.find((r: Record<string, unknown>) => {
+      const rowEmail = String(r.email ?? '').trim().toLowerCase();
+      const rowEmployeeCode = String(r.employee_code ?? '').trim();
+      return (normalizedEmail && rowEmail === normalizedEmail)
+        || (normalizedEmployeeCode && rowEmployeeCode === normalizedEmployeeCode);
+    });
     const result = r ? { user_id: String(r.user_id ?? ''), department_id: String(r.department_id ?? '') } : null;
-    _emailCache.set(email, { data: result, ts: Date.now() });
+    _emailCache.set(cacheKey, { data: result, ts: Date.now() });
     return result;
   } catch {
     return null;
@@ -108,7 +116,7 @@ export async function getCurrentTmUser(): Promise<TmUser | null> {
 
     // Tra cứu TM_Users theo email để lấy đúng user_id và department_id
     // (tránh lệch format giữa id_nhan_vien "0002" và user_id "2" trong Sheets)
-    const tmRecord = await lookupTmUser(session.email);
+    const tmRecord = await lookupTmUser(session.email, session.id_nhan_vien);
 
     return {
       user_id:       tmRecord?.user_id || session.id_nhan_vien,
@@ -141,6 +149,7 @@ export async function requireTmUser(): Promise<TmUser> {
 export function toRbacContext(user: TmUser): RbacContext {
   return {
     user_id:       user.user_id,
+    employee_code: user.employee_code,
     role:          user.role,
     department_id: user.department_id,
     team_id:       user.team_id,

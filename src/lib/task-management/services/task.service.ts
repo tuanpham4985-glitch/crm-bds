@@ -20,18 +20,28 @@ export class TaskService {
   // ── CREATE ──────────────────────────────────────────────
 
   async createTask(ctx: RbacContext, input: CreateTaskInput): Promise<TmTask> {
+    const normalizedInput: CreateTaskInput = {
+      ...input,
+      objective:     input.objective || input.title,
+      project_id:    input.project_id || '',
+      department_id: input.department_id || ctx.department_id || '',
+      owner_id:      input.owner_id || ctx.user_id,
+      start_date:    input.start_date || new Date().toISOString().slice(0, 10),
+      due_date:      input.due_date || '',
+    };
+
     // RBAC check
-    if (input.department_id !== ctx.department_id) {
+    if (normalizedInput.department_id !== ctx.department_id) {
       rbac.assert(ctx, PERMISSIONS.TASK_CREATE_ANY);
     } else {
       rbac.assert(ctx, PERMISSIONS.TASK_CREATE_OWN_DEPT);
     }
 
-    const task = await this.uow.tasks.create(input, ctx.user_id);
+    const task = await this.uow.tasks.create(normalizedInput, ctx.user_id);
 
     // Bulk-create checklists if provided
-    if (input.checklists?.length) {
-      await this.uow.checklists.bulkCreate(task.task_id, 'task', input.checklists);
+    if (normalizedInput.checklists?.length) {
+      await this.uow.checklists.bulkCreate(task.task_id, 'task', normalizedInput.checklists);
     }
 
     // Audit log

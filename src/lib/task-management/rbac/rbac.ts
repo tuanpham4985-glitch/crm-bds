@@ -180,19 +180,27 @@ export class RbacService {
 
   // ── CONTEXT-AWARE CHECKS ──────────────────────────────
 
+  private userIds(ctx: RbacContext): Set<string> {
+    return new Set([ctx.user_id, ctx.employee_code].filter(Boolean) as string[]);
+  }
+
+  private isCurrentUser(ctx: RbacContext, userId: string): boolean {
+    return Boolean(userId && this.userIds(ctx).has(userId));
+  }
+
   /** Can user READ this task? */
   canReadTask(ctx: RbacContext, task: Pick<TmTask, 'owner_id' | 'department_id' | 'collaborator_ids' | 'created_by'>): boolean {
     if (ctx.role === 'director')     return true;
     if (ctx.role === 'team_leader')  return true; // GĐKD thấy tất cả task trong hệ thống
     // Tasks with no owner/dept visible to all
     if (!task.owner_id && !task.department_id) return true;
-    if (task.owner_id   === ctx.user_id) return true;
-    if (task.created_by === ctx.user_id) return true;
+    if (this.isCurrentUser(ctx, task.owner_id)) return true;
+    if (this.isCurrentUser(ctx, task.created_by)) return true;
 
     // Is collaborator?
     try {
       const collabs: { user_id: string }[] = JSON.parse(task.collaborator_ids || '[]');
-      if (collabs.some(c => c.user_id === ctx.user_id)) return true;
+      if (collabs.some(c => this.isCurrentUser(ctx, c.user_id))) return true;
     } catch { /* ignore */ }
 
     if (ctx.role === 'manager' && task.department_id === ctx.department_id) return true;
@@ -203,8 +211,8 @@ export class RbacService {
   canUpdateTask(ctx: RbacContext, task: Pick<TmTask, 'owner_id' | 'department_id' | 'created_by'>): boolean {
     if (ctx.role === 'director')    return true;
     if (ctx.role === 'team_leader') return true;
-    if (task.owner_id   === ctx.user_id) return true;
-    if (task.created_by === ctx.user_id) return true;
+    if (this.isCurrentUser(ctx, task.owner_id)) return true;
+    if (this.isCurrentUser(ctx, task.created_by)) return true;
     if (ctx.role === 'manager' && task.department_id === ctx.department_id) return true;
     return false;
   }
@@ -264,6 +272,7 @@ export function requirePermission(
 ): void {
   const ctx: RbacContext = {
     user_id:       user.user_id,
+    employee_code: user.employee_code,
     role:          user.role,
     department_id: user.department_id,
     team_id:       user.team_id,
