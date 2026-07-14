@@ -559,14 +559,25 @@ export default function TaskDetail() {
                       />
                     </div>
 
-                    {/* Phòng ban — editable select */}
+                    {/* Phòng ban thực hiện — editable select */}
                     <div>
-                      <span style={LABEL}>Phòng ban</span>
+                      <span style={LABEL}>Phòng ban thực hiện</span>
                       <InlineSelect
                         value={task.department_id ?? ''}
                         options={deptOptions}
                         placeholder="— Chọn phòng ban —"
                         onSave={v => save('department_id', v)}
+                      />
+                    </div>
+
+                    {/* Phòng ban yêu cầu */}
+                    <div>
+                      <span style={LABEL}>Phòng ban yêu cầu</span>
+                      <InlineSelect
+                        value={(task as unknown as Record<string, string>).requester_department_id ?? ''}
+                        options={[{ value: '', label: '— Không có / Cùng phòng —' }, ...deptOptions]}
+                        placeholder="— Không có / Cùng phòng —"
+                        onSave={v => save('requester_department_id', v)}
                       />
                     </div>
 

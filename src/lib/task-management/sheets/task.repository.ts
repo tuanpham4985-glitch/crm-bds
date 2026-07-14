@@ -150,14 +150,15 @@ export class TaskSheetsRepository
     const taskCode = await this.nextTaskCode();
     const now = new Date().toISOString();
     const row: Record<string, string> = {
-      task_id:          randomUUID(),
-      task_code:        taskCode,
-      title:            input.title,
-      objective:        input.objective,
-      description:      input.description ?? '',
-      project_id:       input.project_id,
-      department_id:    input.department_id,
-      owner_id:         input.owner_id || createdBy,
+      task_id:                 randomUUID(),
+      task_code:               taskCode,
+      title:                   input.title,
+      objective:               input.objective,
+      description:             input.description ?? '',
+      project_id:              input.project_id,
+      department_id:           input.department_id,
+      requester_department_id: input.requester_department_id ?? '',
+      owner_id:                input.owner_id || createdBy,
       collaborator_ids: JSON.stringify(input.collaborators ?? []),
       priority:         input.priority,
       status:           'todo',
@@ -198,9 +199,12 @@ export class TaskSheetsRepository
     if (input.estimated_hours !== undefined) patch.estimated_hours = String(input.estimated_hours);
     if (input.kpi_target    !== undefined) patch.kpi_target     = JSON.stringify(input.kpi_target);
     if (input.kpi_actual    !== undefined) patch.kpi_actual     = JSON.stringify(input.kpi_actual);
-    if (input.tags             !== undefined) patch.tags            = input.tags.join(',');
-    if (input.approval_level  !== undefined) patch.approval_level  = String(input.approval_level);
-    if (input.approval_status !== undefined) patch.approval_status = input.approval_status;
+    if (input.tags                      !== undefined) patch.tags                      = input.tags.join(',');
+    if (input.approval_level            !== undefined) patch.approval_level            = String(input.approval_level);
+    if (input.approval_status           !== undefined) patch.approval_status           = input.approval_status;
+    if (input.department_id             !== undefined) patch.department_id             = input.department_id;
+    if (input.requester_department_id   !== undefined) patch.requester_department_id   = input.requester_department_id;
+    if (input.project_id                !== undefined) patch.project_id                = input.project_id;
 
     const updated = await updateRow(this.sheetName, 'task_id', taskId, patch);
     if (!updated) throw new Error(`Task ${taskId} not found`);

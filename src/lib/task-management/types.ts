@@ -97,7 +97,8 @@ export interface TmTask {
   objective: string;         // Mục tiêu cụ thể, đo được
   description: string;
   project_id: string;        // ref: Projects.project_id
-  department_id: string;     // ref: Departments.dept_id
+  department_id: string;          // ref: Departments.dept_id — phòng thực hiện
+  requester_department_id: string; // phòng ban yêu cầu (nếu cross-dept)
   owner_id: string;          // ref: Users.user_id — 1 người chịu TN
   collaborator_ids: string;  // JSON: [{"user_id":"x","role":"contributor"}]
   priority: TaskPriority;
@@ -242,6 +243,7 @@ export interface CreateTaskInput {
   description?: string;
   project_id: string;
   department_id: string;
+  requester_department_id?: string;
   owner_id: string;
   collaborators?: CollaboratorEntry[];
   priority: TaskPriority;
@@ -269,6 +271,9 @@ export interface UpdateTaskInput {
   tags?: string[];
   approval_level?: 0 | 1 | 2 | 3;
   approval_status?: string;
+  department_id?: string;
+  requester_department_id?: string;
+  project_id?: string;
 }
 
 export interface TaskStatusTransition {
@@ -382,7 +387,7 @@ export interface CompanyKpiDashboard {
 export const SHEET_COLUMNS = {
   TASKS: [
     'task_id', 'task_code', 'title', 'objective', 'description',
-    'project_id', 'department_id', 'owner_id', 'collaborator_ids',
+    'project_id', 'department_id', 'requester_department_id', 'owner_id', 'collaborator_ids',
     'priority', 'status', 'progress_pct', 'start_date', 'due_date',
     'estimated_hours', 'actual_hours', 'kpi_target', 'kpi_actual',
     'approval_level', 'approval_status', 'approved_by', 'approved_at',

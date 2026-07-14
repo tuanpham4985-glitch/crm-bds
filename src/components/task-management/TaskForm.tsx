@@ -67,17 +67,18 @@ function CustomTagInput({ onAdd }: { onAdd: (tag: string) => void }) {
 
 export default function TaskForm({ onClose, onCreated, initialDepartmentId, initialProjectId }: Props) {
   const [form, setForm] = useState({
-    title:          '',
-    objective:      '',
-    description:    '',
-    priority:       'medium'  as TaskPriority,
-    status:         'todo'    as TaskStatus,
-    due_date:       '',
-    owner_id:       '',
-    department_id:  initialDepartmentId ?? '',
-    project_id:     initialProjectId    ?? '',
-    approval_level: '0',   // 0 = không cần phê duyệt
-    email_reminder: false,
+    title:                   '',
+    objective:               '',
+    description:             '',
+    priority:                'medium'  as TaskPriority,
+    status:                  'todo'    as TaskStatus,
+    due_date:                '',
+    owner_id:                '',
+    department_id:           initialDepartmentId ?? '',
+    requester_department_id: '',
+    project_id:              initialProjectId    ?? '',
+    approval_level:          '0',
+    email_reminder:          false,
   });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -132,12 +133,13 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
         priority: form.priority,
         status:   form.status,
       };
-      if (form.objective)      body.objective      = form.objective;
-      if (form.description)    body.description    = form.description;
-      if (form.due_date)       body.due_date       = form.due_date;
-      if (form.owner_id)       body.owner_id       = form.owner_id;
-      if (form.department_id)  body.department_id  = form.department_id;
-      if (form.project_id)     body.project_id     = form.project_id;
+      if (form.objective)                body.objective                = form.objective;
+      if (form.description)              body.description              = form.description;
+      if (form.due_date)                 body.due_date                 = form.due_date;
+      if (form.owner_id)                 body.owner_id                 = form.owner_id;
+      if (form.department_id)            body.department_id            = form.department_id;
+      if (form.requester_department_id)  body.requester_department_id  = form.requester_department_id;
+      if (form.project_id)               body.project_id               = form.project_id;
       if (selectedTags.length) body.tags           = selectedTags;
       if (form.email_reminder) body.email_reminder = true;
       const lvl = Number(form.approval_level);
@@ -240,19 +242,34 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
             </div>
           </div>
 
-          {/* Phòng ban — chọn trước để lọc người thực hiện */}
-          <div style={{ marginBottom: 12 }}>
-            <label style={LABEL}>Phòng ban <span style={{ color: '#dc2626' }}>*</span></label>
-            <select
-              value={form.department_id}
-              onChange={e => { set('department_id', e.target.value); set('owner_id', ''); }}
-              style={FIELD}
-            >
-              <option value="">— Chọn phòng ban trước —</option>
-              {departments.map(d => (
-                <option key={d.dept_id} value={d.dept_id}>{d.name}</option>
-              ))}
-            </select>
+          {/* Row: Phòng ban thực hiện + Phòng ban yêu cầu */}
+          <div style={{ ...ROW2, marginBottom: 12 }}>
+            <div>
+              <label style={LABEL}>Phòng ban thực hiện <span style={{ color: '#dc2626' }}>*</span></label>
+              <select
+                value={form.department_id}
+                onChange={e => { set('department_id', e.target.value); set('owner_id', ''); }}
+                style={FIELD}
+              >
+                <option value="">— Chọn phòng ban —</option>
+                {departments.map(d => (
+                  <option key={d.dept_id} value={d.dept_id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={LABEL}>Phòng ban yêu cầu</label>
+              <select
+                value={form.requester_department_id}
+                onChange={e => set('requester_department_id', e.target.value)}
+                style={FIELD}
+              >
+                <option value="">— Không có / Cùng phòng —</option>
+                {departments.map(d => (
+                  <option key={d.dept_id} value={d.dept_id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Người thực hiện — lọc theo phòng ban đã chọn */}
