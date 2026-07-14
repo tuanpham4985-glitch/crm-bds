@@ -242,11 +242,24 @@ export async function initTaskManagementSheets(): Promise<void> {
   for (const { name, headers } of sheetDefs) {
     if (!existing.includes(name)) {
       const sheet = await doc.addSheet({ title: name, headerValues: [...headers] });
-      // Freeze header row
       await sheet.updateDimensionProperties('ROWS', { pixelSize: 24 }, { startIndex: 0, endIndex: 1 });
       console.log(`[TM Sheets] Created sheet: ${name}`);
     } else {
-      console.log(`[TM Sheets] Sheet already exists: ${name}`);
+      // Sheet exists — add any missing headers (never remove or reorder existing ones)
+      try {
+        const sheet = doc.sheetsByTitle[name];
+        await sheet.loadHeaderRow();
+        const existingHeaders: string[] = sheet.headerValues ?? [];
+        const missing = [...headers].filter(h => !existingHeaders.includes(h));
+        if (missing.length > 0) {
+          await sheet.setHeaderRow([...existingHeaders, ...missing]);
+          console.log(`[TM Sheets] Added missing columns to ${name}:`, missing);
+        } else {
+          console.log(`[TM Sheets] Sheet "${name}" headers OK`);
+        }
+      } catch (e) {
+        console.warn(`[TM Sheets] Could not repair headers for "${name}":`, e instanceof Error ? e.message : e);
+      }
     }
   }
 }

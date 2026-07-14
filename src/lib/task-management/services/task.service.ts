@@ -65,11 +65,16 @@ export class TaskService {
   // ── READ ────────────────────────────────────────────────
 
   async getTask(ctx: RbacContext, taskId: string): Promise<TaskWithDetails> {
-    const task = await cached(
+    let task = await cached(
       CK.task(taskId),
       TTL.TASK_DETAIL,
       () => this.uow.tasks.findById(taskId),
     );
+    // Fallback: taskId might be a task_code (T-YYYY-NNNN) when task_id column was missing
+    if (!task && /^T-\d{4}-\d+$/.test(taskId)) {
+      task = await this.uow.tasks.findByCode(taskId);
+      if (task) tmCache.set(CK.task(task.task_id), task, TTL.TASK_DETAIL);
+    }
     if (!task) throw new TaskNotFoundError(taskId);
     if (!rbac.canReadTask(ctx, task)) throw new UnauthorizedError('Cannot read this task');
 
