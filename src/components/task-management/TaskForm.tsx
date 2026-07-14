@@ -31,6 +31,40 @@ const LABEL: React.CSSProperties = {
 
 const ROW2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
 
+function CustomTagInput({ onAdd }: { onAdd: (tag: string) => void }) {
+  const [value, setValue] = useState('');
+  function add() {
+    const tag = value.trim();
+    if (!tag) return;
+    onAdd(tag);
+    setValue('');
+  }
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      <input
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+        placeholder="Nhập tag tùy chỉnh..."
+        style={{
+          flex: 1, height: 32, padding: '0 10px', borderRadius: 8, fontSize: 12,
+          border: '1.5px solid var(--border-light)', background: 'var(--bg-page)',
+          color: 'var(--text-body)', outline: 'none',
+        }}
+      />
+      <button
+        type="button"
+        onClick={add}
+        style={{
+          padding: '0 14px', height: 32, borderRadius: 8, fontSize: 12, fontWeight: 700,
+          border: '1.5px solid var(--primary)', background: 'transparent',
+          color: 'var(--primary)', cursor: 'pointer',
+        }}
+      >+ Thêm</button>
+    </div>
+  );
+}
+
 export default function TaskForm({ onClose, onCreated, initialDepartmentId, initialProjectId }: Props) {
   const [form, setForm] = useState({
     title:          '',
@@ -276,7 +310,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
           {/* Tags */}
           <div style={{ marginBottom: 4 }}>
             <label style={LABEL}>Tags — loại công việc</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
               {PREDEFINED_TAGS.map(tag => {
                 const active = selectedTags.includes(tag);
                 return (
@@ -297,6 +331,27 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
                 );
               })}
             </div>
+            {/* Custom tags */}
+            {selectedTags.filter(t => !PREDEFINED_TAGS.includes(t)).length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {selectedTags.filter(t => !PREDEFINED_TAGS.includes(t)).map(tag => (
+                  <span key={tag} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    background: 'var(--primary)', color: '#fff',
+                    border: '1.5px solid var(--primary)',
+                  }}>
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', padding: 0, lineHeight: 1, fontSize: 14, display: 'flex', alignItems: 'center' }}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <CustomTagInput onAdd={(tag) => { if (!selectedTags.includes(tag)) setSelectedTags(p => [...p, tag]); }} />
           </div>
         </form>
 
