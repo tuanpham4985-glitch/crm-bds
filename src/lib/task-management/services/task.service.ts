@@ -422,9 +422,11 @@ export class TaskService {
     task: TmTask,
     reason?: string,
   ): void {
+    const noApproval = !task.approval_level || Number(task.approval_level) === 0;
     const allowed: Partial<Record<TmTask['status'], TmTask['status'][]>> = {
       todo:       ['inprogress'],
-      inprogress: ['waiting', 'review'],
+      // No-approval tasks can skip review and complete directly
+      inprogress: noApproval ? ['waiting', 'review', 'completed'] : ['waiting', 'review'],
       waiting:    ['inprogress'],
       review:     ['completed', 'inprogress'],
       completed:  ['closed', 'inprogress'],
