@@ -16,6 +16,11 @@ function tmUserCacheKey(email: string, employeeCode: string): string {
   return `${(email || '').trim().toLowerCase()}|${(employeeCode || '').trim()}`;
 }
 
+/** Xoá cache tra cứu TM_Users — gọi sau khi sync ghi thêm/sửa nhân viên */
+export function invalidateTmUserCache(): void {
+  _emailCache.clear();
+}
+
 async function lookupTmUser(email: string, employeeCode: string): Promise<{ user_id: string; department_id: string } | null> {
   const normalizedEmail = (email || '').trim().toLowerCase();
   const normalizedEmployeeCode = (employeeCode || '').trim();

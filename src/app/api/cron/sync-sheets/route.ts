@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/client';
 import { getNhanVien, getKhachHang, getPipeline } from '@/lib/google-sheets';
+import { syncTmUsersFromNhanVien } from '@/lib/task-management/sync-users';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -191,9 +192,17 @@ export async function GET(req: NextRequest) {
       syncKhachHang(),
       syncPipeline(),
     ]);
+
+    // NHAN_VIEN → TM_Users: nhân viên mới xuất hiện trong Task Management
+    // mà không cần chờ họ tự đăng nhập lần đầu.
+    const tmUsers = await syncTmUsersFromNhanVien().catch(e => {
+      console.error('[cron:sync-sheets] TM_Users sync failed:', e instanceof Error ? e.message : e);
+      return null;
+    });
+
     const elapsed = Math.round((Date.now() - startMs) / 1000);
-    console.log(`[cron:sync-sheets] done in ${elapsed}s`, { hrm, khachHang, pipeline });
-    return NextResponse.json({ ok: true, elapsed_s: elapsed, hrm, khachHang, pipeline });
+    console.log(`[cron:sync-sheets] done in ${elapsed}s`, { hrm, khachHang, pipeline, tmUsers });
+    return NextResponse.json({ ok: true, elapsed_s: elapsed, hrm, khachHang, pipeline, tmUsers });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[cron:sync-sheets] failed:', msg);

@@ -1,8 +1,10 @@
 'use client';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, BarChart2, Loader2 } from 'lucide-react';
+import { mutate } from 'swr';
+import { Plus, BarChart2, Loader2, RefreshCw } from 'lucide-react';
 import { useTmStore } from '@/stores/tmStore';
+import { useCurrentTmUser } from '@/hooks/tm/useTasks';
 import TaskFilters from '@/components/task-management/TaskFilters';
 import TaskList from '@/components/task-management/TaskList';
 import TaskDetail from '@/components/task-management/TaskDetail';
@@ -36,6 +38,27 @@ const KpiDashboard = dynamic(
 export default function TaskManagementClient() {
   const { filters, createModalOpen, setCreateModal } = useTmStore();
   const [showKpi, setShowKpi] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const currentUser = useCurrentTmUser();
+  const canSync = currentUser?.role === 'director' || currentUser?.role === 'manager';
+
+  async function handleSyncUsers() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const res  = await fetch('/api/tm/sync-users', { method: 'POST' });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Đồng bộ thất bại');
+      await mutate('/api/tm/users', undefined, { revalidate: true });
+      await mutate('/api/tm/departments', undefined, { revalidate: true });
+      alert(json.data.message);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Lỗi đồng bộ nhân viên');
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-page)', padding: '0 0 40px' }}>
@@ -55,6 +78,25 @@ export default function TaskManagementClient() {
         </div>
 
         <div style={{ flex: 1 }} />
+
+        {/* Đồng bộ nhân viên NHAN_VIEN → TM_Users (Admin / Trưởng phòng) */}
+        {canSync && (
+          <button
+            onClick={handleSyncUsers}
+            disabled={syncing}
+            title="Đồng bộ nhân viên mới từ sheet NHAN_VIEN sang TM_Users"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+              border: '1.5px solid var(--border-light)', borderRadius: 8,
+              cursor: syncing ? 'default' : 'pointer', background: 'transparent',
+              color: 'var(--text-muted)', fontSize: 13, fontWeight: 600,
+              opacity: syncing ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw size={15} className={syncing ? 'tm-spin' : undefined} />
+            {syncing ? 'Đang đồng bộ...' : 'Đồng bộ NV'}
+          </button>
+        )}
 
         {/* KPI toggle */}
         <button onClick={() => setShowKpi(s => !s)} style={{
