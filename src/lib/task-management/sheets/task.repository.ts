@@ -476,8 +476,8 @@ export class ChecklistSheetsRepository
       keyValue: id,
       data: { sort_order: String(index) },
     }));
-    const { batchUpdateRows } = await import('./client');
-    await batchUpdateRows(this.sheetName, 'checklist_id', updates);
+    const { batchUpdateCells } = await import('./client');
+    await batchUpdateCells(this.sheetName, 'checklist_id', updates);
   }
 
   async delete(checklistId: string): Promise<void> {

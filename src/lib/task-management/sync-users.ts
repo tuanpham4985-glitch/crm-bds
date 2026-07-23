@@ -11,7 +11,7 @@ import type { NhanVien } from '@/lib/types';
 import type { UserRole } from './types';
 import { SHEET_NAMES } from './types';
 import {
-  loadAllRows, appendRows, batchUpdateRows, type RawRow,
+  loadAllRows, appendRows, batchUpdateCells, withQuotaRetry, type RawRow,
 } from './sheets/client';
 import { invalidateTmUserCache } from './auth';
 
@@ -128,11 +128,11 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
     details: { created: [], updated: [], deactivated: [] },
   };
 
-  const [nhanVien, tmUsers, tmDepts] = await Promise.all([
+  const [nhanVien, tmUsers, tmDepts] = await withQuotaRetry(() => Promise.all([
     getNhanVien(),
     loadAllRows(SHEET_NAMES.USERS),
     loadAllRows(SHEET_NAMES.DEPARTMENTS),
-  ]);
+  ]), 'read NHAN_VIEN + TM_Users + TM_Departments');
 
   const employees = nhanVien.filter(nv => (nv.id_nhan_vien || '').trim());
   result.total_nhan_vien = employees.length;
@@ -263,18 +263,20 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
     }
   }
 
-  // ── 3. Ghi xuống sheet
+  // ── 3. Ghi xuống sheet — tuần tự, mỗi bước 1-3 request để không đụng quota ghi
   if (newDepts.length > 0) {
-    await appendRows(SHEET_NAMES.DEPARTMENTS, newDepts);
+    await withQuotaRetry(() => appendRows(SHEET_NAMES.DEPARTMENTS, newDepts), 'append TM_Departments');
     result.departments_created = newDepts.length;
   }
   if (toCreate.length > 0) {
-    await appendRows(SHEET_NAMES.USERS, toCreate);
+    await withQuotaRetry(() => appendRows(SHEET_NAMES.USERS, toCreate), 'append TM_Users');
     result.created = toCreate.length;
   }
   if (toUpdate.length > 0) {
-    await batchUpdateRows(SHEET_NAMES.USERS, 'user_id', toUpdate);
-    result.updated = toUpdate.length;
+    result.updated = await withQuotaRetry(
+      () => batchUpdateCells(SHEET_NAMES.USERS, 'user_id', toUpdate),
+      'update TM_Users',
+    );
   }
 
   if (result.created || result.updated || result.departments_created) {

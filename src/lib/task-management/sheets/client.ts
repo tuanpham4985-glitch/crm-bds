@@ -113,6 +113,30 @@ async function fetchAllRows(sheetName: SheetName): Promise<RawRow[]> {
   return promise;
 }
 
+// ─── RATE LIMIT RETRY ─────────────────────────────────────
+// Sheets API: 60 request đọc + 60 request ghi / phút / user.
+// Khi vượt → 429 "Resource has been exhausted". Retry với backoff luỹ thừa.
+
+function isQuotaError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.includes('429') || msg.includes('Quota') || msg.includes('exhausted')
+    || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Rate Limit');
+}
+
+export async function withQuotaRetry<T>(fn: () => Promise<T>, label = 'sheets op'): Promise<T> {
+  const DELAYS = [2_000, 6_000, 15_000]; // tổng ~23s, còn dư thời gian trong maxDuration 60s
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isQuotaError(e) || attempt >= DELAYS.length) throw e;
+      const wait = DELAYS[attempt];
+      console.warn(`[TM Sheets] Quota 429 on "${label}", retry sau ${wait / 1000}s (lần ${attempt + 1}/${DELAYS.length})`);
+      await new Promise(r => setTimeout(r, wait));
+    }
+  }
+}
+
 // ─── ROW HELPERS ──────────────────────────────────────────
 
 export type RawRow = Record<string, string>;
@@ -204,6 +228,70 @@ export async function batchUpdateRows(
     await Promise.all(toSave.slice(i, i + CONCURRENCY).map(r => r.save()));
   }
   invalidateRowCache(sheetName);
+}
+
+/**
+ * Batch update qua cell API — CHỈ 3 request bất kể số dòng.
+ *
+ * batchUpdateRows() gọi row.save() cho từng dòng (1 request/dòng), rất dễ
+ * đụng quota ghi của Sheets (60 request/phút/user) khi sync hàng loạt.
+ * Hàm này: getRows() → loadCells(1 range) → saveUpdatedCells().
+ *
+ * Trả về số dòng thực sự bị thay đổi.
+ */
+export async function batchUpdateCells(
+  sheetName: SheetName,
+  keyField: string,
+  updates: { keyValue: string; data: Partial<RawRow> }[],
+): Promise<number> {
+  if (updates.length === 0) return 0;
+
+  const sheet = await getSheet(sheetName);
+  const rows  = await sheet.getRows();
+  const headers = sheet.headerValues ?? [];
+  const colIndex = new Map(headers.map((h, i) => [h, i]));
+
+  const patchByKey = new Map(updates.map(u => [u.keyValue, u.data]));
+
+  // Xác định các dòng cần sửa + vùng cell tối thiểu phải nạp
+  const targets: { rowIndex: number; data: Partial<RawRow> }[] = [];
+  for (const r of rows) {
+    const patch = patchByKey.get(String(r.get(keyField) ?? ''));
+    if (!patch) continue;
+    targets.push({ rowIndex: r.rowNumber - 1, data: patch }); // rowNumber 1-based → cell index 0-based
+  }
+  if (targets.length === 0) return 0;
+
+  const minRow = Math.min(...targets.map(t => t.rowIndex));
+  const maxRow = Math.max(...targets.map(t => t.rowIndex));
+
+  await sheet.loadCells({
+    startRowIndex:    minRow,
+    endRowIndex:      maxRow + 1,
+    startColumnIndex: 0,
+    endColumnIndex:   headers.length,
+  });
+
+  let changed = 0;
+  for (const { rowIndex, data } of targets) {
+    let rowChanged = false;
+    for (const [field, value] of Object.entries(data)) {
+      const col = colIndex.get(field);
+      if (col === undefined) continue; // Cột không tồn tại trong header → bỏ qua
+      const cell = sheet.getCell(rowIndex, col);
+      const next = value ?? '';
+      if (String(cell.value ?? '') === String(next)) continue;
+      cell.value = next;
+      rowChanged = true;
+    }
+    if (rowChanged) changed++;
+  }
+
+  if (changed > 0) {
+    await sheet.saveUpdatedCells();
+    invalidateRowCache(sheetName);
+  }
+  return changed;
 }
 
 /** Soft delete: set deleted_at timestamp */
