@@ -1,6 +1,17 @@
 /**
- * Script: Đồng bộ nhân viên từ sheet NHAN_VIEN → TM_Users + TM_Departments
- * Chạy: npx tsx scripts/task-management/sync-employees.ts
+ * ⚠️ SCRIPT ĐÃ NGỪNG DÙNG — ĐỪNG CHẠY.
+ *
+ * Script này xoá SẠCH TM_Users (clearRows) rồi ghi lại từ đầu. Hậu quả:
+ *   - Mất mọi chỉnh tay về vai trò / phòng ban / zalo_id
+ *   - Tạo lại dòng cho cả nhân viên đã nghỉ việc
+ *   - Ghi mã dạng "0009" khiến Google Sheets cắt số 0 → sinh dòng trùng
+ *   - Bỏ qua nhân viên chưa có email
+ *
+ * Thay bằng nút "Đồng bộ NV" ở trang Quản lý công việc (POST /api/tm/sync-users),
+ * dùng src/lib/task-management/sync-users.ts — upsert tăng dần, không xoá gì.
+ *
+ * Giữ file lại để tham chiếu. Muốn chạy bất chấp thì đặt biến môi trường
+ * FORCE_LEGACY_TM_USER_WIPE=1.
  */
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
@@ -106,6 +117,26 @@ function cleanEmail(value: string): string {
 // ─── MAIN ──────────────────────────────────────────────────
 
 async function main() {
+  if (process.env.FORCE_LEGACY_TM_USER_WIPE !== '1') {
+    console.error(`
+╔════════════════════════════════════════════════════════════════════╗
+║  ⚠️  SCRIPT NÀY ĐÃ NGỪNG DÙNG — ĐÃ CHẶN, KHÔNG CÓ GÌ BỊ THAY ĐỔI  ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Nó XOÁ SẠCH bảng TM_Users rồi ghi lại từ đầu, làm mất:
+  • mọi chỉnh tay về vai trò / phòng ban / zalo_id
+  • và tạo lại dòng cho cả nhân viên đã nghỉ việc
+
+👉 Thay vào đó, dùng NÚT TRONG APP:
+
+   HR  →  NHAN_VIEN     : trang "Nhân viên"          → nút "Đồng bộ nhân sự"
+   NHAN_VIEN → TM_Users : trang "Quản lý công việc"  → nút "Đồng bộ NV"
+
+Cả hai nút đều đồng bộ tăng dần, không xoá gì, và tự dọn dòng trùng.
+`);
+    process.exit(1);
+  }
+
   console.log('🔄 Đồng bộ nhân viên NHAN_VIEN → TM_Users...\n');
 
   if (!CRM_SHEET_ID || !CLIENT_EMAIL || !PRIVATE_KEY) {
