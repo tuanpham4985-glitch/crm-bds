@@ -2,8 +2,9 @@
 // Chạy hàng ngày lúc 01:00 UTC (08:00 giờ VN)
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/client';
-import { getNhanVien, getKhachHang, getPipeline } from '@/lib/google-sheets';
+import { getKhachHang, getPipeline } from '@/lib/google-sheets';
 import { syncTmUsersFromNhanVien } from '@/lib/task-management/sync-users';
+import { syncNhanVienToPostgres } from '@/lib/sync/nhan-vien-to-pg';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -13,57 +14,6 @@ function authorized(req: NextRequest): boolean {
   if (!secret) return true;
   const auth = req.headers.get('authorization') ?? '';
   return auth === `Bearer ${secret}`;
-}
-
-async function syncHrm(): Promise<{ synced: number; errors: number }> {
-  const rows = await getNhanVien();
-  let synced = 0; let errors = 0;
-  for (const nv of rows) {
-    if (!nv.id_nhan_vien) continue;
-    try {
-      await prisma.nhanVien.upsert({
-        where:  { id_nhan_vien: nv.id_nhan_vien },
-        create: {
-          id_nhan_vien:            nv.id_nhan_vien,
-          ho_ten:                  nv.ho_ten,
-          so_dien_thoai:           nv.so_dien_thoai,
-          email:                   nv.email || `${nv.id_nhan_vien}@placeholder.local`,
-          vai_tro:                 nv.vai_tro,
-          employee_type:           nv.employee_type,
-          gioi_tinh:               nv.gioi_tinh,
-          khu_vuc:                 nv.khu_vuc,
-          phong_KD:                nv.phong_KD,
-          ql_truc_tiep:            nv.ql_truc_tiep,
-          so_cccd:                 nv.so_cccd,
-          ngay_cap:                nv.ngay_cap,
-          noi_cap:                 nv.noi_cap,
-          HKTT:                    nv.HKTT,
-          ngay_sinh:               nv.ngay_sinh,
-          ma_so_thue:              nv.ma_so_thue,
-          so_nguoi_phu_thuoc:      nv.so_nguoi_phu_thuoc,
-          trang_thai:              nv.trang_thai,
-          ngay_tao:                nv.ngay_tao,
-          avatar_url:              nv.avatar_url,
-          mat_khau:                nv.mat_khau,
-          so_tk_ngan_hang:         nv.so_tk_ngan_hang,
-          ten_ngan_hang_thu_huong: nv.ten_ngan_hang_thu_huong,
-        },
-        update: {
-          ho_ten:        nv.ho_ten,
-          trang_thai:    nv.trang_thai,
-          employee_type: nv.employee_type,
-          vai_tro:       nv.vai_tro,
-          avatar_url:    nv.avatar_url,
-          mat_khau:      nv.mat_khau,
-          phong_KD:      nv.phong_KD,
-          ql_truc_tiep:  nv.ql_truc_tiep,
-          so_dien_thoai: nv.so_dien_thoai,
-        },
-      });
-      synced++;
-    } catch { errors++; }
-  }
-  return { synced, errors };
 }
 
 async function syncKhachHang(): Promise<{ synced: number; errors: number }> {
@@ -188,7 +138,7 @@ export async function GET(req: NextRequest) {
   const startMs = Date.now();
   try {
     const [hrm, khachHang, pipeline] = await Promise.all([
-      syncHrm(),
+      syncNhanVienToPostgres(),
       syncKhachHang(),
       syncPipeline(),
     ]);
