@@ -9,6 +9,12 @@ interface Props {
   onCreated?: (taskId: string) => void;
   initialDepartmentId?: string;
   initialProjectId?: string;
+  /**
+   * 'modal'  — lớp phủ toàn màn hình (mặc định, dùng cho nút "Tạo Task").
+   * 'inline' — nhúng thẳng vào trang, không lớp phủ và không thanh tiêu đề riêng
+   *            (dùng cho trang /quan-ly-cong-viec/moi).
+   */
+  variant?: 'modal' | 'inline';
 }
 
 const PREDEFINED_TAGS = [
@@ -65,7 +71,8 @@ function CustomTagInput({ onAdd }: { onAdd: (tag: string) => void }) {
   );
 }
 
-export default function TaskForm({ onClose, onCreated, initialDepartmentId, initialProjectId }: Props) {
+export default function TaskForm({ onClose, onCreated, initialDepartmentId, initialProjectId, variant = 'modal' }: Props) {
+  const inline = variant === 'inline';
   const [form, setForm] = useState({
     title:                   '',
     objective:               '',
@@ -174,26 +181,20 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     }
   }
 
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{
-        background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 640,
-        maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-      }}>
-        {/* Header */}
-        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border-lighter)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-title)' }}>Tạo công việc mới</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-            <X size={20} />
-          </button>
-        </div>
+  const body = (
+    <>
+        {/* Header — trang /moi đã có tiêu đề riêng nên bỏ qua ở chế độ inline */}
+        {!inline && (
+          <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border-lighter)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-title)' }}>Tạo công việc mới</h2>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={20} />
+            </button>
+          </div>
+        )}
 
         {/* Form — scrollable */}
-        <form onSubmit={submit} style={{ overflowY: 'auto', flex: 1, padding: '16px 20px' }}>
+        <form onSubmit={submit} style={inline ? { padding: 0 } : { overflowY: 'auto', flex: 1, padding: '16px 20px' }}>
           {error && (
             <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: '#fef2f2', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>
               {error}
@@ -468,7 +469,9 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
         </form>
 
         {/* Footer */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-lighter)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
+        <div style={inline
+          ? { paddingTop: 16, marginTop: 4, display: 'flex', justifyContent: 'flex-end', gap: 10 }
+          : { padding: '12px 20px', borderTop: '1px solid var(--border-lighter)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
           <button onClick={onClose} style={{
             padding: '8px 20px', borderRadius: 8, border: '1.5px solid var(--border-light)',
             cursor: 'pointer', background: 'transparent', fontSize: 14, fontWeight: 600, color: 'var(--text-body)',
@@ -484,6 +487,22 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
             Tạo công việc
           </button>
         </div>
+    </>
+  );
+
+  if (inline) return body;
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{
+        background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 640,
+        maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+      }}>
+        {body}
       </div>
     </div>
   );

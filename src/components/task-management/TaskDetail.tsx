@@ -4,7 +4,8 @@ import { X, Loader2, ThumbsUp, ThumbsDown, RotateCcw, AlertCircle, Trash2 } from
 import { useTmStore } from '@/stores/tmStore';
 import {
   useTaskDetail, apiUpdateTaskStatus, apiApproveTask, apiRejectTask,
-  apiUpdateTask, apiDeleteTask, useTmUsers, useTmDepartments, useTmProjects, useCurrentTmUser,
+  apiUpdateTask, apiDeleteTask, apiAddCollaborator, apiRemoveCollaborator,
+  useTmUsers, useTmDepartments, useTmProjects, useCurrentTmUser,
 } from '@/hooks/tm/useTasks';
 import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
 import ChecklistPanel from './ChecklistPanel';
@@ -281,6 +282,8 @@ export default function TaskDetail() {
   const [rejectErr, setRejectErr]       = useState('');
   const [tagsOpen, setTagsOpen]         = useState(false);
   const [savingTags, setSavingTags]     = useState(false);
+  const [collabOpen, setCollabOpen]     = useState(false);
+  const [savingCollab, setSavingCollab] = useState(false);
 
   const { task, isLoading, error, revalidate } = useTaskDetail(selectedTaskId ?? null);
   const { users, userMap } = useTmUsers();
@@ -293,6 +296,20 @@ export default function TaskDetail() {
     await apiUpdateTask(task.task_id, { [field]: value });
     await revalidate();
   }, [task, revalidate]);
+
+  const toggleCollaborator = useCallback(async (userId: string, isCollab: boolean) => {
+    if (!task || savingCollab) return;
+    setSavingCollab(true);
+    try {
+      if (isCollab) await apiRemoveCollaborator(task.task_id, userId);
+      else          await apiAddCollaborator(task.task_id, userId);
+      await revalidate();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Không cập nhật được người cùng thực hiện');
+    } finally {
+      setSavingCollab(false);
+    }
+  }, [task, revalidate, savingCollab]);
 
   if (!sidebarOpen || !selectedTaskId) return null;
 
@@ -585,22 +602,80 @@ export default function TaskDetail() {
                       />
                     </div>
 
-                    {/* Cùng thực hiện — read only, đặt khi tạo công việc */}
-                    {collaboratorIds.length > 0 && (
-                      <div>
-                        <span style={LABEL}>Cùng thực hiện ({collaboratorIds.length})</span>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '4px 6px' }}>
-                          {collaboratorIds.map(id => (
-                            <span key={id} style={{
-                              padding: '2px 9px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                              border: '1.5px solid var(--border-light)', color: 'var(--text-body)',
-                            }}>
-                              {resolveName(id)}
-                            </span>
-                          ))}
-                        </div>
+                    {/* Cùng thực hiện — thêm/bớt trực tiếp */}
+                    <div>
+                      <span style={LABEL}>
+                        Cùng thực hiện{collaboratorIds.length > 0 ? ` (${collaboratorIds.length})` : ''}
+                        {savingCollab && <Loader2 size={11} className="tm-spin" style={{ marginLeft: 6, verticalAlign: -1 }} />}
+                      </span>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '4px 6px', alignItems: 'center' }}>
+                        {collaboratorIds.map(id => (
+                          <span key={id} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '2px 6px 2px 9px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                            border: '1.5px solid var(--border-light)', color: 'var(--text-body)',
+                          }}>
+                            {resolveName(id)}
+                            <button
+                              onClick={() => toggleCollaborator(id, true)}
+                              disabled={savingCollab}
+                              title="Bỏ khỏi công việc"
+                              style={{ background: 'none', border: 'none', cursor: savingCollab ? 'default' : 'pointer', color: 'var(--text-muted)', padding: 0, fontSize: 14, lineHeight: 1, display: 'flex' }}
+                            >×</button>
+                          </span>
+                        ))}
+                        {collaboratorIds.length === 0 && (
+                          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>— Chưa có —</span>
+                        )}
+                        <button
+                          onClick={() => setCollabOpen(o => !o)}
+                          style={{
+                            padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                            border: '1.5px dashed var(--primary)', background: 'transparent',
+                            color: 'var(--primary)', cursor: 'pointer',
+                          }}
+                        >{collabOpen ? 'Đóng' : '+ Thêm'}</button>
                       </div>
-                    )}
+
+                      {collabOpen && (
+                        <div style={{
+                          marginTop: 6, border: '1.5px solid var(--border-light)', borderRadius: 8,
+                          background: 'var(--bg-page)', maxHeight: 180, overflowY: 'auto', padding: 4,
+                        }}>
+                          {users
+                            // Người chịu trách nhiệm chính không đồng thời là người cùng thực hiện
+                            .filter(u => u.user_id !== task.owner_id)
+                            .map(u => {
+                              const isCollab = collaboratorIds.includes(u.user_id);
+                              return (
+                                <label
+                                  key={u.user_id}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    cursor: savingCollab ? 'default' : 'pointer',
+                                    padding: '5px 8px', borderRadius: 6, fontSize: 13,
+                                    color: 'var(--text-body)',
+                                    background: isCollab ? 'var(--primary-light)' : 'transparent',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isCollab}
+                                    disabled={savingCollab}
+                                    onChange={() => toggleCollaborator(u.user_id, isCollab)}
+                                    style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer', flexShrink: 0 }}
+                                  />
+                                  <span>
+                                    {u.full_name}
+                                    {u.position && <span style={{ color: 'var(--text-muted)' }}> ({u.position})</span>}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Phòng ban thực hiện — editable select */}
                     <div>

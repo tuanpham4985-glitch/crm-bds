@@ -144,6 +144,32 @@ export async function apiDeleteTask(taskId: string) {
   return d.data;
 }
 
+// ── Người cùng thực hiện (collaborators) ──────────────────
+
+export async function apiAddCollaborator(taskId: string, userId: string, role = 'contributor') {
+  const res = await fetch(`/api/tm/tasks/${taskId}/collaborators`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ user_id: userId, role }),
+  });
+  const d = await res.json();
+  if (!d.success) throw new Error(d.error);
+  await mutate((key: string) => typeof key === 'string' && key.startsWith('/api/tm/tasks'), undefined, { revalidate: true });
+  return d.data;
+}
+
+export async function apiRemoveCollaborator(taskId: string, userId: string) {
+  const res = await fetch(`/api/tm/tasks/${taskId}/collaborators`, {
+    method:  'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ user_id: userId }),
+  });
+  const d = await res.json();
+  if (!d.success) throw new Error(d.error);
+  await mutate((key: string) => typeof key === 'string' && key.startsWith('/api/tm/tasks'), undefined, { revalidate: true });
+  return d.data;
+}
+
 // ── Users list (for dropdowns / name resolution) ──────────
 
 interface TmUserSummary {
