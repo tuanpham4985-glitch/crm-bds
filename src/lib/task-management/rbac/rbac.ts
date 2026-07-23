@@ -222,6 +222,28 @@ export class RbacService {
   }
 
   /**
+   * Can user CHANGE the collaborator list (thêm/bớt người cùng thực hiện)?
+   *
+   * Chặt hơn canUpdateTask có chủ đích: người THỰC HIỆN CHÍNH được cập nhật
+   * tiến độ, trạng thái... của task nhưng KHÔNG được tự kéo thêm người khác
+   * vào việc của mình. Chỉ người giao việc và cấp quản lý mới quyết định
+   * ai cùng làm.
+   *
+   * Cho phép: director, người tạo task, và manager / team_leader cùng phòng ban.
+   */
+  canManageCollaborators(
+    ctx: RbacContext,
+    task: Pick<TmTask, 'created_by' | 'department_id'>,
+  ): boolean {
+    if (ctx.role === 'director') return true;
+    if (this.isCurrentUser(ctx, task.created_by)) return true;
+    if (ctx.role === 'manager' || ctx.role === 'team_leader') {
+      return Boolean(task.department_id) && task.department_id === ctx.department_id;
+    }
+    return false;
+  }
+
+  /**
    * Can user DELETE this task?
    *
    * Nguồn sự thật DUY NHẤT cho cả API lẫn nút thùng rác trên giao diện —

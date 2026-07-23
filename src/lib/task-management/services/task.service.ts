@@ -281,7 +281,9 @@ export class TaskService {
 
   async addCollaborator(ctx: RbacContext, taskId: string, userId: string, role: string): Promise<void> {
     const task = await this.requireTask(taskId);
-    if (!rbac.canUpdateTask(ctx, task)) throw new UnauthorizedError('Cannot modify collaborators');
+    if (!rbac.canManageCollaborators(ctx, task)) {
+      throw new UnauthorizedError('Chỉ người giao việc hoặc quản lý phòng ban mới đổi được danh sách người cùng thực hiện');
+    }
 
     // Cross-dept: requires extra permission
     const user = await this.uow.users.findById(userId);
@@ -299,7 +301,9 @@ export class TaskService {
 
   async removeCollaborator(ctx: RbacContext, taskId: string, userId: string): Promise<void> {
     const task = await this.requireTask(taskId);
-    if (!rbac.canUpdateTask(ctx, task)) throw new UnauthorizedError('Cannot modify collaborators');
+    if (!rbac.canManageCollaborators(ctx, task)) {
+      throw new UnauthorizedError('Chỉ người giao việc hoặc quản lý phòng ban mới đổi được danh sách người cùng thực hiện');
+    }
     await this.uow.tasks.removeCollaborator(taskId, userId);
     await this.uow.activityLogs.log(taskId, 'task', ctx.user_id, 'collaborator_removed',
       undefined, { user_id: userId },

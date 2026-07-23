@@ -322,18 +322,18 @@ export default function TaskDetail() {
     return id;
   };
 
-  // Nút xoá dùng CHUNG rbac.canDeleteTask với API, tránh cảnh nút hiện mà bấm vào bị 403
-  // (hoặc ngược lại: người tạo task có quyền xoá nhưng không thấy nút).
-  const canDelete = Boolean(task && currentUser && rbac.canDeleteTask(
-    {
-      user_id:       currentUser.user_id,
-      employee_code: currentUser.employee_code ?? '',
-      role:          currentUser.role as UserRole,
-      department_id: currentUser.department_id,
-      team_id:       '',
-    },
-    task,
-  ));
+  // Quyền trên giao diện dùng CHUNG rbac với API, tránh cảnh nút hiện mà bấm vào bị 403
+  // (hoặc ngược lại: người tạo task có quyền nhưng không thấy nút).
+  const rbacCtx = currentUser ? {
+    user_id:       currentUser.user_id,
+    employee_code: currentUser.employee_code ?? '',
+    role:          currentUser.role as UserRole,
+    department_id: currentUser.department_id,
+    team_id:       '',
+  } : null;
+
+  const canDelete = Boolean(task && rbacCtx && rbac.canDeleteTask(rbacCtx, task));
+  const canEditCollaborators = Boolean(task && rbacCtx && rbac.canManageCollaborators(rbacCtx, task));
 
   // Người cùng thực hiện — lưu dạng JSON [{user_id, role}] trong cột collaborator_ids
   const collaboratorIds: string[] = (() => {
@@ -617,28 +617,32 @@ export default function TaskDetail() {
                             border: '1.5px solid var(--border-light)', color: 'var(--text-body)',
                           }}>
                             {resolveName(id)}
-                            <button
-                              onClick={() => toggleCollaborator(id, true)}
-                              disabled={savingCollab}
-                              title="Bỏ khỏi công việc"
-                              style={{ background: 'none', border: 'none', cursor: savingCollab ? 'default' : 'pointer', color: 'var(--text-muted)', padding: 0, fontSize: 14, lineHeight: 1, display: 'flex' }}
-                            >×</button>
+                            {canEditCollaborators && (
+                              <button
+                                onClick={() => toggleCollaborator(id, true)}
+                                disabled={savingCollab}
+                                title="Bỏ khỏi công việc"
+                                style={{ background: 'none', border: 'none', cursor: savingCollab ? 'default' : 'pointer', color: 'var(--text-muted)', padding: 0, fontSize: 14, lineHeight: 1, display: 'flex' }}
+                              >×</button>
+                            )}
                           </span>
                         ))}
                         {collaboratorIds.length === 0 && (
                           <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>— Chưa có —</span>
                         )}
-                        <button
-                          onClick={() => setCollabOpen(o => !o)}
-                          style={{
-                            padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700,
-                            border: '1.5px dashed var(--primary)', background: 'transparent',
-                            color: 'var(--primary)', cursor: 'pointer',
-                          }}
-                        >{collabOpen ? 'Đóng' : '+ Thêm'}</button>
+                        {canEditCollaborators && (
+                          <button
+                            onClick={() => setCollabOpen(o => !o)}
+                            style={{
+                              padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                              border: '1.5px dashed var(--primary)', background: 'transparent',
+                              color: 'var(--primary)', cursor: 'pointer',
+                            }}
+                          >{collabOpen ? 'Đóng' : '+ Thêm'}</button>
+                        )}
                       </div>
 
-                      {collabOpen && (
+                      {collabOpen && canEditCollaborators && (
                         <div style={{
                           marginTop: 6, border: '1.5px solid var(--border-light)', borderRadius: 8,
                           background: 'var(--bg-page)', maxHeight: 180, overflowY: 'auto', padding: 4,
