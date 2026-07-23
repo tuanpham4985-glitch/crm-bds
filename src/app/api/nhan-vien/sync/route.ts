@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { syncEmployeesFromHrFile, syncManagerFromHrFile } from '@/lib/data-access';
 import { syncNhanVienToPostgres } from '@/lib/sync/nhan-vien-to-pg';
+import { syncTmUsersFromNhanVien } from '@/lib/task-management/sync-users';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { invalidate } from '@/lib/mem-cache';
 
@@ -33,11 +34,19 @@ export async function POST() {
       });
     }
 
-    // 4. Xoá cache đọc để danh sách hiện ngay, không phải chờ TTL 60s
+    // 4. NHAN_VIEN → TM_Users, để nhân viên mới giao việc được ngay.
+    // Gộp vào đây thay vì để một nút "Đồng bộ NV" riêng: cùng một nguồn dữ liệu,
+    // tách ra chỉ khiến người dùng phải nhớ bấm hai chỗ.
+    const taskUsers = await syncTmUsersFromNhanVien().catch(e => {
+      console.error('[nhan-vien/sync] TM_Users sync failed:', e instanceof Error ? e.message : e);
+      return null;
+    });
+
+    // 5. Xoá cache đọc để danh sách hiện ngay, không phải chờ TTL 60s
     revalidateTag('nv', {});
     invalidate('gs:nv');
 
-    return NextResponse.json({ success: true, data: { ...result, manager, postgres } });
+    return NextResponse.json({ success: true, data: { ...result, manager, postgres, taskUsers } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Lỗi kết nối đồng bộ';
     console.error('NhanVien Sync POST error:', message);

@@ -3734,6 +3734,8 @@ export async function syncManagerFromHrFile(): Promise<{
 
   let updated = 0, skipped = 0;
   const errors: string[] = [];
+  // Gom thay đổi rồi ghi 1 lượt ở cuối, thay vì save() từng dòng
+  const pending: { rowNumber: number; value: string; label: string }[] = [];
 
   for (const row of nvRows) {
     const v = row.toObject();
@@ -3761,13 +3763,35 @@ export async function syncManagerFromHrFile(): Promise<{
     const currentQL = str(v['ql_truc_tiep']);
     if (currentQL === qlFromHr) { skipped++; continue; } // đã đúng rồi
 
-    try {
-      row.set('ql_truc_tiep', qlFromHr);
-      await row.save();
-      console.log(`[syncManager] [by-${matchBy}] ${id} "${hoTen}" → "${qlFromHr}"`);
-      updated++;
-    } catch (e: any) {
-      errors.push(`${id || hoTen}: ${e?.message || String(e)}`);
+    pending.push({ rowNumber: row.rowNumber, value: qlFromHr, label: `[by-${matchBy}] ${id} "${hoTen}"` });
+  }
+
+  // Ghi theo LÔ: loadCells 1 vùng → saveUpdatedCells 1 lần.
+  // Trước đây gọi row.save() cho từng dòng, lần chạy đầu là ~88 request ghi →
+  // vượt quota 60 request/phút của Sheets (lỗi 429).
+  if (pending.length > 0) {
+    const colIdx = nvSheet.headerValues.indexOf('ql_truc_tiep');
+    if (colIdx === -1) {
+      errors.push('Sheet NHAN_VIEN không có cột "ql_truc_tiep"');
+    } else {
+      const minRow = Math.min(...pending.map(p => p.rowNumber)) - 1; // rowNumber 1-based → cell 0-based
+      const maxRow = Math.max(...pending.map(p => p.rowNumber)) - 1;
+      try {
+        await nvSheet.loadCells({
+          startRowIndex: minRow,
+          endRowIndex: maxRow + 1,
+          startColumnIndex: colIdx,
+          endColumnIndex: colIdx + 1,
+        });
+        for (const p of pending) {
+          nvSheet.getCell(p.rowNumber - 1, colIdx).value = p.value;
+          console.log(`[syncManager] ${p.label} → "${p.value}"`);
+        }
+        await nvSheet.saveUpdatedCells();
+        updated = pending.length;
+      } catch (e: any) {
+        errors.push(`Ghi cột ql_truc_tiep thất bại: ${e?.message || String(e)}`);
+      }
     }
   }
 

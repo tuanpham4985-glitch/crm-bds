@@ -30,8 +30,13 @@ export async function syncNhanVienToPostgres(): Promise<SyncHrmResult> {
   let synced = 0;
   let errors = 0;
 
-  for (const nv of rows) {
-    if (!nv.id_nhan_vien) continue;
+  // Upsert theo lô song song — tuần tự ~93 dòng tốn quá nhiều thời gian
+  // khi cả chuỗi đồng bộ phải gói gọn trong maxDuration 60s.
+  const CONCURRENCY = 10;
+  const valid = rows.filter(nv => nv.id_nhan_vien);
+
+  for (let i = 0; i < valid.length; i += CONCURRENCY) {
+    await Promise.all(valid.slice(i, i + CONCURRENCY).map(async nv => {
     try {
       await prisma.nhanVien.upsert({
         where: { id_nhan_vien: nv.id_nhan_vien },
@@ -76,6 +81,7 @@ export async function syncNhanVienToPostgres(): Promise<SyncHrmResult> {
     } catch {
       errors++;
     }
+    }));
   }
 
   // ── Dọn bản sao thừa ────────────────────────────────────

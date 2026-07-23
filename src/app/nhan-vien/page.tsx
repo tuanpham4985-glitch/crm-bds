@@ -190,6 +190,10 @@ export default function NhanVienPage() {
         if (removed > 0) {
           lines.push(`- Dọn bản sao không còn trong file nguồn: ${removed} (mã ${result.data.postgres.removed_ids.join(', ')})`);
         }
+        const tu = result.data?.taskUsers;
+        if (tu) {
+          lines.push(`- Danh sách giao việc: thêm ${tu.created}, cập nhật ${tu.updated}, ngừng hoạt động ${tu.deactivated}`);
+        }
         alert(lines.join('\n'));
         fetchAll(true);
       } else {
