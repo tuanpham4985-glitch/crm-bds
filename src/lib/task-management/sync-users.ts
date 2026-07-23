@@ -104,9 +104,18 @@ export function mapRoleFromPosition(vai_tro: string, employee_type: string): Use
 
 const INACTIVE_KEYWORDS = ['nghỉ việc', 'nghi viec', 'off', 'inactive', 'thôi việc', 'thoi viec'];
 
+/**
+ * is_active trong TM_Users nghĩa là "người này thực sự dùng được app".
+ *
+ * Trạng thái TRỐNG bị coi là KHÔNG hoạt động: /api/auth chỉ cho đăng nhập với
+ * "đang làm" / "chính thức" / "thử việc", nên dòng trống chắc chắn không vào được app.
+ * Đây cũng là dấu hiệu của dòng cũ bị bỏ lại khi nhân sự được cấp mã mới
+ * (vd. Lê Ngọc Hưng: mã 0077 cũ trống trơn, mã 0089 mới mới là dòng thật) —
+ * để active thì họ hiện hai lần trong danh sách giao việc.
+ */
 function isActiveFromTrangThai(trang_thai: string): boolean {
   const tt = (trang_thai || '').toLowerCase().trim();
-  if (!tt) return true; // Không có trạng thái → coi như còn làm
+  if (!tt) return false;
   return !INACTIVE_KEYWORDS.some(s => tt.includes(s));
 }
 
