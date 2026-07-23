@@ -131,12 +131,37 @@ export function getNhanVien(): Promise<NhanVien[]> {
   });
 }
 
-export function findNhanVienByEmail(email: string): Promise<NhanVien | null> {
+/**
+ * Tra cứu nhân viên theo email — dùng cho ĐĂNG NHẬP.
+ *
+ * PostgreSQL chỉ là bản sao, được cron /api/cron/sync-sheets nạp lại mỗi ngày
+ * 01:00 UTC; Google Sheets mới là nguồn sự thật. Nhân viên vừa thêm vào sheet
+ * chưa kịp có trong PG → PG trả về null (KHÔNG ném lỗi) → withPgFallback không
+ * kích hoạt → người đó không đăng nhập được cho tới lần cron kế tiếp.
+ *
+ * Vì vậy ở đây coi "không tìm thấy" cũng là lý do phải hỏi lại Google Sheets.
+ */
+export async function findNhanVienByEmail(email: string): Promise<NhanVien | null> {
   if (!isPostgresEnabled('hrm')) return GS.findNhanVienByEmail(email);
-  return withPgFallback('hrm', 'findNhanVienByEmail',
+
+  const fromPg = await withPgFallback('hrm', 'findNhanVienByEmail',
     () => getEmployeeRepository().findByEmail(email),
     () => GS.findNhanVienByEmail(email),
   );
+  if (fromPg) return fromPg;
+
+  // PG chạy bình thường nhưng không có người này → có thể là nhân viên mới.
+  const fromSheet = await GS.findNhanVienByEmail(email).catch(e => {
+    console.error('[hrm:findNhanVienByEmail] GS fallback lỗi:', e instanceof Error ? e.message : e);
+    return null;
+  });
+  if (fromSheet) {
+    console.warn(
+      `[hrm:findNhanVienByEmail] "${email}" có trong NHAN_VIEN nhưng chưa có trong PostgreSQL — ` +
+      'dùng dữ liệu từ Google Sheets. Chạy /api/cron/sync-sheets để nạp lại bản sao.',
+    );
+  }
+  return fromSheet;
 }
 
 export function addNhanVien(data: NhanVien): Promise<void> {

@@ -5,7 +5,11 @@
 //   /api/auth/diagnose?email=nhanvien@example.com
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getNhanVien } from '@/lib/google-sheets';
+// findNhanVienByEmail: ĐÚNG hàm mà POST /api/auth gọi (đi qua facade → PostgreSQL)
+import { findNhanVienByEmail } from '@/lib/data-access';
+// GS.*: nguồn sự thật, để đối chiếu khi bản sao PG bị lệch
+import { getNhanVien as gsGetNhanVien } from '@/lib/google-sheets';
+import { isPostgresEnabled } from '@/lib/db/feature-flags';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -48,27 +52,35 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const all = await getNhanVien();
-    const nv  = all.find(x => (x.email || '').trim().toLowerCase() === email);
+    // 1. Đường đi THẬT của đăng nhập
+    const nv = await findNhanVienByEmail(email);
+
+    // 2. Nguồn sự thật, để phát hiện bản sao PostgreSQL bị lệch
+    const gsAll = await gsGetNhanVien().catch(() => []);
+    const gsNv  = gsAll.find(x => (x.email || '').trim().toLowerCase() === email);
 
     const env = {
       GOOGLE_SHEET_ID: maskId(process.env.GOOGLE_SHEET_ID || ''),
-      TM_GOOGLE_SHEET_ID: maskId(process.env.TM_GOOGLE_SHEET_ID || ''),
-      tong_so_nhan_vien_doc_duoc: all.length,
+      PG_ENABLED_MODULES: process.env.PG_ENABLED_MODULES || '(trống → tất cả dùng Google Sheets)',
+      hrm_dang_doc_tu: isPostgresEnabled('hrm') ? 'PostgreSQL (bản sao, cron nạp mỗi ngày)' : 'Google Sheets',
+      so_nhan_vien_trong_sheet: gsAll.length,
     };
 
     if (!nv) {
-      // Gợi ý các email gần giống để phát hiện gõ nhầm / sai sheet
       const prefix = email.split('@')[0].slice(0, 5);
-      const goi_y = all
+      const goi_y = gsAll
         .filter(x => (x.email || '').toLowerCase().includes(prefix))
         .map(x => ({ id_nhan_vien: x.id_nhan_vien, email: x.email, ho_ten: x.ho_ten }));
 
       return NextResponse.json({
         success: true,
-        ket_luan: 'KHÔNG TÌM THẤY EMAIL — production đang đọc sheet không chứa nhân viên này.',
+        ket_luan: gsNv
+          ? 'LỆCH DỮ LIỆU — có trong Google Sheets nhưng đường đăng nhập không thấy. '
+            + 'Chạy /api/cron/sync-sheets để nạp lại PostgreSQL.'
+          : 'KHÔNG TÌM THẤY EMAIL ở cả hai nguồn — kiểm tra lại GOOGLE_SHEET_ID của production.',
         env,
         email_can_tim: email,
+        co_trong_google_sheets: Boolean(gsNv),
         email_gan_giong: goi_y,
       });
     }
@@ -101,6 +113,14 @@ export async function GET(req: NextRequest) {
         co_mat_khau_rieng: coMatKhauRieng,      // true = dùng cột mat_khau, false = dùng 123456
         do_dai_mat_khau: (nv.mat_khau || '123456').length,
         email_co_ky_tu_la: nv.email !== nv.email.trim().toLowerCase(),
+        co_trong_google_sheets: Boolean(gsNv),
+        // Bản sao PG lệch so với sheet ở các trường ảnh hưởng đăng nhập?
+        pg_lech_so_voi_sheet: gsNv
+          ? {
+              trang_thai: (gsNv.trang_thai || '') !== (nv.trang_thai || ''),
+              mat_khau:   (gsNv.mat_khau || '') !== (nv.mat_khau || ''),
+            }
+          : null,
       },
     });
   } catch (e: unknown) {
