@@ -11,7 +11,8 @@ import ChecklistPanel from './ChecklistPanel';
 import SubtaskList from './SubtaskList';
 import CommentSection from './CommentSection';
 import ActivityTimeline from './ActivityTimeline';
-import type { TaskStatus, TaskPriority } from '@/lib/task-management/types';
+import type { TaskStatus, TaskPriority, UserRole } from '@/lib/task-management/types';
+import { rbac } from '@/lib/task-management/rbac/rbac';
 
 const TRANSITIONS: Partial<Record<TaskStatus, TaskStatus[]>> = {
   todo:       ['inprogress'],
@@ -304,6 +305,19 @@ export default function TaskDetail() {
     return id;
   };
 
+  // Nút xoá dùng CHUNG rbac.canDeleteTask với API, tránh cảnh nút hiện mà bấm vào bị 403
+  // (hoặc ngược lại: người tạo task có quyền xoá nhưng không thấy nút).
+  const canDelete = Boolean(task && currentUser && rbac.canDeleteTask(
+    {
+      user_id:       currentUser.user_id,
+      employee_code: currentUser.employee_code ?? '',
+      role:          currentUser.role as UserRole,
+      department_id: currentUser.department_id,
+      team_id:       '',
+    },
+    task,
+  ));
+
   // Người cùng thực hiện — lưu dạng JSON [{user_id, role}] trong cột collaborator_ids
   const collaboratorIds: string[] = (() => {
     try {
@@ -395,7 +409,7 @@ export default function TaskDetail() {
             />
           )}
           <div style={{ flex: 1 }} />
-          {task && (currentUser?.role === 'director' || (task.status === 'todo' && task.owner_id === currentUser?.user_id)) && (
+          {task && canDelete && (
             <button
               onClick={handleDelete}
               title="Xóa công việc"

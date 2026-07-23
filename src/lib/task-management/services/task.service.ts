@@ -350,10 +350,12 @@ export class TaskService {
   async deleteTask(ctx: RbacContext, taskId: string): Promise<void> {
     const task = await this.requireTask(taskId);
 
-    if (task.status !== 'todo') {
-      rbac.assert(ctx, PERMISSIONS.TASK_DELETE_ANY);
-    } else {
-      rbac.assert(ctx, PERMISSIONS.TASK_DELETE_DRAFT);
+    if (!rbac.canDeleteTask(ctx, task)) {
+      throw new UnauthorizedError(
+        task.status === 'todo'
+          ? 'Chỉ người tạo, người thực hiện hoặc quản lý cùng phòng ban mới xoá được công việc này'
+          : 'Chỉ Ban giám đốc mới xoá được công việc đã bắt đầu',
+      );
     }
 
     await this.uow.tasks.softDelete(taskId);

@@ -127,6 +127,9 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionCode[]> = {
     PERMISSIONS.TASK_READ_DEPT,
     PERMISSIONS.TASK_UPDATE_OWN,
     PERMISSIONS.TASK_UPDATE_DEPT,
+    // Nhân viên xoá được task nháp của mình, nên team leader cũng phải xoá
+    // được task nháp của mình / của nhóm — thiếu quyền này là lỗ hổng cũ.
+    PERMISSIONS.TASK_DELETE_DRAFT,
     PERMISSIONS.TASK_SET_PRIORITY,
     PERMISSIONS.TASK_EXTEND_DUE_3DAYS,
     PERMISSIONS.TASK_APPROVE_L1,
@@ -216,6 +219,26 @@ export class RbacService {
     if (ctx.role === 'manager' && task.department_id === ctx.department_id) return true;
     if (ctx.role === 'team_leader' && task.department_id === ctx.department_id) return true;
     return false;
+  }
+
+  /**
+   * Can user DELETE this task?
+   *
+   * Nguồn sự thật DUY NHẤT cho cả API lẫn nút thùng rác trên giao diện —
+   * hai bên lệch nhau thì hoặc nút biến mất oan, hoặc bấm vào lại bị 403.
+   *
+   * - Task đã rời trạng thái "Chờ làm" → chỉ ai có TASK_DELETE_ANY (director).
+   * - Task còn "Chờ làm" → phải có TASK_DELETE_DRAFT **và** thực sự liên quan
+   *   tới task: người tạo, người thực hiện chính, hoặc quản lý cùng phòng ban.
+   *   (Trước đây chỉ kiểm tra quyền, nên mọi nhân viên xoá được task nháp của
+   *   bất kỳ ai.)
+   */
+  canDeleteTask(
+    ctx: RbacContext,
+    task: Pick<TmTask, 'status' | 'owner_id' | 'department_id' | 'created_by'>,
+  ): boolean {
+    if (task.status !== 'todo') return this.can(ctx.role, PERMISSIONS.TASK_DELETE_ANY);
+    return this.can(ctx.role, PERMISSIONS.TASK_DELETE_DRAFT) && this.canUpdateTask(ctx, task);
   }
 
   /** Can user APPROVE this task at the required level? */
