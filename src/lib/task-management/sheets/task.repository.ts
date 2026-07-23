@@ -69,6 +69,18 @@ export class TaskSheetsRepository
       rows = filterByFieldIn(rows, 'priority', priorities);
     }
     if (filters.owner_id)      rows = filterByField(rows, 'owner_id', filters.owner_id);
+    if (filters.participant_id) {
+      const me = filters.participant_id;
+      rows = rows.filter(r => {
+        if (r.owner_id === me) return true;
+        try {
+          const collabs: CollaboratorEntry[] = JSON.parse(r.collaborator_ids || '[]');
+          return collabs.some(c => c.user_id === me);
+        } catch {
+          return false;
+        }
+      });
+    }
     if (filters.department_id) rows = filterByField(rows, 'department_id', filters.department_id);
     if (filters.project_id)    rows = filterByField(rows, 'project_id', filters.project_id);
 

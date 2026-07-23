@@ -293,6 +293,11 @@ export interface TaskFilters {
   status?: TaskStatus | TaskStatus[];
   priority?: TaskPriority | TaskPriority[];
   owner_id?: string;
+  /**
+   * Khớp người CHỊU TRÁCH NHIỆM CHÍNH **hoặc** người cùng thực hiện (collaborator).
+   * Dùng để nhân viên thấy được cả task mình chỉ tham gia, không chỉ task mình đứng tên.
+   */
+  participant_id?: string;
   department_id?: string;
   project_id?: string;
   due_before?: string;      // YYYY-MM-DD

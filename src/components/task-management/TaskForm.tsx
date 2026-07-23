@@ -73,7 +73,6 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     priority:                'medium'  as TaskPriority,
     status:                  'todo'    as TaskStatus,
     due_date:                '',
-    owner_id:                '',
     department_id:           initialDepartmentId ?? '',
     requester_department_id: '',
     project_id:              initialProjectId    ?? '',
@@ -81,6 +80,9 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     email_reminder:          false,
   });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  // Người thực hiện — nhiều người. Phần tử [0] là người CHỊU TRÁCH NHIỆM CHÍNH (owner_id),
+  // các phần tử còn lại được lưu thành collaborators.
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
@@ -112,9 +114,19 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
-  function setOwner(userId: string) {
-    setForm(f => ({ ...f, owner_id: userId }));
+  function toggleAssignee(userId: string) {
+    setAssigneeIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId],
+    );
   }
+
+  /** Đưa một người đã chọn lên làm người chịu trách nhiệm chính */
+  function makeMainAssignee(userId: string) {
+    setAssigneeIds(prev => [userId, ...prev.filter(id => id !== userId)]);
+  }
+
+  const deptUsers = users.filter(u => !form.department_id || u.department_id === form.department_id);
+  const userById  = new Map(users.map(u => [u.user_id, u]));
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -136,7 +148,13 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
       if (form.objective)                body.objective                = form.objective;
       if (form.description)              body.description              = form.description;
       if (form.due_date)                 body.due_date                 = form.due_date;
-      if (form.owner_id)                 body.owner_id                 = form.owner_id;
+      // Người đầu tiên chịu trách nhiệm chính, những người còn lại là cùng thực hiện
+      if (assigneeIds.length) {
+        body.owner_id = assigneeIds[0];
+        if (assigneeIds.length > 1) {
+          body.collaborators = assigneeIds.slice(1).map(id => ({ user_id: id, role: 'contributor' }));
+        }
+      }
       if (form.department_id)            body.department_id            = form.department_id;
       if (form.requester_department_id)  body.requester_department_id  = form.requester_department_id;
       if (form.project_id)               body.project_id               = form.project_id;
@@ -248,7 +266,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
               <label style={LABEL}>Phòng ban thực hiện <span style={{ color: '#dc2626' }}>*</span></label>
               <select
                 value={form.department_id}
-                onChange={e => { set('department_id', e.target.value); set('owner_id', ''); }}
+                onChange={e => { set('department_id', e.target.value); setAssigneeIds([]); }}
                 style={FIELD}
               >
                 <option value="">— Chọn phòng ban —</option>
@@ -272,25 +290,102 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
             </div>
           </div>
 
-          {/* Người thực hiện — lọc theo phòng ban đã chọn */}
+          {/* Người thực hiện — chọn nhiều người, lọc theo phòng ban đã chọn */}
           <div style={{ marginBottom: 12 }}>
-            <label style={LABEL}>Người thực hiện</label>
-            <select
-              value={form.owner_id}
-              onChange={e => setOwner(e.target.value)}
-              style={FIELD}
-              disabled={!form.department_id}
-            >
-              <option value="">— {form.department_id ? 'Chưa phân công' : 'Chọn phòng ban trước'} —</option>
-              {users
-                .filter(u => !form.department_id || u.department_id === form.department_id)
-                .map(u => (
-                  <option key={u.user_id} value={u.user_id}>
-                    {u.full_name}{u.position ? ` (${u.position})` : ''}
-                  </option>
-                ))
-              }
-            </select>
+            <label style={LABEL}>
+              Người thực hiện
+              {assigneeIds.length > 0 && (
+                <span style={{ marginLeft: 6, color: 'var(--primary)', textTransform: 'none', letterSpacing: 0 }}>
+                  — đã chọn {assigneeIds.length} người
+                </span>
+              )}
+            </label>
+
+            {/* Danh sách đã chọn — người đầu tiên chịu trách nhiệm chính */}
+            {assigneeIds.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {assigneeIds.map((id, i) => {
+                  const u = userById.get(id);
+                  const isMain = i === 0;
+                  return (
+                    <span key={id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '4px 8px 4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      border: `1.5px solid ${isMain ? 'var(--primary)' : 'var(--border-light)'}`,
+                      background: isMain ? 'var(--primary)' : 'transparent',
+                      color: isMain ? '#fff' : 'var(--text-body)',
+                    }}>
+                      {isMain && <span title="Chịu trách nhiệm chính">★</span>}
+                      {u?.full_name ?? id}
+                      {!isMain && (
+                        <button
+                          type="button"
+                          onClick={() => makeMainAssignee(id)}
+                          title="Đặt làm người chịu trách nhiệm chính"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, fontSize: 13, lineHeight: 1 }}
+                        >☆</button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleAssignee(id)}
+                        title="Bỏ chọn"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: isMain ? '#fff' : 'var(--text-muted)', padding: 0, fontSize: 14, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                      >×</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Danh sách nhân sự của phòng ban */}
+            {!form.department_id ? (
+              <div style={{ ...FIELD, display: 'flex', alignItems: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                — Chọn phòng ban trước —
+              </div>
+            ) : (
+              <div style={{
+                border: '1.5px solid var(--border-light)', borderRadius: 8,
+                background: 'var(--bg-page)', maxHeight: 168, overflowY: 'auto', padding: 4,
+              }}>
+                {deptUsers.length === 0 && (
+                  <div style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text-muted)' }}>
+                    Phòng ban này chưa có nhân sự
+                  </div>
+                )}
+                {deptUsers.map(u => {
+                  const checked = assigneeIds.includes(u.user_id);
+                  return (
+                    <label
+                      key={u.user_id}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+                        padding: '6px 8px', borderRadius: 6, fontSize: 13,
+                        color: 'var(--text-body)',
+                        background: checked ? 'var(--primary-light)' : 'transparent',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleAssignee(u.user_id)}
+                        style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer', flexShrink: 0 }}
+                      />
+                      <span>
+                        {u.full_name}
+                        {u.position && <span style={{ color: 'var(--text-muted)' }}> ({u.position})</span>}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {assigneeIds.length > 1 && (
+              <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                ★ {userById.get(assigneeIds[0])?.full_name ?? assigneeIds[0]} chịu trách nhiệm chính,
+                {' '}{assigneeIds.length - 1} người còn lại cùng thực hiện. Bấm ☆ để đổi người chịu trách nhiệm chính.
+              </p>
+            )}
           </div>
 
           {/* Dự án */}

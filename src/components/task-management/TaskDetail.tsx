@@ -304,6 +304,18 @@ export default function TaskDetail() {
     return id;
   };
 
+  // Người cùng thực hiện — lưu dạng JSON [{user_id, role}] trong cột collaborator_ids
+  const collaboratorIds: string[] = (() => {
+    try {
+      const raw = JSON.parse(task?.collaborator_ids || '[]');
+      return Array.isArray(raw)
+        ? raw.map((c: { user_id?: string }) => c?.user_id).filter((id): id is string => Boolean(id))
+        : [];
+    } catch {
+      return [];
+    }
+  })();
+
   const userOptions    = users.map(u => ({ value: u.user_id, label: u.full_name + (u.position ? ` (${u.position})` : '') }));
   const deptOptions    = departments.map(d => ({ value: d.dept_id, label: d.name }));
   const projectOptions = projects.map(p => ({ value: p.project_id, label: p.name }));
@@ -558,6 +570,23 @@ export default function TaskDetail() {
                         onSave={v => save('owner_id', v)}
                       />
                     </div>
+
+                    {/* Cùng thực hiện — read only, đặt khi tạo công việc */}
+                    {collaboratorIds.length > 0 && (
+                      <div>
+                        <span style={LABEL}>Cùng thực hiện ({collaboratorIds.length})</span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '4px 6px' }}>
+                          {collaboratorIds.map(id => (
+                            <span key={id} style={{
+                              padding: '2px 9px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                              border: '1.5px solid var(--border-light)', color: 'var(--text-body)',
+                            }}>
+                              {resolveName(id)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Phòng ban thực hiện — editable select */}
                     <div>

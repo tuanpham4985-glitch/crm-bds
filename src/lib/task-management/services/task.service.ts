@@ -55,6 +55,14 @@ export class TaskService {
       await this.notif.notifyTaskAssigned(task, ctx.user_id);
     }
 
+    // Báo cho những người cùng thực hiện — bỏ qua chính người tạo và người chịu TN chính
+    const collaborators = (normalizedInput.collaborators ?? [])
+      .map(c => c.user_id)
+      .filter(id => id && id !== ctx.user_id && id !== task.owner_id);
+    for (const userId of [...new Set(collaborators)]) {
+      await this.notif.notifyCollaboratorAdded(task, userId).catch(() => {});
+    }
+
     // Invalidate relevant caches
     tmCache.invalidatePrefix(`tasks:dept:${task.department_id}`);
     tmCache.invalidate(CK.overdueList());
@@ -405,8 +413,8 @@ export class TaskService {
       return { ...filters, department_id: filters.department_id ?? ctx.department_id };
     if (ctx.role === 'team_leader')
       return { ...filters, department_id: filters.department_id ?? ctx.department_id };
-    // staff: only own tasks
-    return { ...filters, owner_id: ctx.user_id };
+    // staff: chỉ task của mình — kể cả task chỉ tham gia cùng, không đứng tên chính
+    return { ...filters, participant_id: ctx.user_id };
   }
 
   private approvalLevelForRole(role: string): 1 | 2 | 3 | null {
