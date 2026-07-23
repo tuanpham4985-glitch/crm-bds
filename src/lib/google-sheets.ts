@@ -3887,7 +3887,28 @@ export async function syncEmployeesFromHrFile(): Promise<{
       .replace(/đ/g, 'd').trim().replace(/\s+/g, '');
 
   // 1. Mở file HR
-  const hrDoc = await getDocBySheetId(hrSheetId);
+  // Google trả 403 khi file chưa được chia sẻ với service account — thông báo thô
+  // ("The caller does not have permission") không nói được phải làm gì, nên dịch lại.
+  let hrDoc;
+  try {
+    hrDoc = await getDocBySheetId(hrSheetId);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('403') || msg.toLowerCase().includes('permission')) {
+      throw new Error(
+        'Chưa có quyền đọc file nhân sự. Mở file VIC_DATA NHÂN SỰ trên Google Sheets → ' +
+        `Chia sẻ → thêm ${process.env.GOOGLE_CLIENT_EMAIL} với quyền "Người xem" (Viewer). ` +
+        `(File ID: ${hrSheetId})`,
+      );
+    }
+    if (msg.includes('404')) {
+      throw new Error(
+        `Không tìm thấy file nhân sự với ID "${hrSheetId}". Kiểm tra lại biến NHAN_SU_SHEET_ID.`,
+      );
+    }
+    throw err;
+  }
+
   const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
   if (!hrSheet) {
     throw new Error(
