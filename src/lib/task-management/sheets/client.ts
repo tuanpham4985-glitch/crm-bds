@@ -294,6 +294,48 @@ export async function batchUpdateCells(
   return changed;
 }
 
+/**
+ * Gộp các dòng trùng: giữ dòng xuất hiện đầu tiên của mỗi `keyOf`, xoá các dòng sau.
+ *
+ * Chỉ xoá khi `identityOf` của dòng trùng GIỐNG HỆT dòng được giữ — nhờ vậy mọi
+ * tham chiếu (vd. task trỏ tới user_id) vẫn còn nguyên sau khi xoá.
+ */
+export async function dedupeRows(
+  sheetName: SheetName,
+  keyOf: (row: RawRow) => string,
+  identityOf: (row: RawRow) => string,
+): Promise<{ removed: number; skipped: number }> {
+  const sheet = await getSheet(sheetName);
+  const rows  = await sheet.getRows();
+
+  const firstByKey = new Map<string, RawRow>();
+  const doomed: { rowNumber: number }[] = [];
+  let skipped = 0;
+
+  for (const r of rows) {
+    const obj = r.toObject() as RawRow;
+    const key = keyOf(obj);
+    if (!key) continue;
+
+    const kept = firstByKey.get(key);
+    if (!kept) { firstByKey.set(key, obj); continue; }
+
+    if (identityOf(kept) === identityOf(obj)) doomed.push({ rowNumber: r.rowNumber });
+    else skipped++; // Trùng key nhưng khác danh tính → để nguyên cho người dùng tự xử lý
+  }
+
+  if (doomed.length === 0) return { removed: 0, skipped };
+
+  const toDelete = rows
+    .filter(r => doomed.some(d => d.rowNumber === r.rowNumber))
+    .sort((a, b) => b.rowNumber - a.rowNumber); // xoá từ dưới lên
+
+  for (const r of toDelete) await r.delete();
+
+  invalidateRowCache(sheetName);
+  return { removed: toDelete.length, skipped };
+}
+
 /** Soft delete: set deleted_at timestamp */
 export async function softDeleteRow(
   sheetName: SheetName,

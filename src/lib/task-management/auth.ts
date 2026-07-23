@@ -21,9 +21,20 @@ export function invalidateTmUserCache(): void {
   _emailCache.clear();
 }
 
+/**
+ * Chuẩn hoá mã nhân viên để so khớp.
+ * NHAN_VIEN lưu "0009" nhưng Google Sheets tự cắt số 0 đầu khi ghi xuống
+ * TM_Users thành "9" → so khớp chuỗi thô luôn trượt.
+ */
+function codeKey(value: string): string {
+  const v = (value || '').trim();
+  if (!v) return '';
+  return /^\d+$/.test(v) ? String(Number(v)) : v.toLowerCase();
+}
+
 async function lookupTmUser(email: string, employeeCode: string): Promise<{ user_id: string; department_id: string } | null> {
   const normalizedEmail = (email || '').trim().toLowerCase();
-  const normalizedEmployeeCode = (employeeCode || '').trim();
+  const normalizedEmployeeCode = codeKey(employeeCode);
   const cacheKey = tmUserCacheKey(normalizedEmail, normalizedEmployeeCode);
   const hit = _emailCache.get(cacheKey);
   if (hit && Date.now() - hit.ts < EMAIL_CACHE_TTL) return hit.data;
@@ -32,7 +43,7 @@ async function lookupTmUser(email: string, employeeCode: string): Promise<{ user
     const rows = await loadRows(SHEET_NAMES.USERS);
     const r = rows.find((r: Record<string, unknown>) => {
       const rowEmail = String(r.email ?? '').trim().toLowerCase();
-      const rowEmployeeCode = String(r.employee_code ?? '').trim();
+      const rowEmployeeCode = codeKey(String(r.employee_code ?? '') || String(r.user_id ?? ''));
       return (normalizedEmail && rowEmail === normalizedEmail)
         || (normalizedEmployeeCode && rowEmployeeCode === normalizedEmployeeCode);
     });
@@ -115,8 +126,10 @@ async function provisionTmUser(session: CrmSession, role: UserRole, departmentId
   const now = new Date().toISOString();
   try {
     await appendRow(SHEET_NAMES.USERS, {
-      user_id:        session.id_nhan_vien,
-      employee_code:  session.id_nhan_vien,
+      // Ghi mã đã chuẩn hoá: Sheets vốn cắt số 0 đầu, ghi thẳng "0009" sẽ thành "9"
+      // và lần tra cứu sau lại trượt → sinh dòng trùng.
+      user_id:        codeKey(session.id_nhan_vien),
+      employee_code:  codeKey(session.id_nhan_vien),
       email:          (session.email || '').trim().toLowerCase(),
       full_name:      session.ho_ten || '',
       phone:          '',
@@ -226,14 +239,16 @@ export async function getCurrentTmUser(): Promise<TmUser | null> {
 
     if (!tmRecord) {
       await provisionTmUser(session, role, departmentId);
-      _emailCache.set(tmUserCacheKey(session.email, session.id_nhan_vien), {
-        data: { user_id: session.id_nhan_vien, department_id: departmentId },
+      _emailCache.set(tmUserCacheKey(session.email, codeKey(session.id_nhan_vien)), {
+        data: { user_id: codeKey(session.id_nhan_vien), department_id: departmentId },
         ts: Date.now(),
       });
     }
 
     return {
-      user_id:       tmRecord?.user_id || session.id_nhan_vien,
+      user_id:       tmRecord?.user_id || codeKey(session.id_nhan_vien),
+      // Giữ nguyên mã thô: rbac.userIds() gộp cả user_id lẫn employee_code nên
+      // task cũ tham chiếu "0002" vẫn khớp, còn dạng chuẩn hoá đã nằm ở user_id.
       employee_code: session.id_nhan_vien,
       full_name:     session.ho_ten,
       email:         session.email,

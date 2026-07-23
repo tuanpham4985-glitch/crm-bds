@@ -11,7 +11,7 @@ import type { NhanVien } from '@/lib/types';
 import type { UserRole } from './types';
 import { SHEET_NAMES } from './types';
 import {
-  loadAllRows, appendRows, batchUpdateCells, withQuotaRetry, type RawRow,
+  loadAllRows, appendRows, batchUpdateCells, dedupeRows, withQuotaRetry, type RawRow,
 } from './sheets/client';
 import { invalidateTmUserCache } from './auth';
 
@@ -21,8 +21,23 @@ export interface SyncTmUsersResult {
   updated: number;
   deactivated: number;
   departments_created: number;
+  duplicates_removed: number;
+  skipped_resigned: number;
   skipped: number;
   details: { created: string[]; updated: string[]; deactivated: string[] };
+}
+
+/**
+ * Khoá so khớp mã nhân viên.
+ *
+ * NHAN_VIEN lưu id dạng "0009" nhưng Google Sheets tự đổi "0009" thành số 9
+ * khi ghi xuống TM_Users → so khớp chuỗi thô luôn trượt và tạo dòng trùng.
+ * Chuẩn hoá bằng cách bỏ số 0 ở đầu cho cả hai phía.
+ */
+function codeKey(value: string): string {
+  const v = (value || '').trim();
+  if (!v) return '';
+  return /^\d+$/.test(v) ? String(Number(v)) : v.toLowerCase();
 }
 
 // ─── Helpers dùng chung với auth.ts / sync-employees.ts ────
@@ -124,9 +139,22 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
   const now = new Date().toISOString();
   const result: SyncTmUsersResult = {
     total_nhan_vien: 0, created: 0, updated: 0, deactivated: 0,
-    departments_created: 0, skipped: 0,
+    departments_created: 0, duplicates_removed: 0, skipped_resigned: 0, skipped: 0,
     details: { created: [], updated: [], deactivated: [] },
   };
+
+  // ── 0. Dọn dòng trùng còn sót (do bản sync cũ so khớp "0009" vs "9" bị trượt).
+  // Chỉ xoá khi user_id giống hệt dòng được giữ → không thể làm hỏng tham chiếu task.
+  const dedupe = await withQuotaRetry(
+    () => dedupeRows(
+      SHEET_NAMES.USERS,
+      // `?? ` không đủ: ô trống trả về '' chứ không phải undefined
+      r => codeKey(String(r.employee_code ?? '') || String(r.user_id ?? '')),
+      r => String(r.user_id ?? '').trim(),
+    ),
+    'dedupe TM_Users',
+  );
+  result.duplicates_removed = dedupe.removed;
 
   const [nhanVien, tmUsers, tmDepts] = await withQuotaRetry(() => Promise.all([
     getNhanVien(),
@@ -170,11 +198,11 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
     return id;
   }
 
-  // ── 2. Index TM_Users hiện có theo employee_code và email
+  // ── 2. Index TM_Users hiện có — khớp mã theo dạng đã chuẩn hoá ("0009" ≡ "9")
   const byCode  = new Map<string, RawRow>();
   const byEmail = new Map<string, RawRow>();
   for (const u of tmUsers) {
-    const code  = String(u.employee_code ?? u.user_id ?? '').trim();
+    const code  = codeKey(String(u.employee_code ?? '') || String(u.user_id ?? ''));
     const email = String(u.email ?? '').trim().toLowerCase();
     if (code  && !byCode.has(code))   byCode.set(code, u);
     if (email && !byEmail.has(email)) byEmail.set(email, u);
@@ -182,10 +210,11 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
 
   const toCreate: RawRow[] = [];
   const toUpdate: { keyValue: string; data: Partial<RawRow> }[] = [];
-  const matchedCodes = new Set<string>();
 
   for (const nv of employees) {
-    const code   = nv.id_nhan_vien.trim();
+    // Ghi mã ở dạng đã chuẩn hoá để sheet chỉ tồn tại MỘT định dạng duy nhất,
+    // khớp với các dòng sẵn có (Sheets vốn đã cắt số 0 đầu của chúng).
+    const code   = codeKey(nv.id_nhan_vien);
     const email  = (nv.email || '').trim().toLowerCase();
     const active = isActiveFromTrangThai(nv.trang_thai || '');
     const role   = mapRoleFromPosition(nv.vai_tro || '', nv.employee_type || '');
@@ -193,6 +222,12 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
     const existing = byCode.get(code) || (email ? byEmail.get(email) : undefined);
 
     if (!existing) {
+      // Đã nghỉ việc và chưa từng có trong TM_Users → không tạo mới,
+      // tránh làm sheet đầy người không còn làm.
+      if (!active) {
+        result.skipped_resigned++;
+        continue;
+      }
       toCreate.push({
         user_id:        code,
         employee_code:  code,
@@ -216,7 +251,6 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
 
     const userId = String(existing.user_id ?? '').trim();
     if (!userId) continue;
-    matchedCodes.add(code);
 
     const storedPosition = String(existing.position ?? '').trim();
     const newPosition    = (nv.employee_type || '').trim();
@@ -229,7 +263,7 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
     if (email && String(existing.email ?? '').trim().toLowerCase() !== email) {
       patch.email = email;
     }
-    if (!String(existing.employee_code ?? '').trim()) {
+    if (codeKey(String(existing.employee_code ?? '')) !== code) {
       patch.employee_code = code;
     }
     if ((nv.so_dien_thoai || '').trim() && String(existing.phone ?? '').trim() !== (nv.so_dien_thoai || '').trim()) {
@@ -279,7 +313,7 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
     );
   }
 
-  if (result.created || result.updated || result.departments_created) {
+  if (result.created || result.updated || result.departments_created || result.duplicates_removed) {
     invalidateTmUserCache();
   }
 
@@ -288,6 +322,8 @@ export async function syncTmUsersFromNhanVien(): Promise<SyncTmUsersResult> {
     created: result.created,
     updated: result.updated,
     deactivated: result.deactivated,
+    duplicates_removed: result.duplicates_removed,
+    skipped_resigned: result.skipped_resigned,
     depts: result.departments_created,
   });
 

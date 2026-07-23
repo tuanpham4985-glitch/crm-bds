@@ -18,10 +18,16 @@ export async function POST(_req: NextRequest) {
     }
 
     const result = await syncTmUsersFromNhanVien();
-    return okResponse({
-      ...result,
-      message: `Đồng bộ xong: thêm mới ${result.created}, cập nhật ${result.updated}, ngừng hoạt động ${result.deactivated}`,
-    });
+
+    const parts = [
+      `thêm mới ${result.created}`,
+      `cập nhật ${result.updated}`,
+      `ngừng hoạt động ${result.deactivated}`,
+    ];
+    if (result.duplicates_removed) parts.push(`xoá ${result.duplicates_removed} dòng trùng`);
+    if (result.skipped_resigned)   parts.push(`bỏ qua ${result.skipped_resigned} người đã nghỉ việc`);
+
+    return okResponse({ ...result, message: `Đồng bộ xong: ${parts.join(', ')}` });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[TM Sync Users]', msg);
