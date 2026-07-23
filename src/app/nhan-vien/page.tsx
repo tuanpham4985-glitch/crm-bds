@@ -182,6 +182,10 @@ export default function NhanVienPage() {
           `- Thêm mới: ${result.data?.inserted || 0} nhân viên`,
           `- Cập nhật: ${result.data?.updated || 0} nhân viên`,
         ];
+        const mgr = result.data?.manager?.updated || 0;
+        if (mgr > 0) {
+          lines.push(`- Quản lý trực tiếp: ${mgr} nhân viên`);
+        }
         const removed = result.data?.postgres?.removed || 0;
         if (removed > 0) {
           lines.push(`- Dọn bản sao không còn trong file nguồn: ${removed} (mã ${result.data.postgres.removed_ids.join(', ')})`);
