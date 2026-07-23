@@ -13,7 +13,17 @@ import { getNhanVien } from '@/lib/google-sheets'; // ĐỌC THẲNG SHEET, khô
 export interface SyncHrmResult {
   synced: number;
   errors: number;
+  /** Bản sao thừa đã dọn: có trong PostgreSQL nhưng không còn trong sheet */
+  removed: number;
+  removed_ids: string[];
 }
+
+/**
+ * Mã do file HR cấp luôn là 4 chữ số ("0089").
+ * Nhân viên tạo bằng nút "Thêm nhân viên" trong app có mã dạng "NV<timestamp>"
+ * và CHỈ tồn tại trong PostgreSQL — không được đụng tới khi dọn.
+ */
+const HR_ID_PATTERN = /^\d{4}$/;
 
 export async function syncNhanVienToPostgres(): Promise<SyncHrmResult> {
   const rows = await getNhanVien();
@@ -68,5 +78,31 @@ export async function syncNhanVienToPostgres(): Promise<SyncHrmResult> {
     }
   }
 
-  return { synced, errors };
+  // ── Dọn bản sao thừa ────────────────────────────────────
+  // Upsert không bao giờ xoá, nên nhân viên bị gỡ khỏi sheet vẫn nằm lại trong
+  // PostgreSQL mãi mãi — mà mọi màn hình nhân sự đọc từ đó, nên họ vẫn hiện trên app.
+  const removed_ids: string[] = [];
+
+  // Chốt chặn: sheet đọc lỗi / rỗng thì TUYỆT ĐỐI không xoá gì.
+  const sheetIds = new Set(rows.map(r => (r.id_nhan_vien || '').trim()).filter(Boolean));
+  if (sheetIds.size > 0) {
+    const pgRows = await prisma.nhanVien.findMany({ select: { id_nhan_vien: true } });
+    const orphans = pgRows
+      .map(r => r.id_nhan_vien)
+      .filter(id => HR_ID_PATTERN.test(id) && !sheetIds.has(id));
+
+    for (const id of orphans) {
+      try {
+        await prisma.nhanVien.delete({ where: { id_nhan_vien: id } });
+        removed_ids.push(id);
+      } catch {
+        errors++;
+      }
+    }
+    if (removed_ids.length) {
+      console.log('[sync:nhan-vien→pg] đã dọn bản sao không còn trong sheet:', removed_ids.join(', '));
+    }
+  }
+
+  return { synced, errors, removed: removed_ids.length, removed_ids };
 }

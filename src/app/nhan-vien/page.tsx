@@ -177,7 +177,16 @@ export default function NhanVienPage() {
       const res = await fetch('/api/nhan-vien/sync', { method: 'POST' });
       const result = await safeJson(res);
       if (result.success) {
-        alert(`Đồng bộ thành công!\n- Thêm mới: ${result.data?.inserted || 0} nhân viên\n- Cập nhật: ${result.data?.updated || 0} nhân viên`);
+        const lines = [
+          'Đồng bộ thành công!',
+          `- Thêm mới: ${result.data?.inserted || 0} nhân viên`,
+          `- Cập nhật: ${result.data?.updated || 0} nhân viên`,
+        ];
+        const removed = result.data?.postgres?.removed || 0;
+        if (removed > 0) {
+          lines.push(`- Dọn bản sao không còn trong file nguồn: ${removed} (mã ${result.data.postgres.removed_ids.join(', ')})`);
+        }
+        alert(lines.join('\n'));
         fetchAll(true);
       } else {
         alert('Đồng bộ thất bại: ' + (result.error || 'Lỗi không xác định'));

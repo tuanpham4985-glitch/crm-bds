@@ -15,7 +15,7 @@ export async function POST() {
     // 2. Sheet NHAN_VIEN → PostgreSQL.
     // Bắt buộc khi PG_ENABLED_MODULES bật 'hrm': mọi màn hình nhân sự đọc từ PG,
     // nên nếu chỉ ghi vào sheet thì giao diện vẫn hiện số cũ cho tới lần cron sau.
-    let postgres: { synced: number; errors: number } | null = null;
+    let postgres: Awaited<ReturnType<typeof syncNhanVienToPostgres>> | null = null;
     if (isPostgresEnabled('hrm')) {
       postgres = await syncNhanVienToPostgres().catch(e => {
         console.error('[nhan-vien/sync] PostgreSQL sync failed:', e instanceof Error ? e.message : e);
