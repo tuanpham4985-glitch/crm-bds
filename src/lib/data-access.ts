@@ -403,7 +403,11 @@ export function addChamCongNgoai(
 ): Promise<ChamCongNgoai> {
   if (!isPostgresEnabled('attendance')) return GS.addChamCongNgoai(data);
   return withPgFallback('attendance', 'addChamCongNgoai',
-    () => getAttendanceOutsideRepository().create(data),
+    async () => {
+      const created = await getAttendanceOutsideRepository().create(data);
+      await mirrorChamCongNgoaiToSheet(created, 'addChamCongNgoai');
+      return created;
+    },
     () => GS.addChamCongNgoai(data),
   );
 }
@@ -418,7 +422,15 @@ export function updateChamCongNgoaiStatus(
   if (!isPostgresEnabled('attendance'))
     return GS.updateChamCongNgoaiStatus(id, status, approver, note, requiredQL);
   return withPgFallback('attendance', 'updateChamCongNgoaiStatus',
-    () => getAttendanceOutsideRepository().updateStatus(id, status, approver, note, requiredQL),
+    async () => {
+      const repo = getAttendanceOutsideRepository();
+      const ok = await repo.updateStatus(id, status, approver, note, requiredQL);
+      if (ok === true) {
+        const updated = await repo.findById(id);
+        if (updated) await mirrorChamCongNgoaiToSheet(updated, 'updateChamCongNgoaiStatus');
+      }
+      return ok;
+    },
     () => GS.updateChamCongNgoaiStatus(id, status, approver, note, requiredQL),
   );
 }
@@ -426,13 +438,39 @@ export function updateChamCongNgoaiStatus(
 export function deleteChamCongNgoai(id: string, employeeId: string): Promise<boolean> {
   if (!isPostgresEnabled('attendance')) return GS.deleteChamCongNgoai(id, employeeId);
   return withPgFallback('attendance', 'deleteChamCongNgoai',
-    () => getAttendanceOutsideRepository().delete(id, employeeId),
+    async () => {
+      const ok = await getAttendanceOutsideRepository().delete(id, employeeId);
+      if (ok) await mirrorDeleteChamCongNgoaiFromSheet(id, 'deleteChamCongNgoai');
+      return ok;
+    },
     () => GS.deleteChamCongNgoai(id, employeeId),
   );
 }
 
-// ── Payroll ───────────────────────────────────────────────────
+// Attendance mirror: khi PG bật, vẫn phản chiếu CHAM_CONG_NGOAI về Google Sheet.
+async function mirrorChamCongNgoaiToSheet(row: ChamCongNgoai, fn: string): Promise<void> {
+  try {
+    await GS.upsertChamCongNgoai(row);
+  } catch (e) {
+    console.error(
+      `[GS:attendance:${fn}] mirror failed:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
 
+async function mirrorDeleteChamCongNgoaiFromSheet(id: string, fn: string): Promise<void> {
+  try {
+    await GS.deleteChamCongNgoaiById(id);
+  } catch (e) {
+    console.error(
+      `[GS:attendance:${fn}] mirror delete failed:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
+
+// Payroll
 export function getBangLuong(): Promise<import('./types').BangLuong[]> {
   if (!isPostgresEnabled('payroll')) return GS.getBangLuong();
   return withPgFallback('payroll', 'getBangLuong',

@@ -14,6 +14,7 @@
     "db:sync": "tsx --env-file=.env.local scripts/sync-sheets-to-pg.ts",
     "db:verify": "tsx --env-file=.env.local scripts/verify-data-integrity.ts",
     "db:sync:tm": "tsx --env-file=.env.local scripts/sync-sheets-to-pg.ts --module=tm",
+    "db:sync:attendance-to-sheets": "tsx --env-file=.env.local scripts/sync-attendance-pg-to-sheets.ts",
     "sync_employee": "tsx --env-file=.env.local scripts/task-management/sync-employees.ts",
     "sync:employees": "tsx --env-file=.env.local scripts/task-management/sync-employees.ts",
     "db:push": "prisma db push"

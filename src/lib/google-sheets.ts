@@ -168,7 +168,7 @@ function num(val: unknown): number {
   const isPercent = raw.includes('%');
 
   // Handle scientific notation (e.g., "5E+9")
-  if (/[eE][+\-]?\d+/.test(raw)) {
+  if (/[eE][+-]?\d+/.test(raw)) {
     const n = Number(raw.replace('%', ''));
     const result = isNaN(n) ? 0 : n;
     return isPercent ? result / 100 : result;
@@ -176,7 +176,7 @@ function num(val: unknown): number {
   
   // Remove spaces, currency symbols, and any non-numeric/separator chars
   // Keep dots and commas
-  let cleaned = raw.replace(/[^\d.,\-]/g, '');
+  let cleaned = raw.replace(/[^\d.,-]/g, '');
   if (!cleaned) return 0;
 
   // Detect separator style:
@@ -230,7 +230,7 @@ function toMonthKey(dateStr: string): string {
   if (!dateStr) return '';
   
   // Thử parse định dạng DD/MM/YYYY (Việt Nam) trước
-  const parts = dateStr.split(/[\/\-]/);
+  const parts = dateStr.split(/[/-]/);
   if (parts.length === 3) {
     const p1 = parseInt(parts[0]);
     const p2 = parseInt(parts[1]);
@@ -3482,6 +3482,27 @@ const CCN_HEADERS = [
   'trang_thai', 'nguoi_duyet', 'ghi_chu_duyet', 'created_at',
 ] as const;
 
+function chamCongNgoaiToSheetRow(row: ChamCongNgoai): Record<(typeof CCN_HEADERS)[number], string> {
+  return {
+    id:               row.id,
+    id_nhan_vien:     row.id_nhan_vien,
+    ho_ten:           row.ho_ten || '',
+    ngay:             row.ngay,
+    gio_bat_dau:      row.gio_bat_dau,
+    gio_ket_thuc:     row.gio_ket_thuc,
+    du_an_khach_hang: row.du_an_khach_hang,
+    dia_diem:         row.dia_diem || '',
+    ghi_chu:          row.ghi_chu || '',
+    hinh_anh:         row.hinh_anh || '',
+    vi_tri_gps:       row.vi_tri_gps || '',
+    ql_truc_tiep:     row.ql_truc_tiep || '',
+    trang_thai:       row.trang_thai,
+    nguoi_duyet:      row.nguoi_duyet || '',
+    ghi_chu_duyet:    row.ghi_chu_duyet || '',
+    created_at:       row.created_at,
+  };
+}
+
 async function getOrCreateChamCongNgoaiSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
   let sheet = doc.sheetsByTitle[SHEETS.CHAM_CONG_NGOAI];
   if (!sheet) {
@@ -3545,26 +3566,27 @@ export async function addChamCongNgoai(payload: Omit<ChamCongNgoai, 'id' | 'crea
   const sheet = await getOrCreateChamCongNgoaiSheet(doc);
   const id = `CCN_${Date.now()}`;
   const created_at = new Date().toISOString();
-  await sheet.addRow({
-    id,
-    id_nhan_vien:     payload.id_nhan_vien,
-    ho_ten:           payload.ho_ten || '',
-    ngay:             payload.ngay,
-    gio_bat_dau:      payload.gio_bat_dau,
-    gio_ket_thuc:     payload.gio_ket_thuc,
-    du_an_khach_hang: payload.du_an_khach_hang,
-    dia_diem:         payload.dia_diem,
-    ghi_chu:          payload.ghi_chu || '',
-    hinh_anh:         payload.hinh_anh || '',
-    vi_tri_gps:       payload.vi_tri_gps || '',
-    ql_truc_tiep:     payload.ql_truc_tiep || '',
-    trang_thai:       'cho_duyet',
-    nguoi_duyet:      '',
-    ghi_chu_duyet:    '',
-    created_at,
-  });
+  await sheet.addRow(chamCongNgoaiToSheetRow({ ...payload, id, trang_thai: 'cho_duyet', created_at }));
   await addLog(doc, 'CREATE_CHAM_CONG_NGOAI', id, payload.id_nhan_vien, payload.ho_ten || '');
   return { ...payload, id, trang_thai: 'cho_duyet', created_at };
+}
+
+export async function upsertChamCongNgoai(row: ChamCongNgoai): Promise<void> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateChamCongNgoaiSheet(doc);
+  const rows = await sheet.getRows();
+  const existing = rows.find(r => str(r.toObject()['id']) === row.id);
+  const data = chamCongNgoaiToSheetRow(row);
+
+  if (!existing) {
+    await sheet.addRow(data);
+    return;
+  }
+
+  for (const header of CCN_HEADERS) {
+    existing.set(header, data[header]);
+  }
+  await existing.save();
 }
 
 export async function updateChamCongNgoaiStatus(
@@ -3604,6 +3626,17 @@ export async function deleteChamCongNgoai(id: string, idNhanVien: string): Promi
   if (str(v['trang_thai']) !== 'cho_duyet') throw new Error('Chỉ xóa được đơn đang chờ duyệt');
   await row.delete();
   await addLog(doc, 'DELETE_CHAM_CONG_NGOAI', id, idNhanVien, '');
+  return true;
+}
+
+export async function deleteChamCongNgoaiById(id: string): Promise<boolean> {
+  const doc = await getDoc();
+  const sheet = await getOrCreateChamCongNgoaiSheet(doc);
+  const rows = await sheet.getRows();
+  const row = rows.find(r => str(r.toObject()['id']) === id);
+  if (!row) return false;
+  await row.delete();
+  await addLog(doc, 'DELETE_CHAM_CONG_NGOAI_BY_ID', id, '', '');
   return true;
 }
 
