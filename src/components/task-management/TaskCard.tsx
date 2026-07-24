@@ -3,6 +3,7 @@ import { Calendar, User, AlertTriangle } from 'lucide-react';
 import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
 import type { TmTask } from '@/lib/task-management/types';
 import { useTmStore } from '@/stores/tmStore';
+import { useTmUsers } from '@/hooks/tm/useTasks';
 
 interface Props {
   task: TmTask;
@@ -26,8 +27,13 @@ function getCollabCount(collabJson: string) {
 
 export default function TaskCard({ task, onClick, compact = false }: Props) {
   const openSidebar = useTmStore(s => s.openSidebar);
+  const { userMap } = useTmUsers();
   const overdue = isOverdue(task);
   const collabs = getCollabCount(task.collaborator_ids);
+  const ownerName = task.owner_id ? (userMap[task.owner_id] || task.owner_id) : '';
+  const assigneeLabel = ownerName
+    ? `${ownerName}${collabs > 0 ? ` +${collabs}` : ''}`
+    : (collabs > 0 ? `+${collabs}` : '—');
 
   const handleClick = () => {
     if (onClick) onClick();
@@ -101,9 +107,22 @@ export default function TaskCard({ task, onClick, compact = false }: Props) {
           {formatDate(task.due_date)}
         </span>
 
-        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--text-muted)' }}>
+        <span
+          title={assigneeLabel}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 3,
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            minWidth: 0,
+            maxWidth: compact ? 132 : 180,
+          }}
+        >
           <User size={11} />
-          {collabs > 0 ? `+${collabs}` : '—'}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {assigneeLabel}
+          </span>
         </span>
       </div>
     </div>
