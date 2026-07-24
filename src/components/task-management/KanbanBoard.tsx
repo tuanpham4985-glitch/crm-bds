@@ -28,6 +28,8 @@ const COL_COLORS: Record<TaskStatus, string> = {
   closed:      '#f8fafc',
 };
 
+const COLUMN_TASKS_MAX_HEIGHT = 'calc(100vh - 300px)';
+
 export default function KanbanBoard() {
   const { tasks, isLoading } = useTasks();
   const { setOptimisticStatus, clearOptimisticStatus, optimisticStatus } = useTmStore();
@@ -63,11 +65,11 @@ export default function KanbanBoard() {
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 14, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 12, alignItems: 'flex-start' }}>
         {COLUMNS.map(status => {
           const col = byStatus[status] ?? [];
           return (
-            <div key={status} style={{ width: COL_WIDTHS[status], flexShrink: 0 }}>
+            <div key={status} style={{ width: COL_WIDTHS[status], flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
               {/* Column header */}
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -86,7 +88,14 @@ export default function KanbanBoard() {
                     ref={provided.innerRef}
                     {...provided.droppableProps}
                     style={{
-                      minHeight: 120, padding: '6px 6px 6px',
+                      minHeight: 120,
+                      maxHeight: COLUMN_TASKS_MAX_HEIGHT,
+                      overflowY: 'auto',
+                      overflowX: 'hidden',
+                      overscrollBehavior: 'contain',
+                      scrollbarGutter: 'stable',
+                      scrollbarWidth: 'thin',
+                      padding: '6px 6px 10px',
                       background: snapshot.isDraggingOver ? '#e0e7ff' : COL_COLORS[status],
                       border: '1px solid var(--border-light)',
                       borderTop: 'none', borderRadius: '0 0 8px 8px',
