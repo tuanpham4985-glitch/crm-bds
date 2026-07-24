@@ -1183,7 +1183,8 @@ function TongHopTables({ tonghop, isMobile }: { tonghop: NonNullable<DashboardDa
     const pieData = items.map(x => ({ name: x.loai, value: x.doanh_so }));
 
     const donutSize  = isMobile ? 120 : 160;
-    const innerR     = isMobile ? 30  : 42;
+    // Vành dày hơn một chút để nhãn % nằm lọt bên trong
+    const innerR     = isMobile ? 26  : 36;
     const outerR     = isMobile ? 54  : 74;
 
     return (
@@ -1205,15 +1206,27 @@ function TongHopTables({ tonghop, isMobile }: { tonghop: NonNullable<DashboardDa
                   strokeWidth={2} stroke="#fff"
                   labelLine={false}
                   label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
-                    if (percent < 0.06) return null;
+                    // Lát cắt chiếm gần trọn vòng: đặt nhãn vào TÂM donut.
+                    // Nếu vẫn đặt trên vành, chuỗi "100.0%" rộng hơn bề dày vành
+                    // nên tràn ra ngoài và bị cắt mất chữ số đầu.
+                    if (percent > 0.985) {
+                      return (
+                        <text x={cx} y={cy} fill="var(--text-title)" textAnchor="middle" dominantBaseline="central"
+                              fontSize={isMobile ? 13 : 15} fontWeight={800} style={{ pointerEvents: 'none' }}>
+                          {`${Math.round(percent * 100)}%`}
+                        </text>
+                      );
+                    }
+                    // Lát quá mỏng thì không đủ chỗ đặt chữ
+                    if (percent < 0.08) return null;
                     const RADIAN = Math.PI / 180;
                     const r = innerRadius + (outerRadius - innerRadius) * 0.5;
                     const x = cx + r * Math.cos(-midAngle * RADIAN);
                     const y = cy + r * Math.sin(-midAngle * RADIAN);
                     return (
                       <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central"
-                            fontSize={isMobile ? 10 : 11} fontWeight={700} style={{ pointerEvents: 'none' }}>
-                        {`${(percent * 100).toFixed(1)}%`}
+                            fontSize={isMobile ? 9 : 10} fontWeight={700} style={{ pointerEvents: 'none' }}>
+                        {`${(percent * 100).toFixed(0)}%`}
                       </text>
                     );
                   }}
