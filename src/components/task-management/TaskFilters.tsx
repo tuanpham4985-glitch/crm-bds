@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Search, X, Filter, LayoutList, Columns, ChevronDown } from 'lucide-react';
+import { Search, X, Filter, LayoutList, Columns, ChevronDown, UserCheck } from 'lucide-react';
 import { useTmStore } from '@/stores/tmStore';
+import { useCurrentTmUser, useTmUsers } from '@/hooks/tm/useTasks';
 import type { TaskStatus, TaskPriority } from '@/lib/task-management/types';
 
 const STATUSES: { value: TaskStatus; label: string }[] = [
@@ -22,9 +23,12 @@ const PRIORITIES: { value: TaskPriority; label: string }[] = [
 
 export default function TaskFilters() {
   const { filters, setFilter, resetFilters, setView } = useTmStore();
+  const currentUser = useCurrentTmUser();
+  const { users } = useTmUsers();
   const [searchInput, setSearchInput] = useState(filters.search);
   const [showMore, setShowMore] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMyTasks = Boolean(currentUser?.user_id && filters.participant_id === currentUser.user_id);
 
   // Debounced search
   useEffect(() => {
@@ -33,8 +37,12 @@ export default function TaskFilters() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchInput, setFilter]);
 
+  useEffect(() => {
+    setSearchInput(filters.search);
+  }, [filters.search]);
+
   const activeCount = [
-    filters.status.length, filters.priority.length,
+    filters.status.length, filters.priority.length, filters.owner_id, filters.participant_id,
     filters.overdue_only, filters.department_id, filters.project_id,
   ].filter(Boolean).length;
 
@@ -46,11 +54,26 @@ export default function TaskFilters() {
     setFilter('priority', filters.priority.includes(v) ? filters.priority.filter(p => p !== v) : [...filters.priority, v]);
   }
 
+  function toggleMyTasks() {
+    if (!currentUser?.user_id) return;
+    if (isMyTasks) {
+      setFilter('participant_id', '');
+      return;
+    }
+    setFilter('owner_id', '');
+    setFilter('participant_id', currentUser.user_id);
+  }
+
+  function changeOwnerFilter(ownerId: string) {
+    if (filters.participant_id) setFilter('participant_id', '');
+    setFilter('owner_id', ownerId);
+  }
+
   return (
     <div style={{ background: 'var(--bg-card)', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border-light)', marginBottom: 16 }}>
       {/* Row 1: Search + View toggle */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ position: 'relative', flex: 1 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 220 }}>
           <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
             value={searchInput}
@@ -84,6 +107,24 @@ export default function TaskFilters() {
             </button>
           ))}
         </div>
+
+        {/* My tasks quick filter */}
+        <button
+          onClick={toggleMyTasks}
+          disabled={!currentUser?.user_id}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
+            border: `1.5px solid ${isMyTasks ? 'var(--primary)' : 'var(--border-light)'}`,
+            borderRadius: 8, cursor: currentUser?.user_id ? 'pointer' : 'not-allowed',
+            fontSize: 12, fontWeight: 600,
+            background: isMyTasks ? 'var(--primary-light)' : 'transparent',
+            color: isMyTasks ? 'var(--primary)' : 'var(--text-muted)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <UserCheck size={14} />
+          Của tôi
+        </button>
 
         {/* More filters toggle */}
         <button onClick={() => setShowMore(s => !s)} style={{
@@ -142,6 +183,38 @@ export default function TaskFilters() {
                 </button>
               ))}
             </div>
+          </div>
+          {/* Owner */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Người thực hiện</div>
+            <select
+              value={filters.owner_id}
+              onChange={e => changeOwnerFilter(e.target.value)}
+              style={{
+                width: '100%',
+                maxWidth: 360,
+                height: 34,
+                padding: '0 10px',
+                borderRadius: 8,
+                border: '1.5px solid var(--border-light)',
+                background: 'var(--bg-page)',
+                color: 'var(--text-body)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            >
+              <option value="">Tất cả người thực hiện</option>
+              {currentUser && (
+                <option value={currentUser.user_id}>Của tôi — {currentUser.full_name}</option>
+              )}
+              {users
+                .filter(u => u.user_id !== currentUser?.user_id)
+                .map(u => (
+                  <option key={u.user_id} value={u.user_id}>
+                    {u.full_name}{u.position ? ` (${u.position})` : ''}
+                  </option>
+                ))}
+            </select>
           </div>
           {/* Overdue */}
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>

@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
       owner_id:      sp.get('owner_id')      || undefined,
       department_id: sp.get('department_id') || undefined,
       project_id:    sp.get('project_id')    || undefined,
+      participant_id: sp.get('participant_id') || undefined,
       due_before:    sp.get('due_before')    || undefined,
       due_after:     sp.get('due_after')     || undefined,
       search:        sp.get('search')        || undefined,

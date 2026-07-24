@@ -17,6 +17,7 @@ export interface TaskFilterState {
   department_id: string;
   project_id:    string;
   owner_id:      string;
+  participant_id: string;
   overdue_only:  boolean;
   due_before:    string;
   due_after:     string;
@@ -32,6 +33,7 @@ const defaultFilters: TaskFilterState = {
   department_id: '',
   project_id:    '',
   owner_id:      '',
+  participant_id: '',
   overdue_only:  false,
   due_before:    '',
   due_after:     '',
@@ -176,6 +178,7 @@ export const selectApiFilters = (state: TmState): Partial<Record<string, string>
   if (f.department_id) params.department_id = f.department_id;
   if (f.project_id)    params.project_id    = f.project_id;
   if (f.owner_id)      params.owner_id      = f.owner_id;
+  if (f.participant_id) params.participant_id = f.participant_id;
   if (f.overdue_only)  params.overdue_only  = 'true';
   if (f.due_before)    params.due_before    = f.due_before;
   if (f.due_after)     params.due_after     = f.due_after;
