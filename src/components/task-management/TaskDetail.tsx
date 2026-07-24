@@ -14,6 +14,7 @@ import CommentSection from './CommentSection';
 import ActivityTimeline from './ActivityTimeline';
 import type { TaskStatus, TaskPriority, UserRole } from '@/lib/task-management/types';
 import { rbac } from '@/lib/task-management/rbac/rbac';
+import { getOverdueDays, isOpenTaskOverdue } from '@/lib/task-management/date-utils';
 
 const TRANSITIONS: Partial<Record<TaskStatus, TaskStatus[]>> = {
   todo:       ['inprogress'],
@@ -351,8 +352,8 @@ export default function TaskDetail() {
   const deptOptions    = departments.map(d => ({ value: d.dept_id, label: d.name }));
   const projectOptions = projects.map(p => ({ value: p.project_id, label: p.name }));
 
-  const isOverdue = task && !['completed', 'closed'].includes(task.status)
-    && task.due_date && task.due_date < new Date().toISOString().slice(0, 10);
+  const isOverdue = Boolean(task && isOpenTaskOverdue(task.due_date, task.status));
+  const overdueDays = task && isOverdue ? getOverdueDays(task.due_date) : 0;
 
   const currentTags: string[] = (task?.tags || '').split(',').filter(Boolean);
 
@@ -463,7 +464,18 @@ export default function TaskDetail() {
             <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{task.task_code}</span>
-                {isOverdue && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>⚠ Quá hạn</span>}
+                {isOverdue && (
+                  <span style={{
+                    padding: '2px 7px',
+                    borderRadius: 999,
+                    background: '#fee2e2',
+                    color: '#b91c1c',
+                    fontSize: 11,
+                    fontWeight: 800,
+                  }}>
+                    ⚠ Quá hạn{overdueDays > 0 ? ` ${overdueDays} ngày` : ''}
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-title)', lineHeight: 1.4, marginBottom: 6 }}>
                 <InlineText value={task.title} placeholder="Tiêu đề công việc" onSave={v => save('title', v)} />

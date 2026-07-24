@@ -1,20 +1,31 @@
 'use client';
 import useSWR from 'swr';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Loader2, TrendingUp, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { Loader2, TrendingUp, CheckCircle2, AlertTriangle, Clock, CalendarDays } from 'lucide-react';
+import { useTmStore } from '@/stores/tmStore';
+import { getOverdueDays } from '@/lib/task-management/date-utils';
+import type { TmTask } from '@/lib/task-management/types';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json()).then(d => d.data);
 
 const STATUS_COLORS = ['#6366f1', '#3b82f6', '#f59e0b', '#a855f7', '#22c55e', '#94a3b8'];
 const PRIORITY_COLORS = ['#ef4444', '#f97316', '#6366f1', '#22c55e'];
 
-function StatCard({ label, value, sub, icon, color }: {
-  label: string; value: number | string; sub?: string; icon: React.ReactNode; color: string;
+function formatDate(d: string) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+}
+
+function StatCard({ label, value, sub, icon, color, highlight = false }: {
+  label: string; value: number | string; sub?: string; icon: React.ReactNode; color: string; highlight?: boolean;
 }) {
   return (
     <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 10,
+      background: highlight ? '#fff7ed' : 'var(--bg-card)',
+      border: `1px solid ${highlight ? '#fca5a5' : 'var(--border-light)'}`,
+      borderRadius: 10,
       padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12,
+      boxShadow: highlight ? 'inset 0 0 0 1px rgba(239,68,68,0.08)' : 'none',
     }}>
       <div style={{ width: 40, height: 40, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', color, flexShrink: 0 }}>
         {icon}
@@ -30,6 +41,7 @@ function StatCard({ label, value, sub, icon, color }: {
 
 export default function KpiDashboard() {
   const { data: kpi, isLoading, error } = useSWR('/api/tm/kpi/company', fetcher, { revalidateOnFocus: false });
+  const openSidebar = useTmStore(s => s.openSidebar);
 
   if (isLoading) return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 60, gap: 12, color: 'var(--text-muted)' }}>
@@ -55,6 +67,8 @@ export default function KpiDashboard() {
   const completionRate = (kpi.total_tasks ?? 0) > 0
     ? Math.round(((kpi.completed_tasks ?? 0) / kpi.total_tasks) * 100)
     : 0;
+  const overdueCount = Number(kpi.overdue_tasks ?? kpi.total_overdue_tasks ?? 0);
+  const topOverdue = (kpi.top_overdue ?? []) as TmTask[];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -62,9 +76,58 @@ export default function KpiDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <StatCard label="Tổng công việc" value={kpi.total_tasks ?? kpi.total_active_tasks ?? 0} icon={<TrendingUp size={18} />} color="#6366f1" />
         <StatCard label="Hoàn thành" value={kpi.completed_tasks ?? 0} sub={`${completionRate}% tỷ lệ`} icon={<CheckCircle2 size={18} />} color="#16a34a" />
-        <StatCard label="Quá hạn" value={kpi.overdue_tasks ?? kpi.total_overdue_tasks ?? 0} icon={<AlertTriangle size={18} />} color="#dc2626" />
+        <StatCard label="Quá hạn" value={overdueCount} sub={overdueCount > 0 ? 'Cần xử lý ngay' : undefined} icon={<AlertTriangle size={18} />} color="#dc2626" highlight={overdueCount > 0} />
         <StatCard label="Chờ duyệt" value={kpi.pending_approval ?? 0} icon={<Clock size={18} />} color="#f59e0b" />
       </div>
+
+      {topOverdue.length > 0 && (
+        <div style={{
+          background: '#fff7ed',
+          border: '1.5px solid #fca5a5',
+          borderRadius: 10,
+          padding: 14,
+          boxShadow: 'inset 0 0 0 1px rgba(239,68,68,0.08)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: '#b91c1c' }}>
+            <AlertTriangle size={16} />
+            <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800 }}>Task quá hạn cần chú ý</h4>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 8 }}>
+            {topOverdue.slice(0, 6).map(task => {
+              const days = getOverdueDays(task.due_date);
+              return (
+                <button
+                  key={task.task_id}
+                  onClick={() => openSidebar(task.task_id)}
+                  style={{
+                    textAlign: 'left',
+                    border: '1px solid #fecaca',
+                    borderLeft: '4px solid #ef4444',
+                    borderRadius: 8,
+                    background: '#fff',
+                    padding: '9px 10px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 5,
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>{task.task_code}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {task.title}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: '#b91c1c' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <CalendarDays size={11} /> {formatDate(task.due_date)}
+                    </span>
+                    <span>Quá hạn {days} ngày</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Charts row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

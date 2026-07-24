@@ -18,6 +18,7 @@ import { SHEET_NAMES } from '../types';
 import type {
   ITaskRepository, ISubtaskRepository, IChecklistRepository,
 } from '../repository.interface';
+import { isOpenTaskOverdue, todayYmd } from '../date-utils';
 
 // ─── TASK REPOSITORY ──────────────────────────────────────
 
@@ -91,11 +92,8 @@ export class TaskSheetsRepository
       rows = rows.filter(r => r.due_date && r.due_date >= filters.due_after!);
     }
     if (filters.overdue_only) {
-      const today = new Date().toISOString().slice(0, 10);
-      rows = rows.filter(r =>
-        r.due_date < today &&
-        !['completed', 'closed'].includes(r.status),
-      );
+      const today = todayYmd();
+      rows = rows.filter(r => isOpenTaskOverdue(r.due_date, r.status, today));
     }
     if (filters.tags?.length) {
       rows = rows.filter(r =>
@@ -133,13 +131,12 @@ export class TaskSheetsRepository
   }
 
   async findOverdue(): Promise<TmTask[]> {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayYmd();
     const rows  = await loadRows(this.sheetName);
     return rows
       .filter(r =>
         !r.deleted_at &&
-        r.due_date < today &&
-        !['completed', 'closed'].includes(r.status),
+        isOpenTaskOverdue(r.due_date, r.status, today),
       )
       .map(r => this.deserialize(r));
   }

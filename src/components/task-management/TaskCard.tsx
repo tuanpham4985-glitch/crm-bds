@@ -4,6 +4,7 @@ import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
 import type { TmTask } from '@/lib/task-management/types';
 import { useTmStore } from '@/stores/tmStore';
 import { useTmUsers } from '@/hooks/tm/useTasks';
+import { getOverdueDays, isOpenTaskOverdue } from '@/lib/task-management/date-utils';
 
 interface Props {
   task: TmTask;
@@ -17,8 +18,7 @@ function formatDate(d: string) {
 }
 
 function isOverdue(task: TmTask) {
-  if (['completed', 'closed'].includes(task.status)) return false;
-  return task.due_date && task.due_date < new Date().toISOString().slice(0, 10);
+  return isOpenTaskOverdue(task.due_date, task.status);
 }
 
 function getCollabCount(collabJson: string) {
@@ -29,6 +29,7 @@ export default function TaskCard({ task, onClick, compact = false }: Props) {
   const openSidebar = useTmStore(s => s.openSidebar);
   const { userMap } = useTmUsers();
   const overdue = isOverdue(task);
+  const overdueDays = overdue ? getOverdueDays(task.due_date) : 0;
   const collabs = getCollabCount(task.collaborator_ids);
   const ownerName = task.owner_id ? (userMap[task.owner_id] || task.owner_id) : '';
   const assigneeLabel = ownerName
@@ -44,21 +45,26 @@ export default function TaskCard({ task, onClick, compact = false }: Props) {
     <div
       onClick={handleClick}
       style={{
-        background: 'var(--bg-card)',
-        border: `1.5px solid ${overdue ? '#fca5a5' : 'var(--border-light)'}`,
-        borderLeft: `4px solid ${task.priority === 'critical' ? '#ef4444' : task.priority === 'high' ? '#f97316' : task.priority === 'medium' ? '#6366f1' : '#22c55e'}`,
+        background: overdue ? '#fff7ed' : 'var(--bg-card)',
+        border: `1.5px solid ${overdue ? '#ef4444' : 'var(--border-light)'}`,
+        borderLeft: `4px solid ${overdue ? '#ef4444' : task.priority === 'critical' ? '#ef4444' : task.priority === 'high' ? '#f97316' : task.priority === 'medium' ? '#6366f1' : '#22c55e'}`,
         borderRadius: 10,
         padding: compact ? '10px 12px' : '14px 16px',
         cursor: 'pointer',
         transition: 'all 0.15s ease',
         marginBottom: 8,
+        boxShadow: overdue ? 'inset 0 0 0 1px rgba(239, 68, 68, 0.08)' : 'none',
       }}
       onMouseEnter={e => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+        (e.currentTarget as HTMLDivElement).style.boxShadow = overdue
+          ? '0 4px 12px rgba(239,68,68,0.18), inset 0 0 0 1px rgba(239,68,68,0.08)'
+          : '0 4px 12px rgba(0,0,0,0.08)';
         (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-1px)';
       }}
       onMouseLeave={e => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
+        (e.currentTarget as HTMLDivElement).style.boxShadow = overdue
+          ? 'inset 0 0 0 1px rgba(239,68,68,0.08)'
+          : 'none';
         (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
       }}
     >
@@ -68,8 +74,19 @@ export default function TaskCard({ task, onClick, compact = false }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{task.task_code}</span>
             {overdue && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#dc2626', fontWeight: 600 }}>
-                <AlertTriangle size={11} /> Quá hạn
+              <span style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '2px 6px',
+                borderRadius: 999,
+                background: '#fee2e2',
+                color: '#b91c1c',
+                fontSize: 10,
+                fontWeight: 800,
+                whiteSpace: 'nowrap',
+              }}>
+                <AlertTriangle size={11} /> Quá hạn{overdueDays > 0 ? ` ${overdueDays} ngày` : ''}
               </span>
             )}
           </div>

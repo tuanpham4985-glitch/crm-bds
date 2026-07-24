@@ -8,6 +8,7 @@ import type {
 import type { ITaskManagementUoW } from '../repository.interface';
 import { rbac, PERMISSIONS } from '../rbac/rbac';
 import { CK, TTL, cached } from '../cache';
+import { isOpenTaskOverdue, todayYmd } from '../date-utils';
 
 export class KpiService {
   constructor(private uow: ITaskManagementUoW) {}
@@ -23,12 +24,12 @@ export class KpiService {
         this.uow.tasks.findMany({}, { page: 1, limit: 9999 }).then(r => r.data),
       ]);
 
-      const today       = new Date().toISOString().slice(0, 10);
+      const today       = todayYmd();
       const monthStart  = new Date().toISOString().slice(0, 7) + '-01';
 
       const activeTasks    = allTasks.filter(t => !['closed'].includes(t.status));
       const overdueTasks   = allTasks.filter(t =>
-        t.due_date < today && !['completed', 'closed'].includes(t.status),
+        isOpenTaskOverdue(t.due_date, t.status, today),
       );
       const completedMonth = allTasks.filter(t =>
         t.status === 'completed' && t.updated_at >= monthStart,
@@ -46,7 +47,7 @@ export class KpiService {
         // "hoàn thành" = completed + closed (cả hai đều là done)
         const dCompleted = dTasks.filter(t => ['completed', 'closed'].includes(t.status));
         const dOverdue   = dTasks.filter(t =>
-          t.due_date < today && !['completed', 'closed'].includes(t.status),
+          isOpenTaskOverdue(t.due_date, t.status, today),
         );
         const dOnTime    = dCompleted.filter(t => t.closed_at && t.closed_at <= t.due_date);
         const dOnTimeRate = dCompleted.length
@@ -84,7 +85,7 @@ export class KpiService {
         users.map(async user => {
           const uTasks    = allTasks.filter(t => t.owner_id === user.user_id);
           const uActive   = uTasks.filter(t => !['completed', 'closed'].includes(t.status));
-          const uOverdue  = uActive.filter(t => t.due_date < today);
+          const uOverdue  = uActive.filter(t => isOpenTaskOverdue(t.due_date, t.status, today));
           const uDoneMonth = uTasks.filter(t =>
             t.status === 'completed' && t.updated_at >= monthStart,
           );
@@ -124,7 +125,7 @@ export class KpiService {
       }
 
       const PRIORITY_LABELS: Record<string, string> = {
-        urgent: 'Khẩn', high: 'Cao', medium: 'Trung bình', low: 'Thấp',
+        critical: 'Khẩn cấp', urgent: 'Khẩn cấp', high: 'Cao', medium: 'Trung bình', low: 'Thấp',
       };
       const byPriority: Record<string, number> = {};
       for (const t of allTasks) {
@@ -168,11 +169,11 @@ export class KpiService {
       ]);
       if (!dept) throw new Error(`Department ${deptId} not found`);
 
-      const today      = new Date().toISOString().slice(0, 10);
+      const today      = todayYmd();
       const active     = tasks.filter(t => !['closed'].includes(t.status));
       const completed  = tasks.filter(t => t.status === 'completed');
       const overdue    = tasks.filter(t =>
-        t.due_date < today && !['completed', 'closed'].includes(t.status),
+        isOpenTaskOverdue(t.due_date, t.status, today),
       );
       const onTime     = completed.filter(t => t.closed_at && t.closed_at <= t.due_date);
       const kpiAchiev  = completed.filter(t => this.kpiAchieved(t));
@@ -205,12 +206,12 @@ export class KpiService {
     }
 
     const tasks = await this.uow.tasks.findByOwner(userId, { page: 1, limit: 9999 }).then(r => r.data);
-    const today      = new Date().toISOString().slice(0, 10);
+    const today      = todayYmd();
     const monthStart = new Date().toISOString().slice(0, 7) + '-01';
 
     const active        = tasks.filter(t => !['completed', 'closed'].includes(t.status));
     const completedMonth = tasks.filter(t => t.status === 'completed' && t.updated_at >= monthStart);
-    const overdue       = active.filter(t => t.due_date < today);
+    const overdue       = active.filter(t => isOpenTaskOverdue(t.due_date, t.status, today));
     const onTime        = completedMonth.filter(t => t.closed_at && t.closed_at <= t.due_date);
     const kpiAchieved   = completedMonth.filter(t => this.kpiAchieved(t));
     const avgProgress   = active.length
