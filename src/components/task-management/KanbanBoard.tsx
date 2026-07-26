@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { useTasks } from '@/hooks/tm/useTasks';
 import { apiUpdateTaskStatus } from '@/hooks/tm/useTasks';
@@ -46,9 +47,20 @@ function currentMonthKey(): string {
   return monthKey(new Date().toISOString());
 }
 
+function addMonths(key: string, amount: number): string {
+  const [year, month] = key.split('-').map(Number);
+  const date = new Date(year, month - 1 + amount, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function monthLabel(key: string): string {
   const [year, month] = key.split('-');
   return `Task T${Number(month)}/${year}`;
+}
+
+function followMonthLabel(key: string, currentKey: string): string {
+  const [year, month] = key.split('-');
+  return `T${Number(month)}/${year}${key === currentKey ? ' (hiện tại)' : ''}`;
 }
 
 function completedMonthKey(task: TmTask): string {
@@ -59,16 +71,25 @@ export default function KanbanBoard() {
   const { tasks, isLoading } = useTasks();
   const { setOptimisticStatus, clearOptimisticStatus, optimisticStatus } = useTmStore();
   const thisMonth = currentMonthKey();
+  const [followMonth, setFollowMonth] = useState(thisMonth);
 
   function effectiveStatus(task: TmTask): TaskStatus {
     return (optimisticStatus[task.task_id] ?? task.status) as TaskStatus;
   }
 
+  const followMonthOptions = Array.from(new Set([
+    thisMonth,
+    addMonths(thisMonth, 1),
+    ...tasks
+      .filter(t => t.status === 'completed')
+      .map(t => completedMonthKey(t)),
+  ])).sort((a, b) => b.localeCompare(a));
+
   const byStatus = COLUMNS.reduce((acc, s) => {
     acc[s] = tasks.filter(t => {
       const eff = effectiveStatus(t);
       if (s === 'completed' && eff === 'completed') {
-        return Boolean(optimisticStatus[t.task_id]) || completedMonthKey(t) === thisMonth;
+        return Boolean(optimisticStatus[t.task_id]) || completedMonthKey(t) === followMonth;
       }
       return eff === s;
     });
@@ -77,7 +98,7 @@ export default function KanbanBoard() {
 
   const archivedCompleted = tasks
     .filter(t => effectiveStatus(t) === 'completed')
-    .filter(t => !optimisticStatus[t.task_id] && completedMonthKey(t) !== thisMonth);
+    .filter(t => !optimisticStatus[t.task_id] && completedMonthKey(t) < followMonth);
 
   const archivedByMonth = archivedCompleted.reduce((acc, task) => {
     const key = completedMonthKey(task);
@@ -125,8 +146,35 @@ export default function KanbanBoard() {
   );
 
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
-      <div style={{ display: 'flex', gap: 14, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 12, alignItems: 'flex-start' }}>
+    <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
+          Tháng follow
+          <select
+            value={followMonth}
+            onChange={e => setFollowMonth(e.target.value)}
+            style={{
+              height: 32,
+              borderRadius: 8,
+              border: '1.5px solid var(--border-light)',
+              background: 'var(--bg-card)',
+              color: 'var(--text-body)',
+              padding: '0 10px',
+              fontSize: 13,
+              fontWeight: 600,
+              outline: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            {followMonthOptions.map(key => (
+              <option key={key} value={key}>{followMonthLabel(key, thisMonth)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div style={{ display: 'flex', gap: 14, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 12, alignItems: 'flex-start' }}>
         {columns.map(column => {
           const col = column.tasks;
           const status = column.kind === 'status' ? column.status : undefined;
@@ -198,7 +246,8 @@ export default function KanbanBoard() {
             </div>
           );
         })}
-      </div>
-    </DragDropContext>
+        </div>
+      </DragDropContext>
+    </>
   );
 }
