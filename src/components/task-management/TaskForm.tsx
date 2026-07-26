@@ -37,6 +37,13 @@ const LABEL: React.CSSProperties = {
 
 const ROW2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
 
+const DEFAULT_APPROVAL_LEVEL_BY_ROLE: Record<string, string> = {
+  director: '3',
+  manager: '2',
+  team_leader: '1',
+  staff: '0',
+};
+
 function CustomTagInput({ onAdd }: { onAdd: (tag: string) => void }) {
   const [value, setValue] = useState('');
   function add() {
@@ -98,6 +105,12 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
   const projects     = useTmProjects();
   const currentUser  = useCurrentTmUser();
   const userRole     = currentUser?.role ?? 'staff';
+
+  useEffect(() => {
+    const defaultLevel = DEFAULT_APPROVAL_LEVEL_BY_ROLE[userRole] ?? '0';
+    if (defaultLevel === '0') return;
+    setForm(f => f.approval_level === '0' ? { ...f, approval_level: defaultLevel } : f);
+  }, [userRole]);
 
   // Pre-fill department từ người tạo khi currentUser load xong
   useEffect(() => {

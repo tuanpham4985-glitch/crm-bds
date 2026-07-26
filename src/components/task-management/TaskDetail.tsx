@@ -90,6 +90,38 @@ const MAX_APPROVAL_LEVEL_BY_ROLE: Record<string, number> = {
   staff: 0,
 };
 
+function getApprovalLevel(task: { approval_level?: number | string | null }) {
+  return Number(task.approval_level ?? 0) || 0;
+}
+
+function requiresApproval(task: { approval_level?: number | string | null }) {
+  return getApprovalLevel(task) > 0;
+}
+
+function canRoleApproveLevel(role: string, level: number) {
+  return level > 0 && (MAX_APPROVAL_LEVEL_BY_ROLE[role] ?? 0) >= level;
+}
+
+function transitionLabel(task: { approval_level?: number | string | null }, next: TaskStatus) {
+  if (next === 'review' && requiresApproval(task)) return 'Gửi duyệt';
+  return STATUS_LABELS[next];
+}
+
+function getVisibleTransitions(task: { status: TaskStatus; approval_level?: number | string | null; approval_status?: string }) {
+  const base = (TRANSITIONS as Record<string, TaskStatus[]>)[task.status] ?? [];
+  if (!requiresApproval(task)) return base;
+
+  if (task.status === 'inprogress') {
+    return base.filter(next => next !== 'completed');
+  }
+
+  if (task.status === 'review') {
+    return base.filter(next => next !== 'completed');
+  }
+
+  return base;
+}
+
 const APPROVAL_STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   not_required: { bg: '#f1f5f9', color: '#64748b', label: 'Không cần duyệt' },
   pending:      { bg: '#fffbeb', color: '#b45309', label: 'Chờ phê duyệt' },
@@ -335,6 +367,17 @@ export default function TaskDetail() {
 
   const canDelete = Boolean(task && rbacCtx && rbac.canDeleteTask(rbacCtx, task));
   const canEditCollaborators = Boolean(task && rbacCtx && rbac.canManageCollaborators(rbacCtx, task));
+  const approvalLevel = task ? getApprovalLevel(task) : 0;
+  const taskRequiresApproval = approvalLevel > 0;
+  const canApproveCurrentTask = Boolean(
+    task &&
+    rbacCtx &&
+    task.status === 'review' &&
+    taskRequiresApproval &&
+    canRoleApproveLevel(rbacCtx.role, approvalLevel) &&
+    task.approval_status !== 'approved',
+  );
+  const visibleTransitions = task ? getVisibleTransitions(task) : [];
 
   // Người cùng thực hiện — lưu dạng JSON [{user_id, role}] trong cột collaborator_ids
   const collaboratorIds: string[] = (() => {
@@ -489,7 +532,7 @@ export default function TaskDetail() {
 
             {/* Action buttons */}
             <div style={{ padding: '0 16px 10px', display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
-              {((TRANSITIONS as Record<string, TaskStatus[]>)[task.status] ?? []).map((next: TaskStatus) => (
+              {visibleTransitions.map((next: TaskStatus) => (
                 <button key={next} onClick={() => handleTransition(next)} disabled={transitioning} style={{
                   padding: '6px 14px', borderRadius: 8, border: '1.5px solid var(--primary)',
                   background: 'var(--primary)', color: '#fff', cursor: 'pointer',
@@ -497,10 +540,10 @@ export default function TaskDetail() {
                   opacity: transitioning ? 0.6 : 1,
                 }}>
                   {transitioning ? <Loader2 size={12} className="tm-spin" /> : <RotateCcw size={12} />}
-                  → {STATUS_LABELS[next]}
+                  → {transitionLabel(task, next)}
                 </button>
               ))}
-              {task.status === 'review' && (
+              {canApproveCurrentTask && (
                 <>
                   <button onClick={handleApprove} disabled={approving} style={{
                     padding: '6px 14px', borderRadius: 8, border: '1.5px solid #16a34a',
@@ -517,6 +560,20 @@ export default function TaskDetail() {
                     <ThumbsDown size={12} /> Từ chối
                   </button>
                 </>
+              )}
+              {task.status === 'review' && taskRequiresApproval && !canApproveCurrentTask && (
+                <span style={{
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  background: '#fffbeb',
+                  color: '#92400e',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}>
+                  Chờ người có quyền phê duyệt cấp {approvalLevel}
+                </span>
               )}
             </div>
 
