@@ -110,7 +110,8 @@ export interface TmTask {
   actual_hours: number;      // tính từ ActivityLogs
   kpi_target: string;        // JSON: [{unit,target,actual,currency?}]
   kpi_actual: string;        // JSON: same shape, filled as task progresses
-  approval_level: 1 | 2 | 3;
+  approval_level: 0 | 1 | 2 | 3;
+  approver_id: string;
   approval_status: ApprovalStatus;
   approved_by: string;
   approved_at: string;
@@ -252,6 +253,7 @@ export interface CreateTaskInput {
   estimated_hours?: number;
   kpi_target?: KpiMetric[];
   approval_level?: 0 | 1 | 2 | 3;
+  approver_id?: string;
   tags?: string[];
   email_reminder?: boolean;
   checklists?: { title: string; sort_order: number }[];
@@ -270,6 +272,7 @@ export interface UpdateTaskInput {
   kpi_actual?: KpiMetric[];
   tags?: string[];
   approval_level?: 0 | 1 | 2 | 3;
+  approver_id?: string;
   approval_status?: string;
   department_id?: string;
   requester_department_id?: string;
@@ -395,7 +398,7 @@ export const SHEET_COLUMNS = {
     'project_id', 'department_id', 'requester_department_id', 'owner_id', 'collaborator_ids',
     'priority', 'status', 'progress_pct', 'start_date', 'due_date',
     'estimated_hours', 'actual_hours', 'kpi_target', 'kpi_actual',
-    'approval_level', 'approval_status', 'approved_by', 'approved_at',
+    'approval_level', 'approver_id', 'approval_status', 'approved_by', 'approved_at',
     'rejection_reason', 'tags', 'email_reminder', 'email_reminder_sent',
     'created_by', 'created_at', 'updated_at', 'closed_at', 'deleted_at',
   ] as const,

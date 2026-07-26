@@ -141,15 +141,17 @@ export class TaskSheetsRepository
       .map(r => this.deserialize(r));
   }
 
-  async findPendingApproval(approverId: string, approvalLevel: 1 | 2 | 3): Promise<TmTask[]> {
+  async findPendingApproval(approverId: string, maxApprovalLevel: 1 | 2 | 3): Promise<TmTask[]> {
     const rows = await loadRows(this.sheetName);
     return rows
-      .filter(r =>
-        !r.deleted_at &&
-        r.status === 'review' &&
-        r.approval_status === 'pending' &&
-        Number(r.approval_level) === approvalLevel,
-      )
+      .filter(r => {
+        if (r.deleted_at || r.status !== 'review' || r.approval_status !== 'pending') return false;
+        const level = Number(r.approval_level ?? 0);
+        if (level <= 0 || level > maxApprovalLevel) return false;
+
+        // New tasks store a concrete approver. Old rows without approver_id keep the legacy role-level behavior.
+        return r.approver_id ? r.approver_id === approverId : true;
+      })
       .map(r => this.deserialize(r));
   }
 
@@ -179,6 +181,7 @@ export class TaskSheetsRepository
       kpi_target:       JSON.stringify(input.kpi_target ?? []),
       kpi_actual:       '[]',
       approval_level:   String(input.approval_level ?? 0),
+      approver_id:      input.approver_id ?? '',
       approval_status:  input.approval_level ? 'pending' : 'not_required',
       approved_by:      '',
       approved_at:      '',
@@ -210,6 +213,7 @@ export class TaskSheetsRepository
     if (input.kpi_actual    !== undefined) patch.kpi_actual     = JSON.stringify(input.kpi_actual);
     if (input.tags                      !== undefined) patch.tags                      = input.tags.join(',');
     if (input.approval_level            !== undefined) patch.approval_level            = String(input.approval_level);
+    if (input.approver_id               !== undefined) patch.approver_id               = input.approver_id;
     if (input.approval_status           !== undefined) patch.approval_status           = input.approval_status;
     if (input.department_id             !== undefined) patch.department_id             = input.department_id;
     if (input.requester_department_id   !== undefined) patch.requester_department_id   = input.requester_department_id;

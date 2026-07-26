@@ -39,7 +39,7 @@ const SHEETS = {
     'project_id','department_id','owner_id','collaborator_ids',
     'priority','status','progress_pct','start_date','due_date',
     'estimated_hours','actual_hours','kpi_target',
-    'approval_level','approval_level1_status','approval_level1_by','approval_level1_at',
+    'approval_level','approver_id','approval_level1_status','approval_level1_by','approval_level1_at',
     'approval_level2_status','approval_level2_by','approval_level2_at',
     'approval_level3_status','approval_level3_by','approval_level3_at',
     'tags','attachments','blocked_reason','blocked_by_user_id',

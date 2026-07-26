@@ -44,6 +44,18 @@ const DEFAULT_APPROVAL_LEVEL_BY_ROLE: Record<string, string> = {
   staff: '0',
 };
 
+function isEligibleApprover(
+  user: { role: string; department_id: string },
+  approvalLevel: number,
+  departmentId: string,
+) {
+  if (approvalLevel === 3) return user.role === 'director';
+  if (!departmentId || user.department_id !== departmentId) return false;
+  if (approvalLevel === 2) return user.role === 'manager';
+  if (approvalLevel === 1) return user.role === 'team_leader' || user.role === 'manager';
+  return false;
+}
+
 function CustomTagInput({ onAdd }: { onAdd: (tag: string) => void }) {
   const [value, setValue] = useState('');
   function add() {
@@ -91,6 +103,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     requester_department_id: '',
     project_id:              initialProjectId    ?? '',
     approval_level:          '0',
+    approver_id:             '',
     email_reminder:          false,
   });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -147,6 +160,25 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
 
   const deptUsers = users.filter(u => !form.department_id || u.department_id === form.department_id);
   const userById  = new Map(users.map(u => [u.user_id, u]));
+  const approvalLevel = Number(form.approval_level);
+  const approverUsers = users.filter(u => isEligibleApprover(u, approvalLevel, form.department_id));
+
+  useEffect(() => {
+    setForm(f => {
+      const level = Number(f.approval_level);
+      if (level <= 0) return f.approver_id ? { ...f, approver_id: '' } : f;
+
+      const eligible = users.filter(u => isEligibleApprover(u, level, f.department_id));
+      if (f.approver_id && eligible.some(u => u.user_id === f.approver_id)) return f;
+
+      const creator = currentUser
+        ? eligible.find(u => u.user_id === currentUser.user_id)
+        : undefined;
+      const nextApproverId = creator?.user_id ?? (eligible.length === 1 ? eligible[0].user_id : '');
+
+      return f.approver_id === nextApproverId ? f : { ...f, approver_id: nextApproverId };
+    });
+  }, [form.approval_level, form.department_id, users, currentUser?.user_id]);
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -156,7 +188,12 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const lvl = Number(form.approval_level);
     if (!form.title.trim()) { setError('Vui lòng nhập tiêu đề công việc'); return; }
+    if (lvl > 0 && !form.approver_id) {
+      setError('Vui lòng chọn người duyệt cụ thể cho task này');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -180,8 +217,8 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
       if (form.project_id)               body.project_id               = form.project_id;
       if (selectedTags.length) body.tags           = selectedTags;
       if (form.email_reminder) body.email_reminder = true;
-      const lvl = Number(form.approval_level);
       body.approval_level  = lvl;
+      if (lvl > 0) body.approver_id = form.approver_id;
       body.approval_status = lvl > 0 ? 'pending' : 'not_required';
 
       const created = await apiCreateTask(body);
@@ -273,6 +310,26 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
               </select>
             </div>
           </div>
+
+          {approvalLevel > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={LABEL}>Người duyệt <span style={{ color: '#dc2626' }}>*</span></label>
+              <select
+                value={form.approver_id}
+                onChange={e => set('approver_id', e.target.value)}
+                style={FIELD}
+              >
+                <option value="">
+                  {approverUsers.length ? '— Chọn người duyệt —' : '— Không có người duyệt phù hợp —'}
+                </option>
+                {approverUsers.map(u => (
+                  <option key={u.user_id} value={u.user_id}>
+                    {u.full_name}{u.position ? ` (${u.position})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Row: Phòng ban thực hiện + Phòng ban yêu cầu */}
           <div style={{ ...ROW2, marginBottom: 12 }}>

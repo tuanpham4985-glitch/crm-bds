@@ -134,7 +134,7 @@ function ApprovalInfo({
   onSave,
   userRole,
 }: {
-  task: { approval_level: 1 | 2 | 3; approval_status: string; rejection_reason?: string };
+  task: { approval_level: 0 | 1 | 2 | 3; approval_status: string; rejection_reason?: string };
   onSave: (field: string, value: unknown) => Promise<void>;
   userRole: string;
 }) {
@@ -375,6 +375,7 @@ export default function TaskDetail() {
     task.status === 'review' &&
     taskRequiresApproval &&
     canRoleApproveLevel(rbacCtx.role, approvalLevel) &&
+    (!task.approver_id || task.approver_id === rbacCtx.user_id || rbacCtx.role === 'director') &&
     task.approval_status !== 'approved',
   );
   const visibleTransitions = task ? getVisibleTransitions(task) : [];
@@ -572,7 +573,9 @@ export default function TaskDetail() {
                   display: 'inline-flex',
                   alignItems: 'center',
                 }}>
-                  Chờ người có quyền phê duyệt cấp {approvalLevel}
+                  {task.approver_id
+                    ? `Chờ ${resolveName(task.approver_id)} phê duyệt`
+                    : `Chờ người có quyền phê duyệt cấp ${approvalLevel}`}
                 </span>
               )}
             </div>

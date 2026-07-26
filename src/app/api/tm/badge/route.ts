@@ -10,8 +10,9 @@ const ROLE_APPROVAL_LEVEL: Record<string, number> = {
   team_leader:  1,
 };
 
-function canCountPendingApproval(user: { role: string; department_id?: string }, task: Record<string, string>): boolean {
+function canCountPendingApproval(user: { user_id: string; role: string; department_id?: string }, task: Record<string, string>): boolean {
   if (task.approval_status !== 'pending' || task.deleted_at) return false;
+  if (task.approver_id && task.approver_id !== user.user_id && user.role !== 'director') return false;
   const maxLevel = ROLE_APPROVAL_LEVEL[user.role] ?? 0;
   if (maxLevel <= 0) return false;
   if (Number(task.approval_level ?? 1) > maxLevel) return false;

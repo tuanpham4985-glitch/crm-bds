@@ -382,6 +382,10 @@ export async function initTaskManagementSheets(): Promise<void> {
         const existingHeaders: string[] = sheet.headerValues ?? [];
         const missing = [...headers].filter(h => !existingHeaders.includes(h));
         if (missing.length > 0) {
+          const neededCols = existingHeaders.length + missing.length;
+          if ((sheet.columnCount ?? 0) < neededCols) {
+            await sheet.resize({ columnCount: neededCols, rowCount: sheet.rowCount ?? 1000 });
+          }
           await sheet.setHeaderRow([...existingHeaders, ...missing]);
           console.log(`[TM Sheets] Added missing columns to ${name}:`, missing);
         } else {

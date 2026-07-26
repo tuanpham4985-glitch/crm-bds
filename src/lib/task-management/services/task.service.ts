@@ -2,7 +2,7 @@
 // CRM BĐS — Task Management: Task Service (Business Logic)
 // ============================================================
 import type {
-  TmTask, TmSubtask, TmChecklist, TaskWithDetails,
+  TmTask, TmSubtask, TmChecklist, TmUser, TaskWithDetails,
   CreateTaskInput, UpdateTaskInput, TaskFilters,
   PaginationOptions, PaginatedResult, RbacContext,
 } from '../types';
@@ -20,7 +20,7 @@ export class TaskService {
   // ── CREATE ──────────────────────────────────────────────
 
   async createTask(ctx: RbacContext, input: CreateTaskInput): Promise<TmTask> {
-    const normalizedInput: CreateTaskInput = {
+    let normalizedInput: CreateTaskInput = {
       ...input,
       objective:     input.objective || input.title,
       project_id:    input.project_id || '',
@@ -29,6 +29,7 @@ export class TaskService {
       start_date:    input.start_date || new Date().toISOString().slice(0, 10),
       due_date:      input.due_date || '',
     };
+    normalizedInput = await this.withResolvedApprover(ctx, normalizedInput);
 
     // RBAC check
     if (normalizedInput.department_id !== ctx.department_id) {
@@ -228,9 +229,7 @@ export class TaskService {
   async approveTask(ctx: RbacContext, taskId: string): Promise<TmTask> {
     const task = await this.requireTask(taskId);
     if (task.status !== 'review') throw new ValidationError('Task must be in Review status');
-    if (!rbac.canApprove(ctx, task.approval_level)) {
-      throw new UnauthorizedError(`Role "${ctx.role}" cannot approve level ${task.approval_level} tasks`);
-    }
+    this.assertCanApproveTask(ctx, task, 'approve');
 
     await this.uow.tasks.updateApproval(taskId, 'approved', ctx.user_id);
     const updated = await this.uow.tasks.updateStatus(taskId, 'completed');
@@ -247,9 +246,7 @@ export class TaskService {
     if (!reason?.trim()) throw new ValidationError('Rejection reason is required');
     const task = await this.requireTask(taskId);
     if (task.status !== 'review') throw new ValidationError('Task must be in Review status');
-    if (!rbac.canApprove(ctx, task.approval_level)) {
-      throw new UnauthorizedError(`Role "${ctx.role}" cannot reject level ${task.approval_level} tasks`);
-    }
+    this.assertCanApproveTask(ctx, task, 'reject');
 
     await this.uow.tasks.updateApproval(taskId, 'rejected', ctx.user_id, reason);
     const updated = await this.uow.tasks.updateStatus(taskId, 'inprogress', reason);
@@ -378,8 +375,63 @@ export class TaskService {
   }
 
   // Tìm danh sách user_id có thể duyệt task dựa trên approval_level và department_id
+  private async withResolvedApprover(ctx: RbacContext, input: CreateTaskInput): Promise<CreateTaskInput> {
+    const level = Number(input.approval_level ?? 0) as 0 | 1 | 2 | 3;
+    if (level <= 0) return { ...input, approval_level: 0, approver_id: '' };
+
+    const allUsers = await this.uow.users.findAll();
+    const selectedApprover = (input.approver_id ?? '').trim();
+    const eligibleApprovers = allUsers.filter(u => this.isEligibleApprover(u, level, input.department_id));
+
+    if (selectedApprover) {
+      const approver = allUsers.find(u => u.user_id === selectedApprover);
+      if (!approver || !this.isEligibleApprover(approver, level, input.department_id)) {
+        throw new ValidationError('Người duyệt được chọn không phù hợp với cấp duyệt hoặc phòng ban của task');
+      }
+      return { ...input, approval_level: level, approver_id: selectedApprover };
+    }
+
+    const creator = eligibleApprovers.find(u => u.user_id === ctx.user_id);
+    if (creator) return { ...input, approval_level: level, approver_id: creator.user_id };
+
+    if (eligibleApprovers.length === 1) {
+      return { ...input, approval_level: level, approver_id: eligibleApprovers[0].user_id };
+    }
+
+    throw new ValidationError('Vui lòng chọn người duyệt cụ thể cho task này');
+  }
+
+  private isEligibleApprover(
+    user: Pick<TmUser, 'user_id' | 'role' | 'department_id'>,
+    level: number,
+    departmentId?: string,
+  ): boolean {
+    if (!user.user_id) return false;
+    if (level === 3) return user.role === 'director';
+    if (!departmentId || user.department_id !== departmentId) return false;
+    if (level === 2) return user.role === 'manager';
+    if (level === 1) return user.role === 'team_leader' || user.role === 'manager';
+    return false;
+  }
+
+  private assertCanApproveTask(ctx: RbacContext, task: TmTask, action: 'approve' | 'reject'): void {
+    const level = Number(task.approval_level ?? 0);
+    if (level < 1 || level > 3) {
+      throw new ValidationError('Task này không yêu cầu phê duyệt');
+    }
+    if (!rbac.canApprove(ctx, level as 1 | 2 | 3)) {
+      throw new UnauthorizedError(`Role "${ctx.role}" cannot ${action} level ${task.approval_level} tasks`);
+    }
+
+    if (task.approver_id && task.approver_id !== ctx.user_id && ctx.role !== 'director') {
+      throw new UnauthorizedError('Bạn không phải người duyệt được chỉ định cho task này');
+    }
+  }
+
   private async resolveApprovers(task: TmTask): Promise<string[]> {
     try {
+      if (task.approver_id) return [task.approver_id];
+
       const level = Number(task.approval_level ?? 1);
       const allUsers = await this.uow.users.findAll();
       const results: string[] = [];

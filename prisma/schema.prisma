@@ -377,6 +377,7 @@ model TmTask {
   kpi_target        String?
   kpi_actual        String?
   approval_level    Int       @default(1)
+  approver_id       String?
   approval_status   String    @default("not_required")
   approved_by       String?
   approved_at       String?

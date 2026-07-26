@@ -30,7 +30,7 @@ export interface ITaskRepository {
   findByDepartment(deptId: string, pagination: PaginationOptions): Promise<PaginatedResult<TmTask>>;
   findByProject(projectId: string, pagination: PaginationOptions): Promise<PaginatedResult<TmTask>>;
   findOverdue(): Promise<TmTask[]>;
-  findPendingApproval(approverId: string, approvalLevel: 1 | 2 | 3): Promise<TmTask[]>;
+  findPendingApproval(approverId: string, maxApprovalLevel: 1 | 2 | 3): Promise<TmTask[]>;
 
   create(input: CreateTaskInput, createdBy: string): Promise<TmTask>;
   update(taskId: string, input: UpdateTaskInput, updatedBy: string): Promise<TmTask>;
