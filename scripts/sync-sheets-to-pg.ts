@@ -556,6 +556,8 @@ async function syncTm() {
       email_reminder:  t.email_reminder,
       email_reminder_sent: t.email_reminder_sent,
       created_by:      t.created_by || 'system',
+      completed_at:    t.completed_at ? new Date(t.completed_at) : undefined,
+      closed_at:       t.closed_at ? new Date(t.closed_at) : undefined,
       deleted_at:      t.deleted_at ? new Date(t.deleted_at) : undefined,
     });
     const taskUpdateData = (projectId: string | undefined) => ({
@@ -585,6 +587,8 @@ async function syncTm() {
       email_reminder:  t.email_reminder,
       email_reminder_sent: t.email_reminder_sent,
       created_by:      t.created_by || 'system',
+      completed_at:    t.completed_at ? new Date(t.completed_at) : undefined,
+      closed_at:       t.closed_at ? new Date(t.closed_at) : undefined,
       deleted_at:      t.deleted_at ? new Date(t.deleted_at) : undefined,
     });
 

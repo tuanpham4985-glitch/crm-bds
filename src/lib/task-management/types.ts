@@ -123,6 +123,7 @@ export interface TmTask {
   created_by: string;
   created_at: string;
   updated_at: string;
+  completed_at: string;
   closed_at: string;
   deleted_at: string;        // soft delete
 }
@@ -403,7 +404,7 @@ export const SHEET_COLUMNS = {
     'estimated_hours', 'actual_hours', 'kpi_target', 'kpi_actual',
     'approval_level', 'approver_id', 'approval_status', 'approved_by', 'approved_at',
     'rejection_reason', 'tags', 'email_reminder', 'email_reminder_sent',
-    'created_by', 'created_at', 'updated_at', 'closed_at', 'deleted_at',
+    'created_by', 'created_at', 'updated_at', 'completed_at', 'closed_at', 'deleted_at',
   ] as const,
 
   SUBTASKS: [

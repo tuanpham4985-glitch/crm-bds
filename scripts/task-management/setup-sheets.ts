@@ -43,7 +43,7 @@ const SHEETS = {
     'approval_level2_status','approval_level2_by','approval_level2_at',
     'approval_level3_status','approval_level3_by','approval_level3_at',
     'tags','attachments','blocked_reason','blocked_by_user_id',
-    'created_by','created_at','updated_at','deleted_at',
+    'created_by','created_at','updated_at','completed_at','closed_at','deleted_at',
   ],
   TM_Subtasks: [
     'subtask_id','subtask_code','parent_task_id','title','objective','description',

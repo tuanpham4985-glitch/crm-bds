@@ -193,6 +193,7 @@ export class TaskSheetsRepository
       created_by:          createdBy,
       created_at:       now,
       updated_at:       now,
+      completed_at:     '',
       closed_at:        '',
       deleted_at:       '',
     };
@@ -231,11 +232,14 @@ export class TaskSheetsRepository
     status: TmTask['status'],
     reason?: string,
   ): Promise<TmTask> {
+    const now = new Date().toISOString();
     const patch: Record<string, string> = {
       status,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     };
-    if (status === 'closed') patch.closed_at = new Date().toISOString();
+    if (status === 'completed') patch.completed_at = now;
+    if (!['completed', 'closed'].includes(status)) patch.completed_at = '';
+    if (status === 'closed') patch.closed_at = now;
     if (reason)              patch.rejection_reason = reason;
 
     const updated = await updateRow(this.sheetName, 'task_id', taskId, patch);

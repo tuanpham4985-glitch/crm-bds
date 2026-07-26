@@ -389,6 +389,7 @@ model TmTask {
   created_by        String
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
+  completed_at      DateTime?
   closed_at         DateTime?
   deleted_at        DateTime?
 

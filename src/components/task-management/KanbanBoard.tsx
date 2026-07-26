@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import type { TaskStatus, TmTask } from '@/lib/task-management/types';
 
 const COLUMNS: TaskStatus[] = ['todo', 'inprogress', 'waiting', 'review', 'completed', 'closed'];
+const ARCHIVE_COL_COLOR = '#ecfdf5';
 
 const COL_WIDTHS: Record<TaskStatus, string> = {
   todo:        '220px',
@@ -30,21 +31,81 @@ const COL_COLORS: Record<TaskStatus, string> = {
 
 const COLUMN_TASKS_MAX_HEIGHT = 'calc(100vh - 300px)';
 
+type KanbanColumn =
+  | { kind: 'status'; id: TaskStatus; status: TaskStatus; tasks: TmTask[]; title?: never }
+  | { kind: 'archive'; id: string; title: string; tasks: TmTask[]; status?: never };
+
+function monthKey(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function currentMonthKey(): string {
+  return monthKey(new Date().toISOString());
+}
+
+function monthLabel(key: string): string {
+  const [year, month] = key.split('-');
+  return `Task T${Number(month)}/${year}`;
+}
+
+function completedMonthKey(task: TmTask): string {
+  return monthKey(task.completed_at || task.closed_at || task.updated_at) || currentMonthKey();
+}
+
 export default function KanbanBoard() {
   const { tasks, isLoading } = useTasks();
   const { setOptimisticStatus, clearOptimisticStatus, optimisticStatus } = useTmStore();
+  const thisMonth = currentMonthKey();
+
+  function effectiveStatus(task: TmTask): TaskStatus {
+    return (optimisticStatus[task.task_id] ?? task.status) as TaskStatus;
+  }
 
   const byStatus = COLUMNS.reduce((acc, s) => {
     acc[s] = tasks.filter(t => {
-      const eff = optimisticStatus[t.task_id] ?? t.status;
+      const eff = effectiveStatus(t);
+      if (s === 'completed' && eff === 'completed') {
+        return Boolean(optimisticStatus[t.task_id]) || completedMonthKey(t) === thisMonth;
+      }
       return eff === s;
     });
     return acc;
   }, {} as Record<TaskStatus, TmTask[]>);
 
+  const archivedCompleted = tasks
+    .filter(t => effectiveStatus(t) === 'completed')
+    .filter(t => !optimisticStatus[t.task_id] && completedMonthKey(t) !== thisMonth);
+
+  const archivedByMonth = archivedCompleted.reduce((acc, task) => {
+    const key = completedMonthKey(task);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(task);
+    return acc;
+  }, {} as Record<string, TmTask[]>);
+
+  const archivedColumns: KanbanColumn[] = Object.keys(archivedByMonth)
+    .sort((a, b) => b.localeCompare(a))
+    .map(key => ({
+      kind: 'archive',
+      id: `completed-${key}`,
+      title: monthLabel(key),
+      tasks: archivedByMonth[key],
+    }));
+
+  const columns: KanbanColumn[] = [
+    ...COLUMNS.flatMap((status): KanbanColumn[] => {
+      const col: KanbanColumn = { kind: 'status', id: status, status, tasks: byStatus[status] ?? [] };
+      return status === 'closed' ? [col] : [col, ...(status === 'completed' ? archivedColumns : [])];
+    }),
+  ];
+
   async function onDragEnd(result: DropResult) {
     const { draggableId, destination } = result;
     if (!destination) return;
+    if (!COLUMNS.includes(destination.droppableId as TaskStatus)) return;
     const newStatus = destination.droppableId as TaskStatus;
     const task = tasks.find(t => t.task_id === draggableId);
     if (!task || task.status === newStatus) return;
@@ -66,23 +127,29 @@ export default function KanbanBoard() {
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div style={{ display: 'flex', gap: 14, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 12, alignItems: 'flex-start' }}>
-        {COLUMNS.map(status => {
-          const col = byStatus[status] ?? [];
+        {columns.map(column => {
+          const col = column.tasks;
+          const status = column.kind === 'status' ? column.status : undefined;
+          const color = status ? COL_COLORS[status] : ARCHIVE_COL_COLOR;
           return (
-            <div key={status} style={{ width: COL_WIDTHS[status], flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+            <div key={column.id} style={{ width: status ? COL_WIDTHS[status] : '240px', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
               {/* Column header */}
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '8px 10px', borderRadius: '8px 8px 0 0',
-                background: COL_COLORS[status], border: '1px solid var(--border-light)',
+                background: color, border: '1px solid var(--border-light)',
                 borderBottom: 'none', marginBottom: 0,
               }}>
-                <StatusBadge status={status} size="sm" />
+                {status ? (
+                  <StatusBadge status={status} size="sm" />
+                ) : (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#166534' }}>{column.title}</span>
+                )}
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>{col.length}</span>
               </div>
 
               {/* Drop zone */}
-              <Droppable droppableId={status}>
+              <Droppable droppableId={column.id} isDropDisabled={column.kind === 'archive'}>
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
@@ -96,7 +163,7 @@ export default function KanbanBoard() {
                       scrollbarGutter: 'stable',
                       scrollbarWidth: 'thin',
                       padding: '6px 6px 10px',
-                      background: snapshot.isDraggingOver ? '#e0e7ff' : COL_COLORS[status],
+                      background: snapshot.isDraggingOver ? '#e0e7ff' : color,
                       border: '1px solid var(--border-light)',
                       borderTop: 'none', borderRadius: '0 0 8px 8px',
                       transition: 'background 0.15s',
@@ -114,7 +181,7 @@ export default function KanbanBoard() {
                               opacity: snap.isDragging ? 0.85 : 1,
                             }}
                           >
-                            <TaskCard task={{ ...task, status: (optimisticStatus[task.task_id] ?? task.status) as TaskStatus }} compact />
+                            <TaskCard task={{ ...task, status: effectiveStatus(task) }} compact />
                           </div>
                         )}
                       </Draggable>
