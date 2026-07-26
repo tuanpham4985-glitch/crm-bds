@@ -24,6 +24,9 @@ export class TaskService {
       ...input,
       objective:     input.objective || input.title,
       project_id:    input.project_id || '',
+      marketing_project_name: typeof input.marketing_project_name === 'string'
+        ? input.marketing_project_name.trim().slice(0, 200)
+        : '',
       department_id: input.department_id || ctx.department_id || '',
       owner_id:      input.owner_id || ctx.user_id,
       start_date:    input.start_date || new Date().toISOString().slice(0, 10),
@@ -140,14 +143,23 @@ export class TaskService {
       }
     }
 
+    const normalizedInput: UpdateTaskInput = input.marketing_project_name === undefined
+      ? input
+      : {
+          ...input,
+          marketing_project_name: typeof input.marketing_project_name === 'string'
+            ? input.marketing_project_name.trim().slice(0, 200)
+            : '',
+        };
+
     const old = { ...task };
-    const updated = await this.uow.tasks.update(taskId, input, ctx.user_id);
+    const updated = await this.uow.tasks.update(taskId, normalizedInput, ctx.user_id);
 
     await this.uow.activityLogs.log(taskId, 'task', ctx.user_id, 'updated', old as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>);
     this.invalidateTaskCache(task);
 
     // Notify new owner when assignment changes
-    if (input.owner_id && input.owner_id !== old.owner_id && input.owner_id !== ctx.user_id) {
+    if (normalizedInput.owner_id && normalizedInput.owner_id !== old.owner_id && normalizedInput.owner_id !== ctx.user_id) {
       await this.notif.notifyTaskAssigned(updated, ctx.user_id).catch(() => {});
     }
 

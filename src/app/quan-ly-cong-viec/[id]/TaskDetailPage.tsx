@@ -92,6 +92,9 @@ export default function TaskDetailPage({ taskId }: Props) {
             <MetaItem label="Người thực hiện" value={task.assignee_id ?? '—'} />
             <MetaItem label="Phòng ban"       value={task.department_id ?? '—'} />
             <MetaItem label="Dự án"           value={task.project_id ?? '—'} />
+            {task.marketing_project_name && (
+              <MetaItem label="Dự án Phòng Marketing" value={task.marketing_project_name} />
+            )}
           </div>
 
           {/* Description */}
@@ -168,4 +171,3 @@ function TabSection({ taskId }: { taskId: string }) {
     </div>
   );
 }
-

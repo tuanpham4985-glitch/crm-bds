@@ -395,6 +395,21 @@ export default function TaskDetail() {
   const userOptions    = users.map(u => ({ value: u.user_id, label: u.full_name + (u.position ? ` (${u.position})` : '') }));
   const deptOptions    = departments.map(d => ({ value: d.dept_id, label: d.name }));
   const projectOptions = projects.map(p => ({ value: p.project_id, label: p.name }));
+  const marketingDepartmentIds = new Set(
+    departments
+      .filter(d => {
+        const deptId = d.dept_id?.trim() ?? '';
+        const code = d.code?.trim().toUpperCase() ?? '';
+        return deptId === 'dept-ph-ng-mkt' || code === 'MKT';
+      })
+      .map(d => d.dept_id),
+  );
+  const involvesMarketing = Boolean(task && (
+    marketingDepartmentIds.has(task.department_id ?? '')
+    || marketingDepartmentIds.has(task.requester_department_id ?? '')
+    || marketingDepartmentIds.has(currentUser?.department_id ?? '')
+    || task.marketing_project_name
+  ));
 
   const isOverdue = Boolean(task && isOpenTaskOverdue(task.due_date, task.status));
   const overdueDays = task && isOverdue ? getOverdueDays(task.due_date) : 0;
@@ -785,6 +800,17 @@ export default function TaskDetail() {
                         onSave={v => save('project_id', v)}
                       />
                     </div>
+
+                    {involvesMarketing && (
+                      <div>
+                        <span style={LABEL}>Dự án Phòng Marketing</span>
+                        <InlineText
+                          value={task.marketing_project_name ?? ''}
+                          placeholder="Nhập tên dự án hoặc chiến dịch Marketing..."
+                          onSave={v => save('marketing_project_name', v.trim())}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Tags */}

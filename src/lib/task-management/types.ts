@@ -97,6 +97,7 @@ export interface TmTask {
   objective: string;         // Mục tiêu cụ thể, đo được
   description: string;
   project_id: string;        // ref: Projects.project_id
+  marketing_project_name: string; // tên dự án/chiến dịch do phòng Marketing tự đặt
   department_id: string;          // ref: Departments.dept_id — phòng thực hiện
   requester_department_id: string; // phòng ban yêu cầu (nếu cross-dept)
   owner_id: string;          // ref: Users.user_id — 1 người chịu TN
@@ -243,6 +244,7 @@ export interface CreateTaskInput {
   objective: string;
   description?: string;
   project_id: string;
+  marketing_project_name?: string;
   department_id: string;
   requester_department_id?: string;
   owner_id: string;
@@ -277,6 +279,7 @@ export interface UpdateTaskInput {
   department_id?: string;
   requester_department_id?: string;
   project_id?: string;
+  marketing_project_name?: string;
 }
 
 export interface TaskStatusTransition {
@@ -395,7 +398,7 @@ export interface CompanyKpiDashboard {
 export const SHEET_COLUMNS = {
   TASKS: [
     'task_id', 'task_code', 'title', 'objective', 'description',
-    'project_id', 'department_id', 'requester_department_id', 'owner_id', 'collaborator_ids',
+    'project_id', 'marketing_project_name', 'department_id', 'requester_department_id', 'owner_id', 'collaborator_ids',
     'priority', 'status', 'progress_pct', 'start_date', 'due_date',
     'estimated_hours', 'actual_hours', 'kpi_target', 'kpi_actual',
     'approval_level', 'approver_id', 'approval_status', 'approved_by', 'approved_at',

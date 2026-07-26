@@ -36,7 +36,7 @@ const SHEETS = {
   ],
   TM_Tasks: [
     'task_id','task_code','title','objective','description',
-    'project_id','department_id','owner_id','collaborator_ids',
+    'project_id','marketing_project_name','department_id','owner_id','collaborator_ids',
     'priority','status','progress_pct','start_date','due_date',
     'estimated_hours','actual_hours','kpi_target',
     'approval_level','approver_id','approval_level1_status','approval_level1_by','approval_level1_at',

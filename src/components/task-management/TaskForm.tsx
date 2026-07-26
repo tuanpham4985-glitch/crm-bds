@@ -102,6 +102,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     department_id:           initialDepartmentId ?? '',
     requester_department_id: '',
     project_id:              initialProjectId    ?? '',
+    marketing_project_name:  '',
     approval_level:          '0',
     approver_id:             '',
     email_reminder:          false,
@@ -162,6 +163,18 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
   const userById  = new Map(users.map(u => [u.user_id, u]));
   const approvalLevel = Number(form.approval_level);
   const approverUsers = users.filter(u => isEligibleApprover(u, approvalLevel, form.department_id));
+  const marketingDepartmentIds = new Set(
+    departments
+      .filter(d => {
+        const deptId = d.dept_id?.trim() ?? '';
+        const code = d.code?.trim().toUpperCase() ?? '';
+        return deptId === 'dept-ph-ng-mkt' || code === 'MKT';
+      })
+      .map(d => d.dept_id),
+  );
+  const involvesMarketing = marketingDepartmentIds.has(form.department_id)
+    || marketingDepartmentIds.has(form.requester_department_id)
+    || marketingDepartmentIds.has(currentUser?.department_id ?? '');
 
   useEffect(() => {
     setForm(f => {
@@ -215,6 +228,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
       if (form.department_id)            body.department_id            = form.department_id;
       if (form.requester_department_id)  body.requester_department_id  = form.requester_department_id;
       if (form.project_id)               body.project_id               = form.project_id;
+      if (form.marketing_project_name.trim()) body.marketing_project_name = form.marketing_project_name.trim();
       if (selectedTags.length) body.tags           = selectedTags;
       if (form.email_reminder) body.email_reminder = true;
       body.approval_level  = lvl;
@@ -469,6 +483,22 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
               ))}
             </select>
           </div>
+
+          {involvesMarketing && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={LABEL}>Dự án Phòng Marketing</label>
+              <input
+                value={form.marketing_project_name}
+                onChange={e => set('marketing_project_name', e.target.value)}
+                placeholder="Nhập tên dự án hoặc chiến dịch Marketing tự đặt..."
+                maxLength={200}
+                style={FIELD}
+              />
+              <p style={{ margin: '5px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                Tên này được lưu riêng, không thêm vào danh sách dự án chuẩn trong sheet DU_AN.
+              </p>
+            </div>
+          )}
 
           {/* Email Reminder — chỉ hiện khi có deadline */}
           {form.due_date && (

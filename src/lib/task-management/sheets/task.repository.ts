@@ -101,7 +101,7 @@ export class TaskSheetsRepository
       );
     }
     if (filters.search) {
-      rows = searchRows(rows, filters.search, ['title', 'objective', 'task_code']);
+      rows = searchRows(rows, filters.search, ['title', 'objective', 'task_code', 'marketing_project_name']);
     }
 
     rows = sortByField(rows, 'due_date', 'asc');
@@ -167,6 +167,7 @@ export class TaskSheetsRepository
       objective:               input.objective,
       description:             input.description ?? '',
       project_id:              input.project_id,
+      marketing_project_name:  input.marketing_project_name?.trim() ?? '',
       department_id:           input.department_id,
       requester_department_id: input.requester_department_id ?? '',
       owner_id:                input.owner_id || createdBy,
@@ -218,6 +219,7 @@ export class TaskSheetsRepository
     if (input.department_id             !== undefined) patch.department_id             = input.department_id;
     if (input.requester_department_id   !== undefined) patch.requester_department_id   = input.requester_department_id;
     if (input.project_id                !== undefined) patch.project_id                = input.project_id;
+    if (input.marketing_project_name    !== undefined) patch.marketing_project_name    = input.marketing_project_name.trim();
 
     const updated = await updateRow(this.sheetName, 'task_id', taskId, patch);
     if (!updated) throw new Error(`Task ${taskId} not found`);
