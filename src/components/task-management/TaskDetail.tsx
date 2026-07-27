@@ -37,11 +37,30 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string }[] = [
   { value: 'low',      label: '🟢 Thấp' },
 ];
 
+const FEEDBACK_DESIGN_TAG = 'Feedback cho Design';
+
 const PREDEFINED_TAGS = [
   'Gọi điện', 'Email', 'Họp', 'Báo cáo',
   'Tư vấn', 'Chăm sóc KH', 'Thu thập data',
-  'Sự kiện', 'Đàm phán', 'Hợp đồng',
+  'Sự kiện', 'Đàm phán', 'Hợp đồng', FEEDBACK_DESIGN_TAG,
 ];
+
+function normalizeTag(tag: string) {
+  return tag
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isFeedbackDesignTag(tag: string) {
+  const normalized = normalizeTag(tag);
+  return normalized === 'feedback cho design'
+    || (normalized.includes('feedback') && normalized.includes('design'));
+}
 
 const TABS = [
   { id: 'detail',    label: 'Chi tiết'  },
@@ -415,6 +434,8 @@ export default function TaskDetail() {
   const overdueDays = task && isOverdue ? getOverdueDays(task.due_date) : 0;
 
   const currentTags: string[] = (task?.tags || '').split(',').filter(Boolean);
+  const isFeedbackDesignTask = currentTags.some(isFeedbackDesignTag)
+    || Boolean(task?.design_feedback_comment);
 
   async function toggleTag(tag: string) {
     if (!task) return;
@@ -626,6 +647,18 @@ export default function TaskDetail() {
                     <span style={LABEL}>Mô tả</span>
                     <InlineText value={task.description ?? ''} placeholder="Hướng dẫn, context, link tài liệu..." multiline onSave={v => save('description', v)} />
                   </div>
+
+                  {isFeedbackDesignTask && (
+                    <div>
+                      <span style={LABEL}>Nhận xét</span>
+                      <InlineText
+                        value={task.design_feedback_comment ?? ''}
+                        placeholder="Nhập nhận xét áp dụng cho task Feedback cho Design..."
+                        multiline
+                        onSave={v => save('design_feedback_comment', v)}
+                      />
+                    </div>
+                  )}
 
                   {/* Grid: 2 cột */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>

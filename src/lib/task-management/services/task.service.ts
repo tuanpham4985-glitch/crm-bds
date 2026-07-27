@@ -27,6 +27,9 @@ export class TaskService {
       marketing_project_name: typeof input.marketing_project_name === 'string'
         ? input.marketing_project_name.trim().slice(0, 200)
         : '',
+      design_feedback_comment: typeof input.design_feedback_comment === 'string'
+        ? input.design_feedback_comment.trim().slice(0, 1000)
+        : '',
       department_id: input.department_id || ctx.department_id || '',
       owner_id:      input.owner_id || ctx.user_id,
       start_date:    input.start_date || new Date().toISOString().slice(0, 10),
@@ -143,14 +146,17 @@ export class TaskService {
       }
     }
 
-    const normalizedInput: UpdateTaskInput = input.marketing_project_name === undefined
-      ? input
-      : {
-          ...input,
-          marketing_project_name: typeof input.marketing_project_name === 'string'
-            ? input.marketing_project_name.trim().slice(0, 200)
-            : '',
-        };
+    const normalizedInput: UpdateTaskInput = { ...input };
+    if (input.marketing_project_name !== undefined) {
+      normalizedInput.marketing_project_name = typeof input.marketing_project_name === 'string'
+        ? input.marketing_project_name.trim().slice(0, 200)
+        : '';
+    }
+    if (input.design_feedback_comment !== undefined) {
+      normalizedInput.design_feedback_comment = typeof input.design_feedback_comment === 'string'
+        ? input.design_feedback_comment.trim().slice(0, 1000)
+        : '';
+    }
 
     const old = { ...task };
     const updated = await this.uow.tasks.update(taskId, normalizedInput, ctx.user_id);

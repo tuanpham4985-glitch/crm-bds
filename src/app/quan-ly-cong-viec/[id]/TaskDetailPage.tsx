@@ -105,6 +105,13 @@ export default function TaskDetailPage({ taskId }: Props) {
             </div>
           )}
 
+          {task.design_feedback_comment && (
+            <div style={{ marginBottom: 16 }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Nhận xét</h3>
+              <p style={{ margin: 0, fontSize: 14, color: 'var(--text-body)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{task.design_feedback_comment}</p>
+            </div>
+          )}
+
           {/* Approval */}
           <div style={{ marginBottom: 16 }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Phê duyệt</h3>

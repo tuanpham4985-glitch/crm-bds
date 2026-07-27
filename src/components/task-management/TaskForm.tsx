@@ -17,11 +17,30 @@ interface Props {
   variant?: 'modal' | 'inline';
 }
 
+const FEEDBACK_DESIGN_TAG = 'Feedback cho Design';
+
 const PREDEFINED_TAGS = [
   'Gọi điện', 'Email', 'Họp', 'Báo cáo',
   'Tư vấn', 'Chăm sóc KH', 'Thu thập data',
-  'Sự kiện', 'Đàm phán', 'Hợp đồng',
+  'Sự kiện', 'Đàm phán', 'Hợp đồng', FEEDBACK_DESIGN_TAG,
 ];
+
+function normalizeTag(tag: string) {
+  return tag
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isFeedbackDesignTag(tag: string) {
+  const normalized = normalizeTag(tag);
+  return normalized === 'feedback cho design'
+    || (normalized.includes('feedback') && normalized.includes('design'));
+}
 
 const FIELD: React.CSSProperties = {
   width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
@@ -103,6 +122,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
     requester_department_id: '',
     project_id:              initialProjectId    ?? '',
     marketing_project_name:  '',
+    design_feedback_comment: '',
     approval_level:          '0',
     approver_id:             '',
     email_reminder:          false,
@@ -175,6 +195,7 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
   const involvesMarketing = marketingDepartmentIds.has(form.department_id)
     || marketingDepartmentIds.has(form.requester_department_id)
     || marketingDepartmentIds.has(currentUser?.department_id ?? '');
+  const isFeedbackDesignTask = selectedTags.some(isFeedbackDesignTag);
 
   useEffect(() => {
     setForm(f => {
@@ -229,6 +250,9 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
       if (form.requester_department_id)  body.requester_department_id  = form.requester_department_id;
       if (form.project_id)               body.project_id               = form.project_id;
       if (form.marketing_project_name.trim()) body.marketing_project_name = form.marketing_project_name.trim();
+      if (isFeedbackDesignTask && form.design_feedback_comment.trim()) {
+        body.design_feedback_comment = form.design_feedback_comment.trim();
+      }
       if (selectedTags.length) body.tags           = selectedTags;
       if (form.email_reminder) body.email_reminder = true;
       body.approval_level  = lvl;
@@ -566,6 +590,23 @@ export default function TaskForm({ onClose, onCreated, initialDepartmentId, init
             )}
             <CustomTagInput onAdd={(tag) => { if (!selectedTags.includes(tag)) setSelectedTags(p => [...p, tag]); }} />
           </div>
+
+          {isFeedbackDesignTask && (
+            <div style={{ marginTop: 12, marginBottom: 4 }}>
+              <label style={LABEL}>Nhận xét</label>
+              <textarea
+                value={form.design_feedback_comment}
+                onChange={e => set('design_feedback_comment', e.target.value)}
+                placeholder="Nhập nhận xét áp dụng cho task Feedback cho Design..."
+                rows={3}
+                maxLength={1000}
+                style={{ ...FIELD, height: 'auto', padding: '8px 12px', resize: 'vertical' }}
+              />
+              <p style={{ margin: '5px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                Trường này chỉ hiện khi chọn loại công việc “Feedback cho Design”.
+              </p>
+            </div>
+          )}
         </form>
 
         {/* Footer */}

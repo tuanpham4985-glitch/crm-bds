@@ -96,6 +96,7 @@ export interface TmTask {
   title: string;
   objective: string;         // Mục tiêu cụ thể, đo được
   description: string;
+  design_feedback_comment: string; // nhận xét riêng cho task Feedback cho Design
   project_id: string;        // ref: Projects.project_id
   marketing_project_name: string; // tên dự án/chiến dịch do phòng Marketing tự đặt
   department_id: string;          // ref: Departments.dept_id — phòng thực hiện
@@ -244,6 +245,7 @@ export interface CreateTaskInput {
   title: string;
   objective: string;
   description?: string;
+  design_feedback_comment?: string;
   project_id: string;
   marketing_project_name?: string;
   department_id: string;
@@ -266,6 +268,7 @@ export interface UpdateTaskInput {
   title?: string;
   objective?: string;
   description?: string;
+  design_feedback_comment?: string;
   owner_id?: string;
   priority?: TaskPriority;
   start_date?: string;
@@ -398,7 +401,7 @@ export interface CompanyKpiDashboard {
 
 export const SHEET_COLUMNS = {
   TASKS: [
-    'task_id', 'task_code', 'title', 'objective', 'description',
+    'task_id', 'task_code', 'title', 'objective', 'description', 'design_feedback_comment',
     'project_id', 'marketing_project_name', 'department_id', 'requester_department_id', 'owner_id', 'collaborator_ids',
     'priority', 'status', 'progress_pct', 'start_date', 'due_date',
     'estimated_hours', 'actual_hours', 'kpi_target', 'kpi_actual',

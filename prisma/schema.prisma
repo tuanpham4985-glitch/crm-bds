@@ -363,6 +363,7 @@ model TmTask {
   title             String
   objective         String?
   description       String?
+  design_feedback_comment String?
   project_id        String?
   marketing_project_name String?
   department_id     String?

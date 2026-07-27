@@ -35,7 +35,7 @@ const SHEETS = {
     'budget','tags','created_by','created_at','updated_at','deleted_at',
   ],
   TM_Tasks: [
-    'task_id','task_code','title','objective','description',
+    'task_id','task_code','title','objective','description','design_feedback_comment',
     'project_id','marketing_project_name','department_id','owner_id','collaborator_ids',
     'priority','status','progress_pct','start_date','due_date',
     'estimated_hours','actual_hours','kpi_target',

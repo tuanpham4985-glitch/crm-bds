@@ -101,7 +101,7 @@ export class TaskSheetsRepository
       );
     }
     if (filters.search) {
-      rows = searchRows(rows, filters.search, ['title', 'objective', 'task_code', 'marketing_project_name']);
+      rows = searchRows(rows, filters.search, ['title', 'objective', 'task_code', 'marketing_project_name', 'design_feedback_comment']);
     }
 
     rows = sortByField(rows, 'due_date', 'asc');
@@ -166,6 +166,7 @@ export class TaskSheetsRepository
       title:                   input.title,
       objective:               input.objective,
       description:             input.description ?? '',
+      design_feedback_comment: input.design_feedback_comment?.trim() ?? '',
       project_id:              input.project_id,
       marketing_project_name:  input.marketing_project_name?.trim() ?? '',
       department_id:           input.department_id,
@@ -206,6 +207,7 @@ export class TaskSheetsRepository
     if (input.title         !== undefined) patch.title          = input.title;
     if (input.objective     !== undefined) patch.objective      = input.objective;
     if (input.description   !== undefined) patch.description    = input.description;
+    if (input.design_feedback_comment !== undefined) patch.design_feedback_comment = input.design_feedback_comment.trim();
     if (input.owner_id      !== undefined) patch.owner_id       = input.owner_id;
     if (input.priority      !== undefined) patch.priority       = input.priority;
     if (input.start_date    !== undefined) patch.start_date     = input.start_date;
