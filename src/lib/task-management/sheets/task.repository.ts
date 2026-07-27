@@ -83,6 +83,7 @@ export class TaskSheetsRepository
       });
     }
     if (filters.department_id) rows = filterByField(rows, 'department_id', filters.department_id);
+    if (filters.requester_department_id) rows = filterByField(rows, 'requester_department_id', filters.requester_department_id);
     if (filters.project_id)    rows = filterByField(rows, 'project_id', filters.project_id);
 
     if (filters.due_before) {
@@ -97,7 +98,7 @@ export class TaskSheetsRepository
     }
     if (filters.tags?.length) {
       rows = rows.filter(r =>
-        filters.tags!.some(tag => (r.tags || '').includes(tag)),
+        filters.tags!.some(tag => (r.tags || '').split(',').map(t => t.trim()).includes(tag)),
       );
     }
     if (filters.search) {

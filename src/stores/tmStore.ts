@@ -15,9 +15,11 @@ export interface TaskFilterState {
   status:        TaskStatus[];
   priority:      TaskPriority[];
   department_id: string;
+  requester_department_id: string;
   project_id:    string;
   owner_id:      string;
   participant_id: string;
+  tags:          string[];
   overdue_only:  boolean;
   due_before:    string;
   due_after:     string;
@@ -31,9 +33,11 @@ const defaultFilters: TaskFilterState = {
   status:        [],
   priority:      [],
   department_id: '',
+  requester_department_id: '',
   project_id:    '',
   owner_id:      '',
   participant_id: '',
+  tags:          [],
   overdue_only:  false,
   due_before:    '',
   due_after:     '',
@@ -48,6 +52,7 @@ interface TmState {
   // Filters
   filters: TaskFilterState;
   setFilter: <K extends keyof TaskFilterState>(key: K, value: TaskFilterState[K]) => void;
+  setFilters: (patch: Partial<TaskFilterState>) => void;
   resetFilters: () => void;
   setView: (view: 'list' | 'kanban') => void;
 
@@ -98,7 +103,9 @@ export const useTmStore = create<TmState>()(
     filters:       { ...defaultFilters },
     setFilter:     (key, value) =>
       set(s => ({ filters: { ...s.filters, [key]: value, page: key === 'page' ? value as number : 1 } })),
-    resetFilters:  () => set({ filters: { ...defaultFilters } }),
+    setFilters:    (patch) =>
+      set(s => ({ filters: { ...s.filters, ...patch, page: patch.page ?? 1 } })),
+    resetFilters:  () => set(s => ({ filters: { ...defaultFilters, view: s.filters.view } })),
     setView:       (view) => set(s => ({ filters: { ...s.filters, view } })),
 
     // Selected task
@@ -176,13 +183,15 @@ export const selectApiFilters = (state: TmState): Partial<Record<string, string>
   if (f.status.length) params.status        = f.status.join(',');
   if (f.priority.length) params.priority    = f.priority.join(',');
   if (f.department_id) params.department_id = f.department_id;
+  if (f.requester_department_id) params.requester_department_id = f.requester_department_id;
   if (f.project_id)    params.project_id    = f.project_id;
   if (f.owner_id)      params.owner_id      = f.owner_id;
   if (f.participant_id) params.participant_id = f.participant_id;
+  if (f.tags.length)   params.tags          = f.tags.join(',');
   if (f.overdue_only)  params.overdue_only  = 'true';
   if (f.due_before)    params.due_before    = f.due_before;
   if (f.due_after)     params.due_after     = f.due_after;
   params.page  = String(f.page);
-  params.limit = String(f.limit);
+  params.limit = f.view === 'kanban' ? '999' : String(f.limit);
   return params;
 };

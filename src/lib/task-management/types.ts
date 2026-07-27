@@ -309,6 +309,7 @@ export interface TaskFilters {
    */
   participant_id?: string;
   department_id?: string;
+  requester_department_id?: string;
   project_id?: string;
   due_before?: string;      // YYYY-MM-DD
   due_after?: string;
