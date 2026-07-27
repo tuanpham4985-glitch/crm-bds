@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import type { TmUser, RbacContext, UserRole } from './types';
 import { appendRow, loadRows } from './sheets/client';
 import { SHEET_NAMES } from './types';
+import { findEmployeeForAuth } from '../auth/employee-source';
 
 // Module-level cache: email/employee_code → TM user info, TTL 5 phút
 // Tránh gọi loadRows(TM_Users) lặp lại trên mỗi API request trong cùng 1 serverless instance
@@ -229,6 +230,17 @@ export async function getCurrentTmUser(): Promise<TmUser | null> {
 
     const json = decodeURIComponent(escape(atob(raw)));
     const session: CrmSession = JSON.parse(json);
+
+    if (session.id_nhan_vien !== 'DEV_ADMIN') {
+      const lookup = await findEmployeeForAuth(session.email);
+      if (!lookup.ok) return null;
+      session.id_nhan_vien  = lookup.employee.id_nhan_vien;
+      session.ho_ten        = lookup.employee.ho_ten;
+      session.email         = lookup.employee.email;
+      session.vai_tro       = lookup.employee.vai_tro;
+      session.employee_type = lookup.employee.employee_type;
+      session.phong_KD      = lookup.employee.phong_KD;
+    }
 
     const role = mapRole(session);
 

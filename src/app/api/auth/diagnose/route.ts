@@ -5,17 +5,14 @@
 //   /api/auth/diagnose?email=nhanvien@example.com
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-// findNhanVienByEmail: ĐÚNG hàm mà POST /api/auth gọi (đi qua facade → PostgreSQL)
-import { findNhanVienByEmail } from '@/lib/data-access';
+// findEmployeeForAuth: ĐÚNG hàm mà POST /api/auth gọi — đọc NHAN_VIEN nguồn thật.
+import { findEmployeeForAuth, ACTIVE_EMPLOYEE_STATUSES } from '@/lib/auth/employee-source';
 // GS.*: nguồn sự thật, để đối chiếu khi bản sao PG bị lệch
 import { getNhanVien as gsGetNhanVien } from '@/lib/google-sheets';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
-
-// Giống hệt danh sách trong POST /api/auth — nếu lệch thì chẩn đoán vô nghĩa
-const ACTIVE_STATUSES = ['đang làm', 'chính thức', 'thử việc'];
 
 /** Che bớt id sheet: chỉ lộ 6 ký tự cuối, đủ để đối chiếu mà không lộ toàn bộ */
 function maskId(v: string): string {
@@ -53,7 +50,8 @@ export async function GET(req: NextRequest) {
 
   try {
     // 1. Đường đi THẬT của đăng nhập
-    const nv = await findNhanVienByEmail(email);
+    const lookup = await findEmployeeForAuth(email);
+    const nv = lookup.ok ? lookup.employee : lookup.employee ?? null;
 
     // 2. Nguồn sự thật, để phát hiện bản sao PostgreSQL bị lệch
     const gsAll = await gsGetNhanVien().catch(() => []);
@@ -75,8 +73,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         success: true,
         ket_luan: gsNv
-          ? 'LỆCH DỮ LIỆU — có trong Google Sheets nhưng đường đăng nhập không thấy. '
-            + 'Chạy /api/cron/sync-sheets để nạp lại PostgreSQL.'
+          ? 'TÀI KHOẢN KHÔNG ACTIVE — email có trong Google Sheets nhưng trạng thái không cho đăng nhập.'
           : 'KHÔNG TÌM THẤY EMAIL ở cả hai nguồn — kiểm tra lại GOOGLE_SHEET_ID của production.',
         env,
         email_can_tim: email,
@@ -86,11 +83,11 @@ export async function GET(req: NextRequest) {
     }
 
     const trangThai = (nv.trang_thai || '').trim().toLowerCase();
-    const trangThaiHopLe = ACTIVE_STATUSES.includes(trangThai);
+    const trangThaiHopLe = ACTIVE_EMPLOYEE_STATUSES.includes(trangThai);
     const coMatKhauRieng = Boolean(nv.mat_khau);
 
     const ket_luan = !trangThaiHopLe
-      ? `TRẠNG THÁI KHÔNG HỢP LỆ — "${nv.trang_thai}" không nằm trong ${ACTIVE_STATUSES.join(' / ')}.`
+      ? `TRẠNG THÁI KHÔNG HỢP LỆ — "${nv.trang_thai}" không nằm trong ${ACTIVE_EMPLOYEE_STATUSES.join(' / ')}.`
       : coMatKhauRieng
         ? 'EMAIL VÀ TRẠNG THÁI ĐỀU HỢP LỆ — nếu vẫn không vào được thì mật khẩu đang gõ không khớp cột mat_khau.'
         : 'EMAIL VÀ TRẠNG THÁI ĐỀU HỢP LỆ — cột mat_khau trống nên mật khẩu là 123456.';

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { findNhanVienByEmail } from '@/lib/data-access';
+import { findEmployeeForAuth, normalizeAuthEmail } from '@/lib/auth/employee-source';
 
 // Simple session-based auth using cookies
 // POST /api/auth — Login
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const email = String(body.email || '').trim().toLowerCase();
+    const email = normalizeAuthEmail(String(body.email || ''));
     const { mat_khau } = body;
     
     if (!email) {
@@ -46,19 +46,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const nv = await findNhanVienByEmail(email);
-    console.log('[Auth] Result of findNhanVienByEmail:', nv ? nv.email : 'Not found');
+    const lookup = await findEmployeeForAuth(email);
+    console.log('[Auth] Result of findEmployeeForAuth:', lookup.ok ? lookup.employee.email : lookup.reason);
 
-    if (!nv) {
-      return NextResponse.json({ success: false, error: 'Email không tồn tại trong hệ thống' }, { status: 401 });
-    }
-
-    const ACTIVE_STATUSES = ['đang làm', 'chính thức', 'thử việc'];
-    const currentStatus = (nv.trang_thai || '').trim().toLowerCase();
-
-    if (!ACTIVE_STATUSES.includes(currentStatus)) {
+    if (!lookup.ok && lookup.reason === 'inactive') {
       return NextResponse.json({ success: false, error: 'Tài khoản đã bị khóa' }, { status: 401 });
     }
+    if (!lookup.ok) {
+      return NextResponse.json({ success: false, error: 'Email không tồn tại trong hệ thống' }, { status: 401 });
+    }
+    const nv = lookup.employee;
 
     // Password check: Prioritize nv.mat_khau, fallback to '123456'
     const storedPassword = nv.mat_khau || '123456';
@@ -121,14 +118,25 @@ export async function GET() {
     // mà không cần user logout/login lại. Bỏ qua DEV_ADMIN (không có row trong sheet).
     if (userData.id_nhan_vien !== 'DEV_ADMIN' && userData.email) {
       try {
-        const nv = await findNhanVienByEmail(userData.email);
-        if (nv) {
-          userData.vai_tro     = nv.vai_tro     || userData.vai_tro;
-          userData.employee_type = nv.employee_type || userData.employee_type;
+        const lookup = await findEmployeeForAuth(userData.email);
+        if (!lookup.ok) {
+          cookieStore.delete('crm_session');
+          return NextResponse.json({
+            success: false,
+            error: lookup.reason === 'inactive' ? 'Tài khoản đã bị khóa' : 'Session không còn hợp lệ',
+          }, { status: 401 });
         }
+        const nv = lookup.employee;
+        userData.id_nhan_vien = nv.id_nhan_vien;
+        userData.ho_ten       = nv.ho_ten;
+        userData.email        = nv.email;
+        userData.vai_tro      = nv.vai_tro || userData.vai_tro;
+        userData.employee_type = nv.employee_type || userData.employee_type;
       } catch (refreshErr) {
-        // Nếu sheet không đọc được (timeout, quota...) → fallback về dữ liệu cookie
-        console.warn('[Auth] Could not refresh vai_tro from sheet, using cached value:', refreshErr);
+        // Auth phải fail-closed: không dùng cookie cũ khi không xác thực được NHAN_VIEN.
+        cookieStore.delete('crm_session');
+        console.warn('[Auth] Could not validate session against NHAN_VIEN:', refreshErr);
+        return NextResponse.json({ success: false, error: 'Không xác thực được session' }, { status: 401 });
       }
     }
 
