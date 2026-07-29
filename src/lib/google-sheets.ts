@@ -3478,7 +3478,7 @@ export async function saveTaiChinhHistory(row: TaiChinhHistoryRow): Promise<void
 
 const CCN_HEADERS = [
   'id', 'id_nhan_vien', 'ho_ten', 'ngay', 'gio_bat_dau', 'gio_ket_thuc',
-  'du_an_khach_hang', 'dia_diem', 'ghi_chu', 'hinh_anh', 'vi_tri_gps', 'ql_truc_tiep',
+  'du_an_khach_hang', 'dia_diem', 'ghi_chu', 'hinh_anh', 'ql_truc_tiep',
   'trang_thai', 'nguoi_duyet', 'ghi_chu_duyet', 'created_at',
 ] as const;
 
@@ -3496,7 +3496,6 @@ function chamCongNgoaiToSheetRow(row: ChamCongNgoai): Record<(typeof CCN_HEADERS
     // Ảnh gốc (base64) chỉ lưu ở PostgreSQL để app hiển thị. Sheet là bản
     // mirror cho người xem nên chỉ ghi dấu, tránh phình cột base64 rất dài.
     hinh_anh:         row.hinh_anh ? 'Có ảnh' : '',
-    vi_tri_gps:       row.vi_tri_gps || '',
     ql_truc_tiep:     row.ql_truc_tiep || '',
     trang_thai:       row.trang_thai,
     nguoi_duyet:      row.nguoi_duyet || '',
