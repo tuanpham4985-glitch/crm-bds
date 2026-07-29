@@ -198,14 +198,14 @@ export default function ChamCongNgoaiPage() {
 
       // ── Sheet 1: Chi tiết ──────────────────────────────────────
       const header = ['STT', 'Họ và tên', 'Mã NV', 'Quản lý trực tiếp', 'Ngày', 'Từ giờ', 'Đến giờ',
-        'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'GPS', 'Có ảnh',
+        'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'Có ảnh',
         'Trạng thái', 'Người phê duyệt', 'Ghi chú phê duyệt'];
 
       const rows = filtered.map((r, i) => [
         i + 1, r.ho_ten || '', r.id_nhan_vien, r.ql_truc_tiep || '',
         formatDate(r.ngay), r.gio_bat_dau, r.gio_ket_thuc,
         r.du_an_khach_hang, r.dia_diem, r.ghi_chu || '',
-        r.vi_tri_gps || '', r.hinh_anh ? 'Có' : 'Không',
+        r.hinh_anh ? 'Có' : 'Không',
         STATUS_VI[r.trang_thai] || r.trang_thai,
         r.nguoi_duyet || '', r.ghi_chu_duyet || '',
       ]);
@@ -213,7 +213,7 @@ export default function ChamCongNgoaiPage() {
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
       ws['!cols'] = [
         { wch: 5 }, { wch: 22 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 9 }, { wch: 9 },
-        { wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 26 }, { wch: 8 },
+        { wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 8 },
         { wch: 12 }, { wch: 18 }, { wch: 24 },
       ];
 

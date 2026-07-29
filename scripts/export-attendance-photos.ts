@@ -20,7 +20,7 @@
 
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { getChamCongNgoai } from '../src/lib/google-sheets';
+import { prisma } from '../src/lib/db/client';
 
 function arg(name: string): string | undefined {
   const hit = process.argv.find(a => a.startsWith(`--${name}=`));
@@ -57,8 +57,9 @@ async function main() {
   const outDir = arg('out') ?? path.join('exports', 'cham-cong-photos', `T${mm}_${year}`);
   await fs.mkdir(outDir, { recursive: true });
 
-  console.log(`[export-ccn-photos] Đọc CHAM_CONG_NGOAI…`);
-  const all = await getChamCongNgoai();
+  console.log(`[export-ccn-photos] Đọc dữ liệu chấm công từ PostgreSQL…`);
+  // Ảnh gốc (base64) chỉ nằm ở PG — Sheet chỉ giữ dấu "Có ảnh".
+  const all = await prisma.chamCongNgoai.findMany({ orderBy: { ngay: 'asc' } });
 
   const rows = all.filter(r => {
     if (!r.ngay) return false;
@@ -112,7 +113,9 @@ async function main() {
   console.log(`[export-ccn-photos] Kèm index.csv để tra cứu ảnh ↔ nhân viên.`);
 }
 
-main().catch(err => {
-  console.error('[export-ccn-photos] LỖI:', err instanceof Error ? err.message : err);
-  process.exitCode = 1;
-});
+main()
+  .catch(err => {
+    console.error('[export-ccn-photos] LỖI:', err instanceof Error ? err.message : err);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());
