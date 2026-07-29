@@ -31,7 +31,9 @@ function formatDate(d: string): string {
   return `${day}/${m}/${y}`;
 }
 
-function compressImage(file: File, maxPx = 480, targetKB = 20): Promise<string> {
+// Nén ảnh về maxPx và ≤ targetKB rồi trả về data URI (base64) để lưu.
+// Ưu tiên WebP (nhỏ hơn JPEG ~25-35% cùng chất lượng), fallback JPEG cho máy cũ.
+function compressImage(file: File, maxPx = 400, targetKB = 12): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -46,6 +48,12 @@ function compressImage(file: File, maxPx = 480, targetKB = 20): Promise<string> 
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+
+        // Chọn định dạng: WebP nếu trình duyệt hỗ trợ encode, không thì JPEG
+        const mime = canvas.toDataURL('image/webp').startsWith('data:image/webp')
+          ? 'image/webp'
+          : 'image/jpeg';
+
         const attempt = (q: number) => {
           canvas.toBlob((blob) => {
             if (!blob) { reject(new Error('Lỗi tạo blob')); return; }
@@ -53,9 +61,9 @@ function compressImage(file: File, maxPx = 480, targetKB = 20): Promise<string> 
             const fr = new FileReader();
             fr.onloadend = () => resolve(fr.result as string);
             fr.readAsDataURL(blob);
-          }, 'image/jpeg', q);
+          }, mime, q);
         };
-        attempt(0.75);
+        attempt(0.7);
       };
       img.src = e.target?.result as string;
     };
@@ -115,7 +123,7 @@ export default function ChamCongNgoaiPage() {
     if (!file) return;
     setPhotoLoading(true);
     try {
-      setPhoto(await compressImage(file, 480, 20));
+      setPhoto(await compressImage(file));
     } catch { alert('Không đọc được ảnh'); }
     finally { setPhotoLoading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };

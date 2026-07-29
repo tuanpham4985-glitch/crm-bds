@@ -41,7 +41,7 @@ function safe(s: string): string {
 
 // data:image/jpeg;base64,XXXX  ->  { ext, buffer }
 function decodeDataUri(dataUri: string): { ext: string; buffer: Buffer } | null {
-  const m = /^data:image\/([a-zA-Z0-9.+-]+);base64,(.*)$/s.exec(dataUri.trim());
+  const m = /^data:image\/([a-zA-Z0-9.+-]+);base64,([\s\S]*)$/.exec(dataUri.trim());
   if (!m) return null;
   const ext = m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase();
   return { ext, buffer: Buffer.from(m[2], 'base64') };
