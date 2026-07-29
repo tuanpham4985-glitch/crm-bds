@@ -45,3 +45,6 @@ public/workbox-*.js.map
 public/fallback-*.js
 
 /src/generated/prisma
+
+# Ảnh chấm công trích xuất (dữ liệu nhân sự, không commit)
+exports/
