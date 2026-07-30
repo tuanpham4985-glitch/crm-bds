@@ -119,13 +119,22 @@ export default function CalendarView() {
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <div style={{ minWidth: 760 }}>
-            {/* Thanh thứ trong tuần */}
+            {/* Thanh thứ trong tuần — có dải nền nổi bật */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 6 }}>
-              {WEEKDAYS.map((w, i) => (
-                <div key={w} style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, padding: '4px 0', color: i === 0 ? '#dc2626' : 'var(--text-muted)' }}>
-                  {w}
-                </div>
-              ))}
+              {WEEKDAYS.map((w, i) => {
+                const weekend = i === 0 || i === 6; // CN hoặc T7
+                return (
+                  <div key={w} style={{
+                    textAlign: 'center', fontSize: 12.5, fontWeight: 700, padding: '7px 0',
+                    letterSpacing: 0.3, borderRadius: 6,
+                    background: i === 0 ? '#fee2e2' : weekend ? '#fef3c7' : 'var(--primary-light, #eef2ff)',
+                    color: i === 0 ? '#dc2626' : weekend ? '#b45309' : 'var(--primary, #4f46e5)',
+                    border: `1px solid ${i === 0 ? '#fecaca' : weekend ? '#fde68a' : 'var(--border-light, #e2e8f0)'}`,
+                  }}>
+                    {w}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Lưới ngày */}
