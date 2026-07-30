@@ -112,13 +112,13 @@ export default function KpiDashboard() {
                     gap: 5,
                   }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>{task.task_code}</span>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', letterSpacing: 0.2 }}>{task.task_code}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.3, color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {task.title}
                   </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: '#b91c1c' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <CalendarDays size={11} /> {formatDate(task.due_date)}
+                      <CalendarDays size={12} /> {formatDate(task.due_date)}
                     </span>
                     <span>Quá hạn {days} ngày</span>
                   </span>
