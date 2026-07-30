@@ -202,6 +202,21 @@ export async function updateRow(
 }
 
 /**
+ * Đảm bảo sheet có đủ các cột cho trước — thêm cột thiếu vào cuối header.
+ * Dùng để "tự migrate" cột mới (vd overdue_reminded_on) mà không cần chạy
+ * lại setup-sheets. An toàn: chỉ thêm header ở cuối, không đụng dữ liệu cũ.
+ */
+export async function ensureColumns(sheetName: SheetName, columns: string[]): Promise<void> {
+  const sheet = await getSheet(sheetName);
+  try { await sheet.loadHeaderRow(); } catch { /* header trống — bỏ qua */ }
+  const existing = new Set(sheet.headerValues || []);
+  const missing = columns.filter(c => !existing.has(c));
+  if (missing.length === 0) return;
+  await sheet.setHeaderRow([...(sheet.headerValues || []), ...missing]);
+  invalidateRowCache(sheetName);
+}
+
+/**
  * Batch update: load all rows once, update matching entries, save in parallel.
  * Much more efficient than calling updateRow() in a loop.
  */

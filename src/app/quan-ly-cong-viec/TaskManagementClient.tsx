@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, BarChart2, Loader2 } from 'lucide-react';
+import { Plus, BarChart2, Loader2, Send } from 'lucide-react';
 import { useTmStore } from '@/stores/tmStore';
+import { useCurrentTmUser } from '@/hooks/tm/useTasks';
 import TaskFilters from '@/components/task-management/TaskFilters';
 import TaskList from '@/components/task-management/TaskList';
 import TaskDetail from '@/components/task-management/TaskDetail';
@@ -50,6 +51,43 @@ export default function TaskManagementClient() {
   // nút đó chạy cả HR → NHAN_VIEN → PostgreSQL → TM_Users trong một lượt.
   const { filters, createModalOpen, setCreateModal } = useTmStore();
   const [showKpi, setShowKpi] = useState(false);
+  const currentUser = useCurrentTmUser();
+  const isDirector = currentUser?.role === 'director';
+  const [overdueSending, setOverdueSending] = useState(false);
+
+  // Gửi email giục các việc quá hạn (chỉ Admin/Ban GĐ). Xem trước số liệu → xác nhận → gửi.
+  const handleOverdueMail = async () => {
+    setOverdueSending(true);
+    try {
+      const pre = await fetch('/api/tm/overdue-reminders').then(r => r.json());
+      if (!pre.success) { alert(pre.error || 'Không lấy được danh sách quá hạn'); return; }
+      const p = pre.data;
+      if (p.to_notify === 0) {
+        alert(p.overdue_tasks === 0
+          ? 'Hiện không có công việc nào quá hạn.'
+          : `Tất cả ${p.owners_overdue} người có việc quá hạn đều đã được giục hôm nay. Không gửi lại.`);
+        return;
+      }
+      const ok = window.confirm(
+        `Có ${p.overdue_tasks} công việc quá hạn của ${p.owners_overdue} người.\n\n` +
+        `Gửi email giục tới ${p.to_notify} người chưa được nhắc hôm nay?`,
+      );
+      if (!ok) return;
+      const res = await fetch('/api/tm/overdue-reminders', { method: 'POST' }).then(r => r.json());
+      if (!res.success) { alert(res.error || 'Gửi thất bại'); return; }
+      const d = res.data;
+      alert(
+        `Đã gửi ${d.sent} email giục.` +
+        (d.failed ? ` ${d.failed} lỗi.` : '') +
+        (d.skipped_no_email ? ` ${d.skipped_no_email} người thiếu email.` : '') +
+        (d.already_reminded_today ? ` ${d.already_reminded_today} người đã được nhắc trước đó hôm nay.` : ''),
+      );
+    } catch {
+      alert('Lỗi kết nối máy chủ');
+    } finally {
+      setOverdueSending(false);
+    }
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-page)', padding: '0 0 40px' }}>
@@ -81,6 +119,21 @@ export default function TaskManagementClient() {
         }}>
           <BarChart2 size={15} /> KPI Dashboard
         </button>
+
+        {/* Gửi mail giục quá hạn — chỉ Admin / Ban Giám đốc */}
+        {isDirector && (
+          <button onClick={handleOverdueMail} disabled={overdueSending} title="Gửi email nhắc tất cả nhân viên đang có việc quá hạn" style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+            border: '1.5px solid #fca5a5', borderRadius: 8,
+            cursor: overdueSending ? 'wait' : 'pointer',
+            background: '#fef2f2', color: '#dc2626', fontSize: 13, fontWeight: 600,
+          }}>
+            {overdueSending
+              ? <Loader2 size={15} className="tm-spin" />
+              : <Send size={15} />}
+            Gửi mail giục quá hạn
+          </button>
+        )}
 
         {/* Notifications */}
         <NotificationCenter />
