@@ -8,7 +8,15 @@
 // ============================================================
 import nodemailer from 'nodemailer';
 import { loadRows, ensureColumns, batchUpdateRows, type RawRow } from './sheets/client';
-import { SHEET_NAMES } from './types';
+import { SHEET_NAMES, type UserRole } from './types';
+
+/**
+ * Phạm vi được phép giục của người bấm nút.
+ * - director: toàn công ty.
+ * - manager / team_leader: nhân viên trong phòng mình HOẶC việc do mình giao.
+ * - (cron tự động: không truyền scope → coi như toàn công ty).
+ */
+export interface NudgeScope { role: UserRole; userIds: string[]; departmentId: string; }
 
 const DEDUPE_COL = 'overdue_reminded_on';
 
@@ -108,9 +116,20 @@ export interface OverdueRunResult {
  * @param opts.dryRun chỉ tính toán, KHÔNG gửi và KHÔNG đánh dấu (để xem trước).
  * @throws Error('SMTP_NOT_CONFIGURED') nếu chưa cấu hình SMTP.
  */
-export async function runOverdueReminders(opts: { dryRun?: boolean } = {}): Promise<OverdueRunResult> {
+export async function runOverdueReminders(opts: { dryRun?: boolean; scope?: NudgeScope } = {}): Promise<OverdueRunResult> {
   const dryRun = opts.dryRun ?? false;
+  const scope = opts.scope;
   if (!isSmtpConfigured()) throw new Error('SMTP_NOT_CONFIGURED');
+
+  // Người này có được giục owner (dựa trên các việc quá hạn của owner) không?
+  const ownerInScope = (items: RawRow[]): boolean => {
+    if (!scope || scope.role === 'director') return true;
+    return items.some(t =>
+      (t.created_by && scope.userIds.includes(t.created_by)) ||                       // người giao việc
+      ((scope.role === 'manager' || scope.role === 'team_leader') &&                  // quản lý trực tiếp
+        t.department_id && t.department_id === scope.departmentId),
+    );
+  };
 
   if (!dryRun) await ensureColumns(SHEET_NAMES.TASKS, [DEDUPE_COL]);
 
@@ -140,9 +159,14 @@ export async function runOverdueReminders(opts: { dryRun?: boolean } = {}): Prom
   }
 
   let sent = 0, failed = 0, skippedNoEmail = 0, alreadyToday = 0, toNotify = 0;
+  let ownersInScope = 0, tasksInScope = 0;
   const toMark: { keyValue: string; data: Partial<RawRow> }[] = [];
 
   for (const [ownerId, items] of byOwner) {
+    if (!ownerInScope(items)) continue; // ngoài phạm vi của người bấm → bỏ qua
+    ownersInScope++;
+    tasksInScope += items.length;
+
     // Chống trùng: nếu MỌI việc quá hạn của người này đã được nhắc hôm nay → bỏ qua
     if (items.every(t => t[DEDUPE_COL] === todayStr)) { alreadyToday++; continue; }
     toNotify++;
@@ -155,6 +179,8 @@ export async function runOverdueReminders(opts: { dryRun?: boolean } = {}): Prom
     }
     if (dryRun) continue;
 
+    // Email liệt kê TOÀN BỘ việc quá hạn của owner (không cắt theo scope) và
+    // đánh dấu TẤT CẢ → dù ai giục, owner cũng chỉ nhận 1 email/ngày.
     const list: OverdueItem[] = items
       .map(t => ({ task_code: t.task_code, title: t.title, due_date: t.due_date, days: daysOverdue(t.due_date, todayStr) }))
       .sort((a, b) => b.days - a.days);
@@ -174,8 +200,8 @@ export async function runOverdueReminders(opts: { dryRun?: boolean } = {}): Prom
 
   return {
     date: todayStr,
-    overdue_tasks: overdue.length,
-    owners_overdue: byOwner.size,
+    overdue_tasks: tasksInScope,
+    owners_overdue: ownersInScope,
     to_notify: toNotify,
     sent, failed,
     skipped_no_email: skippedNoEmail,

@@ -52,7 +52,8 @@ export default function TaskManagementClient() {
   const { filters, createModalOpen, setCreateModal } = useTmStore();
   const [showKpi, setShowKpi] = useState(false);
   const currentUser = useCurrentTmUser();
-  const isDirector = currentUser?.role === 'director';
+  // Ban GĐ (toàn công ty) + Trưởng phòng / Nhóm trưởng (phòng mình / việc mình giao)
+  const canNudgeOverdue = ['director', 'manager', 'team_leader'].includes(currentUser?.role ?? '');
   const [overdueSending, setOverdueSending] = useState(false);
 
   // Gửi email giục các việc quá hạn (chỉ Admin/Ban GĐ). Xem trước số liệu → xác nhận → gửi.
@@ -69,7 +70,7 @@ export default function TaskManagementClient() {
         return;
       }
       const ok = window.confirm(
-        `Có ${p.overdue_tasks} công việc quá hạn của ${p.owners_overdue} người.\n\n` +
+        `Trong phạm vi bạn quản lý: ${p.overdue_tasks} công việc quá hạn của ${p.owners_overdue} người.\n\n` +
         `Gửi email giục tới ${p.to_notify} người chưa được nhắc hôm nay?`,
       );
       if (!ok) return;
@@ -120,9 +121,9 @@ export default function TaskManagementClient() {
           <BarChart2 size={15} /> KPI Dashboard
         </button>
 
-        {/* Gửi mail giục quá hạn — chỉ Admin / Ban Giám đốc */}
-        {isDirector && (
-          <button onClick={handleOverdueMail} disabled={overdueSending} title="Gửi email nhắc tất cả nhân viên đang có việc quá hạn" style={{
+        {/* Gửi mail giục quá hạn — Ban GĐ / Trưởng phòng / Nhóm trưởng */}
+        {canNudgeOverdue && (
+          <button onClick={handleOverdueMail} disabled={overdueSending} title="Gửi email nhắc nhân viên đang có việc quá hạn trong phạm vi bạn quản lý" style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
             border: '1.5px solid #fca5a5', borderRadius: 8,
             cursor: overdueSending ? 'wait' : 'pointer',
