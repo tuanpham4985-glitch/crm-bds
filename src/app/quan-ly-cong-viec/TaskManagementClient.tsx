@@ -33,6 +33,18 @@ const KpiDashboard = dynamic(
   },
 );
 
+const CalendarView = dynamic(
+  () => import('@/components/task-management/CalendarView'),
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 60, color: 'var(--text-muted)', gap: 10 }}>
+        <Loader2 size={20} className="tm-spin" /> Đang tải lịch...
+      </div>
+    ),
+  },
+);
+
 export default function TaskManagementClient() {
   // Đồng bộ nhân sự nay nằm gọn ở nút "Đồng bộ nhân sự" trang Nhân viên —
   // nút đó chạy cả HR → NHAN_VIEN → PostgreSQL → TM_Users trong một lượt.
@@ -98,8 +110,10 @@ export default function TaskManagementClient() {
         {/* Filters */}
         <TaskFilters />
 
-        {/* Content — List or Kanban */}
-        {filters.view === 'list' ? <TaskList /> : <KanbanBoard />}
+        {/* Content — List, Kanban hoặc Calendar */}
+        {filters.view === 'list' ? <TaskList />
+          : filters.view === 'kanban' ? <KanbanBoard />
+          : <CalendarView />}
       </div>
 
       {/* Task detail slide-over */}

@@ -25,7 +25,7 @@ export interface TaskFilterState {
   due_after:     string;
   page:          number;
   limit:         number;
-  view:          'list' | 'kanban';
+  view:          'list' | 'kanban' | 'calendar';
 }
 
 const defaultFilters: TaskFilterState = {
@@ -54,7 +54,7 @@ interface TmState {
   setFilter: <K extends keyof TaskFilterState>(key: K, value: TaskFilterState[K]) => void;
   setFilters: (patch: Partial<TaskFilterState>) => void;
   resetFilters: () => void;
-  setView: (view: 'list' | 'kanban') => void;
+  setView: (view: 'list' | 'kanban' | 'calendar') => void;
 
   // Selected task
   selectedTaskId: string | null;
@@ -192,6 +192,7 @@ export const selectApiFilters = (state: TmState): Partial<Record<string, string>
   if (f.due_before)    params.due_before    = f.due_before;
   if (f.due_after)     params.due_after     = f.due_after;
   params.page  = String(f.page);
-  params.limit = f.view === 'kanban' ? '999' : String(f.limit);
+  // Kanban và Lịch cần toàn bộ task (không phân trang) để hiển thị đủ trong tháng
+  params.limit = (f.view === 'kanban' || f.view === 'calendar') ? '999' : String(f.limit);
   return params;
 };

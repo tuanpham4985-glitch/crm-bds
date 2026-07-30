@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X, Filter, LayoutList, Columns, ChevronDown, UserCheck } from 'lucide-react';
+import { Search, X, Filter, LayoutList, Columns, CalendarDays, ChevronDown, UserCheck } from 'lucide-react';
 import { useTmStore } from '@/stores/tmStore';
 import { useCurrentTmUser, useTmDepartments, useTmProjects, useTmUsers } from '@/hooks/tm/useTasks';
 import type { TaskStatus, TaskPriority } from '@/lib/task-management/types';
@@ -264,15 +264,15 @@ export default function TaskFilters() {
         </div>
 
         <div style={{ display: 'flex', border: '1.5px solid var(--border-light)', borderRadius: 8, overflow: 'hidden' }}>
-          {(['list', 'kanban'] as const).map(v => (
+          {(['list', 'kanban', 'calendar'] as const).map(v => (
             <button key={v} onClick={() => setView(v)} style={{
               padding: '6px 12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
               fontSize: 12, fontWeight: 600,
               background: filters.view === v ? 'var(--primary)' : 'transparent',
               color: filters.view === v ? '#fff' : 'var(--text-muted)',
             }}>
-              {v === 'list' ? <LayoutList size={14} /> : <Columns size={14} />}
-              {v === 'list' ? 'Danh sách' : 'Kanban'}
+              {v === 'list' ? <LayoutList size={14} /> : v === 'kanban' ? <Columns size={14} /> : <CalendarDays size={14} />}
+              {v === 'list' ? 'Danh sách' : v === 'kanban' ? 'Kanban' : 'Lịch'}
             </button>
           ))}
         </div>
