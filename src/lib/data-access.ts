@@ -173,13 +173,29 @@ export function addNhanVien(data: NhanVien): Promise<void> {
   );
 }
 
-export function updateNhanVien(data: NhanVien): Promise<boolean> {
+export async function updateNhanVien(data: NhanVien): Promise<boolean> {
   revalidateTag('nv', {}); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.updateNhanVien(data);
-  return withPgFallback('hrm', 'updateNhanVien',
-    () => getEmployeeRepository().update(data),
-    () => GS.updateNhanVien(data),
-  );
+
+  // Google Sheets là NGUỒN SỰ THẬT cho nhân sự — đăng nhập đọc thẳng từ sheet
+  // (findEmployeeForAuth), và cron sync hằng ngày ghi đè PG bằng dữ liệu sheet.
+  // Nếu chỉ ghi PostgreSQL thì mật khẩu mới không bao giờ tới sheet → login vẫn
+  // dùng mật khẩu cũ, rồi lần sync kế tiếp còn xoá luôn thay đổi ở PG.
+  // => Ghi sheet trước, sau đó cập nhật bản sao PG (best-effort) để màn hình
+  //    đọc-nhanh không hiện dữ liệu cũ.
+  const sheetOk = await GS.updateNhanVien(data).catch(e => {
+    console.error('[hrm:updateNhanVien] ghi Google Sheets lỗi:', e instanceof Error ? e.message : e);
+    return false;
+  });
+
+  // Nhân viên tạo trong app (mã "NV<timestamp>") chỉ tồn tại ở PG, không có dòng
+  // trong sheet → sheetOk=false nhưng vẫn phải cập nhật PG.
+  const pgOk = await getEmployeeRepository().update(data).catch(e => {
+    console.error('[hrm:updateNhanVien] cập nhật PostgreSQL lỗi:', e instanceof Error ? e.message : e);
+    return false;
+  });
+
+  return sheetOk || pgOk;
 }
 
 export function deleteNhanVien(id: string): Promise<boolean> {
