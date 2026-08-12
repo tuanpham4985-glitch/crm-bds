@@ -451,7 +451,7 @@ export default function ChamCongNgoaiPage() {
           {/* Photo */}
           <div className="form-group" style={{ marginBottom: 14 }}>
             <label className="form-label">Ảnh tại dự án</label>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
             {photo ? (
               <div style={{ position: 'relative', display: 'inline-block' }}>
                 <img src={photo} alt="preview" onClick={() => setLightbox(photo)}
