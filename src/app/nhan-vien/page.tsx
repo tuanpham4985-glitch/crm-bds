@@ -596,7 +596,22 @@ export default function NhanVienPage() {
     );
   };
 
-  if (loading || authLoading) {
+  if (authLoading) {
+    return <div className="loading-spinner"><div className="spinner" /></div>;
+  }
+
+  // Chỉ HR và Admin được truy cập trang Nhân viên
+  if (!canEditHRM) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+        <Shield size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+        <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+        <p style={{ fontSize: 13, margin: 0 }}>Chỉ HR và Admin mới có thể xem trang Nhân viên</p>
+      </div>
+    );
+  }
+
+  if (loading) {
     return <div className="loading-spinner"><div className="spinner" /></div>;
   }
 
