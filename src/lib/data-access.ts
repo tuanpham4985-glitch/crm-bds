@@ -164,13 +164,21 @@ export async function findNhanVienByEmail(email: string): Promise<NhanVien | nul
   return fromSheet;
 }
 
-export function addNhanVien(data: NhanVien): Promise<void> {
+export async function addNhanVien(data: NhanVien): Promise<void> {
   revalidateTag('nv', {}); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.addNhanVien(data);
-  return withPgFallback('hrm', 'addNhanVien',
-    () => getEmployeeRepository().create(data),
-    () => GS.addNhanVien(data),
-  );
+
+  // Google Sheets là NGUỒN SỰ THẬT — đăng nhập (findEmployeeForAuth) đọc thẳng
+  // từ sheet. Nếu chỉ tạo trong PostgreSQL, nhân viên mới KHÔNG đăng nhập được
+  // vì login không thấy họ trong sheet. Ghi sheet trước (bắt buộc), rồi thêm vào
+  // bản sao PG để màn hình đọc-nhanh hiện ngay. ID do route sinh sẵn ("NV…") nên
+  // hai kho dùng chung một id_nhan_vien — không lệch.
+  await GS.addNhanVien(data);
+
+  await getEmployeeRepository().create(data).catch(e => {
+    // Sheet đã có bản ghi (nguồn sự thật); PG là bản sao, cron sync sẽ nạp bù.
+    console.error('[hrm:addNhanVien] tạo bản sao PostgreSQL lỗi (cron sync sẽ bù):', e instanceof Error ? e.message : e);
+  });
 }
 
 export async function updateNhanVien(data: NhanVien): Promise<boolean> {
@@ -198,13 +206,24 @@ export async function updateNhanVien(data: NhanVien): Promise<boolean> {
   return sheetOk || pgOk;
 }
 
-export function deleteNhanVien(id: string): Promise<boolean> {
+export async function deleteNhanVien(id: string): Promise<boolean> {
   revalidateTag('nv', {}); invalidate('gs:nv');
   if (!isPostgresEnabled('hrm')) return GS.deleteNhanVien(id);
-  return withPgFallback('hrm', 'deleteNhanVien',
-    () => getEmployeeRepository().delete(id),
-    () => GS.deleteNhanVien(id),
-  );
+
+  // Phải xoá khỏi Google Sheets (nguồn sự thật) — nếu chỉ xoá ở PostgreSQL thì:
+  //  • nhân viên tạo-trong-app vẫn còn dòng trong sheet → VẪN ĐĂNG NHẬP ĐƯỢC;
+  //  • và cron sync hằng ngày sẽ nạp họ trở lại PG.
+  const sheetOk = await GS.deleteNhanVien(id).catch(e => {
+    console.error('[hrm:deleteNhanVien] xoá Google Sheets lỗi:', e instanceof Error ? e.message : e);
+    return false;
+  });
+
+  const pgOk = await getEmployeeRepository().delete(id).catch(e => {
+    console.error('[hrm:deleteNhanVien] xoá PostgreSQL lỗi:', e instanceof Error ? e.message : e);
+    return false;
+  });
+
+  return sheetOk || pgOk;
 }
 
 // ── CRM: KhachHang ───────────────────────────────────────────
