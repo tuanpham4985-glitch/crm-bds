@@ -1,4 +1,4 @@
-import { findNhanVienByEmail } from '@/lib/google-sheets';
+import { findNhanVienByEmail } from '@/lib/data-access';
 import type { NhanVien } from '@/lib/types';
 
 export const ACTIVE_EMPLOYEE_STATUSES = ['đang làm', 'chính thức', 'thử việc'];
@@ -17,8 +17,19 @@ export function isActiveEmployee(employee: Pick<NhanVien, 'trang_thai'>): boolea
 }
 
 /**
- * Authentication must use NHAN_VIEN in Google Sheets as the source of truth.
- * PostgreSQL is only a read replica and can be stale after email/status changes.
+ * Đọc nhân viên để xác thực qua data-access.findNhanVienByEmail:
+ * ưu tiên PostgreSQL (bản sao đọc-nhanh), chỉ hỏi Google Sheets khi PG chưa có
+ * người đó (nhân viên vừa thêm, chưa kịp sync).
+ *
+ * TRƯỚC ĐÂY hàm này đọc THẲNG Google Sheets mỗi lần đăng nhập VÀ mỗi lần
+ * GET /api/auth (useAuth gọi trên gần như mọi trang) → dội quá nhiều lượt đọc,
+ * dính lỗi [429] "Read requests per minute per user" của Sheets API, khiến
+ * KHÔNG AI đăng nhập được. PG-first cắt phần lớn lượt đọc Sheets.
+ *
+ * Tính đúng: mọi thao tác ghi HRM đã write-through Google Sheets + PG
+ * (updateNhanVien/addNhanVien), và cron sync nạp lại PG hằng ngày, nên PG đủ
+ * mới cho mật khẩu/vai trò/trạng thái đổi qua app. Chỉnh sửa trực tiếp trên
+ * sheet (không qua app) sẽ có hiệu lực sau lần sync kế tiếp.
  */
 export async function findEmployeeForAuth(email: string): Promise<EmployeeAuthLookup> {
   const normalizedEmail = normalizeAuthEmail(email);
