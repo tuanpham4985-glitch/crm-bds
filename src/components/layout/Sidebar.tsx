@@ -57,7 +57,10 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, canEditHRM } = useAuth();
+
+  // Tab "Nhân viên" chỉ hiển thị cho HR (và Admin). Nhân viên thường không thấy.
+  const hrmItems = HRM_ITEMS.filter(item => item.href !== '/nhan-vien' || canEditHRM);
 
   const { data: pendingData } = useSWR(
     user ? '/api/cham-cong-ngoai/pending-count' : null,
@@ -376,7 +379,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           </button>
           
           <div className={`${styles.groupContent} ${hrmOpen ? styles.open : ''}`}>
-            {HRM_ITEMS.map((item) => {
+            {hrmItems.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href);
               const Icon = item.icon;
               const showBadge = item.href === '/cham-cong-ngoai' && pendingCount > 0;
