@@ -5,6 +5,7 @@ import {
   addChamCongNgoai,
   updateChamCongNgoaiStatus,
   deleteChamCongNgoai,
+  adminDeleteChamCongNgoai,
   getManagerForEmployee,
 } from '@/lib/data-access';
 
@@ -134,7 +135,9 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE /api/cham-cong-ngoai?id=xxx — Xóa đơn chờ duyệt (chủ đơn)
+// DELETE /api/cham-cong-ngoai?id=xxx
+// - Admin/HR: xóa đơn bất kỳ (mọi chủ đơn, mọi trạng thái)
+// - Nhân viên: chỉ xóa đơn của mình khi đang chờ duyệt
 export async function DELETE(request: NextRequest) {
   try {
     const user = await getSession();
@@ -144,7 +147,9 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ success: false, error: 'Thiếu id' }, { status: 400 });
 
-    const ok = await deleteChamCongNgoai(id, user.id_nhan_vien);
+    const ok = isAdminOrHR(user)
+      ? await adminDeleteChamCongNgoai(id)
+      : await deleteChamCongNgoai(id, user.id_nhan_vien);
     if (!ok) return NextResponse.json({ success: false, error: 'Không tìm thấy hoặc không có quyền xóa' }, { status: 404 });
 
     return NextResponse.json({ success: true });

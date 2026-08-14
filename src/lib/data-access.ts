@@ -482,6 +482,19 @@ export function deleteChamCongNgoai(id: string, employeeId: string): Promise<boo
   );
 }
 
+// Admin/HR xóa đơn bất kỳ (bỏ ràng buộc chủ đơn + trạng thái). Ủy quyền ở API route.
+export function adminDeleteChamCongNgoai(id: string): Promise<boolean> {
+  if (!isPostgresEnabled('attendance')) return GS.deleteChamCongNgoaiById(id);
+  return withPgFallback('attendance', 'adminDeleteChamCongNgoai',
+    async () => {
+      const ok = await getAttendanceOutsideRepository().deleteAny(id);
+      if (ok) await mirrorDeleteChamCongNgoaiFromSheet(id, 'adminDeleteChamCongNgoai');
+      return ok;
+    },
+    () => GS.deleteChamCongNgoaiById(id),
+  );
+}
+
 // Attendance mirror: khi PG bật, vẫn phản chiếu CHAM_CONG_NGOAI về Google Sheet.
 async function mirrorChamCongNgoaiToSheet(row: ChamCongNgoai, fn: string): Promise<void> {
   try {

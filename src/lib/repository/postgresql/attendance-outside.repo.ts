@@ -77,10 +77,19 @@ export class PostgresAttendanceOutsideRepository
 
   async delete(id: string, employeeId: string): Promise<boolean> {
     try {
-      await prisma.chamCongNgoai.deleteMany({
+      const res = await prisma.chamCongNgoai.deleteMany({
         where: { id, id_nhan_vien: employeeId },
       });
-      return true;
+      return res.count > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async deleteAny(id: string): Promise<boolean> {
+    try {
+      const res = await prisma.chamCongNgoai.deleteMany({ where: { id } });
+      return res.count > 0;
     } catch {
       return false;
     }

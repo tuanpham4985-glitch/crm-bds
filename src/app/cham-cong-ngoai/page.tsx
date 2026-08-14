@@ -497,6 +497,7 @@ export default function ChamCongNgoaiPage() {
                 onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined}
                 onApprove={() => { setApproving({ id: r.id, action: 'da_duyet' }); setGhiChuDuyet(''); }}
                 onReject={() => { setApproving({ id: r.id, action: 'tu_choi' }); setGhiChuDuyet(''); }}
+                onDelete={() => handleDelete(r.id)}
               />
             ))}
           </div>
@@ -594,7 +595,9 @@ export default function ChamCongNgoaiPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {filteredAll.map(r => (
-                <RecordCard key={r.id} record={r} showName onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined} />
+                <RecordCard key={r.id} record={r} showName
+                  showDelete onDelete={() => handleDelete(r.id)}
+                  onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined} />
               ))}
             </div>
           )}
@@ -719,10 +722,11 @@ function RecordCard({ record, showDelete, onDelete, showName, onPhoto }: {
   );
 }
 
-function ApproveCard({ record, onApprove, onReject, onPhoto }: {
+function ApproveCard({ record, onApprove, onReject, onDelete, onPhoto }: {
   record: ChamCongNgoai;
   onApprove: () => void;
   onReject: () => void;
+  onDelete?: () => void;
   onPhoto?: () => void;
 }) {
   return (
@@ -783,6 +787,12 @@ function ApproveCard({ record, onApprove, onReject, onPhoto }: {
           style={{ flex: 1, fontSize: 13, padding: '7px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#ef4444' }}>
           <XCircle size={14} /> Từ chối
         </button>
+        {onDelete && (
+          <button onClick={onDelete} className="btn btn-secondary" title="Xóa đơn (Admin)"
+            style={{ fontSize: 13, padding: '7px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--text-secondary)' }}>
+            <Trash2 size={14} /> Xóa
+          </button>
+        )}
       </div>
     </div>
   );

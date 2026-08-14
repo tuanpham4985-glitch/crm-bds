@@ -94,6 +94,8 @@ export interface IAttendanceOutsideRepository {
     requiredQL?: string
   ): Promise<boolean | 'forbidden'>;
   delete(id: string, employeeId: string): Promise<boolean>;
+  // Admin/HR delete: bỏ ràng buộc chủ đơn + trạng thái (dùng dọn đơn test)
+  deleteAny(id: string): Promise<boolean>;
 }
 
 // ─── PAYROLL ─────────────────────────────────────────────────

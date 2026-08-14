@@ -5,6 +5,7 @@ import {
   addChamCongNgoai,
   updateChamCongNgoaiStatus,
   deleteChamCongNgoai,
+  deleteChamCongNgoaiById,
 } from '../../google-sheets';
 
 export class GoogleSheetsAttendanceOutsideRepository
@@ -42,5 +43,9 @@ export class GoogleSheetsAttendanceOutsideRepository
 
   delete(id: string, employeeId: string): Promise<boolean> {
     return deleteChamCongNgoai(id, employeeId);
+  }
+
+  deleteAny(id: string): Promise<boolean> {
+    return deleteChamCongNgoaiById(id);
   }
 }
