@@ -7,6 +7,8 @@
  *   body         — Nội dung (plain text hoặc HTML)
  *   testEmail    — Nếu có: chỉ gửi đến email này (chế độ thử)
  *   recipientIds — JSON array id_nhan_vien, bỏ trống = gửi tất cả nhân viên đang làm
+ *   ccIds        — (tuỳ chọn) JSON array id_nhan_vien để Cc (thêm vào từng email)
+ *   bccIds       — (tuỳ chọn) JSON array id_nhan_vien để Bcc (thêm vào từng email)
  *   files        — (tuỳ chọn) File đính kèm (image/*, .pdf)
  */
 
@@ -22,6 +24,8 @@ export async function POST(request: NextRequest) {
     const body      = (formData.get('body')       as string | null)?.trim();
     const testEmail = (formData.get('testEmail')  as string | null)?.trim();
     const recipientIdsRaw = formData.get('recipientIds') as string | null;
+    const ccIdsRaw  = formData.get('ccIds')  as string | null;
+    const bccIdsRaw = formData.get('bccIds') as string | null;
 
     if (!subject || !body) {
       return NextResponse.json(
@@ -47,6 +51,8 @@ export async function POST(request: NextRequest) {
 
     // Chế độ gửi thử: chỉ gửi đến testEmail, không cần lấy danh sách nhân viên
     let recipients: { email: string; ho_ten: string }[];
+    let ccEmails: string[] = [];
+    let bccEmails: string[] = [];
     if (testEmail) {
       recipients = [{ email: testEmail, ho_ten: 'Test' }];
     } else {
@@ -60,6 +66,17 @@ export async function POST(request: NextRequest) {
           return true;
         })
         .map(nv => ({ email: nv.email.trim(), ho_ten: nv.ho_ten }));
+
+      // Cc/Bcc: giải id nhân viên → email (chỉ lấy người có email)
+      const idsToEmails = (raw: string | null): string[] => {
+        if (!raw) return [];
+        const ids: string[] = JSON.parse(raw);
+        return allEmployees
+          .filter(nv => ids.includes(nv.id_nhan_vien) && nv.email?.trim())
+          .map(nv => nv.email.trim());
+      };
+      ccEmails  = idsToEmails(ccIdsRaw);
+      bccEmails = idsToEmails(bccIdsRaw);
     }
 
     if (recipients.length === 0) {
@@ -124,9 +141,14 @@ export async function POST(request: NextRequest) {
 
     for (const { email, ho_ten } of recipients) {
       try {
+        // Bỏ trùng: không Cc/Bcc chính người đang nhận ở dòng To
+        const cc  = ccEmails.filter(e => e.toLowerCase() !== email.toLowerCase());
+        const bcc = bccEmails.filter(e => e.toLowerCase() !== email.toLowerCase());
         await transporter.sendMail({
           from: `"${smtpFrom}" <${smtpFromEmail}>`,
           to: email,
+          ...(cc.length ? { cc } : {}),
+          ...(bcc.length ? { bcc } : {}),
           subject,
           html: makeHtml(ho_ten),
           attachments,

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
   Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText, FileUser, RefreshCw,
-  Megaphone, Send, Paperclip, CheckCircle2, Users
+  Megaphone, Send, Paperclip, CheckCircle2, Users, Search, ChevronDown
 } from 'lucide-react';
 import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc } from '@/lib/types';
 import Link from 'next/link';
@@ -91,6 +91,13 @@ export default function NhanVienPage() {
   const [annSending, setAnnSending] = useState(false);
   const [annTestEmail, setAnnTestEmail] = useState('');
   const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[]; isTest?: boolean; failedEmails?: string[] } | null>(null);
+  // Người nhận: 'all' = toàn thể, 'selected' = chọn cụ thể. Cc/Bcc = danh sách id nhân viên.
+  const [annMode, setAnnMode] = useState<'all' | 'selected'>('all');
+  const [annTo, setAnnTo] = useState<string[]>([]);
+  const [annCc, setAnnCc] = useState<string[]>([]);
+  const [annBcc, setAnnBcc] = useState<string[]>([]);
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
 
   const openAnnModal = () => {
     setAnnSubject('');
@@ -98,6 +105,12 @@ export default function NhanVienPage() {
     setAnnFiles([]);
     setAnnTestEmail('');
     setAnnResult(null);
+    setAnnMode('all');
+    setAnnTo([]);
+    setAnnCc([]);
+    setAnnBcc([]);
+    setShowCc(false);
+    setShowBcc(false);
     setAnnModal(true);
   };
 
@@ -109,16 +122,29 @@ export default function NhanVienPage() {
 
   const removeAnnFile = (idx: number) => setAnnFiles(prev => prev.filter((_, i) => i !== idx));
 
+  // Nhân viên đủ điều kiện nhận email (có email + đang làm) — dùng cho To/Cc/Bcc
+  const annEligible = employees.filter(nv => (nv.email ?? '').trim() && nv.trang_thai !== 'Nghỉ việc');
+
   const sendAnnouncement = async (isTest = false) => {
     if (!annSubject.trim() || !annBody.trim()) return;
     if (isTest && !annTestEmail.trim()) return;
+    if (!isTest && annMode === 'selected' && annTo.length === 0) {
+      alert('Vui lòng chọn ít nhất 1 người nhận, hoặc chuyển sang chế độ "Toàn thể".');
+      return;
+    }
     setAnnSending(true);
     setAnnResult(null);
     try {
       const fd = new FormData();
       fd.append('subject', annSubject.trim());
       fd.append('body', annBody.trim());
-      if (isTest) fd.append('testEmail', annTestEmail.trim());
+      if (isTest) {
+        fd.append('testEmail', annTestEmail.trim());
+      } else {
+        if (annMode === 'selected') fd.append('recipientIds', JSON.stringify(annTo));
+        if (annCc.length) fd.append('ccIds', JSON.stringify(annCc));
+        if (annBcc.length) fd.append('bccIds', JSON.stringify(annBcc));
+      }
       annFiles.forEach(f => fd.append('files', f));
       const res = await fetch('/api/email/announcement', { method: 'POST', body: fd });
       const data = await res.json();
@@ -1204,14 +1230,65 @@ export default function NhanVienPage() {
             {/* Body — flex column, editor fills remaining space */}
             <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '16px 24px 0', gap: 10, overflow: 'hidden' }}>
 
-              {/* Recipients */}
-              <div style={{
-                flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 12px', background: 'var(--info-bg)',
-                borderRadius: 'var(--radius-md)', fontSize: 13, color: 'var(--info-text)',
-              }}>
-                <Users size={14} />
-                <span>Gửi đến <strong>{employees.filter(nv => nv.email && nv.trang_thai !== 'Nghỉ việc').length} nhân viên</strong> có email</span>
+              {/* Recipients — chọn người nhận + Cc/Bcc */}
+              <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Mode toggle: Toàn thể / Chọn cụ thể */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-title)' }}>Người nhận:</span>
+                  <div style={{ display: 'inline-flex', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                    {(['all', 'selected'] as const).map(m => (
+                      <button key={m} type="button" disabled={annSending}
+                        onClick={() => setAnnMode(m)}
+                        style={{
+                          padding: '5px 12px', fontSize: 12.5, fontWeight: 600, border: 'none', cursor: 'pointer',
+                          background: annMode === m ? 'var(--primary)' : 'transparent',
+                          color: annMode === m ? '#fff' : 'var(--text-muted)',
+                        }}>
+                        {m === 'all' ? `Toàn thể (${annEligible.length})` : 'Chọn cụ thể'}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Cc/Bcc toggles kiểu Gmail */}
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+                    {!showCc && (
+                      <button type="button" disabled={annSending} onClick={() => setShowCc(true)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--primary)' }}>Cc</button>
+                    )}
+                    {!showBcc && (
+                      <button type="button" disabled={annSending} onClick={() => setShowBcc(true)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--primary)' }}>Bcc</button>
+                    )}
+                  </div>
+                </div>
+
+                {annMode === 'all' ? (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+                    background: 'var(--info-bg)', borderRadius: 'var(--radius-md)', fontSize: 13, color: 'var(--info-text)',
+                  }}>
+                    <Users size={14} />
+                    <span>Gửi đến <strong>{annEligible.length} nhân viên</strong> có email (mỗi người một email riêng)</span>
+                  </div>
+                ) : (
+                  <EmployeeMultiSelect label="Đến" employees={annEligible} selected={annTo}
+                    onChange={setAnnTo} disabled={annSending} placeholder="Chọn người nhận..." />
+                )}
+
+                {showCc && (
+                  <EmployeeMultiSelect label="Cc" employees={annEligible} selected={annCc}
+                    onChange={setAnnCc} disabled={annSending} placeholder="Chọn người nhận Cc..."
+                    onClear={() => { setShowCc(false); setAnnCc([]); }} />
+                )}
+                {showBcc && (
+                  <EmployeeMultiSelect label="Bcc" employees={annEligible} selected={annBcc}
+                    onChange={setAnnBcc} disabled={annSending} placeholder="Chọn người nhận Bcc..."
+                    onClear={() => { setShowBcc(false); setAnnBcc([]); }} />
+                )}
+                {(showCc || showBcc) && (annCc.length > 0 || annBcc.length > 0) && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    Cc/Bcc sẽ được thêm vào từng email gửi đi. Nên dùng khi số người nhận chính ít, tránh gửi lặp nhiều lần.
+                  </div>
+                )}
               </div>
 
               {/* Subject */}
@@ -1351,11 +1428,11 @@ export default function NhanVienPage() {
               {(!annResult || annResult.isTest) && (
                 <button className="btn btn-primary"
                   onClick={() => sendAnnouncement(false)}
-                  disabled={annSending || !annSubject.trim() || !annBody.trim()}
+                  disabled={annSending || !annSubject.trim() || !annBody.trim() || (annMode === 'selected' && annTo.length === 0)}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {annSending
                     ? <><Loader2 size={15} className="animate-spin" />Đang gửi...</>
-                    : <><Send size={15} />Gửi toàn thể</>}
+                    : <><Send size={15} />{annMode === 'all' ? 'Gửi toàn thể' : `Gửi (${annTo.length})`}</>}
                 </button>
               )}
             </div>
@@ -1370,6 +1447,109 @@ export default function NhanVienPage() {
           to { transform: rotate(360deg); }
         }
       `}</style>
+    </div>
+  );
+}
+
+// ── Chọn nhiều nhân viên (tick từ danh sách) — dùng cho To/Cc/Bcc ──
+function EmployeeMultiSelect({
+  label, employees, selected, onChange, disabled, placeholder, onClear,
+}: {
+  label: string;
+  employees: NhanVien[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  disabled?: boolean;
+  placeholder?: string;
+  onClear?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const toggle = (id: string) =>
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? employees.filter(nv =>
+        nv.ho_ten.toLowerCase().includes(q) || (nv.email ?? '').toLowerCase().includes(q))
+    : employees;
+
+  const selectedEmps = employees.filter(nv => selected.includes(nv.id_nhan_vien));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', width: 34, flexShrink: 0 }}>{label}</span>
+        <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+          style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+            padding: '6px 10px', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-surface)', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)',
+          }}>
+          <span>{selected.length ? `Đã chọn ${selected.length} người` : (placeholder || 'Chọn...')}</span>
+          <ChevronDown size={15} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+        </button>
+        {onClear && (
+          <button type="button" className="btn btn-ghost btn-icon btn-sm" disabled={disabled}
+            onClick={onClear} title="Bỏ dòng này" style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Chips người đã chọn */}
+      {selectedEmps.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, paddingLeft: 42 }}>
+          {selectedEmps.map(nv => (
+            <span key={nv.id_nhan_vien} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 6px 2px 9px',
+              background: 'var(--info-bg)', color: 'var(--info-text)', borderRadius: 20, fontSize: 12, fontWeight: 500,
+            }}>
+              {nv.ho_ten}
+              <button type="button" disabled={disabled} onClick={() => toggle(nv.id_nhan_vien)}
+                style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0 }}>
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Panel tick chọn */}
+      {open && (
+        <div style={{
+          marginLeft: 42, border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)',
+          background: 'var(--bg-surface)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--border-lighter)' }}>
+            <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            <input autoFocus value={query} onChange={e => setQuery(e.target.value)} disabled={disabled}
+              placeholder="Tìm theo tên hoặc email..."
+              style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: 'var(--text-title)' }} />
+          </div>
+          <div style={{ maxHeight: 168, overflowY: 'auto' }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--text-muted)' }}>Không tìm thấy nhân viên</div>
+            ) : filtered.map(nv => {
+              const checked = selected.includes(nv.id_nhan_vien);
+              return (
+                <label key={nv.id_nhan_vien} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer',
+                  background: checked ? 'var(--info-bg)' : 'transparent',
+                }}>
+                  <input type="checkbox" checked={checked} disabled={disabled}
+                    onChange={() => toggle(nv.id_nhan_vien)} style={{ flexShrink: 0 }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nv.ho_ten}</span>
+                    <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nv.email}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
