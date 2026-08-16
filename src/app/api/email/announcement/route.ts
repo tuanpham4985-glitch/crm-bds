@@ -136,10 +136,18 @@ export async function POST(request: NextRequest) {
 
     let sent = 0;
     let failed = 0;
+    let quotaHit = false;
     const errors: string[] = [];
+    const notSent: string[] = []; // email của người CHƯA gửi được (lỗi + bị dừng sớm) — để "Gửi lại"
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    for (const { email, ho_ten } of recipients) {
+    // Lỗi hạn mức/tần suất từ nhà cung cấp (Gmail: "550 ... daily sending limit /
+    // daily email sending quota"). Gặp cái này thì gửi tiếp cũng vô ích → dừng sớm.
+    const isQuotaError = (msg: string) =>
+      /quota|daily .*limit|sending limit|rate ?limit|too many|try again later|temporarily (rejected|deferred)|4\.7\.0/i.test(msg);
+
+    for (let idx = 0; idx < recipients.length; idx++) {
+      const { email, ho_ten } = recipients[idx];
       try {
         // Bỏ trùng: không Cc/Bcc chính người đang nhận ở dòng To
         const cc  = ccEmails.filter(e => e.toLowerCase() !== email.toLowerCase());
@@ -156,13 +164,24 @@ export async function POST(request: NextRequest) {
         sent++;
       } catch (err: any) {
         failed++;
-        errors.push(`${ho_ten} <${email}>: ${err?.message || 'Lỗi không xác định'}`);
+        const msg = err?.message || 'Lỗi không xác định';
+        errors.push(`${ho_ten} <${email}>: ${msg}`);
+        notSent.push(email.toLowerCase());
+        if (isQuotaError(msg)) {
+          quotaHit = true;
+          // Những người phía sau chưa được thử → cũng tính là chưa gửi
+          for (let j = idx + 1; j < recipients.length; j++) notSent.push(recipients[j].email.toLowerCase());
+          break;
+        }
       }
       // Giới hạn 2 email/giây — chờ 600ms giữa mỗi lần gửi
       await sleep(600);
     }
 
-    return NextResponse.json({ success: true, total: recipients.length, sent, failed, errors });
+    // Người chưa được thử vì đã dừng sớm khi chạm hạn mức
+    const skipped = recipients.length - sent - failed;
+
+    return NextResponse.json({ success: true, total: recipients.length, sent, failed, skipped, quotaHit, errors, notSent });
 
   } catch (error: any) {
     console.error('[API email/announcement]', error);

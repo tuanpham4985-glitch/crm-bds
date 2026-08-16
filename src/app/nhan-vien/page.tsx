@@ -90,7 +90,7 @@ export default function NhanVienPage() {
   const [annFiles, setAnnFiles] = useState<File[]>([]);
   const [annSending, setAnnSending] = useState(false);
   const [annTestEmail, setAnnTestEmail] = useState('');
-  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[]; isTest?: boolean; failedEmails?: string[] } | null>(null);
+  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[]; isTest?: boolean; failedEmails?: string[]; quotaHit?: boolean; skipped?: number; notSent?: string[] } | null>(null);
   // Người nhận: 'all' = toàn thể, 'selected' = chọn cụ thể. Cc/Bcc = danh sách id nhân viên.
   const [annMode, setAnnMode] = useState<'all' | 'selected'>('all');
   const [annTo, setAnnTo] = useState<string[]>([]);
@@ -153,7 +153,7 @@ export default function NhanVienPage() {
           const m = e.match(/<([^>]+)>/);
           return m ? m[1].toLowerCase() : '';
         }).filter(Boolean);
-        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], isTest, failedEmails });
+        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], isTest, failedEmails, quotaHit: data.quotaHit, skipped: data.skipped, notSent: data.notSent });
       } else {
         alert('Lỗi gửi thông báo: ' + (data.error || 'Không xác định'));
       }
@@ -165,9 +165,11 @@ export default function NhanVienPage() {
   };
 
   const retrySendFailed = async () => {
-    if (!annResult?.failedEmails?.length) return;
+    // Ưu tiên danh sách "chưa gửi" (gồm cả người bị dừng sớm do quota); fallback về failedEmails
+    const pending = annResult?.notSent?.length ? annResult.notSent : annResult?.failedEmails;
+    if (!pending?.length) return;
     const failedIds = employees
-      .filter(nv => annResult.failedEmails!.includes((nv.email ?? '').toLowerCase()))
+      .filter(nv => pending.includes((nv.email ?? '').toLowerCase()))
       .map(nv => nv.id_nhan_vien);
     if (failedIds.length === 0) return;
     setAnnSending(true);
@@ -185,7 +187,7 @@ export default function NhanVienPage() {
           const m = e.match(/<([^>]+)>/);
           return m ? m[1].toLowerCase() : '';
         }).filter(Boolean);
-        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], failedEmails: newFailedEmails });
+        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], failedEmails: newFailedEmails, quotaHit: data.quotaHit, skipped: data.skipped, notSent: data.notSent });
       } else {
         alert('Lỗi gửi lại: ' + (data.error || 'Không xác định'));
       }
@@ -1392,14 +1394,20 @@ export default function NhanVienPage() {
                     <CheckCircle2 size={15} />
                     {annResult.isTest
                       ? `Gửi thử thành công đến ${annTestEmail}`
-                      : `Gửi thành công ${annResult.sent}/${annResult.sent + annResult.failed} email${annResult.failed > 0 ? ` · ${annResult.failed} thất bại` : ''}`}
+                      : `Gửi thành công ${annResult.sent}/${annResult.sent + annResult.failed + (annResult.skipped ?? 0)} email${annResult.failed > 0 ? ` · ${annResult.failed} thất bại` : ''}${annResult.skipped ? ` · ${annResult.skipped} chưa gửi` : ''}`}
                   </div>
+                  {annResult.quotaHit && (
+                    <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 6, background: '#fef2f2', border: '1px solid #fecaca', fontSize: 12, color: '#991b1b', lineHeight: 1.6 }}>
+                      <strong>Đã chạm hạn mức gửi email trong ngày</strong> của nhà cung cấp (Gmail). Hệ thống đã dừng để tránh bị siết thêm.
+                      <br />Hạn mức thường tự mở lại sau ~24 giờ — khi đó bấm <em>“Gửi lại”</em> để gửi tiếp số còn lại. Nếu cần gửi số lượng lớn thường xuyên, nên chuyển sang email doanh nghiệp hoặc dịch vụ gửi email chuyên dụng.
+                    </div>
+                  )}
                   {annResult.errors.length > 0 && (
                     <>
                       <ul style={{ margin: '6px 0 4px 18px', fontSize: 12, color: '#92400e' }}>
                         {annResult.errors.map((e, i) => <li key={i}>{e}</li>)}
                       </ul>
-                      {!annResult.isTest && annResult.failedEmails && annResult.failedEmails.length > 0 && (
+                      {!annResult.isTest && (annResult.notSent?.length || annResult.failedEmails?.length) ? (
                         <button
                           onClick={retrySendFailed}
                           disabled={annSending}
@@ -1408,9 +1416,9 @@ export default function NhanVienPage() {
                             background: '#f59e0b', color: '#fff', border: 'none',
                             borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5,
                           }}>
-                          Gửi lại {annResult.failed} người thất bại
+                          Gửi lại {annResult.notSent?.length ?? annResult.failed} người chưa gửi
                         </button>
-                      )}
+                      ) : null}
                     </>
                   )}
                 </div>
