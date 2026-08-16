@@ -75,6 +75,21 @@ export async function syncNhanVienToPostgres(): Promise<SyncHrmResult> {
           phong_KD:      nv.phong_KD,
           ql_truc_tiep:  nv.ql_truc_tiep,
           so_dien_thoai: nv.so_dien_thoai,
+          // Các cột nguồn từ sheet trước đây bị bỏ sót ở update, nên sửa trên sheet
+          // không phản chiếu sang PG (email, CCCD, ngân hàng, HKTT…). Bổ sung đầy đủ.
+          gioi_tinh:               nv.gioi_tinh,
+          khu_vuc:                 nv.khu_vuc,
+          so_cccd:                 nv.so_cccd,
+          ngay_cap:                nv.ngay_cap,
+          noi_cap:                 nv.noi_cap,
+          HKTT:                    nv.HKTT,
+          ngay_sinh:               nv.ngay_sinh,
+          ma_so_thue:              nv.ma_so_thue,
+          so_nguoi_phu_thuoc:      nv.so_nguoi_phu_thuoc,
+          so_tk_ngan_hang:         nv.so_tk_ngan_hang,
+          ten_ngan_hang_thu_huong: nv.ten_ngan_hang_thu_huong,
+          // Email chỉ ghi khi sheet có giá trị — tránh ghi đè rỗng lên email đăng nhập (unique/bắt buộc)
+          ...(nv.email?.trim() ? { email: nv.email.trim() } : {}),
         },
       });
       synced++;
