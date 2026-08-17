@@ -7,7 +7,9 @@ import {
   deleteChamCongNgoai,
   adminDeleteChamCongNgoai,
   getManagerForEmployee,
+  getNhanVien,
 } from '@/lib/data-access';
+import { sendPushToEmployees } from '@/lib/push';
 
 interface SessionUser {
   id_nhan_vien: string;
@@ -29,6 +31,38 @@ async function getSession(): Promise<SessionUser | null> {
 
 function isAdminOrHR(user: SessionUser): boolean {
   return user.vai_tro === 'Admin' || user.vai_tro === 'HR';
+}
+
+// Đẩy thông báo đơn mới cho người duyệt: Admin/HR (badge = tổng đơn chờ),
+// và quản lý trực tiếp của người gửi (badge = số đơn nhóm mình đang chờ).
+async function notifyApprovers(
+  submitter: SessionUser,
+  duAn: string,
+  qlTrucTiep: string,
+): Promise<void> {
+  const [all, pending] = await Promise.all([getNhanVien(), getChamCongNgoai()]);
+  const totalPending = pending.filter(r => r.trang_thai === 'cho_duyet').length;
+
+  const title = 'Đơn chấm công chờ duyệt';
+  const body = `${submitter.ho_ten} vừa gửi đơn chấm công ngoài${duAn ? ` (${duAn})` : ''} cần duyệt.`;
+  const url = '/cham-cong-ngoai';
+
+  const adminHrIds = all
+    .filter(nv => (nv.vai_tro === 'Admin' || nv.vai_tro === 'HR') && nv.trang_thai !== 'Nghỉ việc')
+    .map(nv => nv.id_nhan_vien);
+
+  await sendPushToEmployees(adminHrIds, { title, body, url, count: totalPending });
+
+  // Quản lý trực tiếp (nếu không trùng Admin/HR và không phải chính người gửi)
+  if (qlTrucTiep) {
+    const mgr = all.find(nv => nv.ho_ten === qlTrucTiep && nv.trang_thai !== 'Nghỉ việc');
+    if (mgr && mgr.id_nhan_vien !== submitter.id_nhan_vien && !adminHrIds.includes(mgr.id_nhan_vien)) {
+      const mgrCount = pending.filter(
+        r => r.trang_thai === 'cho_duyet' && r.ql_truc_tiep === qlTrucTiep && r.id_nhan_vien !== mgr.id_nhan_vien,
+      ).length;
+      await sendPushToEmployees([mgr.id_nhan_vien], { title, body, url, count: mgrCount });
+    }
+  }
 }
 
 // GET /api/cham-cong-ngoai
@@ -92,6 +126,14 @@ export async function POST(request: NextRequest) {
       vi_tri_gps:       vi_tri_gps || '',
       ql_truc_tiep,
     });
+
+    // Đẩy Web Push cho người có quyền duyệt (Admin/HR + quản lý trực tiếp).
+    // Bọc try/catch: lỗi push tuyệt đối không được làm hỏng việc tạo đơn.
+    try {
+      await notifyApprovers(user, du_an_khach_hang, ql_truc_tiep);
+    } catch (e) {
+      console.error('[cham-cong-ngoai] push notify failed:', e instanceof Error ? e.message : e);
+    }
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {

@@ -509,3 +509,18 @@ model TmActivityLog {
   @@index([user_id])
   @@map("tm_activity_logs")
 }
+
+// Đăng ký nhận Web Push của từng thiết bị/trình duyệt (để đẩy thông báo đơn chờ duyệt)
+model PushSubscription {
+  id           String   @id @default(cuid())
+  id_nhan_vien String
+  endpoint     String   @unique
+  p256dh       String
+  auth         String
+  user_agent   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([id_nhan_vien])
+  @@map("push_subscription")
+}

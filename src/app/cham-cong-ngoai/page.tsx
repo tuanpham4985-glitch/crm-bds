@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { ChamCongNgoai } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
+import PushToggle from '@/components/PushToggle';
 
 const STATUS_LABEL: Record<string, { text: string; color: string }> = {
   cho_duyet: { text: 'Chờ duyệt', color: '#f59e0b' },
@@ -406,6 +407,13 @@ export default function ChamCongNgoaiPage() {
           <RefreshCw size={16} />
         </button>
       </div>
+
+      {/* Bật thông báo đẩy — cho người có quyền duyệt */}
+      {(canEditHRM || isManager) && (
+        <div style={{ marginBottom: 16 }}>
+          <PushToggle />
+        </div>
+      )}
 
       {/* FORM */}
       <div className="card" style={{ marginBottom: 24 }}>
