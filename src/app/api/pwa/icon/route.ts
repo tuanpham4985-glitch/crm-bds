@@ -1,8 +1,24 @@
 import { NextResponse } from 'next/server';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
+import sharp from 'sharp';
 import fs from 'fs/promises';
 import path from 'path';
+
+export const runtime = 'nodejs';
+
+// Chuẩn hoá logo (mọi định dạng, kể cả WebP) → PNG 512x512 nền trắng, có padding
+// cho vùng an toàn của icon. iOS chỉ dùng được PNG cho icon màn hình chính.
+async function toIconPng(input: Buffer): Promise<Buffer> {
+  const logo = await sharp(input)
+    .resize(400, 400, { fit: 'contain', background: '#ffffff' })
+    .flatten({ background: '#ffffff' })
+    .toBuffer();
+  return sharp(logo)
+    .extend({ top: 56, bottom: 56, left: 56, right: 56, background: '#ffffff' })
+    .png()
+    .toBuffer();
+}
 
 let _cache: { data: string | null; ts: number } | null = null;
 const TTL = 5 * 60_000;
@@ -36,11 +52,11 @@ export async function GET() {
     if (dataUrl) {
       const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
       if (match) {
-        const [, mimeType, base64Data] = match;
-        const buffer = Buffer.from(base64Data, 'base64');
-        return new NextResponse(buffer, {
+        const buffer = Buffer.from(match[2], 'base64');
+        const png = await toIconPng(buffer);
+        return new NextResponse(new Uint8Array(png), {
           headers: {
-            'Content-Type': mimeType,
+            'Content-Type': 'image/png',
             'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
           },
         });
