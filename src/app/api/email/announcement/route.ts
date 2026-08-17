@@ -1,11 +1,10 @@
 /**
  * POST /api/email/announcement
- * Gửi thông báo nội bộ đến toàn thể nhân viên hoặc 1 email thử.
+ * Gửi thông báo nội bộ đến toàn thể nhân viên (hoặc nhóm được chọn).
  *
  * Body (multipart/form-data):
  *   subject      — Tiêu đề email
  *   body         — Nội dung (plain text hoặc HTML)
- *   testEmail    — Nếu có: chỉ gửi đến email này (chế độ thử)
  *   recipientIds — JSON array id_nhan_vien, bỏ trống = gửi tất cả nhân viên đang làm
  *   ccIds        — (tuỳ chọn) JSON array id_nhan_vien để Cc (thêm vào từng email)
  *   bccIds       — (tuỳ chọn) JSON array id_nhan_vien để Bcc (thêm vào từng email)
@@ -22,7 +21,6 @@ export async function POST(request: NextRequest) {
 
     const subject   = (formData.get('subject')   as string | null)?.trim();
     const body      = (formData.get('body')       as string | null)?.trim();
-    const testEmail = (formData.get('testEmail')  as string | null)?.trim();
     const recipientIdsRaw = formData.get('recipientIds') as string | null;
     const ccIdsRaw  = formData.get('ccIds')  as string | null;
     const bccIdsRaw = formData.get('bccIds') as string | null;
@@ -49,35 +47,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Chế độ gửi thử: chỉ gửi đến testEmail, không cần lấy danh sách nhân viên
-    let recipients: { email: string; ho_ten: string }[];
-    let ccEmails: string[] = [];
-    let bccEmails: string[] = [];
-    if (testEmail) {
-      recipients = [{ email: testEmail, ho_ten: 'Test' }];
-    } else {
-      const allEmployees = await getNhanVien();
-      const selectedIds: string[] | null = recipientIdsRaw ? JSON.parse(recipientIdsRaw) : null;
-      recipients = allEmployees
-        .filter(nv => {
-          if (nv.trang_thai === 'Nghỉ việc') return false;
-          if (!nv.email?.trim()) return false;
-          if (selectedIds && !selectedIds.includes(nv.id_nhan_vien)) return false;
-          return true;
-        })
-        .map(nv => ({ email: nv.email.trim(), ho_ten: nv.ho_ten }));
+    // Danh sách người nhận: toàn thể (đang làm, có email) hoặc lọc theo recipientIds
+    const allEmployees = await getNhanVien();
+    const selectedIds: string[] | null = recipientIdsRaw ? JSON.parse(recipientIdsRaw) : null;
+    const recipients: { email: string; ho_ten: string }[] = allEmployees
+      .filter(nv => {
+        if (nv.trang_thai === 'Nghỉ việc') return false;
+        if (!nv.email?.trim()) return false;
+        if (selectedIds && !selectedIds.includes(nv.id_nhan_vien)) return false;
+        return true;
+      })
+      .map(nv => ({ email: nv.email.trim(), ho_ten: nv.ho_ten }));
 
-      // Cc/Bcc: giải id nhân viên → email (chỉ lấy người có email)
-      const idsToEmails = (raw: string | null): string[] => {
-        if (!raw) return [];
-        const ids: string[] = JSON.parse(raw);
-        return allEmployees
-          .filter(nv => ids.includes(nv.id_nhan_vien) && nv.email?.trim())
-          .map(nv => nv.email.trim());
-      };
-      ccEmails  = idsToEmails(ccIdsRaw);
-      bccEmails = idsToEmails(bccIdsRaw);
-    }
+    // Cc/Bcc: giải id nhân viên → email (chỉ lấy người có email)
+    const idsToEmails = (raw: string | null): string[] => {
+      if (!raw) return [];
+      const ids: string[] = JSON.parse(raw);
+      return allEmployees
+        .filter(nv => ids.includes(nv.id_nhan_vien) && nv.email?.trim())
+        .map(nv => nv.email.trim());
+    };
+    const ccEmails  = idsToEmails(ccIdsRaw);
+    const bccEmails = idsToEmails(bccIdsRaw);
 
     if (recipients.length === 0) {
       return NextResponse.json(

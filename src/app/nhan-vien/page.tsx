@@ -89,8 +89,7 @@ export default function NhanVienPage() {
   const [annBody, setAnnBody] = useState('');
   const [annFiles, setAnnFiles] = useState<File[]>([]);
   const [annSending, setAnnSending] = useState(false);
-  const [annTestEmail, setAnnTestEmail] = useState('');
-  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[]; isTest?: boolean; failedEmails?: string[]; quotaHit?: boolean; skipped?: number; notSent?: string[] } | null>(null);
+  const [annResult, setAnnResult] = useState<{ sent: number; failed: number; errors: string[]; failedEmails?: string[]; quotaHit?: boolean; skipped?: number; notSent?: string[] } | null>(null);
   // Người nhận: 'all' = toàn thể, 'selected' = chọn cụ thể. Cc/Bcc = danh sách id nhân viên.
   const [annMode, setAnnMode] = useState<'all' | 'selected'>('all');
   const [annTo, setAnnTo] = useState<string[]>([]);
@@ -103,7 +102,6 @@ export default function NhanVienPage() {
     setAnnSubject('');
     setAnnBody('');
     setAnnFiles([]);
-    setAnnTestEmail('');
     setAnnResult(null);
     setAnnMode('all');
     setAnnTo([]);
@@ -125,10 +123,9 @@ export default function NhanVienPage() {
   // Nhân viên đủ điều kiện nhận email (có email + đang làm) — dùng cho To/Cc/Bcc
   const annEligible = employees.filter(nv => (nv.email ?? '').trim() && nv.trang_thai !== 'Nghỉ việc');
 
-  const sendAnnouncement = async (isTest = false) => {
+  const sendAnnouncement = async () => {
     if (!annSubject.trim() || !annBody.trim()) return;
-    if (isTest && !annTestEmail.trim()) return;
-    if (!isTest && annMode === 'selected' && annTo.length === 0) {
+    if (annMode === 'selected' && annTo.length === 0) {
       alert('Vui lòng chọn ít nhất 1 người nhận, hoặc chuyển sang chế độ "Toàn thể".');
       return;
     }
@@ -138,13 +135,9 @@ export default function NhanVienPage() {
       const fd = new FormData();
       fd.append('subject', annSubject.trim());
       fd.append('body', annBody.trim());
-      if (isTest) {
-        fd.append('testEmail', annTestEmail.trim());
-      } else {
-        if (annMode === 'selected') fd.append('recipientIds', JSON.stringify(annTo));
-        if (annCc.length) fd.append('ccIds', JSON.stringify(annCc));
-        if (annBcc.length) fd.append('bccIds', JSON.stringify(annBcc));
-      }
+      if (annMode === 'selected') fd.append('recipientIds', JSON.stringify(annTo));
+      if (annCc.length) fd.append('ccIds', JSON.stringify(annCc));
+      if (annBcc.length) fd.append('bccIds', JSON.stringify(annBcc));
       annFiles.forEach(f => fd.append('files', f));
       const res = await fetch('/api/email/announcement', { method: 'POST', body: fd });
       const data = await res.json();
@@ -153,7 +146,7 @@ export default function NhanVienPage() {
           const m = e.match(/<([^>]+)>/);
           return m ? m[1].toLowerCase() : '';
         }).filter(Boolean);
-        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], isTest, failedEmails, quotaHit: data.quotaHit, skipped: data.skipped, notSent: data.notSent });
+        setAnnResult({ sent: data.sent, failed: data.failed, errors: data.errors ?? [], failedEmails, quotaHit: data.quotaHit, skipped: data.skipped, notSent: data.notSent });
       } else {
         alert('Lỗi gửi thông báo: ' + (data.error || 'Không xác định'));
       }
@@ -1363,25 +1356,6 @@ export default function NhanVienPage() {
                 )}
               </div>
 
-              {/* Test send */}
-              <div style={{ padding: '10px 12px', borderRadius: 8, background: '#fafafa', border: '1px dashed var(--border-light)' }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Gửi thử nghiệm
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input className="form-control" type="email" placeholder="Nhập email để gửi thử..."
-                    value={annTestEmail} onChange={e => setAnnTestEmail(e.target.value)}
-                    disabled={annSending} style={{ flex: 1, fontSize: 13 }} />
-                  <button className="btn btn-secondary btn-sm"
-                    onClick={() => sendAnnouncement(true)}
-                    disabled={annSending || !annSubject.trim() || !annBody.trim() || !annTestEmail.trim()}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                    {annSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                    Gửi thử
-                  </button>
-                </div>
-              </div>
-
               {/* Result */}
               {annResult && (
                 <div style={{
@@ -1392,9 +1366,7 @@ export default function NhanVienPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 600, fontSize: 13,
                     color: annResult.failed === 0 ? '#15803d' : '#92400e' }}>
                     <CheckCircle2 size={15} />
-                    {annResult.isTest
-                      ? `Gửi thử thành công đến ${annTestEmail}`
-                      : `Gửi thành công ${annResult.sent}/${annResult.sent + annResult.failed + (annResult.skipped ?? 0)} email${annResult.failed > 0 ? ` · ${annResult.failed} thất bại` : ''}${annResult.skipped ? ` · ${annResult.skipped} chưa gửi` : ''}`}
+                    {`Gửi thành công ${annResult.sent}/${annResult.sent + annResult.failed + (annResult.skipped ?? 0)} email${annResult.failed > 0 ? ` · ${annResult.failed} thất bại` : ''}${annResult.skipped ? ` · ${annResult.skipped} chưa gửi` : ''}`}
                   </div>
                   {annResult.quotaHit && (
                     <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 6, background: '#fef2f2', border: '1px solid #fecaca', fontSize: 12, color: '#991b1b', lineHeight: 1.6 }}>
@@ -1407,7 +1379,7 @@ export default function NhanVienPage() {
                       <ul style={{ margin: '6px 0 4px 18px', fontSize: 12, color: '#92400e' }}>
                         {annResult.errors.map((e, i) => <li key={i}>{e}</li>)}
                       </ul>
-                      {!annResult.isTest && (annResult.notSent?.length || annResult.failedEmails?.length) ? (
+                      {(annResult.notSent?.length || annResult.failedEmails?.length) ? (
                         <button
                           onClick={retrySendFailed}
                           disabled={annSending}
@@ -1433,9 +1405,9 @@ export default function NhanVienPage() {
               <button className="btn btn-secondary" onClick={() => setAnnModal(false)} disabled={annSending}>
                 {annResult ? 'Đóng' : 'Hủy'}
               </button>
-              {(!annResult || annResult.isTest) && (
+              {!annResult && (
                 <button className="btn btn-primary"
-                  onClick={() => sendAnnouncement(false)}
+                  onClick={() => sendAnnouncement()}
                   disabled={annSending || !annSubject.trim() || !annBody.trim() || (annMode === 'selected' && annTo.length === 0)}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {annSending
