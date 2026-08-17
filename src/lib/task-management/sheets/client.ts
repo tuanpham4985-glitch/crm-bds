@@ -212,7 +212,13 @@ export async function ensureColumns(sheetName: SheetName, columns: string[]): Pr
   const existing = new Set(sheet.headerValues || []);
   const missing = columns.filter(c => !existing.has(c));
   if (missing.length === 0) return;
-  await sheet.setHeaderRow([...(sheet.headerValues || []), ...missing]);
+  const newHeaders = [...(sheet.headerValues || []), ...missing];
+  // Google Sheets bắt buộc lưới đủ rộng TRƯỚC khi ghi header vào cột mới,
+  // nếu không sẽ lỗi "Sheet is not large enough to fit N columns. Resize first".
+  if (sheet.columnCount < newHeaders.length) {
+    await sheet.resize({ rowCount: sheet.rowCount, columnCount: newHeaders.length });
+  }
+  await sheet.setHeaderRow(newHeaders);
   invalidateRowCache(sheetName);
 }
 

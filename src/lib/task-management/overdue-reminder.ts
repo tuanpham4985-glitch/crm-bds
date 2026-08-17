@@ -7,7 +7,7 @@
 // bấm bao nhiêu lần. Hôm sau dấu ngày khác → tự nhắc tiếp.
 // ============================================================
 import nodemailer from 'nodemailer';
-import { loadRows, ensureColumns, batchUpdateRows, type RawRow } from './sheets/client';
+import { loadRows, ensureColumns, batchUpdateCells, type RawRow } from './sheets/client';
 import { SHEET_NAMES, type UserRole } from './types';
 
 /**
@@ -195,7 +195,7 @@ export async function runOverdueReminders(opts: { dryRun?: boolean; scope?: Nudg
   }
 
   if (!dryRun && toMark.length) {
-    await batchUpdateRows(SHEET_NAMES.TASKS, 'task_id', toMark);
+    await batchUpdateCells(SHEET_NAMES.TASKS, 'task_id', toMark);
   }
 
   return {
