@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
+import AppIconBadge from '@/components/AppIconBadge';
 import { useTmStore } from '@/stores/tmStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -58,6 +59,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={`app-layout${effectivelyCollapsed ? ' sidebar-is-collapsed' : ''}`}>
+      {/* Gắn số đơn chờ duyệt lên icon app đã cài (PWA) */}
+      <AppIconBadge />
       {/* Mobile Top Header */}
       <div className="mobile-header">
         <div className="flex items-center gap-3">
