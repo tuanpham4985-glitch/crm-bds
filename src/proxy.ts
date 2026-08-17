@@ -3,10 +3,14 @@ import type { NextRequest } from 'next/server';
 
 export async function proxy(request: NextRequest) {
   const session = request.cookies.get('crm_session');
-  const isLoginPage = request.nextUrl.pathname.startsWith('/login');
+  const { pathname } = request.nextUrl;
+  const isLoginPage = pathname.startsWith('/login');
 
-  // Allow API auth route so users can login
-  if (request.nextUrl.pathname === '/api/auth') {
+  // Các đường dẫn CÔNG KHAI (không cần đăng nhập):
+  // - /api/auth để đăng nhập
+  // - /api/pwa/icon: iOS/Android tải icon app KHÔNG kèm cookie phiên → phải mở public,
+  //   nếu không sẽ bị 401 và icon màn hình chính rơi về ảnh mặc định.
+  if (pathname === '/api/auth' || pathname === '/api/pwa/icon') {
     return NextResponse.next();
   }
   
