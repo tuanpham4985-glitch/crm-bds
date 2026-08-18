@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type {
   TaskStatus, TaskPriority,
-  TmNotification, CompanyKpiDashboard,
+  TmNotification, TmPendingTask, CompanyKpiDashboard,
 } from '@/lib/task-management/types';
 
 // ─── FILTER STATE ─────────────────────────────────────────
@@ -79,7 +79,8 @@ interface TmState {
   pendingCount:   number;
   badgeTotal:     number;
   notifications:  TmNotification[];
-  setNotifications: (notifs: TmNotification[], unread?: number, pending?: number) => void;
+  pendingTasks:   TmPendingTask[];
+  setNotifications: (notifs: TmNotification[], unread?: number, pending?: number, pendingTasks?: TmPendingTask[]) => void;
   markRead:        (notifId: string) => void;
   markAllRead:     () => void;
 
@@ -132,10 +133,17 @@ export const useTmStore = create<TmState>()(
     pendingCount:   0,
     badgeTotal:     0,
     notifications:  [],
-    setNotifications: (notifs, unread, pending) => set(s => {
+    pendingTasks:   [],
+    setNotifications: (notifs, unread, pending, pendingTasks) => set(s => {
       const u = unread  ?? notifs.filter(n => n.status !== 'read').length;
       const p = pending ?? s.pendingCount;
-      return { notifications: notifs, unreadCount: u, pendingCount: p, badgeTotal: u + p };
+      return {
+        notifications: notifs,
+        pendingTasks:  pendingTasks ?? s.pendingTasks,
+        unreadCount: u,
+        pendingCount: p,
+        badgeTotal: u + p,
+      };
     }),
     markRead: (notifId) => set(s => {
       const u = Math.max(0, s.unreadCount - 1);

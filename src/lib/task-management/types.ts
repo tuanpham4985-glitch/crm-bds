@@ -205,6 +205,14 @@ export interface TmNotification {
   read_at: string;
 }
 
+// Task đang chờ user hiện tại phê duyệt — dùng cho dropdown thông báo
+export interface TmPendingTask {
+  task_id: string;
+  task_code: string;
+  title: string;
+  created_at: string;
+}
+
 export interface TmActivityLog {
   log_id: string;            // UUID — Primary Key
   task_id: string;           // ref: Tasks OR Subtasks

@@ -29,8 +29,8 @@ function timeAgo(iso: string) {
 
 export default function NotificationCenter() {
   const { notifications, unreadCount, isLoading, markRead, markAllRead } = useNotifications();
-  // pendingCount + badgeTotal đã được set vào store bởi useNotifications (từ /api/tm/combined)
-  const { openSidebar, pendingCount, badgeTotal } = useTmStore();
+  // pendingTasks + pendingCount + badgeTotal đã được set vào store bởi useNotifications (từ /api/tm/combined)
+  const { openSidebar, pendingCount, pendingTasks, badgeTotal } = useTmStore();
 
   const [open, setOpen]         = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
@@ -50,11 +50,6 @@ export default function NotificationCenter() {
     try { await markAllRead(); }
     finally { setMarkingAll(false); }
   }
-
-  // Lọc notifications dạng review_required để hiện trong section "Chờ phê duyệt"
-  const pendingNotifs = notifications
-    .filter(n => n.type === 'review_required')
-    .slice(0, 5);
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -110,34 +105,34 @@ export default function NotificationCenter() {
             )}
           </div>
 
-          {/* Pending approvals section — từ notifications type=review_required */}
-          {pendingCount > 0 && pendingNotifs.length > 0 && (
+          {/* Pending approvals section — lấy trực tiếp từ danh sách task chờ duyệt (store) */}
+          {pendingTasks.length > 0 && (
             <div style={{ borderBottom: '1px solid var(--border-lighter)' }}>
               <div style={{ padding: '8px 14px 4px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Task chờ phê duyệt ({pendingCount})
               </div>
-              {pendingNotifs.map(n => (
+              {pendingTasks.slice(0, 5).map(t => (
                 <div
-                  key={n.notif_id}
+                  key={t.task_id}
                   onClick={() => {
-                    if (n.task_id) { openSidebar(n.task_id); setOpen(false); }
+                    if (t.task_id) { openSidebar(t.task_id); setOpen(false); }
                   }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '8px 14px', cursor: 'pointer',
                     borderBottom: '1px solid var(--border-lighter)',
-                    background: n.status !== 'read' ? 'var(--primary-light)' : 'transparent',
+                    background: 'var(--primary-light)',
                     transition: 'background 0.1s',
                   }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#e0e7ff')}
-                  onMouseLeave={e => (e.currentTarget.style.background = n.status !== 'read' ? 'var(--primary-light)' : 'transparent')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'var(--primary-light)')}
                 >
                   <ClipboardList size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {n.title}
+                      {t.task_code ? `${t.task_code} — ` : ''}{t.title}
                     </p>
-                    <span style={{ fontSize: 11, color: '#b45309' }}>{timeAgo(n.created_at)}</span>
+                    <span style={{ fontSize: 11, color: '#b45309' }}>{timeAgo(t.created_at)}</span>
                   </div>
                 </div>
               ))}
@@ -151,7 +146,7 @@ export default function NotificationCenter() {
                 <Loader2 size={20} className="tm-spin" style={{ color: 'var(--text-muted)' }} />
               </div>
             )}
-            {!isLoading && notifications.length === 0 && (
+            {!isLoading && notifications.length === 0 && pendingTasks.length === 0 && (
               <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
                 <Bell size={28} strokeWidth={1.2} style={{ marginBottom: 8, opacity: 0.4 }} />
                 <p style={{ fontSize: 13, margin: 0 }}>Không có thông báo mới</p>

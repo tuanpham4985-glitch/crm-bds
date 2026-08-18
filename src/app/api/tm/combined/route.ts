@@ -38,12 +38,22 @@ export async function GET() {
 
     const unreadCount = userNotifs.filter(n => n.status !== 'read').length;
 
-    // Pending approvals count
-    const pendingCount = taskRows.filter(t => canCountPendingApproval(user, t)).length;
+    // Pending approvals — danh sách task thực tế đang chờ user duyệt (không chỉ đếm số)
+    const pendingTasks = taskRows
+      .filter(t => canCountPendingApproval(user, t))
+      .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+      .map(t => ({
+        task_id:    t.task_id,
+        task_code:  t.task_code ?? '',
+        title:      t.title ?? '',
+        created_at: t.created_at ?? '',
+      }));
+    const pendingCount = pendingTasks.length;
 
     return okResponse({
       me:            { user_id: user.user_id, full_name: user.full_name, email: user.email, role: user.role, department_id: user.department_id },
       notifications: userNotifs,
+      pending_tasks: pendingTasks,
       unread_count:  unreadCount,
       pending_count: pendingCount,
       badge_total:   unreadCount + pendingCount,

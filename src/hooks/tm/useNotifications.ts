@@ -23,7 +23,8 @@ export function useNotifications() {
   useEffect(() => {
     if (!data) return;
     const notifs: TmNotification[] = Array.isArray(data.notifications) ? data.notifications : [];
-    setNotifications(notifs, data.unread_count ?? 0, data.pending_count ?? 0);
+    const pendingTasks = Array.isArray(data.pending_tasks) ? data.pending_tasks : [];
+    setNotifications(notifs, data.unread_count ?? 0, data.pending_count ?? 0, pendingTasks);
   }, [data, setNotifications]);
 
   const markRead = useCallback(async (notifId: string) => {
