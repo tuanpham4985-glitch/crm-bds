@@ -18,6 +18,7 @@ const STY: Record<TaskStatus, { bg: string; fg: string; bd: string; label: strin
   waiting:    { bg: '#ffedd5', fg: '#9a3412', bd: '#fdba74', label: 'Đang chờ' },
   review:     { bg: '#f3e8ff', fg: '#6b21a8', bd: '#d8b4fe', label: 'Chờ duyệt' },
 };
+const OVERDUE_STY = { bg: '#fee2e2', fg: '#991b1b', bd: '#ef4444', label: 'Quá hạn' };
 const styOf = (s: TaskStatus) => STY[s] ?? STY.todo;
 
 const WEEKDAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
@@ -85,6 +86,7 @@ export default function CalendarView() {
   const monthTasks = [...byDay.values()].flat();
   const doneCnt = monthTasks.filter(t => isDone(displayStatus(t))).length;
   const progCnt = monthTasks.filter(t => displayStatus(t) === 'inprogress').length;
+  const overdueCnt = monthTasks.filter(t => !isDone(displayStatus(t)) && t.due_date < todayStr).length;
 
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 12, padding: 16, marginTop: 4 }}>
@@ -109,6 +111,10 @@ export default function CalendarView() {
 
       {/* Chú thích màu + tổng hợp nhanh */}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, fontSize: 12 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)' }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: OVERDUE_STY.bg, border: `1.5px solid ${OVERDUE_STY.bd}` }} />
+          {OVERDUE_STY.label}
+        </span>
         {(['inprogress', 'completed', 'closed', 'todo', 'waiting', 'review'] as TaskStatus[]).map(s => (
           <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)' }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: styOf(s).bg, border: `1.5px solid ${styOf(s).bd}` }} />
@@ -116,7 +122,7 @@ export default function CalendarView() {
           </span>
         ))}
         <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontWeight: 600 }}>
-          Tháng {month + 1}: <b style={{ color: '#166534' }}>{doneCnt}</b> hoàn thành · <b style={{ color: '#854d0e' }}>{progCnt}</b> đang xử lý · {monthTasks.length} việc
+          Tháng {month + 1}: <b style={{ color: '#991b1b' }}>{overdueCnt}</b> quá hạn · <b style={{ color: '#166534' }}>{doneCnt}</b> hoàn thành · <b style={{ color: '#854d0e' }}>{progCnt}</b> đang xử lý · {monthTasks.length} việc
         </span>
       </div>
 
@@ -164,11 +170,12 @@ export default function CalendarView() {
                       const status = displayStatus(t);
                       const st = styOf(status);
                       const overdue = !isDone(status) && t.due_date < todayStr;
+                      const visual = overdue ? OVERDUE_STY : st;
                       return (
-                        <button key={t.task_id} onClick={() => openSidebar(t.task_id)} title={`${t.title} — ${st.label}${t.owner_id ? ' · ' + (userMap[t.owner_id] || '') : ''}`}
+                        <button key={t.task_id} onClick={() => openSidebar(t.task_id)} title={`${t.title} — ${overdue ? OVERDUE_STY.label : st.label}${t.owner_id ? ' · ' + (userMap[t.owner_id] || '') : ''}`}
                           style={{
-                            textAlign: 'left', border: `1px solid ${overdue ? '#ef4444' : st.bd}`, borderLeft: `3px solid ${overdue ? '#ef4444' : st.bd}`,
-                            background: st.bg, color: st.fg, borderRadius: 5, padding: '2px 5px', cursor: 'pointer',
+                            textAlign: 'left', border: `1px solid ${visual.bd}`, borderLeft: `3px solid ${visual.bd}`,
+                            background: visual.bg, color: visual.fg, borderRadius: 5, padding: '2px 5px', cursor: 'pointer',
                             fontSize: 11, lineHeight: 1.25, width: '100%', overflow: 'hidden',
                           }}>
                           <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</div>

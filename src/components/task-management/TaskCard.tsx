@@ -45,7 +45,7 @@ export default function TaskCard({ task, onClick, compact = false }: Props) {
     <div
       onClick={handleClick}
       style={{
-        background: overdue ? '#fff7ed' : 'var(--bg-card)',
+        background: overdue ? '#fee2e2' : 'var(--bg-card)',
         border: `1.5px solid ${overdue ? '#ef4444' : 'var(--border-light)'}`,
         borderLeft: `4px solid ${overdue ? '#ef4444' : task.priority === 'critical' ? '#ef4444' : task.priority === 'high' ? '#f97316' : task.priority === 'medium' ? '#6366f1' : '#22c55e'}`,
         borderRadius: 10,
@@ -91,7 +91,7 @@ export default function TaskCard({ task, onClick, compact = false }: Props) {
             )}
           </div>
           <p style={{
-            fontSize: compact ? 13 : 14, fontWeight: 600, color: 'var(--text-title)',
+            fontSize: compact ? 13 : 14, fontWeight: 600, color: overdue ? '#991b1b' : 'var(--text-title)',
             margin: 0, overflow: 'hidden', textOverflow: 'ellipsis',
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
           }}>
@@ -103,7 +103,7 @@ export default function TaskCard({ task, onClick, compact = false }: Props) {
 
       {/* Objective */}
       {!compact && task.objective && (
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <p style={{ fontSize: 12, color: overdue ? '#7f1d1d' : 'var(--text-muted)', margin: '0 0 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {task.objective}
         </p>
       )}
