@@ -130,11 +130,12 @@ function getVisibleTransitions(task: { status: TaskStatus; approval_level?: numb
   const base = (TRANSITIONS as Record<string, TaskStatus[]>)[task.status] ?? [];
 
   if (task.status === 'inprogress') {
-    // Không cần phê duyệt: không hiển thị "Chờ duyệt" để tránh nhầm lẫn.
-    // Cần phê duyệt: không hiển thị "Hoàn thành" trước khi được duyệt.
+    // Chỉ hiển thị bước chính tiếp theo để tránh nhầm "Đang chờ" với luồng phê duyệt.
+    // Không cần phê duyệt: Đang làm → Hoàn thành.
+    // Cần phê duyệt: Đang làm → Gửi duyệt.
     return requiresApproval(task)
-      ? base.filter(next => next !== 'completed')
-      : base.filter(next => next !== 'review');
+      ? base.filter(next => next === 'review')
+      : base.filter(next => next === 'completed');
   }
 
   if (task.status === 'review') {
