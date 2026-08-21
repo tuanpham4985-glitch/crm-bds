@@ -227,11 +227,11 @@ export class TaskService {
     const task = await this.requireTask(taskId);
     if (!rbac.canUpdateTask(ctx, task)) throw new UnauthorizedError('Cannot update this task');
 
-    const updated = await this.uow.tasks.updateProgress(taskId, pct);
+    let updated = await this.uow.tasks.updateProgress(taskId, pct);
 
     // Auto-sync status
     if (pct > 0 && task.status === 'todo') {
-      await this.uow.tasks.updateStatus(taskId, 'inprogress');
+      updated = await this.uow.tasks.updateStatus(taskId, 'inprogress');
     }
 
     await this.uow.activityLogs.log(taskId, 'task', ctx.user_id, 'progress_updated',

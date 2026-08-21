@@ -4,7 +4,7 @@ import { X, Loader2, ThumbsUp, ThumbsDown, RotateCcw, AlertCircle, Trash2 } from
 import { useTmStore } from '@/stores/tmStore';
 import {
   useTaskDetail, apiUpdateTaskStatus, apiApproveTask, apiRejectTask,
-  apiUpdateTask, apiDeleteTask, apiAddCollaborator, apiRemoveCollaborator,
+  apiUpdateTask, apiUpdateTaskProgress, apiDeleteTask, apiAddCollaborator, apiRemoveCollaborator,
   useTmUsers, useTmDepartments, useTmProjects, useCurrentTmUser,
 } from '@/hooks/tm/useTasks';
 import { StatusBadge, PriorityBadge, ProgressBar } from './StatusBadge';
@@ -345,6 +345,11 @@ export default function TaskDetail() {
 
   const save = useCallback(async (field: string, value: unknown) => {
     if (!task) return;
+    if (field === 'progress_pct') {
+      await apiUpdateTaskProgress(task.task_id, Number(value));
+      await revalidate();
+      return;
+    }
     await apiUpdateTask(task.task_id, { [field]: value });
     await revalidate();
   }, [task, revalidate]);
