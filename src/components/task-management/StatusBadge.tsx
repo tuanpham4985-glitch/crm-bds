@@ -9,7 +9,7 @@ const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bg: stri
   waiting:     { label: 'Đang chờ',    color: '#92400e', bg: '#fef3c7', dot: '#f59e0b' },
   review:      { label: 'Chờ duyệt',   color: '#6b21a8', bg: '#faf5ff', dot: '#a855f7' },
   completed:   { label: 'Hoàn thành',  color: '#166534', bg: '#f0fdf4', dot: '#22c55e' },
-  closed:      { label: 'Đã đóng',     color: '#475569', bg: '#f8fafc', dot: '#94a3b8' },
+  closed:      { label: 'Đã đóng',     color: '#065f46', bg: '#ecfdf5', dot: '#10b981' },
 };
 
 export function StatusBadge({ status, size = 'md' }: { status: TaskStatus; size?: 'sm' | 'md' }) {

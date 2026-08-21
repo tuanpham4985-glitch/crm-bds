@@ -29,6 +29,14 @@ function todayISO(): string {
 }
 const isDone = (s: TaskStatus) => s === 'completed' || s === 'closed';
 
+function displayStatus(task: TmTask): TaskStatus {
+  // Một số view danh sách có thể bị cache ngắn sau khi đóng task.
+  // Nếu task đã có mốc hoàn tất/đóng thì ưu tiên dùng mốc này để tô màu đúng ngay trên lịch.
+  if (task.status === 'closed' || task.closed_at) return 'closed';
+  if (task.status === 'completed' || task.completed_at) return 'completed';
+  return task.status;
+}
+
 export default function CalendarView() {
   const { tasks, isLoading } = useTasks();
   const { userMap } = useTmUsers();
@@ -50,7 +58,7 @@ export default function CalendarView() {
     }
     // Sắp xếp trong ngày: chưa xong lên trước, rồi theo tên
     for (const list of map.values()) {
-      list.sort((a, b) => Number(isDone(a.status)) - Number(isDone(b.status)) || a.title.localeCompare(b.title));
+      list.sort((a, b) => Number(isDone(displayStatus(a))) - Number(isDone(displayStatus(b))) || a.title.localeCompare(b.title));
     }
     return map;
   }, [tasks, year, month]);
@@ -75,8 +83,8 @@ export default function CalendarView() {
 
   // Đếm nhanh trong tháng
   const monthTasks = [...byDay.values()].flat();
-  const doneCnt = monthTasks.filter(t => isDone(t.status)).length;
-  const progCnt = monthTasks.filter(t => t.status === 'inprogress').length;
+  const doneCnt = monthTasks.filter(t => isDone(displayStatus(t))).length;
+  const progCnt = monthTasks.filter(t => displayStatus(t) === 'inprogress').length;
 
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 12, padding: 16, marginTop: 4 }}>
@@ -101,7 +109,7 @@ export default function CalendarView() {
 
       {/* Chú thích màu + tổng hợp nhanh */}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, fontSize: 12 }}>
-        {(['inprogress', 'completed', 'todo', 'waiting', 'review'] as TaskStatus[]).map(s => (
+        {(['inprogress', 'completed', 'closed', 'todo', 'waiting', 'review'] as TaskStatus[]).map(s => (
           <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)' }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: styOf(s).bg, border: `1.5px solid ${styOf(s).bd}` }} />
             {styOf(s).label}
@@ -153,8 +161,9 @@ export default function CalendarView() {
                       {day}
                     </div>
                     {shown.map(t => {
-                      const st = styOf(t.status);
-                      const overdue = !isDone(t.status) && t.due_date < todayStr;
+                      const status = displayStatus(t);
+                      const st = styOf(status);
+                      const overdue = !isDone(status) && t.due_date < todayStr;
                       return (
                         <button key={t.task_id} onClick={() => openSidebar(t.task_id)} title={`${t.title} — ${st.label}${t.owner_id ? ' · ' + (userMap[t.owner_id] || '') : ''}`}
                           style={{
