@@ -128,17 +128,41 @@ function transitionLabel(task: { approval_level?: number | string | null }, next
 
 function getVisibleTransitions(task: { status: TaskStatus; approval_level?: number | string | null; approval_status?: string }) {
   const base = (TRANSITIONS as Record<string, TaskStatus[]>)[task.status] ?? [];
-  if (!requiresApproval(task)) return base;
 
   if (task.status === 'inprogress') {
-    return base.filter(next => next !== 'completed');
+    // Không cần phê duyệt: không hiển thị "Chờ duyệt" để tránh nhầm lẫn.
+    // Cần phê duyệt: không hiển thị "Hoàn thành" trước khi được duyệt.
+    return requiresApproval(task)
+      ? base.filter(next => next !== 'completed')
+      : base.filter(next => next !== 'review');
   }
 
   if (task.status === 'review') {
-    return base.filter(next => next !== 'completed');
+    return requiresApproval(task)
+      ? base.filter(next => next !== 'completed')
+      : base;
   }
 
   return base;
+}
+
+function transitionButtonStyle(next: TaskStatus, transitioning: boolean): React.CSSProperties {
+  const secondary = next === 'waiting';
+  const success = next === 'completed' || next === 'closed';
+  return {
+    padding: '6px 14px',
+    borderRadius: 8,
+    border: `1.5px solid ${secondary ? '#f59e0b' : success ? '#16a34a' : 'var(--primary)'}`,
+    background: secondary ? '#fffbeb' : success ? '#f0fdf4' : 'var(--primary)',
+    color: secondary ? '#b45309' : success ? '#16a34a' : '#fff',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    opacity: transitioning ? 0.6 : 1,
+  };
 }
 
 const APPROVAL_STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
@@ -575,12 +599,7 @@ export default function TaskDetail() {
             {/* Action buttons */}
             <div style={{ padding: '0 16px 10px', display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
               {visibleTransitions.map((next: TaskStatus) => (
-                <button key={next} onClick={() => handleTransition(next)} disabled={transitioning} style={{
-                  padding: '6px 14px', borderRadius: 8, border: '1.5px solid var(--primary)',
-                  background: 'var(--primary)', color: '#fff', cursor: 'pointer',
-                  fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4,
-                  opacity: transitioning ? 0.6 : 1,
-                }}>
+                <button key={next} onClick={() => handleTransition(next)} disabled={transitioning} style={transitionButtonStyle(next, transitioning)}>
                   {transitioning ? <Loader2 size={12} className="tm-spin" /> : <RotateCcw size={12} />}
                   → {transitionLabel(task, next)}
                 </button>
