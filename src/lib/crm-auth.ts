@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import type { DuAn, KhachHang, NhanVien } from './types';
+import type { DuAn, KhachHang, NhanVien, Pipeline } from './types';
 import { SENIOR_EMPLOYEE_TYPES } from './constants';
 import { verifySessionValue } from './auth/session-signature';
 
@@ -85,4 +85,19 @@ export function customerInManagerScope(
   return scope.allCustomers
     || scope.projectNames.includes(customer.du_an || '')
     || scope.directReportNames.includes(customer.telesale_phu_trach || '');
+}
+
+/**
+ * Server-side deletion authority dùng chung cho single-delete và bulk-delete.
+ * Trả về lý do chặn (string) nếu khách hàng có CRM history/handoff/Pipeline
+ * cần bảo vệ, hoặc null nếu được phép xóa.
+ */
+export function customerDeleteBlockReason(customer: KhachHang, pipelines: Pipeline[]): string | null {
+  const hasCrmHistory = Number(customer.so_lan_lien_he || 0) > 0
+    || Boolean(customer.lich_su_cham_soc && customer.lich_su_cham_soc !== '[]')
+    || Boolean(customer.lich_su_ban_giao && customer.lich_su_ban_giao !== '[]');
+  if (hasCrmHistory || customer.trang_thai_ban_giao !== 'Chưa bàn giao' || pipelines.some(pipeline => pipeline.id_khach_hang === customer.id_khach_hang)) {
+    return 'Không thể xóa khách đã có lịch sử CRM, handoff hoặc Pipeline';
+  }
+  return null;
 }

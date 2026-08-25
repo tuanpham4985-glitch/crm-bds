@@ -11,6 +11,7 @@ import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig } from '@/lib
 import { formatDate, formatPhone } from '@/lib/utils';
 import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
+import { isAllVisibleSelected, toggleSelectAllVisible, toggleSelection } from '@/lib/khach-hang-selection';
 
 export default function KhachHangPage() {
   const router = useRouter();
@@ -41,6 +42,15 @@ export default function KhachHangPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Chọn nhiều + xóa hàng loạt
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{
+    deleted: number; blocked: number;
+    results: { id: string; ten_KH: string; status: string; reason?: string }[];
+  } | null>(null);
 
   // Quản lý Sheet nguồn
   const [showPanel, setShowPanel] = useState(false);
@@ -96,6 +106,7 @@ export default function KhachHangPage() {
       if (result.success) {
         setData(result.data);
         setTotal(result.total);
+        setSelectedIds(new Set()); // danh sách hiển thị đổi -> reset lựa chọn cho khớp
       }
     } catch (err) {
       console.error('Fetch error:', err);
@@ -351,6 +362,35 @@ export default function KhachHangPage() {
     }
   };
 
+  const visibleIds = data.map(kh => kh.id_khach_hang);
+  const allVisibleSelected = isAllVisibleSelected(selectedIds, visibleIds);
+  const toggleSelect = (id: string) => setSelectedIds(prev => toggleSelection(prev, id));
+  const toggleSelectAll = () => setSelectedIds(prev => toggleSelectAllVisible(prev, visibleIds));
+
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    try {
+      const res = await fetch('/api/khach-hang/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [...selectedIds] }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setShowBulkConfirm(false);
+        setBulkResult(result);
+        fetchData();
+      } else {
+        alert('Xóa hàng loạt thất bại: ' + result.error);
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      alert('Lỗi kết nối khi xóa hàng loạt');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / limit);
 
   const clearFilters = () => {
@@ -410,6 +450,12 @@ export default function KhachHangPage() {
             style={{ display: 'none' }}
             onChange={handleImportExcel}
           />
+          {selectedIds.size > 0 && (
+            <button className="btn btn-danger" onClick={() => setShowBulkConfirm(true)}>
+              <Trash2 size={16} />
+              Xóa đã chọn ({selectedIds.size})
+            </button>
+          )}
           <button className="btn btn-primary" onClick={openCreate}>
             <Plus size={18} />
             Thêm khách hàng
@@ -475,6 +521,9 @@ export default function KhachHangPage() {
               <table className="data-table">
                 <thead>
                   <tr>
+                    <th style={{ width: 36 }}>
+                      <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll} aria-label="Chọn tất cả khách hàng đang hiển thị" />
+                    </th>
                     <th style={{ width: 50 }}>#</th>
                     <th>Tên KH</th>
                     <th>SĐT</th>
@@ -491,6 +540,9 @@ export default function KhachHangPage() {
                 <tbody>
                   {data.map((kh, idx) => (
                     <tr key={kh.id_khach_hang}>
+                      <td>
+                        <input type="checkbox" checked={selectedIds.has(kh.id_khach_hang)} onChange={() => toggleSelect(kh.id_khach_hang)} aria-label={`Chọn ${kh.ten_KH}`} />
+                      </td>
                       <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>
                         {(page - 1) * limit + idx + 1}
                       </td>
@@ -1008,6 +1060,78 @@ export default function KhachHangPage() {
             <div className="confirm-actions">
               <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>Hủy</button>
               <button className="btn btn-danger" onClick={handleDelete}>Xóa</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Bulk Delete */}
+      {showBulkConfirm && (
+        <div className="confirm-overlay" onClick={() => !bulkDeleting && setShowBulkConfirm(false)}>
+          <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
+            <h3>Xác nhận xóa hàng loạt</h3>
+            <p>
+              Bạn có chắc muốn xóa <strong>{selectedIds.size}</strong> khách hàng đã chọn? Khách đã có lịch sử chăm sóc,
+              handoff hoặc Pipeline sẽ được tự động giữ lại. Hành động này không thể hoàn tác.
+            </p>
+            <div className="confirm-actions">
+              <button className="btn btn-secondary" onClick={() => setShowBulkConfirm(false)} disabled={bulkDeleting}>Hủy</button>
+              <button className="btn btn-danger" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                {bulkDeleting ? 'Đang xóa...' : `Xóa ${selectedIds.size} khách hàng`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Result */}
+      {bulkResult && (
+        <div className="modal-overlay" onClick={() => setBulkResult(null)}>
+          <div className="modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Kết quả xóa hàng loạt</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setBulkResult(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f0fdf4', borderRadius: 8 }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#16a34a' }}>{bulkResult.deleted}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-label)', marginTop: 2 }}>Đã xóa</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fef2f2', borderRadius: 8 }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#dc2626' }}>{bulkResult.blocked}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-label)', marginTop: 2 }}>Không thể xóa</div>
+                </div>
+              </div>
+
+              {bulkResult.results.some(item => item.status !== 'deleted') && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>
+                    <AlertCircle size={15} />
+                    Không thể xóa — lý do
+                  </div>
+                  <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                    {bulkResult.results.filter(item => item.status !== 'deleted').map((item, i, arr) => (
+                      <div key={item.id} style={{ padding: '6px 12px', fontSize: '0.82rem', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <span style={{ fontWeight: 500 }}>{item.ten_KH || item.id}</span>
+                        <span style={{ color: 'var(--text-label)', marginLeft: 8 }}>{item.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {bulkResult.blocked === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a', fontSize: '0.9rem' }}>
+                  <CheckCircle size={18} />
+                  Đã xóa thành công {bulkResult.deleted} khách hàng.
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setBulkResult(null)}>Đóng</button>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/data-access';
-import { canManageCustomer, canViewCustomer, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
+import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
 import type { KhachHang } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -168,11 +168,9 @@ export async function DELETE(request: NextRequest) {
     if (!canManageCustomer(user, current, projects) && !isDirectManager(user, current, employees)) {
       return NextResponse.json({ success: false, error: 'Không có quyền xóa khách hàng' }, { status: 403 });
     }
-    const hasCrmHistory = Number(current.so_lan_lien_he || 0) > 0
-      || Boolean(current.lich_su_cham_soc && current.lich_su_cham_soc !== '[]')
-      || Boolean(current.lich_su_ban_giao && current.lich_su_ban_giao !== '[]');
-    if (hasCrmHistory || current.trang_thai_ban_giao !== 'Chưa bàn giao' || pipelines.some(pipeline => pipeline.id_khach_hang === id)) {
-      return NextResponse.json({ success: false, error: 'Không thể xóa khách đã có lịch sử CRM, handoff hoặc Pipeline' }, { status: 409 });
+    const blockReason = customerDeleteBlockReason(current, pipelines);
+    if (blockReason) {
+      return NextResponse.json({ success: false, error: blockReason }, { status: 409 });
     }
     const deleted = await deleteKhachHang(id);
     if (!deleted) {
