@@ -3,19 +3,22 @@ import * as XLSX from 'xlsx';
 import { getKhachHang, addKhachHang } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
-import { classifyRow, phoneKey, resolveColumns } from '@/lib/khach-hang-excel-import';
+import { classifyRow, detectDuplicateNameWarnings, phoneKey, resolveColumns } from '@/lib/khach-hang-excel-import';
 
 export interface ImportResult {
   success: boolean;
   totalRows: number;
   imported: number;
-  duplicates: number;
+  duplicateInFile: number;
+  alreadyExists: number;
   invalid: number;
   errors: number;
   importedList: string[];
-  duplicateList: { ten_KH: string; so_dien_thoai: string }[];
+  duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[];
+  alreadyExistsList: { ten_KH: string; so_dien_thoai: string }[];
   invalidList: { row: number; reason: string }[];
   errorList: { ten_KH: string; error: string }[];
+  duplicateNameWarnings: string[];
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -63,11 +66,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Cột được xác định qua HEADER thực tế của file, không theo vị trí cố định —
     // tránh map nhầm khi file nguồn có layout khác export của phễu lead nội bộ.
+    // Hỗ trợ nhiều cột phone (VD "Số điện thoại 1"/"2") — xem resolveRowPhone.
     const columns = resolveColumns(rows[0]);
     if (!columns) {
       return NextResponse.json({
         success: false,
-        error: 'Không tìm thấy cột "Tên KH" và/hoặc "SĐT" ở dòng tiêu đề. Đặt tên cột theo mẫu: Tên KH/Tên khách hàng/Họ tên/Tên NK, SĐT/Số điện thoại/Điện thoại/Phone, Email (tuỳ chọn).',
+        error: 'Không tìm thấy cột "Tên"/"Tên KH" và/hoặc "SĐT"/"Số điện thoại" ở dòng tiêu đề. Đặt tên cột theo mẫu: Tên/Tên KH/Tên khách hàng/Họ tên/Tên NK, SĐT/Số điện thoại/Điện thoại/Phone (có thể đánh số 1, 2...), Email (tuỳ chọn).',
       }, { status: 422 });
     }
 
@@ -76,25 +80,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: false, error: 'File không có dòng dữ liệu' }, { status: 422 });
     }
 
-    // Load existing customers to build duplicate set — canonical last-9-digit
-    // phone comparison, đồng nhất với dedupe của /api/khach-hang (manual create/update).
+    // Snapshot phone đã có sẵn trong CRM trước khi import — canonical last-9-digit,
+    // đồng nhất với dedupe của /api/khach-hang (manual create/update). Set này KHÔNG
+    // đổi trong lúc chạy — dùng riêng để phân biệt "already_exists" (DB) khỏi
+    // "duplicate_in_file" (trùng trong cùng file, xem seenInFilePhoneKeys bên dưới).
     const existing = await getKhachHang();
-    const existingPhoneKeys = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
+    const existingDbPhoneKeys = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
+    const seenInFilePhoneKeys = new Set<string>();
 
     const importedList: string[] = [];
-    const duplicateList: { ten_KH: string; so_dien_thoai: string }[] = [];
+    const readyRecords: { ten_KH: string; so_dien_thoai: string }[] = [];
+    const duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[] = [];
+    const alreadyExistsList: { ten_KH: string; so_dien_thoai: string }[] = [];
     const invalidList: { row: number; reason: string }[] = [];
     const errorList: { ten_KH: string; error: string }[] = [];
 
     for (let i = 0; i < dataRows.length; i++) {
-      const classification = classifyRow(dataRows[i], columns, existingPhoneKeys);
+      const classification = classifyRow(dataRows[i], columns, existingDbPhoneKeys, seenInFilePhoneKeys);
       if (classification.status === 'blank') continue;
       if (classification.status === 'invalid') {
         invalidList.push({ row: i + 2, reason: classification.reason }); // +2: bù dòng header + 1-based
         continue;
       }
-      if (classification.status === 'duplicate') {
-        duplicateList.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
+      if (classification.status === 'already_exists') {
+        alreadyExistsList.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
+        continue;
+      }
+      if (classification.status === 'duplicate_in_file') {
+        duplicateInFileList.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
         continue;
       }
 
@@ -115,8 +128,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       try {
         await addKhachHang(kh);
-        existingPhoneKeys.add(phoneKey(classification.so_dien_thoai)); // prevent intra-batch duplicate
+        seenInFilePhoneKeys.add(phoneKey(classification.so_dien_thoai)); // prevent intra-file duplicate
         importedList.push(classification.ten_KH);
+        readyRecords.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
         await new Promise(r => setTimeout(r, 150)); // rate-limit buffer
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -124,17 +138,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // Cảnh báo trùng tên (khác SĐT) — chỉ để cảnh báo, KHÔNG merge/xóa customer nào.
+    const duplicateNameWarnings = detectDuplicateNameWarnings(readyRecords);
+
     return NextResponse.json({
       success: true,
-      totalRows:     dataRows.length,
-      imported:      importedList.length,
-      duplicates:    duplicateList.length,
-      invalid:       invalidList.length,
-      errors:        errorList.length,
+      totalRows:        dataRows.length,
+      imported:          importedList.length,
+      duplicateInFile:   duplicateInFileList.length,
+      alreadyExists:     alreadyExistsList.length,
+      invalid:           invalidList.length,
+      errors:            errorList.length,
       importedList,
-      duplicateList,
+      duplicateInFileList,
+      alreadyExistsList,
       invalidList,
       errorList,
+      duplicateNameWarnings,
     } satisfies ImportResult);
 
   } catch (error: unknown) {

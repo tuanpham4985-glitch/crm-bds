@@ -80,10 +80,12 @@ export default function KhachHangPage() {
   const excelInputRef = useRef<HTMLInputElement>(null);
   const [importingExcel, setImportingExcel] = useState(false);
   const [excelResult, setExcelResult] = useState<{
-    totalRows: number; imported: number; duplicates: number; invalid: number; errors: number;
-    duplicateList: { ten_KH: string; so_dien_thoai: string }[];
+    totalRows: number; imported: number; duplicateInFile: number; alreadyExists: number; invalid: number; errors: number;
+    duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[];
+    alreadyExistsList: { ten_KH: string; so_dien_thoai: string }[];
     invalidList: { row: number; reason: string }[];
     errorList: { ten_KH: string; error: string }[];
+    duplicateNameWarnings: string[];
   } | null>(null);
 
   // Form
@@ -836,24 +838,38 @@ export default function KhachHangPage() {
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-label)' }}>Tổng số dòng dữ liệu: <strong style={{ color: 'var(--text-title)' }}>{excelResult.totalRows}</strong></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(90px,1fr))', gap: 10 }}>
                 <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f0fdf4', borderRadius: 8 }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#16a34a' }}>{excelResult.imported}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Đã thêm mới</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#16a34a' }}>{excelResult.imported}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-label)', marginTop: 2 }}>Đã thêm mới</div>
                 </div>
                 <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fffbeb', borderRadius: 8 }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#d97706' }}>{excelResult.duplicates}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Trùng SĐT</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#d97706' }}>{excelResult.duplicateInFile}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-label)', marginTop: 2 }}>Trùng trong file</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '12px 8px', background: '#eff6ff', borderRadius: 8 }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1d4ed8' }}>{excelResult.alreadyExists}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-label)', marginTop: 2 }}>Đã có trong CRM</div>
                 </div>
                 <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fff7ed', borderRadius: 8 }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#c2410c' }}>{excelResult.invalid}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Thiếu dữ liệu</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#c2410c' }}>{excelResult.invalid}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-label)', marginTop: 2 }}>Thiếu dữ liệu</div>
                 </div>
                 <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fef2f2', borderRadius: 8 }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#dc2626' }}>{excelResult.errors}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Lỗi</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#dc2626' }}>{excelResult.errors}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-label)', marginTop: 2 }}>Lỗi</div>
                 </div>
               </div>
+
+              {excelResult.duplicateNameWarnings.length > 0 && (
+                <div style={{ padding: '10px 12px', background: '#fffbeb', borderRadius: 8, fontSize: '0.82rem', color: '#a16207' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, marginBottom: 4 }}>
+                    <AlertCircle size={15} />
+                    Cảnh báo trùng tên (SĐT khác nhau — vẫn giữ là các khách riêng biệt)
+                  </div>
+                  {excelResult.duplicateNameWarnings.join(', ')}
+                </div>
+              )}
 
               {excelResult.invalidList.length > 0 && (
                 <div>
@@ -872,15 +888,32 @@ export default function KhachHangPage() {
                 </div>
               )}
 
-              {excelResult.duplicateList.length > 0 && (
+              {excelResult.duplicateInFileList.length > 0 && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: '#d97706', fontWeight: 600, fontSize: '0.85rem' }}>
                     <AlertCircle size={15} />
-                    Bỏ qua (trùng SĐT với khách đã có)
+                    Bỏ qua (trùng SĐT với dòng khác trong cùng file)
                   </div>
                   <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
-                    {excelResult.duplicateList.map((d, i) => (
-                      <div key={i} style={{ padding: '6px 12px', fontSize: '0.82rem', borderBottom: i < excelResult.duplicateList.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between' }}>
+                    {excelResult.duplicateInFileList.map((d, i) => (
+                      <div key={i} style={{ padding: '6px 12px', fontSize: '0.82rem', borderBottom: i < excelResult.duplicateInFileList.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{d.ten_KH}</span>
+                        <span style={{ color: 'var(--text-label)' }}>{d.so_dien_thoai}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {excelResult.alreadyExistsList.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: '#1d4ed8', fontWeight: 600, fontSize: '0.85rem' }}>
+                    <AlertCircle size={15} />
+                    Bỏ qua (SĐT đã có sẵn trong CRM)
+                  </div>
+                  <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                    {excelResult.alreadyExistsList.map((d, i) => (
+                      <div key={i} style={{ padding: '6px 12px', fontSize: '0.82rem', borderBottom: i < excelResult.alreadyExistsList.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{d.ten_KH}</span>
                         <span style={{ color: 'var(--text-label)' }}>{d.so_dien_thoai}</span>
                       </div>
@@ -906,14 +939,14 @@ export default function KhachHangPage() {
                 </div>
               )}
 
-              {excelResult.imported > 0 && excelResult.errors === 0 && excelResult.duplicates === 0 && excelResult.invalid === 0 && (
+              {excelResult.imported > 0 && excelResult.errors === 0 && excelResult.duplicateInFile === 0 && excelResult.alreadyExists === 0 && excelResult.invalid === 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a', fontSize: '0.9rem' }}>
                   <CheckCircle size={18} />
                   Import thành công {excelResult.imported} khách hàng mới!
                 </div>
               )}
 
-              {excelResult.imported === 0 && excelResult.errors === 0 && excelResult.duplicates === 0 && excelResult.invalid === 0 && (
+              {excelResult.imported === 0 && excelResult.errors === 0 && excelResult.duplicateInFile === 0 && excelResult.alreadyExists === 0 && excelResult.invalid === 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-label)', fontSize: '0.9rem' }}>
                   <CheckCircle size={18} />
                   File không có dòng dữ liệu hợp lệ.
