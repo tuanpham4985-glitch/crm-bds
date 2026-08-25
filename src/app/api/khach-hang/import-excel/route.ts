@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { getKhachHang, addKhachHang, addKhachHangWithBatch } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
-import { classifyRow, detectDuplicateNameWarnings, phoneKey, resolveColumns } from '@/lib/khach-hang-excel-import';
+import { classifyRow, detectDuplicateNameWarnings, findImportSheet, phoneKey } from '@/lib/khach-hang-excel-import';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { createImportBatch, updateImportBatchCounts } from '@/lib/crm-funnel/import-batch';
 
@@ -61,25 +61,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
-
-    if (rows.length < 1) {
-      return NextResponse.json({ success: false, error: 'File không có dữ liệu' }, { status: 422 });
+    // Không giả định sheet đầu tiên trong workbook luôn chứa dữ liệu (VD file có
+    // sheet rỗng/ẩn đứng trước sheet dữ liệu thật) — quét mọi sheet theo thứ tự,
+    // tìm dòng header hợp lệ (có cột Tên KH + ít nhất 1 cột SĐT), cho phép dòng
+    // trống/tiêu đề nằm trước header thật. Xem findImportSheet.
+    const sheets = wb.SheetNames.map(sheetName => ({
+      sheetName,
+      rows: XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' }) as unknown[][],
+    }));
+    const resolved = findImportSheet(sheets);
+    if (!resolved) {
+      return NextResponse.json({
+        success: false,
+        error: `File không có dữ liệu phù hợp để import: không tìm thấy sheet nào có cột "Tên"/"Tên KH" và cột "SĐT"/"Số điện thoại" ở dòng tiêu đề (đã quét ${sheets.length} sheet: ${wb.SheetNames.join(', ') || '(không có sheet)'}). Đặt tên cột theo mẫu: Tên/Tên KH/Tên khách hàng/Họ tên/Tên NK, SĐT/Số điện thoại/Điện thoại/Phone (có thể đánh số 1, 2...), Email (tuỳ chọn).`,
+      }, { status: 422 });
     }
 
     // Cột được xác định qua HEADER thực tế của file, không theo vị trí cố định —
     // tránh map nhầm khi file nguồn có layout khác export của phễu lead nội bộ.
     // Hỗ trợ nhiều cột phone (VD "Số điện thoại 1"/"2") — xem resolveRowPhone.
-    const columns = resolveColumns(rows[0]);
-    if (!columns) {
-      return NextResponse.json({
-        success: false,
-        error: 'Không tìm thấy cột "Tên"/"Tên KH" và/hoặc "SĐT"/"Số điện thoại" ở dòng tiêu đề. Đặt tên cột theo mẫu: Tên/Tên KH/Tên khách hàng/Họ tên/Tên NK, SĐT/Số điện thoại/Điện thoại/Phone (có thể đánh số 1, 2...), Email (tuỳ chọn).',
-      }, { status: 422 });
-    }
-
-    const dataRows = rows.slice(1);
+    const { columns, rows, headerRowIndex } = resolved;
+    const dataRows = rows.slice(headerRowIndex + 1);
     if (dataRows.length === 0) {
       return NextResponse.json({ success: false, error: 'File không có dòng dữ liệu' }, { status: 422 });
     }
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const classification = classifyRow(dataRows[i], columns, existingDbPhoneKeys, seenInFilePhoneKeys);
       if (classification.status === 'blank') continue;
       if (classification.status === 'invalid') {
-        invalidList.push({ row: i + 2, reason: classification.reason }); // +2: bù dòng header + 1-based
+        invalidList.push({ row: headerRowIndex + i + 2, reason: classification.reason }); // +2: bù dòng header (0-based) + 1-based
         continue;
       }
       if (classification.status === 'already_exists') {

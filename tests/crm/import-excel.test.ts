@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  classifyRow, detectDuplicateNameWarnings, normalizeHeader, normalizeName,
-  normalizePhone, phoneKey, resolveColumns, resolveRowPhone,
+  classifyRow, detectDuplicateNameWarnings, findImportSheet, MAX_HEADER_SCAN_ROWS,
+  normalizeHeader, normalizeName, normalizePhone, phoneKey, resolveColumns, resolveRowPhone,
 } from '../../src/lib/khach-hang-excel-import';
 
 const NO_DB_DUP = new Set<string>();
@@ -273,4 +273,88 @@ test('fixture đúng loại file gây bug: STT | Tên | Mã căn | Số điện 
   const row = ['3', 'Đặng Văn F', 'B205', '903123456', '0903123456', 'Shophouse'];
   const result = classifyRow(row, columns!, NO_DB_DUP, NO_FILE_DUP);
   assert.deepEqual(result, { status: 'ready', ten_KH: 'Đặng Văn F', so_dien_thoai: '0903123456', email: '' });
+});
+
+// --- findImportSheet: bug thực tế "Import Excel thất bại: File không có dữ liệu"
+// trên file "446 Manhattan-VHGP.xlsx" — workbook có sheet đầu ("Sheet2") HOÀN
+// TOÀN RỖNG, dữ liệu thật nằm ở sheet thứ 2 ("Sheet1"), header
+// STT | MÃ CĂN | TÊN | SĐT. Code cũ luôn đọc wb.SheetNames[0] -> đọc nhầm sheet
+// rỗng -> báo "File không có dữ liệu" dù file có 444 dòng dữ liệu thật.
+
+// Đúng cấu trúc thực tế của "446 Manhattan-VHGP.xlsx": Sheet2 rỗng đứng trước
+// Sheet1 chứa toàn bộ dữ liệu, header STT | MÃ CĂN | TÊN | SĐT.
+const MANHATTAN_FIXTURE_SHEETS = [
+  { sheetName: 'Sheet2', rows: [] as unknown[][] },
+  {
+    sheetName: 'Sheet1',
+    rows: [
+      ['STT', 'MÃ CĂN', 'TÊN', 'SĐT'],
+      [1, 'Y3-91', 'BÙI THỊ VINH', '0913803906'],
+      [2, 'V3-93', 'CT CP NĂNG LƯỢNG VĂN CẢNH', '0933666668'],
+      [3, 'V3-89', 'ĐỖ VĂN THẢO', '0913803906'],
+    ],
+  },
+];
+
+test('findImportSheet: sheet đầu rỗng ("Sheet2") bị bỏ qua, chọn đúng sheet có dữ liệu thật ("Sheet1") — fixture 446 Manhattan-VHGP.xlsx', () => {
+  const resolved = findImportSheet(MANHATTAN_FIXTURE_SHEETS);
+  assert.ok(resolved);
+  assert.equal(resolved!.sheetName, 'Sheet1');
+  assert.equal(resolved!.headerRowIndex, 0);
+  const header = resolved!.rows[resolved!.headerRowIndex];
+  assert.equal(header[resolved!.columns.name], 'TÊN');
+  assert.deepEqual(resolved!.columns.phone.map(i => header[i]), ['SĐT']);
+  assert.equal(resolved!.columns.email, -1); // file không có cột Email
+
+  // MÃ CĂN (cột 1) tuyệt đối không được nhận nhầm làm bất kỳ field CRM nào.
+  assert.notEqual(resolved!.columns.name, 1);
+  assert.ok(!resolved!.columns.phone.includes(1));
+  assert.notEqual(resolved!.columns.email, 1);
+
+  const dataRows = resolved!.rows.slice(resolved!.headerRowIndex + 1);
+  const row0 = classifyRow(dataRows[0], resolved!.columns, NO_DB_DUP, NO_FILE_DUP);
+  assert.deepEqual(row0, { status: 'ready', ten_KH: 'BÙI THỊ VINH', so_dien_thoai: '0913803906', email: '' });
+});
+
+test('findImportSheet: cho phép dòng trống/tiêu đề nằm trước header thật trong cùng 1 sheet', () => {
+  const sheets = [
+    {
+      sheetName: 'Báo cáo',
+      rows: [
+        ['BÁO CÁO BÁN HÀNG DỰ ÁN VINHOMES GRAND PARK', '', '', ''],
+        ['', '', '', ''],
+        ['Tên KH', 'SĐT', 'Email', ''],
+        ['Khách A', '0901111111', 'a@x.com', ''],
+      ],
+    },
+  ];
+  const resolved = findImportSheet(sheets);
+  assert.ok(resolved);
+  assert.equal(resolved!.headerRowIndex, 2);
+  const dataRows = resolved!.rows.slice(resolved!.headerRowIndex + 1);
+  assert.equal(dataRows.length, 1);
+  assert.deepEqual(classifyRow(dataRows[0], resolved!.columns, NO_DB_DUP, NO_FILE_DUP), { status: 'ready', ten_KH: 'Khách A', so_dien_thoai: '0901111111', email: 'a@x.com' });
+});
+
+test('findImportSheet: header nằm sau MAX_HEADER_SCAN_ROWS dòng trống -> không tìm thấy (tránh quét vô hạn sheet rác)', () => {
+  const paddingRows: unknown[][] = Array.from({ length: MAX_HEADER_SCAN_ROWS + 1 }, () => ['', '', '']);
+  const sheets = [{ sheetName: 'Rác', rows: [...paddingRows, ['Tên KH', 'SĐT']] }];
+  assert.equal(findImportSheet(sheets), null);
+});
+
+test('findImportSheet: nhiều sheet đều không có header Tên+SĐT hợp lệ -> null (chỉ trường hợp này mới báo "không có dữ liệu phù hợp")', () => {
+  const sheets = [
+    { sheetName: 'Sheet1', rows: [] },
+    { sheetName: 'Sheet2', rows: [['STT', 'MÃ CĂN', 'Số CMND']] }, // không có Tên/SĐT hợp lệ
+  ];
+  assert.equal(findImportSheet(sheets), null);
+});
+
+test('findImportSheet: nhiều sheet đều có header hợp lệ -> chọn sheet đầu tiên theo đúng thứ tự workbook, không quét tiếp', () => {
+  const sheets = [
+    { sheetName: 'Sheet1', rows: [['Tên KH', 'SĐT'], ['Khách 1', '0901111111']] },
+    { sheetName: 'Sheet2', rows: [['Tên KH', 'SĐT'], ['Khách 2', '0902222222']] },
+  ];
+  const resolved = findImportSheet(sheets);
+  assert.equal(resolved!.sheetName, 'Sheet1');
 });

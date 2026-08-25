@@ -49,6 +49,42 @@ export function resolveColumns(headerRow: readonly unknown[]): ExcelColumnMap | 
   return { name, phone, email };
 }
 
+/** Số dòng đầu quét trong mỗi sheet để tìm header — cho phép dòng trống/tiêu đề nằm trước header thật. */
+export const MAX_HEADER_SCAN_ROWS = 30;
+
+export interface SheetRows {
+  sheetName: string;
+  rows: readonly unknown[][];
+}
+
+export interface ResolvedImportSheet {
+  sheetName: string;
+  /** Index (0-based) của dòng header trong rows của chính sheet đó. */
+  headerRowIndex: number;
+  columns: ExcelColumnMap;
+  rows: readonly unknown[][];
+}
+
+/**
+ * Tìm sheet + dòng header phù hợp để import — KHÔNG giả định sheet đầu tiên
+ * trong workbook luôn chứa dữ liệu (VD file có sheet rỗng đứng trước sheet
+ * dữ liệu thật). Quét từng sheet theo đúng thứ tự trong workbook; trong mỗi
+ * sheet quét tối đa MAX_HEADER_SCAN_ROWS dòng đầu để tìm dòng có header hợp
+ * lệ (resolveColumns trả về non-null) — cho phép dòng trống/tiêu đề nằm
+ * trước header thật. Trả về sheet+header đầu tiên khớp theo thứ tự; null
+ * nếu không sheet nào có header hợp lệ trong phạm vi quét.
+ */
+export function findImportSheet(sheets: readonly SheetRows[]): ResolvedImportSheet | null {
+  for (const { sheetName, rows } of sheets) {
+    const scanLimit = Math.min(rows.length, MAX_HEADER_SCAN_ROWS);
+    for (let i = 0; i < scanLimit; i++) {
+      const columns = resolveColumns(rows[i]);
+      if (columns) return { sheetName, headerRowIndex: i, columns, rows };
+    }
+  }
+  return null;
+}
+
 export function cellToText(value: unknown): string {
   if (value === null || value === undefined) return '';
   // Cell numeric (SĐT bị Excel lưu dạng number) — String() với số nguyên ở độ dài
