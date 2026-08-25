@@ -328,22 +328,21 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           );
         })}
 
-        {/* CRM GROUP — vòng đời khách hàng */}
-        <div className={styles.navSection}>
-          <button
-            className={styles.groupHeader}
-            onClick={() => setCrmOpen(!crmOpen)}
-          >
-            <div className="flex items-center gap-3">
-              <Users size={18} />
-              <span>CRM</span>
-            </div>
-            <ChevronDown size={14} className={`${styles.chevron} ${crmOpen ? styles.open : ''}`} />
-          </button>
+        {/* CRM GROUP — vòng đời khách hàng. Đang setup, tạm thời chỉ Admin/Chủ tịch thấy toàn bộ tab CRM. */}
+        {isAdmin && (
+          <div className={styles.navSection}>
+            <button
+              className={styles.groupHeader}
+              onClick={() => setCrmOpen(!crmOpen)}
+            >
+              <div className="flex items-center gap-3">
+                <Users size={18} />
+                <span>CRM</span>
+              </div>
+              <ChevronDown size={14} className={`${styles.chevron} ${crmOpen ? styles.open : ''}`} />
+            </button>
 
-          <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
-            {/* Khách hàng / CSKH / Data tiềm năng: đang setup, tạm thời chỉ Admin/Chủ tịch thấy */}
-            {isAdmin && (
+            <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
               <Link
                 href="/khach-hang"
                 className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/khach-hang') ? styles.active : ''}`}
@@ -352,43 +351,43 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
                 <Users size={18} />
                 <span>Khách hàng</span>
               </Link>
-            )}
 
-            {isAdmin && canPhanKhach && (
+              {canPhanKhach && (
+                <Link
+                  href="/phan-khach"
+                  className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/phan-khach') ? styles.active : ''}`}
+                  title="CSKH"
+                >
+                  <PhoneCall size={18} />
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                    <span style={{ flex: 1 }}>CSKH</span>
+                    {handoffCount > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 17, height: 17, lineHeight: '17px', padding: '0 4px', borderRadius: 9, textAlign: 'center' }}>{handoffCount > 9 ? '9+' : handoffCount}</span>}
+                  </span>
+                </Link>
+              )}
+
+              {canQualityDashboard && (
+                <Link
+                  href="/data-chat-luong"
+                  className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/data-chat-luong') ? styles.active : ''}`}
+                  title="Data tiềm năng"
+                >
+                  <BadgeCheck size={18} />
+                  <span>Data tiềm năng</span>
+                </Link>
+              )}
+
               <Link
-                href="/phan-khach"
-                className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/phan-khach') ? styles.active : ''}`}
-                title="CSKH"
+                href="/pipeline"
+                className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/pipeline') ? styles.active : ''}`}
+                title="Giao dịch"
               >
-                <PhoneCall size={18} />
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                  <span style={{ flex: 1 }}>CSKH</span>
-                  {handoffCount > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 17, height: 17, lineHeight: '17px', padding: '0 4px', borderRadius: 9, textAlign: 'center' }}>{handoffCount > 9 ? '9+' : handoffCount}</span>}
-                </span>
+                <GitBranch size={18} />
+                <span>Giao dịch</span>
               </Link>
-            )}
-
-            {isAdmin && canQualityDashboard && (
-              <Link
-                href="/data-chat-luong"
-                className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/data-chat-luong') ? styles.active : ''}`}
-                title="Data tiềm năng"
-              >
-                <BadgeCheck size={18} />
-                <span>Data tiềm năng</span>
-              </Link>
-            )}
-
-            <Link
-              href="/pipeline"
-              className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/pipeline') ? styles.active : ''}`}
-              title="Giao dịch"
-            >
-              <GitBranch size={18} />
-              <span>Giao dịch</span>
-            </Link>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* TASK MANAGEMENT */}
         <div className={styles.navSection}>
