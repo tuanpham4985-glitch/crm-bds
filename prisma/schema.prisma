@@ -94,6 +94,7 @@ model KhachHang {
   qualified_at String?
   hot_at String?
   row_version Int @default(0)
+  import_batch_id String?
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
@@ -106,7 +107,28 @@ model KhachHang {
   @@index([lead_quality_rank])
   @@index([lead_quality_score])
   @@index([ngay_quan_tam])
+  @@index([import_batch_id])
   @@map("khach_hang")
+}
+
+// Import Batch: theo dõi từng lần Import Excel để Admin xem lịch sử và xóa
+// cả đợt an toàn. Không dùng Prisma @relation tới KhachHang (giống
+// CrmHandoff/CrmPipelineLink chỉ dùng customer_id dạng string) — tránh ràng
+// buộc cứng giữa hai bảng khi hệ thống còn chạy song song với Google Sheets.
+model CrmImportBatch {
+  id                String   @id @default(uuid())
+  filename          String
+  imported_by_id    String
+  imported_by_name  String
+  imported_at       DateTime @default(now())
+  total_rows        Int
+  created_count     Int
+  duplicate_count   Int
+  invalid_count     Int
+  status            String   @default("completed")
+
+  @@index([imported_at])
+  @@map("crm_import_batches")
 }
 
 model CrmHandoff {
