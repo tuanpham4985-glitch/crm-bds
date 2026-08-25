@@ -10,9 +10,11 @@ import {
 import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
 import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function KhachHangPage() {
   const router = useRouter();
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [data, setData] = useState<KhachHang[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -360,6 +362,16 @@ export default function KhachHangPage() {
   };
 
   const hasFilters = searchInput || nguon || sale || fromDate || toDate;
+
+  if (authLoading) return null;
+
+  if (!isAdmin) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+      <AlertCircle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+      <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+      <p style={{ fontSize: 13, margin: 0 }}>CRM đang trong giai đoạn setup, tạm thời chỉ Admin/Chủ tịch mới có thể xem</p>
+    </div>
+  );
 
   return (
     <div>

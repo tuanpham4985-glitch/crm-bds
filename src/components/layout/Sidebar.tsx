@@ -342,16 +342,19 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           </button>
 
           <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
-            <Link
-              href="/khach-hang"
-              className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/khach-hang') ? styles.active : ''}`}
-              title="Khách hàng"
-            >
-              <Users size={18} />
-              <span>Khách hàng</span>
-            </Link>
+            {/* Khách hàng / CSKH / Data tiềm năng: đang setup, tạm thời chỉ Admin/Chủ tịch thấy */}
+            {isAdmin && (
+              <Link
+                href="/khach-hang"
+                className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/khach-hang') ? styles.active : ''}`}
+                title="Khách hàng"
+              >
+                <Users size={18} />
+                <span>Khách hàng</span>
+              </Link>
+            )}
 
-            {canPhanKhach && (
+            {isAdmin && canPhanKhach && (
               <Link
                 href="/phan-khach"
                 className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/phan-khach') ? styles.active : ''}`}
@@ -365,7 +368,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
               </Link>
             )}
 
-            {canQualityDashboard && (
+            {isAdmin && canQualityDashboard && (
               <Link
                 href="/data-chat-luong"
                 className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/data-chat-luong') ? styles.active : ''}`}

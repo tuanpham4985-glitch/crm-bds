@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Filter, Loader2, RefreshCw, Sheet, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, Download, Filter, Loader2, RefreshCw, Sheet, TrendingUp, Users } from 'lucide-react';
 import type { QualifiedLeadFilters } from '@/lib/types';
+import { useAuth } from '@/hooks/useAuth';
 
 interface QualityRow {
   id_khach_hang: string; ten_KH: string; so_dien_thoai: string; du_an: string; san_pham_quan_tam: string;
@@ -25,6 +26,7 @@ function money(value: number): string { return value ? new Intl.NumberFormat('vi
 function rankColor(rank: string): string { return rank === 'HOT' ? '#dc2626' : rank === 'QUALIFIED' ? '#059669' : rank === 'WARM' ? '#d97706' : '#64748b'; }
 
 export default function DataChatLuongPage() {
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [filters, setFilters] = useState<QualifiedLeadFilters>(emptyFilters);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,6 +72,16 @@ export default function DataChatLuongPage() {
     ['Quan tâm', data.metrics.interested, '#0891b2'], ['Qualified', data.metrics.qualified, '#059669'],
     ['Hot', data.metrics.hot, '#dc2626'], ['Giao dịch', data.metrics.transactions, '#7c3aed'],
   ] as const : [];
+
+  if (authLoading) return null;
+
+  if (!isAdmin) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+      <AlertCircle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+      <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+      <p style={{ fontSize: 13, margin: 0 }}>CRM đang trong giai đoạn setup, tạm thời chỉ Admin/Chủ tịch mới có thể xem</p>
+    </div>
+  );
 
   return <div>
     <div className="page-header"><div className="page-header-left"><h1>Data tiềm năng</h1><p>Qualified Lead Funnel và chất lượng nguồn data — số liệu authoritative từ server</p></div><div style={{ display: 'flex', gap: 8 }}>

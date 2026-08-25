@@ -35,7 +35,7 @@ type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTa
 
 export default function PhanKhachPage() {
   const { phanKhachIds } = useCrmAccess();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
@@ -157,6 +157,16 @@ export default function PhanKhachPage() {
       setProjects(current => current.map(item => item.id_du_an === selectedProject.id_du_an ? data.data : item)); setShowTeam(false); setNotice({ type: 'ok', text: 'Đã lưu cấu hình team.' });
     } catch (error) { setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không thể lưu team.' }); } finally { setBusyId(''); }
   }
+
+  if (authLoading) return null;
+
+  if (!isAdmin) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+      <AlertTriangle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+      <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+      <p style={{ fontSize: 13, margin: 0 }}>CRM đang trong giai đoạn setup, tạm thời chỉ Admin/Chủ tịch mới có thể xem</p>
+    </div>
+  );
 
   if (loading && projects.length === 0) return <div className="loading-spinner"><div className="spinner" /></div>;
   return <div>
