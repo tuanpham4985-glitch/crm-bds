@@ -5,7 +5,20 @@ import type { KhachHang } from '@/lib/types';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { classifyRow, detectDuplicateNameWarnings, findImportSheet, phoneKey } from '@/lib/khach-hang-excel-import';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
-import { createImportBatch, updateImportBatchCounts } from '@/lib/crm-funnel/import-batch';
+import { checkpointImportBatchCounts, completeImportBatch, createImportBatch } from '@/lib/crm-funnel/import-batch';
+
+// Headroom cho file thật nhiều dòng (VD "446 Manhattan-VHGP.xlsx": 444 dòng)
+// để CÓ CƠ HỘI chạy xong trong 1 request và được đánh dấu 'completed' sớm —
+// KHÔNG phải cơ chế đảm bảo tính đúng đắn: nếu vẫn bị ngắt (vượt cả giá trị
+// này, crash, deploy...), checkpointImportBatchCounts() bên dưới đã đảm bảo
+// Lịch sử Import không bao giờ kẹt ở số liệu sai/0 — xem CHECKPOINT_INTERVAL_ROWS.
+export const maxDuration = 60;
+
+// Ghi số liệu tiến độ định kỳ mỗi N dòng (không phải mỗi dòng — tránh nhân
+// đôi số lần ghi DB so với việc tạo customer). Đủ nhỏ để một request bị ngắt
+// giữa chừng vẫn để lại số liệu gần với thực tế, đủ lớn để không tạo thêm
+// tải DB đáng kể trên file vài nghìn dòng (VD 2000 dòng / 25 = 80 lần ghi).
+const CHECKPOINT_INTERVAL_ROWS = 25;
 
 export interface ImportResult {
   success: boolean;
@@ -101,7 +114,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // thời điểm tạo (addKhachHangWithBatch), không phải một bước update sau.
     const pgCrmEnabled = isPostgresEnabled('crm');
     const batchId: string | null = pgCrmEnabled
-      ? (await createImportBatch({ filename: file.name || 'import.xlsx', importedBy: user! })).id
+      ? (await createImportBatch({ filename: file.name || 'import.xlsx', importedBy: user!, totalRows: dataRows.length })).id
       : null;
 
     const importedList: string[] = [];
@@ -112,6 +125,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const errorList: { ten_KH: string; error: string }[] = [];
 
     for (let i = 0; i < dataRows.length; i++) {
+      // Checkpoint ở ĐẦU mỗi vòng lặp (trước mọi "continue" bên dưới) để không
+      // bao giờ bị bỏ lỡ bất kể dòng trước đó là blank/invalid/duplicate/ready —
+      // đảm bảo chu kỳ checkpoint thực sự đều đặn mỗi CHECKPOINT_INTERVAL_ROWS
+      // dòng dữ liệu, không phụ thuộc tỉ lệ phân loại của file.
+      if (pgCrmEnabled && batchId && i > 0 && i % CHECKPOINT_INTERVAL_ROWS === 0) {
+        try {
+          await checkpointImportBatchCounts(batchId, {
+            createdCount: importedList.length,
+            duplicateCount: duplicateInFileList.length + alreadyExistsList.length,
+            invalidCount: invalidList.length,
+          });
+        } catch (e) {
+          console.error('[Import Excel] checkpoint update failed (customer provenance vẫn đúng):', e);
+        }
+      }
+
       const classification = classifyRow(dataRows[i], columns, existingDbPhoneKeys, seenInFilePhoneKeys);
       if (classification.status === 'blank') continue;
       if (classification.status === 'invalid') {
@@ -151,7 +180,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         seenInFilePhoneKeys.add(phoneKey(classification.so_dien_thoai)); // prevent intra-file duplicate
         importedList.push(classification.ten_KH);
         readyRecords.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
-        await new Promise(r => setTimeout(r, 150)); // rate-limit buffer
+        // Rate-limit buffer chỉ cần cho nhánh ghi thẳng Google Sheets (giới hạn
+        // ~60 request/phút/user của Sheets API) — nhánh Postgres không gọi Sheets
+        // nên không có rate limit này. Giữ sleep cho nhánh GS đúng như trước;
+        // bỏ hoàn toàn cho nhánh PG — đây là phần lớn thời gian chạy của cả vòng
+        // lặp trên file thật nhiều dòng (VD 444 dòng × 150ms = 66s, dễ vượt
+        // execution timeout và làm updateImportBatchCounts() phía dưới không
+        // bao giờ chạy tới dù customer đã được tạo đúng).
+        if (!pgCrmEnabled) await new Promise(r => setTimeout(r, 150));
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         errorList.push({ ten_KH: classification.ten_KH, error: msg });
@@ -161,20 +197,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Cảnh báo trùng tên (khác SĐT) — chỉ để cảnh báo, KHÔNG merge/xóa customer nào.
     const duplicateNameWarnings = detectDuplicateNameWarnings(readyRecords);
 
-    // Ghi số liệu tổng kết cuối cùng lên batch record. Đây CHỈ là bookkeeping mô
-    // tả — provenance của từng customer đã được đảm bảo atomic ở bước tạo phía
-    // trên, không phụ thuộc vào bước này. Lỗi ở đây không ảnh hưởng tính đúng
-    // đắn của dữ liệu đã tạo, nên không cần fail cả request vì nó.
+    // Đánh dấu batch HOÀN TẤT: ghi số liệu cuối cùng chính xác + chuyển status
+    // sang 'completed' — CHỈ chạy được tới đây nếu vòng lặp xử lý dòng đã xong
+    // toàn bộ. Đây CHỈ là bookkeeping mô tả (hiển thị trong Lịch sử Import) —
+    // provenance của từng customer đã được đảm bảo atomic ở bước tạo phía
+    // trên, không phụ thuộc vào bước này. Nếu lệnh này lỗi, batch giữ nguyên
+    // status 'processing' (không bao giờ báo nhầm "đã hoàn tất") — không cần
+    // fail cả request vì nó, dữ liệu customer/provenance vẫn đúng.
     if (pgCrmEnabled && batchId) {
       try {
-        await updateImportBatchCounts(batchId, {
-          totalRows: dataRows.length,
+        await completeImportBatch(batchId, {
           createdCount: importedList.length,
           duplicateCount: duplicateInFileList.length + alreadyExistsList.length,
           invalidCount: invalidList.length,
         });
       } catch (e) {
-        console.error('[Import Excel] batch summary count update failed (customer provenance vẫn đúng):', e);
+        console.error('[Import Excel] batch completion update failed (customer provenance vẫn đúng, batch có thể vẫn hiện "processing"):', e);
       }
     }
 

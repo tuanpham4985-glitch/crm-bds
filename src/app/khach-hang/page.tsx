@@ -1193,7 +1193,13 @@ export default function KhachHangPage() {
                           <div style={{ fontWeight: 650, fontSize: '0.9rem', color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{batch.filename}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 3 }}>{formatDate(batch.imported_at)} · {batch.imported_by_name}</div>
                         </div>
-                        <span className="badge" style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.68rem', flexShrink: 0 }}>{batch.status}</span>
+                        <span className="badge" style={{
+                          background: batch.status === 'completed' ? '#f0fdf4' : batch.status === 'processing' ? '#fffbeb' : '#f1f5f9',
+                          color: batch.status === 'completed' ? '#16a34a' : batch.status === 'processing' ? '#b45309' : '#475569',
+                          fontSize: '0.68rem', flexShrink: 0,
+                        }}>
+                          {batch.status === 'completed' ? 'Hoàn tất' : batch.status === 'processing' ? 'Đang xử lý…' : batch.status}
+                        </span>
                       </div>
                       <div style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: '0.78rem' }}>
                         <span>Tổng: <strong>{batch.total_rows}</strong></span>
