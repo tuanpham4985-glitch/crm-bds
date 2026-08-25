@@ -52,7 +52,28 @@ jobs:
       - name: Prisma migrate status (before)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npx prisma migrate status
+        run: |
+          set +e
+          STATUS_OUTPUT="$(npx prisma migrate status 2>&1)"
+          STATUS_EXIT=$?
+          set -e
+
+          echo "$STATUS_OUTPUT"
+
+          if [ "$STATUS_EXIT" -eq 0 ]; then
+            echo "::notice::Migration status: database is already up to date."
+          elif [ "$STATUS_EXIT" -eq 1 ] && printf '%s' "$STATUS_OUTPUT" | grep -qF "To apply migrations in production run"; then
+            # This exact phrase is only emitted by `prisma migrate status` for the
+            # "database is behind, pending migrations exist" diagnostic — the
+            # expected pre-deploy state. It is not emitted for connection errors,
+            # config errors, schema drift, or diverged migration history, all of
+            # which fall through to the failure branch below with their real
+            # Prisma exit code.
+            echo "::notice::Migration status: pending migrations detected (expected before deploy). Proceeding."
+          else
+            echo "::error::prisma migrate status failed with an unexpected error (exit $STATUS_EXIT). Not proceeding to migrate deploy."
+            exit "$STATUS_EXIT"
+          fi
 
       - name: Prisma migrate deploy
         env:
