@@ -70,8 +70,9 @@ export default function KhachHangPage() {
   const excelInputRef = useRef<HTMLInputElement>(null);
   const [importingExcel, setImportingExcel] = useState(false);
   const [excelResult, setExcelResult] = useState<{
-    imported: number; duplicates: number; errors: number;
+    totalRows: number; imported: number; duplicates: number; invalid: number; errors: number;
     duplicateList: { ten_KH: string; so_dien_thoai: string }[];
+    invalidList: { row: number; reason: string }[];
     errorList: { ten_KH: string; error: string }[];
   } | null>(null);
 
@@ -782,20 +783,42 @@ export default function KhachHangPage() {
               </button>
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-label)' }}>Tổng số dòng dữ liệu: <strong style={{ color: 'var(--text-title)' }}>{excelResult.totalRows}</strong></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
                 <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f0fdf4', borderRadius: 8 }}>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#16a34a' }}>{excelResult.imported}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-label)', marginTop: 2 }}>Đã thêm mới</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#16a34a' }}>{excelResult.imported}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Đã thêm mới</div>
                 </div>
                 <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fffbeb', borderRadius: 8 }}>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#d97706' }}>{excelResult.duplicates}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-label)', marginTop: 2 }}>Trùng SĐT</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#d97706' }}>{excelResult.duplicates}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Trùng SĐT</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fff7ed', borderRadius: 8 }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#c2410c' }}>{excelResult.invalid}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Thiếu dữ liệu</div>
                 </div>
                 <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fef2f2', borderRadius: 8 }}>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#dc2626' }}>{excelResult.errors}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-label)', marginTop: 2 }}>Lỗi</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#dc2626' }}>{excelResult.errors}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Lỗi</div>
                 </div>
               </div>
+
+              {excelResult.invalidList.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: '#c2410c', fontWeight: 600, fontSize: '0.85rem' }}>
+                    <AlertCircle size={15} />
+                    Bỏ qua (thiếu Tên KH hoặc SĐT)
+                  </div>
+                  <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                    {excelResult.invalidList.map((item, i) => (
+                      <div key={i} style={{ padding: '6px 12px', fontSize: '0.82rem', borderBottom: i < excelResult.invalidList.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Dòng {item.row}</span>
+                        <span style={{ color: 'var(--text-label)' }}>{item.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {excelResult.duplicateList.length > 0 && (
                 <div>
@@ -831,14 +854,14 @@ export default function KhachHangPage() {
                 </div>
               )}
 
-              {excelResult.imported > 0 && excelResult.errors === 0 && excelResult.duplicates === 0 && (
+              {excelResult.imported > 0 && excelResult.errors === 0 && excelResult.duplicates === 0 && excelResult.invalid === 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a', fontSize: '0.9rem' }}>
                   <CheckCircle size={18} />
                   Import thành công {excelResult.imported} khách hàng mới!
                 </div>
               )}
 
-              {excelResult.imported === 0 && excelResult.errors === 0 && excelResult.duplicates === 0 && (
+              {excelResult.imported === 0 && excelResult.errors === 0 && excelResult.duplicates === 0 && excelResult.invalid === 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-label)', fontSize: '0.9rem' }}>
                   <CheckCircle size={18} />
                   File không có dòng dữ liệu hợp lệ.
