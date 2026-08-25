@@ -48,7 +48,7 @@ export class PostgresCustomerRepository implements ICustomerRepository {
 
 type PgKhachHang = Awaited<ReturnType<typeof prisma.khachHang.findFirst>>;
 
-function toKhachHang(row: NonNullable<PgKhachHang>): KhachHang {
+export function toKhachHang(row: NonNullable<PgKhachHang>): KhachHang {
   return {
     id_khach_hang:  row.id_khach_hang,
     ngay_tao:       row.ngay_tao,
@@ -96,10 +96,11 @@ function toKhachHang(row: NonNullable<PgKhachHang>): KhachHang {
     qualified_at: row.qualified_at ?? undefined,
     hot_at: row.hot_at ?? undefined,
     row_version: row.row_version,
+    import_batch_id: row.import_batch_id ?? undefined,
   };
 }
 
-function fromKhachHang(kh: KhachHang) {
+export function fromKhachHang(kh: KhachHang) {
   return {
     id_khach_hang:  kh.id_khach_hang,
     ngay_tao:       kh.ngay_tao,
@@ -147,5 +148,6 @@ function fromKhachHang(kh: KhachHang) {
     qualified_at: kh.qualified_at,
     hot_at: kh.hot_at,
     row_version: kh.row_version ?? 0,
+    import_batch_id: kh.import_batch_id,
   };
 }

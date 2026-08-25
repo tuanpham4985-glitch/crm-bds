@@ -37,3 +37,40 @@ export function planBulkDelete(
 
   return { ids, items };
 }
+
+export interface BulkDeleteResultItem {
+  id: string;
+  ten_KH: string;
+  status: 'deleted' | 'blocked' | 'not_found' | 'error';
+  reason?: string;
+}
+
+/**
+ * Thực thi xóa cho một kế hoạch đã planBulkDelete(). Dùng chung cho cả
+ * "Xóa đã chọn" (bulk-delete) và "Xóa đợt import" (import batch) — cùng một
+ * deletion authority, cùng một cách xử lý mixed batch (không fail toàn bộ,
+ * trả kết quả rõ từng record).
+ */
+export async function executeBulkDelete(
+  items: readonly BulkDeletePlanItem[],
+  deleteFn: (id: string) => Promise<boolean>,
+): Promise<BulkDeleteResultItem[]> {
+  const results: BulkDeleteResultItem[] = [];
+  for (const item of items) {
+    if (item.status !== 'ready') {
+      results.push({ id: item.id, ten_KH: item.ten_KH, status: item.status, reason: item.reason });
+      continue;
+    }
+    try {
+      const deleted = await deleteFn(item.id);
+      results.push(deleted
+        ? { id: item.id, ten_KH: item.ten_KH, status: 'deleted' }
+        : { id: item.id, ten_KH: item.ten_KH, status: 'not_found', reason: 'Không tìm thấy khách hàng' });
+      await new Promise(resolve => setTimeout(resolve, 150)); // rate-limit buffer, đồng nhất với các batch operation khác trong repo
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      results.push({ id: item.id, ten_KH: item.ten_KH, status: 'error', reason: msg });
+    }
+  }
+  return results;
+}

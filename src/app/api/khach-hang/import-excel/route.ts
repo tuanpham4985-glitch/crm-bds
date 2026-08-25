@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
-import { getKhachHang, addKhachHang } from '@/lib/data-access';
+import { getKhachHang, addKhachHang, addKhachHangWithBatch } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { classifyRow, detectDuplicateNameWarnings, phoneKey, resolveColumns } from '@/lib/khach-hang-excel-import';
+import { isPostgresEnabled } from '@/lib/db/feature-flags';
+import { createImportBatch, updateImportBatchCounts } from '@/lib/crm-funnel/import-batch';
 
 export interface ImportResult {
   success: boolean;
@@ -19,6 +21,8 @@ export interface ImportResult {
   invalidList: { row: number; reason: string }[];
   errorList: { ten_KH: string; error: string }[];
   duplicateNameWarnings: string[];
+  /** null nếu Postgres CRM chưa bật (không có batch tracking) */
+  batchId: string | null;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -88,6 +92,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const existingDbPhoneKeys = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
     const seenInFilePhoneKeys = new Set<string>();
 
+    // Import Batch: PG-CRM-only, giống mọi tính năng Qualified Lead Funnel khác.
+    // Batch record được tạo TRƯỚC khi xử lý dòng nào — nếu tạo thất bại, dừng
+    // toàn bộ import ngay tại đây (chưa có customer nào được tạo, nên không có
+    // gì bị "swallow"). Provenance của từng customer sau đó được ghi ATOMIC tại
+    // thời điểm tạo (addKhachHangWithBatch), không phải một bước update sau.
+    const pgCrmEnabled = isPostgresEnabled('crm');
+    const batchId: string | null = pgCrmEnabled
+      ? (await createImportBatch({ filename: file.name || 'import.xlsx', importedBy: user! })).id
+      : null;
+
     const importedList: string[] = [];
     const readyRecords: { ten_KH: string; so_dien_thoai: string }[] = [];
     const duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[] = [];
@@ -127,7 +141,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       };
 
       try {
-        await addKhachHang(kh);
+        // pgCrmEnabled -> provenance ghi ATOMIC cùng lúc tạo (không fallback GS,
+        // lỗi sẽ ném ra và rơi vào catch bên dưới thành per-row error — không có
+        // đường nào để customer "lọt" vào GS mà vẫn được báo là batch-tracked).
+        if (pgCrmEnabled) await addKhachHangWithBatch(kh, batchId!);
+        else await addKhachHang(kh);
         seenInFilePhoneKeys.add(phoneKey(classification.so_dien_thoai)); // prevent intra-file duplicate
         importedList.push(classification.ten_KH);
         readyRecords.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
@@ -140,6 +158,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Cảnh báo trùng tên (khác SĐT) — chỉ để cảnh báo, KHÔNG merge/xóa customer nào.
     const duplicateNameWarnings = detectDuplicateNameWarnings(readyRecords);
+
+    // Ghi số liệu tổng kết cuối cùng lên batch record. Đây CHỈ là bookkeeping mô
+    // tả — provenance của từng customer đã được đảm bảo atomic ở bước tạo phía
+    // trên, không phụ thuộc vào bước này. Lỗi ở đây không ảnh hưởng tính đúng
+    // đắn của dữ liệu đã tạo, nên không cần fail cả request vì nó.
+    if (pgCrmEnabled && batchId) {
+      try {
+        await updateImportBatchCounts(batchId, {
+          totalRows: dataRows.length,
+          createdCount: importedList.length,
+          duplicateCount: duplicateInFileList.length + alreadyExistsList.length,
+          invalidCount: invalidList.length,
+        });
+      } catch (e) {
+        console.error('[Import Excel] batch summary count update failed (customer provenance vẫn đúng):', e);
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -155,6 +190,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       invalidList,
       errorList,
       duplicateNameWarnings,
+      batchId,
     } satisfies ImportResult);
 
   } catch (error: unknown) {

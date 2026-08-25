@@ -246,6 +246,28 @@ export function addKhachHang(data: KhachHang): Promise<void> {
   );
 }
 
+/**
+ * Dùng riêng cho Excel Import khi cần provenance chắc chắn: import_batch_id
+ * phải được ghi ATOMIC trong cùng lần tạo customer, không phải một bước
+ * update riêng sau đó (dễ bị bỏ sót/âm thầm thất bại).
+ *
+ * Khác addKhachHang(): KHÔNG fallback sang Google Sheets khi ghi PG lỗi — vì
+ * GS không có cột import_batch_id, fallback ở đây sẽ tạo ra customer "mất
+ * dấu" (tồn tại nhưng không có batch provenance) mà route vẫn tưởng đã
+ * batch-tracked thành công. Ném lỗi để caller báo per-row error, không âm
+ * thầm tạo record không rõ nguồn gốc.
+ *
+ * Bắt buộc gọi trong trạng thái isPostgresEnabled('crm') === true; tự throw
+ * nếu không, để không bao giờ vô tình rơi vào nhánh Google Sheets.
+ */
+export async function addKhachHangWithBatch(data: KhachHang, importBatchId: string): Promise<void> {
+  if (!isPostgresEnabled('crm')) {
+    throw new Error('addKhachHangWithBatch requires Postgres CRM (PG_ENABLED_MODULES=crm) — batch provenance is not supported over Google Sheets.');
+  }
+  revalidateTag('kh', {}); invalidate('gs:kh');
+  return getCustomerRepository().create({ ...data, import_batch_id: importBatchId });
+}
+
 export function addKhachHangBatch(data: KhachHang[]): Promise<void> {
   revalidateTag('kh', {}); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.addKhachHangBatch(data);

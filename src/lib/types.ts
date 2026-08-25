@@ -135,6 +135,22 @@ export interface KhachHang {
   qualified_at?: string;
   hot_at?: string;
   row_version?: number;
+  /** Chỉ set khi khách được TẠO MỚI bởi một Import Batch — không set khi được nhận diện là duplicate của khách đã có. */
+  import_batch_id?: string;
+}
+
+// === IMPORT BATCH ===
+export interface CrmImportBatch {
+  id: string;
+  filename: string;
+  imported_by_id: string;
+  imported_by_name: string;
+  imported_at: string;
+  total_rows: number;
+  created_count: number;
+  duplicate_count: number;
+  invalid_count: number;
+  status: string;
 }
 
 export type MucDichLead = 'Để ở' | 'Đầu tư' | 'Cho thuê' | 'Khác';

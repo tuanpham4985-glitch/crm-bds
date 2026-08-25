@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getKhachHang, getPipeline, deleteKhachHang } from '@/lib/data-access';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
-import { planBulkDelete } from '@/lib/khach-hang-bulk-delete';
-
-export interface BulkDeleteResultItem {
-  id: string;
-  ten_KH: string;
-  status: 'deleted' | 'blocked' | 'not_found' | 'error';
-  reason?: string;
-}
+import { executeBulkDelete, planBulkDelete, type BulkDeleteResultItem } from '@/lib/khach-hang-bulk-delete';
 
 export interface BulkDeleteResult {
   success: boolean;
@@ -35,24 +28,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: false, error: 'Chưa chọn khách hàng nào để xóa' }, { status: 400 });
     }
 
-    const results: BulkDeleteResultItem[] = [];
-    for (const item of items) {
-      if (item.status !== 'ready') {
-        results.push({ id: item.id, ten_KH: item.ten_KH, status: item.status, reason: item.reason });
-        continue;
-      }
-      try {
-        const deleted = await deleteKhachHang(item.id);
-        results.push(deleted
-          ? { id: item.id, ten_KH: item.ten_KH, status: 'deleted' }
-          : { id: item.id, ten_KH: item.ten_KH, status: 'not_found', reason: 'Không tìm thấy khách hàng' });
-        await new Promise(resolve => setTimeout(resolve, 150)); // rate-limit buffer, đồng nhất với các batch operation khác trong repo
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        results.push({ id: item.id, ten_KH: item.ten_KH, status: 'error', reason: msg });
-      }
-    }
-
+    const results = await executeBulkDelete(items, deleteKhachHang);
     const deleted = results.filter(item => item.status === 'deleted').length;
 
     return NextResponse.json({
