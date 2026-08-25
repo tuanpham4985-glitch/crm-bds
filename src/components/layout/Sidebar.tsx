@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin, ClipboardList, PhoneCall, BadgeCheck,
+  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin, ClipboardList, PhoneCall, BadgeCheck, Users, GitBranch,
 } from 'lucide-react';
 import useSWR from 'swr';
 import styles from './Sidebar.module.css';
@@ -43,6 +43,9 @@ const CRM_CATALOG = [
   { href: '/du-an',     label: 'Dự án',        icon: Building2 },
   { href: '/stacking',  label: 'Bảng hàng',    icon: LayoutList },
 ];
+
+// CRM vòng đời khách hàng: Khách hàng → CSKH → Data tiềm năng → Giao dịch
+const CRM_ROUTES = ['/khach-hang', '/phan-khach', '/data-chat-luong', '/pipeline'];
 
 const HRM_ITEMS = [
   { href: '/nhan-vien', label: 'Nhân viên', icon: UserCog },
@@ -81,15 +84,21 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const [isStandalone, setIsStandalone] = useState(false);
 
   const [hrmOpen, setHrmOpen] = useState(true);
+  const [crmOpen, setCrmOpen] = useState(true);
 
   // Auto-expand HRM group if current path is inside
   useEffect(() => {
     if (HRM_ITEMS.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))) setHrmOpen(true);
   }, [pathname]);
 
-  // Force group open when collapsed (so icons are visible)
+  // Auto-expand CRM group if current path is inside (Khách hàng / CSKH / Data tiềm năng / Giao dịch)
   useEffect(() => {
-    if (collapsed) setHrmOpen(true);
+    if (CRM_ROUTES.some(href => pathname === href || pathname.startsWith(href + '/'))) setCrmOpen(true);
+  }, [pathname]);
+
+  // Force groups open when collapsed (so icons are visible)
+  useEffect(() => {
+    if (collapsed) { setHrmOpen(true); setCrmOpen(true); }
   }, [collapsed]);
 
   // Password Modal State
@@ -319,34 +328,64 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           );
         })}
 
-        {canPhanKhach && (
-          <div className={styles.navSection}>
-            <Link
-              href="/phan-khach"
-              className={`${styles.navItem} ${pathname.startsWith('/phan-khach') ? styles.active : ''}`}
-              title="Vận hành Telesale"
-            >
-              <PhoneCall size={20} />
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-                <span style={{ flex: 1 }}>Vận hành Telesale</span>
-                {handoffCount > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 17, height: 17, lineHeight: '17px', padding: '0 4px', borderRadius: 9, textAlign: 'center' }}>{handoffCount > 9 ? '9+' : handoffCount}</span>}
-              </span>
-            </Link>
-          </div>
-        )}
+        {/* CRM GROUP — vòng đời khách hàng */}
+        <div className={styles.navSection}>
+          <button
+            className={styles.groupHeader}
+            onClick={() => setCrmOpen(!crmOpen)}
+          >
+            <div className="flex items-center gap-3">
+              <Users size={18} />
+              <span>CRM</span>
+            </div>
+            <ChevronDown size={14} className={`${styles.chevron} ${crmOpen ? styles.open : ''}`} />
+          </button>
 
-        {canQualityDashboard && (
-          <div className={styles.navSection}>
+          <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
             <Link
-              href="/data-chat-luong"
-              className={`${styles.navItem} ${pathname.startsWith('/data-chat-luong') ? styles.active : ''}`}
-              title="Data chất lượng"
+              href="/khach-hang"
+              className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/khach-hang') ? styles.active : ''}`}
+              title="Khách hàng"
             >
-              <BadgeCheck size={20} />
-              <span>Data chất lượng</span>
+              <Users size={18} />
+              <span>Khách hàng</span>
+            </Link>
+
+            {canPhanKhach && (
+              <Link
+                href="/phan-khach"
+                className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/phan-khach') ? styles.active : ''}`}
+                title="CSKH"
+              >
+                <PhoneCall size={18} />
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                  <span style={{ flex: 1 }}>CSKH</span>
+                  {handoffCount > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 17, height: 17, lineHeight: '17px', padding: '0 4px', borderRadius: 9, textAlign: 'center' }}>{handoffCount > 9 ? '9+' : handoffCount}</span>}
+                </span>
+              </Link>
+            )}
+
+            {canQualityDashboard && (
+              <Link
+                href="/data-chat-luong"
+                className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/data-chat-luong') ? styles.active : ''}`}
+                title="Data tiềm năng"
+              >
+                <BadgeCheck size={18} />
+                <span>Data tiềm năng</span>
+              </Link>
+            )}
+
+            <Link
+              href="/pipeline"
+              className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/pipeline') ? styles.active : ''}`}
+              title="Giao dịch"
+            >
+              <GitBranch size={18} />
+              <span>Giao dịch</span>
             </Link>
           </div>
-        )}
+        </div>
 
         {/* TASK MANAGEMENT */}
         <div className={styles.navSection}>

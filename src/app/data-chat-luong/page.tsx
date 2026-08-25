@@ -72,7 +72,7 @@ export default function DataChatLuongPage() {
   ] as const : [];
 
   return <div>
-    <div className="page-header"><div className="page-header-left"><h1>Data chất lượng</h1><p>Qualified Lead Funnel và chất lượng nguồn data — số liệu authoritative từ server</p></div><div style={{ display: 'flex', gap: 8 }}>
+    <div className="page-header"><div className="page-header-left"><h1>Data tiềm năng</h1><p>Qualified Lead Funnel và chất lượng nguồn data — số liệu authoritative từ server</p></div><div style={{ display: 'flex', gap: 8 }}>
       <button className="btn btn-secondary" onClick={() => void load()} disabled={loading}><RefreshCw size={15} /> Làm mới</button>
       <a className="btn btn-secondary" href={`/api/crm/qualified-leads/export/xlsx?${params.toString()}`}><Download size={15} /> Excel</a>
       <button className="btn btn-primary" onClick={() => void exportGoogle()} disabled={Boolean(exporting)}>{exporting === 'google' ? <Loader2 size={15} className="spin" /> : <Sheet size={15} />} Google Sheets</button>

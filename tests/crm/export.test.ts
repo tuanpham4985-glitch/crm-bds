@@ -25,7 +25,7 @@ test('export projection contains all required columns', () => {
 
 test('xlsx export can be reopened and retains filtered record', () => {
   const workbook = XLSX.read(createQualityWorkbookBuffer([row]), { type: 'buffer' });
-  const values = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets['Data chất lượng']);
+  const values = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets['Data tiềm năng']);
   assert.equal(values.length, 1);
   assert.equal(values[0]['Tên khách'], 'Nguyễn Văn A');
   assert.equal(values[0]['SĐT'], '0900123456');

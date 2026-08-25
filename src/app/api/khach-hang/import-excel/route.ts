@@ -148,6 +148,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         nhu_cau:         buildNhuCau(row),
         ghi_chu:         norm(row[COL.ghi_chu]),
         sale_phu_trach:  norm(row[COL.sale]),
+        du_an:           norm(row[COL.du_an]),
         label_khach:     `${tenKH} - ${sdt}`,
       };
 

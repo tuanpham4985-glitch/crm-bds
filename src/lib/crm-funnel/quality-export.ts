@@ -35,6 +35,6 @@ export function createQualityWorkbookBuffer(rows: QualityLeadRow[]): Buffer {
   sheet['!autofilter'] = { ref: `A1:Y${Math.max(1, records.length + 1)}` };
   sheet['!cols'] = QUALITY_EXPORT_HEADERS.map(header => ({ wch: Math.min(40, Math.max(12, header.length + 3)) }));
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Data chất lượng');
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Data tiềm năng');
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', compression: true }) as Buffer;
 }
