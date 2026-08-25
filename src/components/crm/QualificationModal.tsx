@@ -31,7 +31,7 @@ export function QualificationModal({ customer, onClose, onSaved }: { customer: K
     finally { setSaving(false); }
   }
 
-  return <div className="modal-overlay" onClick={onClose}><div className="modal-content" style={{ maxWidth: 760 }} onClick={event => event.stopPropagation()}><div className="modal-header"><h3 className="modal-title"><BadgeCheck size={18} /> Qualification: {customer.ten_KH}</h3><button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button></div><div className="modal-body">
+  return <div className="modal-overlay" onClick={onClose}><div className="modal-content" style={{ maxWidth: 760 }} onClick={event => event.stopPropagation()}><div className="modal-header"><h3 className="modal-title"><BadgeCheck size={18} /> Đánh giá khách hàng: {customer.ten_KH}</h3><button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button></div><div className="modal-body">
     {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       <Field label="Dự án"><input className="form-input" value={form.du_an} onChange={event => set('du_an', event.target.value)} /></Field>
