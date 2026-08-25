@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { getPipeline, addPipeline, updatePipeline, deletePipeline, addCongViec } from '@/lib/data-access';
 import { generateId, getMonthKey } from '@/lib/utils';
-import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
+import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 
 // Task được tạo tự động khi pipeline chuyển sang giai đoạn mới
 const STAGE_TASKS: Record<string, { ten: string; days: number }> = {
@@ -15,22 +14,15 @@ const STAGE_TASKS: Record<string, { ten: string; days: number }> = {
   'Hủy - Không thích':    { ten: 'Ghi nhận lý do & lưu hồ sơ khách',   days: 1 },
 };
 
-async function getSessionUser(): Promise<{ ho_ten: string; isAdmin: boolean }> {
-  try {
-    const cookieStore = await cookies();
-    const session = cookieStore.get('crm_session');
-    if (!session) return { ho_ten: '', isAdmin: false };
-    const decoded = decodeURIComponent(escape(atob(session.value)));
-    const u = JSON.parse(decoded);
-    const isAdmin = u.vai_tro === 'Admin' || (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(u.employee_type || '');
-    return { ho_ten: u.ho_ten || '', isAdmin };
-  } catch {
-    return { ho_ten: '', isAdmin: false };
-  }
+function isTelesaleSession(user: { vai_tro: string; employee_type?: string }): boolean {
+  return `${user.vai_tro} ${user.employee_type || ''}`.toLowerCase().includes('telesale')
+    || `${user.vai_tro} ${user.employee_type || ''}`.toLowerCase().includes('cskh');
 }
 
 export async function GET(request: NextRequest) {
   try {
+    const user = await getCrmSessionUser();
+    if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     const { searchParams } = new URL(request.url);
     const giai_doan = searchParams.get('giai_doan') || '';
     const du_an = searchParams.get('du_an') || '';
@@ -41,8 +33,8 @@ export async function GET(request: NextRequest) {
     let data = await getPipeline();
 
     // Phân quyền: nhân viên thường chỉ thấy deals mà họ tham gia (bất kỳ vai trò nào)
-    const { ho_ten, isAdmin } = await getSessionUser();
-    if (!isAdmin && ho_ten) {
+    const ho_ten = user.ho_ten;
+    if (!isCrmAdmin(user)) {
       data = data.filter(pl =>
         pl.sale_phu_trach === ho_ten ||
         (pl.gdda || '') === ho_ten ||
@@ -66,11 +58,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCrmSessionUser();
+    if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     const body = await request.json();
-    const now = new Date().toISOString();
-
+    if (isTelesaleSession(user) || (!isCrmAdmin(user) && body.sale_phu_trach !== user.ho_ten)) {
+      return NextResponse.json({ success: false, error: 'Không có quyền tạo deal cho Sale này' }, { status: 403 });
+    }
+    if (body.id_khach_hang && (await getPipeline()).some(item => item.id_khach_hang === body.id_khach_hang)) {
+      return NextResponse.json({ success: false, error: 'Khách hàng đã có deal trong Pipeline' }, { status: 409 });
+    }
     // ===== CHUẨN HÓA DỮ LIỆU =====
-    let gia_tri = Number(body.gia_tri_thuc_te) || 0;
+    const gia_tri = Number(body.gia_tri_thuc_te) || 0;
 
     // 🔥 FIX QUAN TRỌNG Ở ĐÂY
     let hoa_hong = Number(
@@ -130,10 +128,18 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const user = await getCrmSessionUser();
+    if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     const body = await request.json();
+    const existing = (await getPipeline()).find(item => item.id_pipeline === body.id_pipeline);
+    if (!existing) return NextResponse.json({ success: false, error: 'Không tìm thấy deal' }, { status: 404 });
+    if (isTelesaleSession(user) || (!isCrmAdmin(user) && existing.sale_phu_trach !== user.ho_ten)) {
+      return NextResponse.json({ success: false, error: 'Không có quyền cập nhật deal' }, { status: 403 });
+    }
+    if (!isCrmAdmin(user)) body.sale_phu_trach = existing.sale_phu_trach;
 
     // ===== CHUẨN HÓA DỮ LIỆU =====
-    let gia_tri = Number(body.gia_tri_thuc_te) || 0;
+    const gia_tri = Number(body.gia_tri_thuc_te) || 0;
     let hoa_hong = Number(body.hoa_hong) || 0;
 
     if (hoa_hong > 1) {
@@ -204,6 +210,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const user = await getCrmSessionUser();
+    if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
+    if (!isCrmAdmin(user)) return NextResponse.json({ success: false, error: 'Chỉ quản lý được xóa deal' }, { status: 403 });
     const { id } = await request.json();
     const deleted = await deletePipeline(id);
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { getKhachHang, addKhachHangBatch, getNhanVien } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
+import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 
 // ─── Source configs ───────────────────────────────────────────────────────────
 // Mỗi source gắn với 1 dự án cụ thể — dễ mở rộng khi chạy camp mới
@@ -208,6 +209,8 @@ async function fetchTikTokLeads(): Promise<LeadRow[]> {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(): Promise<NextResponse> {
+  const user = await getCrmSessionUser();
+  if (!isCrmAdmin(user)) return NextResponse.json({ success: false, error: 'Không có quyền đồng bộ lead' }, { status: 403 });
   try {
     // 1. Fetch cả 2 nguồn song song
     const [fbLeads, ttLeads] = await Promise.all([
@@ -230,15 +233,17 @@ export async function POST(): Promise<NextResponse> {
       );
     }
 
-    // 2. Load dữ liệu song song: KH hiện tại + danh sách Sale active
+    // 2. Load dữ liệu song song: KH hiện tại + danh sách Telesale active
     const [existing, allEmployees] = await Promise.all([
       getKhachHang(),
       getNhanVien(),
     ]);
 
-    // Sale active để round-robin assign
-    const saleList = allEmployees
-      .filter(nv => nv.vai_tro === 'Sale' && nv.trang_thai !== 'Nghỉ việc')
+    const telesaleList = allEmployees
+      .filter(nv => {
+        const position = `${nv.employee_type || ''} ${nv.vai_tro || ''}`.toLowerCase();
+        return nv.trang_thai !== 'Nghỉ việc' && (position.includes('telesale') || position.includes('cskh'));
+      })
       .map(nv => nv.ho_ten);
     // So sánh bằng 9 chữ số cuối — tránh lỗi Google Sheets bỏ số 0 đầu
     const seenPhones = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
@@ -265,7 +270,7 @@ export async function POST(): Promise<NextResponse> {
 
     // 4. Batch-insert — 3 API calls cho tất cả
     if (newLeads.length > 0) {
-      // Round-robin: phân đều lead cho các Sale theo thứ tự
+      // Round-robin: phân đều lead cho Telesale; Sale chỉ được gán khi khách quan tâm.
       const khs: KhachHang[] = newLeads.map((lead, i) => ({
         id_khach_hang:  `KH_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
         ngay_tao:       lead.ngay_tao,
@@ -275,7 +280,14 @@ export async function POST(): Promise<NextResponse> {
         nguon:          lead.nguon,
         nhu_cau:        lead.nhu_cau,
         ghi_chu:        lead.ghi_chu,
-        sale_phu_trach: saleList.length > 0 ? saleList[i % saleList.length] : '',
+        sale_phu_trach: '',
+        telesale_phu_trach: telesaleList.length > 0 ? telesaleList[i % telesaleList.length] : '',
+        trang_thai_cham_soc: 'Chưa gọi',
+        muc_do_quan_tam: 'Chưa xác định',
+        so_lan_lien_he: 0,
+        lich_su_cham_soc: '[]',
+        trang_thai_ban_giao: 'Chưa bàn giao',
+        lich_su_ban_giao: '[]',
         label_khach:    `${lead.ten_KH} - ${lead.so_dien_thoai}`,
         du_an:          lead.du_an,
       }));

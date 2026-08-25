@@ -84,6 +84,7 @@ export const getPhanKhachConfigs       = GS.getPhanKhachConfigs;
 export const importFromPhanKhachConfig = GS.importFromPhanKhachConfig;
 export const addPhanKhachConfig        = GS.addPhanKhachConfig;
 export const deletePhanKhachConfig     = GS.deletePhanKhachConfig;
+export const exportQualityProjectionToGoogleSheet = GS.exportQualityProjectionToGoogleSheet;
 
 // CRM — misc (GS pass-through, cached to reduce API round-trips)
 export function getTonCoc() {

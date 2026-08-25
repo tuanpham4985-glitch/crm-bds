@@ -7,6 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
+    "test:crm": "tsx --test tests/crm/*.test.ts",
     "postinstall": "prisma generate",
     "migrate": "node scripts/migrate-to-gsheets.mjs",
     "repair": "node scripts/repair-gsheets.mjs",

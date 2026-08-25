@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { getKhachHang, addKhachHang } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
+import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 
 // Column indices (0-based) matching the export format from the lead funnel
 const COL = {
@@ -69,6 +70,8 @@ export interface ImportResult {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const user = await getCrmSessionUser();
+  if (!isCrmAdmin(user)) return NextResponse.json({ success: false, error: 'Không có quyền import khách hàng' }, { status: 403 });
   try {
     let formData: FormData;
     try {

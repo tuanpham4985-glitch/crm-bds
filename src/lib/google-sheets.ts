@@ -503,7 +503,12 @@ export async function getKhachHang(): Promise<KhachHang[]> {
   const sheet = await getSheet(doc, SHEETS.KHACH_HANG);
 
   const h = sheet.headerValues;
-  const missingKHCols = ['du_an', 'sale_lan_1', 'ghi_chu_lan_1', 'sale_lan_2', 'ghi_chu_lan_2', 'sale_lan_3', 'ghi_chu_lan_3']
+  const missingKHCols = [
+    'du_an', 'sale_lan_1', 'ghi_chu_lan_1', 'sale_lan_2', 'ghi_chu_lan_2', 'sale_lan_3', 'ghi_chu_lan_3',
+    'telesale_phu_trach', 'sale_nhan_khach', 'trang_thai_cham_soc', 'muc_do_quan_tam',
+    'ngay_lien_he_cuoi', 'ngay_lien_he_tiep', 'so_lan_lien_he', 'lich_su_cham_soc',
+    'trang_thai_ban_giao', 'ban_giao_luc', 'sale_xac_nhan_luc', 'lich_su_ban_giao',
+  ]
     .filter(c => !h.includes(c));
   if (missingKHCols.length > 0) {
     await sheet.setHeaderRow([...h, ...missingKHCols]);
@@ -537,9 +542,35 @@ export async function getKhachHang(): Promise<KhachHang[]> {
         ghi_chu_lan_2:  str(v['ghi_chu_lan_2'] || ''),
         sale_lan_3:     str(v['sale_lan_3'] || ''),
         ghi_chu_lan_3:  str(v['ghi_chu_lan_3'] || ''),
+        telesale_phu_trach: str(v['telesale_phu_trach'] || ''),
+        sale_nhan_khach: str(v['sale_nhan_khach'] || ''),
+        trang_thai_cham_soc: (str(v['trang_thai_cham_soc']) || 'Chưa gọi') as KhachHang['trang_thai_cham_soc'],
+        muc_do_quan_tam: (str(v['muc_do_quan_tam']) || 'Chưa xác định') as KhachHang['muc_do_quan_tam'],
+        ngay_lien_he_cuoi: str(v['ngay_lien_he_cuoi'] || ''),
+        ngay_lien_he_tiep: str(v['ngay_lien_he_tiep'] || ''),
+        so_lan_lien_he: num(v['so_lan_lien_he']),
+        lich_su_cham_soc: str(v['lich_su_cham_soc'] || ''),
+        trang_thai_ban_giao: (str(v['trang_thai_ban_giao']) || 'Chưa bàn giao') as KhachHang['trang_thai_ban_giao'],
+        ban_giao_luc: str(v['ban_giao_luc'] || ''),
+        sale_xac_nhan_luc: str(v['sale_xac_nhan_luc'] || ''),
+        lich_su_ban_giao: str(v['lich_su_ban_giao'] || ''),
       } as KhachHang;
     })
     .filter((x): x is KhachHang => x !== null);
+}
+
+/** Export projection: creates a new tab in the configured CRM spreadsheet. */
+export async function exportQualityProjectionToGoogleSheet(
+  headers: readonly string[],
+  records: Record<string, string | number>[],
+): Promise<{ title: string; url: string; rowCount: number }> {
+  const doc = await getDoc();
+  const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const title = `DATA_CL_${timestamp}`.slice(0, 99);
+  const sheet = await doc.addSheet({ title, headerValues: [...headers] });
+  if (records.length > 0) await sheet.addRows(records);
+  const { sheetId } = validateEnvVars();
+  return { title, url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit#gid=${sheet.sheetId}`, rowCount: records.length };
 }
 
 export async function getPipeline(): Promise<Pipeline[]> {
@@ -1115,6 +1146,18 @@ export async function addKhachHang(kh: KhachHang): Promise<void> {
     ...(hKH.includes('ghi_chu_lan_2') ? { ghi_chu_lan_2: kh.ghi_chu_lan_2 || '' } : {}),
     ...(hKH.includes('sale_lan_3') ? { sale_lan_3: kh.sale_lan_3 || '' } : {}),
     ...(hKH.includes('ghi_chu_lan_3') ? { ghi_chu_lan_3: kh.ghi_chu_lan_3 || '' } : {}),
+    ...(hKH.includes('telesale_phu_trach') ? { telesale_phu_trach: kh.telesale_phu_trach || '' } : {}),
+    ...(hKH.includes('sale_nhan_khach') ? { sale_nhan_khach: kh.sale_nhan_khach || '' } : {}),
+    ...(hKH.includes('trang_thai_cham_soc') ? { trang_thai_cham_soc: kh.trang_thai_cham_soc || 'Chưa gọi' } : {}),
+    ...(hKH.includes('muc_do_quan_tam') ? { muc_do_quan_tam: kh.muc_do_quan_tam || 'Chưa xác định' } : {}),
+    ...(hKH.includes('ngay_lien_he_cuoi') ? { ngay_lien_he_cuoi: kh.ngay_lien_he_cuoi || '' } : {}),
+    ...(hKH.includes('ngay_lien_he_tiep') ? { ngay_lien_he_tiep: kh.ngay_lien_he_tiep || '' } : {}),
+    ...(hKH.includes('so_lan_lien_he') ? { so_lan_lien_he: kh.so_lan_lien_he || 0 } : {}),
+    ...(hKH.includes('lich_su_cham_soc') ? { lich_su_cham_soc: kh.lich_su_cham_soc || '[]' } : {}),
+    ...(hKH.includes('trang_thai_ban_giao') ? { trang_thai_ban_giao: kh.trang_thai_ban_giao || 'Chưa bàn giao' } : {}),
+    ...(hKH.includes('ban_giao_luc') ? { ban_giao_luc: kh.ban_giao_luc || '' } : {}),
+    ...(hKH.includes('sale_xac_nhan_luc') ? { sale_xac_nhan_luc: kh.sale_xac_nhan_luc || '' } : {}),
+    ...(hKH.includes('lich_su_ban_giao') ? { lich_su_ban_giao: kh.lich_su_ban_giao || '[]' } : {}),
   });
 
   // 2. AUTO tạo pipeline — ghi theo TÊN CỘT để không bị lệch khi sheet có thêm cột
@@ -1201,6 +1244,18 @@ export async function addKhachHangBatch(khs: KhachHang[]): Promise<void> {
     ...(hKH.includes('ghi_chu_lan_2') ? { ghi_chu_lan_2: kh.ghi_chu_lan_2 || '' } : {}),
     ...(hKH.includes('sale_lan_3') ? { sale_lan_3: kh.sale_lan_3 || '' } : {}),
     ...(hKH.includes('ghi_chu_lan_3') ? { ghi_chu_lan_3: kh.ghi_chu_lan_3 || '' } : {}),
+    ...(hKH.includes('telesale_phu_trach') ? { telesale_phu_trach: kh.telesale_phu_trach || '' } : {}),
+    ...(hKH.includes('sale_nhan_khach') ? { sale_nhan_khach: kh.sale_nhan_khach || '' } : {}),
+    ...(hKH.includes('trang_thai_cham_soc') ? { trang_thai_cham_soc: kh.trang_thai_cham_soc || 'Chưa gọi' } : {}),
+    ...(hKH.includes('muc_do_quan_tam') ? { muc_do_quan_tam: kh.muc_do_quan_tam || 'Chưa xác định' } : {}),
+    ...(hKH.includes('ngay_lien_he_cuoi') ? { ngay_lien_he_cuoi: kh.ngay_lien_he_cuoi || '' } : {}),
+    ...(hKH.includes('ngay_lien_he_tiep') ? { ngay_lien_he_tiep: kh.ngay_lien_he_tiep || '' } : {}),
+    ...(hKH.includes('so_lan_lien_he') ? { so_lan_lien_he: kh.so_lan_lien_he || 0 } : {}),
+    ...(hKH.includes('lich_su_cham_soc') ? { lich_su_cham_soc: kh.lich_su_cham_soc || '[]' } : {}),
+    ...(hKH.includes('trang_thai_ban_giao') ? { trang_thai_ban_giao: kh.trang_thai_ban_giao || 'Chưa bàn giao' } : {}),
+    ...(hKH.includes('ban_giao_luc') ? { ban_giao_luc: kh.ban_giao_luc || '' } : {}),
+    ...(hKH.includes('sale_xac_nhan_luc') ? { sale_xac_nhan_luc: kh.sale_xac_nhan_luc || '' } : {}),
+    ...(hKH.includes('lich_su_ban_giao') ? { lich_su_ban_giao: kh.lich_su_ban_giao || '[]' } : {}),
   }));
 
   // Ghi theo TÊN CỘT để không bị lệch khi sheet có thêm cột mới
@@ -1257,6 +1312,18 @@ export async function updateKhachHang(kh: KhachHang): Promise<boolean> {
   if (h.includes('ghi_chu_lan_2')) row.set('ghi_chu_lan_2', kh.ghi_chu_lan_2 || '');
   if (h.includes('sale_lan_3')) row.set('sale_lan_3', kh.sale_lan_3 || '');
   if (h.includes('ghi_chu_lan_3')) row.set('ghi_chu_lan_3', kh.ghi_chu_lan_3 || '');
+  if (h.includes('telesale_phu_trach')) row.set('telesale_phu_trach', kh.telesale_phu_trach || '');
+  if (h.includes('sale_nhan_khach')) row.set('sale_nhan_khach', kh.sale_nhan_khach || '');
+  if (h.includes('trang_thai_cham_soc')) row.set('trang_thai_cham_soc', kh.trang_thai_cham_soc || 'Chưa gọi');
+  if (h.includes('muc_do_quan_tam')) row.set('muc_do_quan_tam', kh.muc_do_quan_tam || 'Chưa xác định');
+  if (h.includes('ngay_lien_he_cuoi')) row.set('ngay_lien_he_cuoi', kh.ngay_lien_he_cuoi || '');
+  if (h.includes('ngay_lien_he_tiep')) row.set('ngay_lien_he_tiep', kh.ngay_lien_he_tiep || '');
+  if (h.includes('so_lan_lien_he')) row.set('so_lan_lien_he', kh.so_lan_lien_he || 0);
+  if (h.includes('lich_su_cham_soc')) row.set('lich_su_cham_soc', kh.lich_su_cham_soc || '[]');
+  if (h.includes('trang_thai_ban_giao')) row.set('trang_thai_ban_giao', kh.trang_thai_ban_giao || 'Chưa bàn giao');
+  if (h.includes('ban_giao_luc')) row.set('ban_giao_luc', kh.ban_giao_luc || '');
+  if (h.includes('sale_xac_nhan_luc')) row.set('sale_xac_nhan_luc', kh.sale_xac_nhan_luc || '');
+  if (h.includes('lich_su_ban_giao')) row.set('lich_su_ban_giao', kh.lich_su_ban_giao || '[]');
   await row.save();
 
   // Cascade sale_phu_trach to Pipeline and Công việc when it changes
@@ -3219,7 +3286,7 @@ export async function probePhanKhachSheet(sheetId: string): Promise<{
 }
 
 type KhachHangFieldUpdate = Partial<Pick<KhachHang,
-  'du_an' | 'sale_phu_trach' |
+  'du_an' | 'sale_phu_trach' | 'telesale_phu_trach' |
   'sale_lan_1' | 'ghi_chu_lan_1' |
   'sale_lan_2' | 'ghi_chu_lan_2' |
   'sale_lan_3' | 'ghi_chu_lan_3'
@@ -3240,7 +3307,7 @@ async function batchUpdateKhachHangFields(
   if (sdtIdx < 0) return 0;
 
   const updateFields: (keyof KhachHangFieldUpdate)[] = [
-    'du_an', 'sale_phu_trach',
+    'du_an', 'sale_phu_trach', 'telesale_phu_trach',
     'sale_lan_1', 'ghi_chu_lan_1',
     'sale_lan_2', 'ghi_chu_lan_2',
     'sale_lan_3', 'ghi_chu_lan_3',
@@ -3357,7 +3424,7 @@ export async function importFromPhanKhachConfig(
         if (n2) upd.ghi_chu_lan_2 = n2;
         if (s3) upd.sale_lan_3 = s3;
         if (n3) upd.ghi_chu_lan_3 = n3;
-        if (latestSale) upd.sale_phu_trach = latestSale;
+        if (latestSale) upd.telesale_phu_trach = latestSale;
         if (Object.keys(upd).length > 0) fieldUpdates.set(key, upd);
         continue;
       }
@@ -3372,7 +3439,14 @@ export async function importFromPhanKhachConfig(
         nguon:          cellVal(row, 'nguon'),
         nhu_cau:        cellVal(row, 'nhu_cau'),
         ghi_chu:        '',
-        sale_phu_trach: latestSale,
+        sale_phu_trach: '',
+        telesale_phu_trach: latestSale,
+        trang_thai_cham_soc: 'Chưa gọi',
+        muc_do_quan_tam: 'Chưa xác định',
+        so_lan_lien_he: 0,
+        lich_su_cham_soc: '[]',
+        trang_thai_ban_giao: 'Chưa bàn giao',
+        lich_su_ban_giao: '[]',
         sale_lan_1:     s1,
         ghi_chu_lan_1:  n1,
         sale_lan_2:     s2,

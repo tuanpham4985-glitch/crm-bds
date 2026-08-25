@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { findEmployeeForAuth, normalizeAuthEmail } from '@/lib/auth/employee-source';
+import { signSessionValue, verifySessionValue } from '@/lib/auth/session-signature';
 
 // Simple session-based auth using cookies
 // POST /api/auth — Login
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
         sameSite: isProd ? 'none' : 'lax',
         maxAge: 60 * 60 * 24 * 7,
         path: '/',
+      });
+      cookieStore.set('crm_session_sig', signSessionValue(devBase64), {
+        httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax', maxAge: 60 * 60 * 24 * 7, path: '/',
       });
       return NextResponse.json({
         success: true,
@@ -84,6 +88,9 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 24 * 7,
       path: '/',
     });
+    cookieStore.set('crm_session_sig', signSessionValue(base64Session), {
+      httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax', maxAge: 60 * 60 * 24 * 7, path: '/',
+    });
 
     return NextResponse.json({
       success: true,
@@ -95,9 +102,10 @@ export async function POST(request: NextRequest) {
         employee_type: nv.employee_type,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Auth] Login Catch Error:', error);
-    return NextResponse.json({ success: false, error: 'Lỗi hệ thống: ' + error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    return NextResponse.json({ success: false, error: 'Lỗi hệ thống: ' + message }, { status: 500 });
   }
 }
 
@@ -108,6 +116,11 @@ export async function GET() {
     const session = cookieStore.get('crm_session');
     if (!session) {
       return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
+    }
+    if (!verifySessionValue(session.value, cookieStore.get('crm_session_sig')?.value)) {
+      cookieStore.delete('crm_session');
+      cookieStore.delete('crm_session_sig');
+      return NextResponse.json({ success: false, error: 'Session không hợp lệ, vui lòng đăng nhập lại' }, { status: 401 });
     }
 
     // Use atob for Edge compatibility
@@ -121,6 +134,7 @@ export async function GET() {
         const lookup = await findEmployeeForAuth(userData.email);
         if (!lookup.ok) {
           cookieStore.delete('crm_session');
+          cookieStore.delete('crm_session_sig');
           return NextResponse.json({
             success: false,
             error: lookup.reason === 'inactive' ? 'Tài khoản đã bị khóa' : 'Session không còn hợp lệ',
@@ -135,13 +149,14 @@ export async function GET() {
       } catch (refreshErr) {
         // Auth phải fail-closed: không dùng cookie cũ khi không xác thực được NHAN_VIEN.
         cookieStore.delete('crm_session');
+        cookieStore.delete('crm_session_sig');
         console.warn('[Auth] Could not validate session against NHAN_VIEN:', refreshErr);
         return NextResponse.json({ success: false, error: 'Không xác thực được session' }, { status: 401 });
       }
     }
 
     return NextResponse.json({ success: true, data: userData });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Auth] Session Catch Error:', error);
     return NextResponse.json({ success: false, error: 'Session không hợp lệ' }, { status: 401 });
   }
@@ -151,5 +166,6 @@ export async function GET() {
 export async function DELETE() {
   const cookieStore = await cookies();
   cookieStore.delete('crm_session');
+  cookieStore.delete('crm_session_sig');
   return NextResponse.json({ success: true });
 }

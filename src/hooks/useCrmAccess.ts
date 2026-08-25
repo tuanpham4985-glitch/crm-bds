@@ -18,5 +18,7 @@ export function useCrmAccess() {
     canKH: (data?.canKH as boolean) ?? false,
     canPhanKhach,
     phanKhachIds, // use in page to filter project dropdown
+    handoffCount: Number(data?.handoffCount || 0),
+    canQualityDashboard: Boolean(data?.canQualityDashboard),
   };
 }

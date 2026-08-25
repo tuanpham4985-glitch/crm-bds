@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getDuAn } from '@/lib/data-access';
+import { getDuAn, getKhachHang, getNhanVien } from '@/lib/data-access';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
+import { buildCrmManagerScope } from '@/lib/crm-auth';
 
 export async function GET() {
   try {
@@ -15,14 +16,29 @@ export async function GET() {
       (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(userData.employee_type || '');
 
     if (isAdmin) {
-      return NextResponse.json({ canKH: true, phanKhachIds: null }); // null = all projects
+      const customers = await getKhachHang();
+      return NextResponse.json({
+        canKH: true,
+        phanKhachIds: null,
+        canQualityDashboard: true,
+        handoffCount: customers.filter(customer => customer.trang_thai_ban_giao === 'Chờ xác nhận').length,
+      }); // null = all projects
     }
 
     // Find projects this user is involved in (trưởng nhóm or team member)
-    const projects = await getDuAn();
+    const [projects, customers, employees] = await Promise.all([getDuAn(), getKhachHang(), getNhanVien()]);
+    const directReports = new Set(employees.filter(employee => employee.ql_truc_tiep === userData.ho_ten).map(employee => employee.ho_ten));
+    const projectNamesFromAssignments = new Set(customers
+      .filter(customer => customer.telesale_phu_trach === userData.ho_ten
+        || directReports.has(customer.telesale_phu_trach || '')
+        || customer.sale_nhan_khach === userData.ho_ten
+        || customer.sale_phu_trach === userData.ho_ten)
+      .map(customer => customer.du_an)
+      .filter(Boolean));
     const accessibleIds = projects
       .filter(p => {
         if (p.truong_nhom === userData.ho_ten) return true;
+        if (projectNamesFromAssignments.has(p.ten_du_an)) return true;
         try {
           const members: string[] = p.ds_sale ? JSON.parse(p.ds_sale) : [];
           return members.includes(userData.ho_ten);
@@ -30,7 +46,10 @@ export async function GET() {
       })
       .map(p => p.id_du_an);
 
-    return NextResponse.json({ canKH: false, phanKhachIds: accessibleIds });
+    const handoffCount = customers.filter(customer =>
+      customer.sale_nhan_khach === userData.ho_ten && customer.trang_thai_ban_giao === 'Chờ xác nhận').length;
+    const scope = buildCrmManagerScope(userData, projects, employees);
+    return NextResponse.json({ canKH: false, phanKhachIds: accessibleIds, handoffCount, canQualityDashboard: scope.canManageQuality });
   } catch {
     return NextResponse.json({ canKH: false, phanKhachIds: [] });
   }

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPhanKhachConfigs, addPhanKhachConfig, deletePhanKhachConfig } from '@/lib/data-access';
+import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 
 export async function GET() {
   try {
+    const user = await getCrmSessionUser();
+    if (!isCrmAdmin(user)) return NextResponse.json({ success: false, error: 'Không có quyền quản lý nguồn data' }, { status: 403 });
     const data = await getPhanKhachConfigs();
     return NextResponse.json({ success: true, data });
   } catch (e: unknown) {
@@ -13,6 +16,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCrmSessionUser();
+    if (!isCrmAdmin(user)) return NextResponse.json({ success: false, error: 'Không có quyền quản lý nguồn data' }, { status: 403 });
     const body = await request.json();
     if (!body.ten_hien_thi || !body.sheet_id) {
       return NextResponse.json({ success: false, error: 'Thiếu tên hiển thị hoặc Sheet ID' }, { status: 400 });
@@ -27,6 +32,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const user = await getCrmSessionUser();
+    if (!isCrmAdmin(user)) return NextResponse.json({ success: false, error: 'Không có quyền quản lý nguồn data' }, { status: 403 });
     const { id } = await request.json();
     if (!id) return NextResponse.json({ success: false, error: 'Thiếu id' }, { status: 400 });
     const deleted = await deletePhanKhachConfig(id);

@@ -65,11 +65,103 @@ model KhachHang {
   ghi_chu_lan_2   String?
   sale_lan_3      String?
   ghi_chu_lan_3   String?
+  telesale_phu_trach String?
+  sale_nhan_khach String?
+  trang_thai_cham_soc String? @default("Chưa gọi")
+  muc_do_quan_tam String? @default("Chưa xác định")
+  ngay_lien_he_cuoi String?
+  ngay_lien_he_tiep String?
+  so_lan_lien_he Int @default(0)
+  lich_su_cham_soc String?
+  trang_thai_ban_giao String? @default("Chưa bàn giao")
+  ban_giao_luc String?
+  sale_xac_nhan_luc String?
+  lich_su_ban_giao String?
+  san_pham_quan_tam String?
+  ngan_sach_min Float?
+  ngan_sach_max Float?
+  muc_dich String?
+  thoi_gian_du_kien String?
+  phuong_an_tai_chinh String?
+  khu_vuc_yeu_cau String?
+  hanh_dong_tiep_theo String?
+  qualification_status String @default("RAW")
+  lead_quality_score Int @default(0)
+  lead_quality_rank String @default("UNQUALIFIED")
+  lead_score_breakdown String?
+  lead_score_history String?
+  ngay_quan_tam String?
+  qualified_at String?
+  hot_at String?
+  row_version Int @default(0)
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
   @@index([sale_phu_trach])
+  @@index([telesale_phu_trach])
+  @@index([sale_nhan_khach])
+  @@index([trang_thai_cham_soc])
+  @@index([ngay_lien_he_tiep])
+  @@index([qualification_status])
+  @@index([lead_quality_rank])
+  @@index([lead_quality_score])
+  @@index([ngay_quan_tam])
   @@map("khach_hang")
+}
+
+model CrmHandoff {
+  id                    String   @id @default(uuid())
+  customer_id           String
+  idempotency_key       String   @unique
+  active_key            String?  @unique
+  status                String
+  telesale_id           String?
+  telesale_name         String
+  sale_id               String?
+  sale_name             String?
+  created_by_id         String
+  created_by_name       String
+  created_at            DateTime @default(now())
+  accepted_by_id        String?
+  accepted_by_name      String?
+  accepted_at           DateTime?
+  rejected_by_id        String?
+  rejected_by_name      String?
+  rejected_at           DateTime?
+  rejection_reason      String?
+  manager_note          String?
+  qualification_score   Int      @default(0)
+  qualification_rank    String   @default("UNQUALIFIED")
+  updated_at            DateTime @updatedAt
+
+  @@index([customer_id, created_at])
+  @@index([sale_name, status])
+  @@index([status])
+  @@map("crm_handoffs")
+}
+
+model CrmPipelineLink {
+  id           String   @id @default(uuid())
+  customer_id  String   @unique
+  pipeline_id  String   @unique
+  created_at   DateTime @default(now())
+
+  @@map("crm_pipeline_links")
+}
+
+model CrmExportAudit {
+  id            String   @id @default(uuid())
+  exported_by_id String
+  exported_by_name String
+  exported_at   DateTime @default(now())
+  filters_json  String
+  record_count  Int
+  export_type   String
+  destination  String?
+
+  @@index([exported_by_id, exported_at])
+  @@index([export_type, exported_at])
+  @@map("crm_export_audits")
 }
 
 model Pipeline {

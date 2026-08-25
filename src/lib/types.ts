@@ -102,6 +102,130 @@ export interface KhachHang {
   ghi_chu_lan_2?: string;
   sale_lan_3?: string;
   ghi_chu_lan_3?: string;
+  // Vận hành Telesale / CSKH
+  telesale_phu_trach?: string;
+  sale_nhan_khach?: string;
+  trang_thai_cham_soc?: TrangThaiChamSoc;
+  muc_do_quan_tam?: MucDoQuanTam;
+  ngay_lien_he_cuoi?: string;
+  ngay_lien_he_tiep?: string;
+  so_lan_lien_he?: number;
+  /** JSON CrmChamSocEntry[] — lịch sử không giới hạn, append-only qua API chuyên dụng */
+  lich_su_cham_soc?: string;
+  trang_thai_ban_giao?: TrangThaiBanGiao;
+  ban_giao_luc?: string;
+  sale_xac_nhan_luc?: string;
+  /** JSON CrmBanGiaoEntry[] — nhật ký bàn giao/nhận/từ chối */
+  lich_su_ban_giao?: string;
+  // Qualified Lead Funnel — authoritative fields, score is server-computed.
+  san_pham_quan_tam?: string;
+  ngan_sach_min?: number;
+  ngan_sach_max?: number;
+  muc_dich?: MucDichLead;
+  thoi_gian_du_kien?: ThoiGianDuKien;
+  phuong_an_tai_chinh?: string;
+  khu_vuc_yeu_cau?: string;
+  hanh_dong_tiep_theo?: string;
+  qualification_status?: QualificationStatus;
+  lead_quality_score?: number;
+  lead_quality_rank?: LeadQualityRank;
+  lead_score_breakdown?: string;
+  lead_score_history?: string;
+  ngay_quan_tam?: string;
+  qualified_at?: string;
+  hot_at?: string;
+  row_version?: number;
+}
+
+export type MucDichLead = 'Để ở' | 'Đầu tư' | 'Cho thuê' | 'Khác';
+export type ThoiGianDuKien = 'Trong 1 tháng' | '1-3 tháng' | '3-6 tháng' | '6-12 tháng' | 'Trên 12 tháng' | 'Chưa xác định';
+export type QualificationStatus = 'RAW' | 'CONTACTED' | 'INTERESTED' | 'QUALIFIED' | 'HOT' | 'UNQUALIFIED';
+export type LeadQualityRank = 'HOT' | 'QUALIFIED' | 'WARM' | 'UNQUALIFIED';
+
+export interface LeadScoreBreakdownItem {
+  key: string;
+  label: string;
+  points: number;
+  maxPoints: number;
+  reason: string;
+}
+
+export interface LeadScoreResult {
+  score: number;
+  rank: LeadQualityRank;
+  qualificationStatus: QualificationStatus;
+  breakdown: LeadScoreBreakdownItem[];
+}
+
+export interface LeadScoreHistoryEntry {
+  idempotency_key?: string;
+  at: string;
+  actor_id: string;
+  actor_name: string;
+  old_score: number;
+  new_score: number;
+  old_rank: LeadQualityRank;
+  new_rank: LeadQualityRank;
+  breakdown: LeadScoreBreakdownItem[];
+}
+
+export interface QualifiedLeadFilters {
+  project?: string;
+  telesale?: string;
+  sale?: string;
+  source?: string;
+  from?: string;
+  to?: string;
+  scoreMin?: number;
+  scoreMax?: number;
+  rank?: LeadQualityRank;
+  interest?: MucDoQuanTam;
+  budgetMin?: number;
+  budgetMax?: number;
+  purpose?: MucDichLead;
+  timeframe?: ThoiGianDuKien;
+  handoffStatus?: TrangThaiBanGiao;
+  pipelineStatus?: string;
+  search?: string;
+}
+
+export type TrangThaiChamSoc =
+  | 'Chưa gọi'
+  | 'Không nghe máy'
+  | 'Gọi lại'
+  | 'Đã liên hệ'
+  | 'Quan tâm'
+  | 'Không phù hợp'
+  | 'Sai số';
+
+export type MucDoQuanTam = 'Chưa xác định' | 'Thấp' | 'Trung bình' | 'Cao' | 'Rất cao';
+
+export type TrangThaiBanGiao =
+  | 'Chưa bàn giao'
+  | 'Chờ xác nhận'
+  | 'Đã nhận'
+  | 'Từ chối'
+  | 'Thiếu người nhận';
+
+export interface CrmChamSocEntry {
+  id: string;
+  thoi_gian: string;
+  nguoi_thuc_hien: string;
+  id_nguoi_thuc_hien: string;
+  ket_qua: TrangThaiChamSoc;
+  muc_do_quan_tam: MucDoQuanTam;
+  ghi_chu: string;
+  ngay_lien_he_tiep?: string;
+}
+
+export interface CrmBanGiaoEntry {
+  id: string;
+  thoi_gian: string;
+  hanh_dong: 'Bàn giao' | 'Xác nhận' | 'Từ chối';
+  nguoi_thuc_hien: string;
+  telesale: string;
+  sale_nhan: string;
+  ghi_chu?: string;
 }
 
 // === PIPELINE ===

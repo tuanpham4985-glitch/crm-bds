@@ -6,13 +6,14 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin, ClipboardList,
+  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin, ClipboardList, PhoneCall, BadgeCheck,
 } from 'lucide-react';
 import useSWR from 'swr';
 import styles from './Sidebar.module.css';
 import { useAuth } from '@/hooks/useAuth';
 import { useTmStore } from '@/stores/tmStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useCrmAccess } from '@/hooks/useCrmAccess';
 
 // Hook: trả về badge count cho sidebar
 // - Nếu đang ở trang TM: lấy từ Zustand (đã được cập nhật bởi useNotifications)
@@ -58,6 +59,7 @@ interface SidebarProps {
 export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { user, isAdmin, canEditHRM } = useAuth();
+  const { canPhanKhach, handoffCount, canQualityDashboard } = useCrmAccess();
 
   // Tab "Nhân viên" chỉ hiển thị cho HR (và Admin). Nhân viên thường không thấy.
   const hrmItems = HRM_ITEMS.filter(item => item.href !== '/nhan-vien' || canEditHRM);
@@ -316,6 +318,35 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
             </div>
           );
         })}
+
+        {canPhanKhach && (
+          <div className={styles.navSection}>
+            <Link
+              href="/phan-khach"
+              className={`${styles.navItem} ${pathname.startsWith('/phan-khach') ? styles.active : ''}`}
+              title="Vận hành Telesale"
+            >
+              <PhoneCall size={20} />
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+                <span style={{ flex: 1 }}>Vận hành Telesale</span>
+                {handoffCount > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 17, height: 17, lineHeight: '17px', padding: '0 4px', borderRadius: 9, textAlign: 'center' }}>{handoffCount > 9 ? '9+' : handoffCount}</span>}
+              </span>
+            </Link>
+          </div>
+        )}
+
+        {canQualityDashboard && (
+          <div className={styles.navSection}>
+            <Link
+              href="/data-chat-luong"
+              className={`${styles.navItem} ${pathname.startsWith('/data-chat-luong') ? styles.active : ''}`}
+              title="Data chất lượng"
+            >
+              <BadgeCheck size={20} />
+              <span>Data chất lượng</span>
+            </Link>
+          </div>
+        )}
 
         {/* TASK MANAGEMENT */}
         <div className={styles.navSection}>
