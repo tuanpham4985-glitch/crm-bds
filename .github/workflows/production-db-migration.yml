@@ -1,0 +1,65 @@
+name: Production DB Migration (Manual)
+
+# Manual-only. Must never run on push/PR/deploy.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type MIGRATE-PRODUCTION to run `prisma migrate deploy` against the live Neon production database'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Prevent two migration runs from ever overlapping.
+concurrency:
+  group: production-db-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Prisma migrate deploy (production)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require explicit confirmation
+        if: ${{ github.event.inputs.confirm != 'MIGRATE-PRODUCTION' }}
+        run: |
+          echo "Confirmation input did not match 'MIGRATE-PRODUCTION'. Aborting without touching the database." >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies (lockfile-safe)
+        run: npm ci
+
+      - name: Verify DATABASE_URL secret is configured
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not configured. Aborting without touching the database." >&2
+            exit 1
+          fi
+
+      - name: Prisma migrate status (before)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate status
+
+      - name: Prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate deploy
+
+      - name: Prisma migrate status (after)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate status
