@@ -97,6 +97,35 @@ export async function getCampaignMembers(campaignId: string) {
 }
 
 /**
+ * Dùng cho Campaign CSKH work queue (M1B.1) — danh sách membership kèm định
+ * danh Customer (Tên/SĐT/Email) chỉ để HIỂN THỊ, read-only. KHÔNG BAO GIỜ ghi
+ * vào KhachHang từ đây — mọi mutation CSKH của membership đi qua
+ * membership-workflow.ts và chỉ target CampaignMembership.id.
+ */
+export async function getCampaignMembersWithCustomers(campaignId: string) {
+  assertTransactionalCrm();
+  const members = await prisma.campaignMembership.findMany({ where: { campaign_id: campaignId }, orderBy: { created_at: 'asc' } });
+  const customerIds = [...new Set(members.map(member => member.customer_id))];
+  const customers = customerIds.length
+    ? await prisma.khachHang.findMany({
+        where: { id_khach_hang: { in: customerIds } },
+        select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true },
+      })
+    : [];
+  const customerMap = new Map(customers.map(customer => [customer.id_khach_hang, customer]));
+  return members.map(member => ({
+    ...member,
+    customer: customerMap.get(member.customer_id)
+      ? {
+          ten_KH: customerMap.get(member.customer_id)!.ten_KH,
+          so_dien_thoai: customerMap.get(member.customer_id)!.so_dien_thoai || '',
+          email: customerMap.get(member.customer_id)!.email || '',
+        }
+      : null,
+  }));
+}
+
+/**
  * Dùng cho delete-guard (customerDeleteBlockReason) — trả về danh sách
  * customer_id đã có ít nhất 1 CampaignMembership (bất kỳ campaign nào). KHÔNG
  * throw khi Postgres CRM chưa bật — delete guard phải luôn hoạt động được kể

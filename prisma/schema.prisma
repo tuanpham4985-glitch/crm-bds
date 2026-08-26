@@ -197,8 +197,9 @@ model Campaign {
 // CampaignMembership: 1 customer trong 1 Campaign cụ thể. Field chăm sóc/
 // qualification ở đây là BẢN RIÊNG cho campaign này — KHÔNG dùng để ghi đè hay
 // đọc thay cho field cùng tên trên KhachHang (những field đó vẫn là nguồn sự
-// thật hiện tại cho tới M1B). M1A chỉ tạo/phân membership — không có route nào
-// ghi vào các field chăm sóc/qualification bên dưới trong milestone này.
+// thật cho khách KHÔNG có membership nào — xem membership-workflow.ts). M1B.1
+// kích hoạt các field chăm sóc/qualification bên dưới làm authoritative cho
+// CSKH theo Campaign; KHÔNG mirror ngược lại KhachHang.
 model CampaignMembership {
   id                    String    @id @default(uuid())
   customer_id           String
@@ -223,6 +224,24 @@ model CampaignMembership {
   lead_score_history    String?
   outcome               String?
   handoff_id            String?
+
+  // Qualification-input (M1B.1) — cùng tên/kiểu với field tương ứng trên
+  // KhachHang để scoring.ts dùng chung 1 công thức duy nhất (ScoreableLead).
+  // KHÔNG có "du_an" riêng ở đây — Campaign đã có id_du_an/ten_du_an, dùng
+  // trực tiếp campaign đó làm ngữ cảnh dự án cho điểm số, tránh field trùng lặp.
+  san_pham_quan_tam     String?
+  nhu_cau               String?
+  ngan_sach_min         Float?
+  ngan_sach_max         Float?
+  muc_dich              String?
+  thoi_gian_du_kien     String?
+  phuong_an_tai_chinh   String?
+  khu_vuc_yeu_cau       String?
+  hanh_dong_tiep_theo   String?
+
+  // Optimistic concurrency guard cho membership-workflow.ts (cùng pattern với
+  // KhachHang.row_version) — tăng ở mỗi lần ghi interaction/qualification.
+  row_version           Int       @default(0)
 
   created_at            DateTime  @default(now())
   updated_at            DateTime  @updatedAt

@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, Eye, History, Phone, RefreshCw, Save, Search, Send, Settings, UserCheck, Users, X } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, Eye, History, Layers, Phone, RefreshCw, Save, Search, Send, Settings, UserCheck, Users, X } from 'lucide-react';
 import type { CrmBanGiaoEntry, CrmChamSocEntry, DuAn, KhachHang, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useCrmAccess } from '@/hooks/useCrmAccess';
 import { useAuth } from '@/hooks/useAuth';
 import { QualificationModal } from '@/components/crm/QualificationModal';
+import { CampaignCskhWorkQueue } from '@/components/crm/CampaignCskhWorkQueue';
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
 const INTERESTS: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'];
@@ -36,6 +37,9 @@ type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTa
 export default function PhanKhachPage() {
   const { phanKhachIds } = useCrmAccess();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
+  // Campaign CSKH (M1B.1): chế độ CSKH THEO CAMPAIGN, cộng thêm vào chế độ
+  // "Theo Dự án" cũ — giữ nguyên toàn bộ state/luồng cũ bên dưới không đổi.
+  const [mode, setMode] = useState<'project' | 'campaign'>('project');
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
@@ -170,7 +174,13 @@ export default function PhanKhachPage() {
 
   if (loading && projects.length === 0) return <div className="loading-spinner"><div className="spinner" /></div>;
   return <div>
-    <div className="page-header"><div className="page-header-left"><h1>CSKH</h1><p>Phân data, theo dõi chăm sóc và bàn giao khách quan tâm cho Sale</p></div><button className="btn btn-secondary" onClick={() => loadCustomers(selectedProject)} disabled={!selectedProject || loading}><RefreshCw size={15} /> Làm mới</button></div>
+    <div className="page-header"><div className="page-header-left"><h1>CSKH</h1><p>Phân data, theo dõi chăm sóc và bàn giao khách quan tâm cho Sale</p></div>{mode === 'project' && <button className="btn btn-secondary" onClick={() => loadCustomers(selectedProject)} disabled={!selectedProject || loading}><RefreshCw size={15} /> Làm mới</button>}</div>
+    <div className="card" style={{ padding: 10, marginBottom: 16, display: 'flex', gap: 8 }}>
+      <button className={mode === 'project' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setMode('project')}><Users size={13} /> Theo Dự án</button>
+      <button className={mode === 'campaign' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setMode('campaign')}><Layers size={13} /> Theo Campaign</button>
+    </div>
+
+    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} /> : <>
     {notice && <div style={{ padding: '11px 14px', marginBottom: 16, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', background: notice.type === 'ok' ? '#ecfdf5' : notice.type === 'warn' ? '#fffbeb' : '#fef2f2', color: notice.type === 'ok' ? '#047857' : notice.type === 'warn' ? '#a16207' : '#b91c1c' }}>{notice.type === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}<span style={{ flex: 1 }}>{notice.text}</span><button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)}><X size={14} /></button></div>}
     <div className="card" style={{ padding: 16, marginBottom: 16 }}><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><div style={{ minWidth: 280 }}><label className="form-label">Dự án</label><div style={{ position: 'relative' }}><select className="form-select" value={selectedProjectId} onChange={event => setSelectedProjectId(event.target.value)}><option value="">— Chọn dự án —</option>{accessibleProjects.map(project => <option key={project.id_du_an} value={project.id_du_an}>{project.ten_du_an}</option>)}</select><ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} /></div></div>{selectedProject && <><div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9 }}>Trưởng nhóm: <strong style={{ color: 'var(--text-title)' }}>{selectedProject.truong_nhom || 'Chưa cấu hình'}</strong></div>{canManage && <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto', marginBottom: 3 }} onClick={openTeam}><Settings size={14} /> Cấu hình team</button>}</>}</div></div>
 
@@ -186,6 +196,7 @@ export default function PhanKhachPage() {
     {qualificationCustomer && <QualificationModal customer={qualificationCustomer} onClose={() => setQualificationCustomer(null)} onSaved={(updated, message) => { replaceCustomer(updated); setQualificationCustomer(null); setNotice({ type: 'ok', text: message }); }} />}
     {historyCustomer && <HistoryModal customer={historyCustomer} onClose={() => setHistoryCustomer(null)} />}
     {showTeam && selectedProject && <Modal title="Cấu hình team dự án" onClose={() => setShowTeam(false)}><div style={{ padding: 20 }}><div className="form-group"><label className="form-label">Trưởng nhóm</label><select className="form-select" disabled={!isAdmin} value={teamForm.truong_nhom} onChange={event => setTeamForm(current => ({ ...current, truong_nhom: event.target.value }))}><option value="">— Chọn trưởng nhóm —</option>{activeEmployees.map(item => <option key={item.id_nhan_vien} value={item.ho_ten}>{item.ho_ten} · {item.employee_type}</option>)}</select></div><div className="form-group"><label className="form-label">Thành viên được truy cập dự án</label><div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>{activeEmployees.map(item => <label key={item.id_nhan_vien} style={{ display: 'flex', padding: '9px 12px', gap: 9, alignItems: 'center', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}><input type="checkbox" checked={teamForm.ds_sale.includes(item.ho_ten)} onChange={() => setTeamForm(current => ({ ...current, ds_sale: current.ds_sale.includes(item.ho_ten) ? current.ds_sale.filter(name => name !== item.ho_ten) : [...current.ds_sale, item.ho_ten] }))} /><span style={{ flex: 1 }}>{item.ho_ten}</span><span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.employee_type}</span></label>)}</div></div></div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowTeam(false)}>Hủy</button><button className="btn btn-primary" disabled={busyId === 'team'} onClick={() => void saveTeam()}><Save size={15} /> Lưu cấu hình</button></div></Modal>}
+    </>}
   </div>;
 }
 

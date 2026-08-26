@@ -89,6 +89,14 @@ export default function DataChatLuongPage() {
       <a className="btn btn-secondary" href={`/api/crm/qualified-leads/export/xlsx?${params.toString()}`}><Download size={15} /> Excel</a>
       <button className="btn btn-primary" onClick={() => void exportGoogle()} disabled={Boolean(exporting)}>{exporting === 'google' ? <Loader2 size={15} className="spin" /> : <Sheet size={15} />} Google Sheets</button>
     </div></div>
+    {/* Campaign CSKH (M1B.1): số liệu dưới đây chỉ đọc field CSKH/qualification
+        Customer-global — với khách đã có CampaignMembership, các field này là
+        DỮ LIỆU LEGACY ĐÃ ĐÓNG BĂNG (trạng thái tại thời điểm trước khi tham
+        gia Campaign), KHÔNG phản ánh hoạt động CSKH đang diễn ra theo Campaign.
+        Rewrite sang Membership-grain là phạm vi M2, chưa thực hiện ở đây. */}
+    <div style={{ padding: '10px 14px', marginBottom: 14, borderRadius: 8, background: '#fffbeb', color: '#a16207', fontSize: 13 }}>
+      Chỉ phản ánh khách chăm sóc theo Dự án (ngoài Campaign). Với khách đã tham gia Campaign, các field CSKH/qualification ở đây là dữ liệu legacy đã đóng băng — không cập nhật theo hoạt động CSKH trong Campaign. Data tiềm năng theo Campaign sẽ có ở bản cập nhật sau.
+    </div>
     {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: 12, marginBottom: 14 }}>{error}</div>}
 
     <div className="card" style={{ padding: 14, marginBottom: 14 }}><div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12, fontWeight: 700 }}><Filter size={16} /> Bộ lọc authoritative</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 9 }}>

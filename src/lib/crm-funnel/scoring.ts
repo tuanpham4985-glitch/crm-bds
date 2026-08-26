@@ -1,17 +1,32 @@
-import type { KhachHang, LeadScoreBreakdownItem, LeadScoreResult, QualificationStatus, ThoiGianDuKien } from '../types';
+import type { LeadScoreBreakdownItem, LeadScoreResult, MucDoQuanTam, QualificationStatus, ThoiGianDuKien, TrangThaiChamSoc } from '../types';
 import { LEAD_SCORE_THRESHOLDS, LEAD_SCORE_WEIGHTS, rankForScore } from './config';
 
-type ScoreableLead = Pick<KhachHang,
-  'du_an' | 'san_pham_quan_tam' | 'nhu_cau' | 'ngan_sach_min' | 'ngan_sach_max' |
-  'muc_dich' | 'thoi_gian_du_kien' | 'phuong_an_tai_chinh' | 'khu_vuc_yeu_cau' |
-  'muc_do_quan_tam' | 'hanh_dong_tiep_theo' | 'trang_thai_cham_soc'
->;
+/**
+ * Input thuần cho calculateLeadQuality — KHÔNG gắn với KhachHang hay
+ * CampaignMembership cụ thể, chỉ cần đúng tên field. Cho phép cả 2 nguồn
+ * (Customer-global và CampaignMembership) dùng chung 1 công thức chấm điểm
+ * duy nhất (không đổi threshold/weight/logic — chỉ nới lỏng typing).
+ */
+export interface ScoreableLead {
+  du_an?: string | null;
+  san_pham_quan_tam?: string | null;
+  nhu_cau?: string | null;
+  ngan_sach_min?: number | null;
+  ngan_sach_max?: number | null;
+  muc_dich?: string | null;
+  thoi_gian_du_kien?: ThoiGianDuKien | string | null;
+  phuong_an_tai_chinh?: string | null;
+  khu_vuc_yeu_cau?: string | null;
+  muc_do_quan_tam?: MucDoQuanTam | string | null;
+  hanh_dong_tiep_theo?: string | null;
+  trang_thai_cham_soc?: TrangThaiChamSoc | string | null;
+}
 
 function filled(value: unknown): boolean {
   return typeof value === 'number' ? value > 0 : String(value || '').trim().length > 0;
 }
 
-function timeframePoints(value: ThoiGianDuKien | undefined): number {
+function timeframePoints(value: ThoiGianDuKien | string | null | undefined): number {
   const max = LEAD_SCORE_WEIGHTS.timeframe;
   switch (value) {
     case 'Trong 1 tháng': return max;
@@ -23,7 +38,7 @@ function timeframePoints(value: ThoiGianDuKien | undefined): number {
   }
 }
 
-function interestPoints(value: KhachHang['muc_do_quan_tam']): number {
+function interestPoints(value: MucDoQuanTam | string | null | undefined): number {
   switch (value) {
     case 'Rất cao': return 15;
     case 'Cao': return 12;

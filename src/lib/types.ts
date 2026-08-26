@@ -180,6 +180,53 @@ export interface CampaignSummary {
   byTelesale: { telesale_id: string; telesale_name: string; count: number }[];
 }
 
+// CampaignMembership (M1B.1) — authoritative CSKH/qualification record for a
+// customer within ONE Campaign. KHÔNG mirror ngược lại KhachHang — khách
+// không có membership nào tiếp tục dùng field cùng tên trên KhachHang.
+export interface CampaignMembership {
+  id: string;
+  customer_id: string;
+  campaign_id: string;
+  telesale_id?: string | null;
+  telesale_name?: string | null;
+  assignment_status: string;
+  assigned_at?: string | null;
+  assigned_by_id?: string | null;
+  assigned_by_name?: string | null;
+
+  trang_thai_cham_soc?: TrangThaiChamSoc | null;
+  muc_do_quan_tam?: MucDoQuanTam | null;
+  so_lan_lien_he: number;
+  lich_su_cham_soc?: string | null;
+  ngay_lien_he_cuoi?: string | null;
+  ngay_lien_he_tiep?: string | null;
+  qualification_status: QualificationStatus;
+  lead_quality_score: number;
+  lead_quality_rank: LeadQualityRank;
+  lead_score_breakdown?: string | null;
+  lead_score_history?: string | null;
+  outcome?: string | null;
+  handoff_id?: string | null;
+
+  san_pham_quan_tam?: string | null;
+  nhu_cau?: string | null;
+  ngan_sach_min?: number | null;
+  ngan_sach_max?: number | null;
+  muc_dich?: MucDichLead | null;
+  thoi_gian_du_kien?: ThoiGianDuKien | null;
+  phuong_an_tai_chinh?: string | null;
+  khu_vuc_yeu_cau?: string | null;
+  hanh_dong_tiep_theo?: string | null;
+
+  row_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignMembershipWithCustomer extends CampaignMembership {
+  customer: { ten_KH: string; so_dien_thoai: string; email: string } | null;
+}
+
 export type MucDichLead = 'Để ở' | 'Đầu tư' | 'Cho thuê' | 'Khác';
 export type ThoiGianDuKien = 'Trong 1 tháng' | '1-3 tháng' | '3-6 tháng' | '6-12 tháng' | 'Trên 12 tháng' | 'Chưa xác định';
 export type QualificationStatus = 'RAW' | 'CONTACTED' | 'INTERESTED' | 'QUALIFIED' | 'HOT' | 'UNQUALIFIED';

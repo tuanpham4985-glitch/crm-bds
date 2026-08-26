@@ -120,3 +120,32 @@ export function customerDeleteBlockReason(
 export function canManageCampaign(user: CrmSessionUser, campaign: { owner_name?: string | null }): boolean {
   return isCrmAdmin(user) || campaign.owner_name === user.ho_ten;
 }
+
+/**
+ * Quyền thao tác (interaction/qualification) trên 1 CampaignMembership cụ thể
+ * (M1B.1) — Admin, Campaign owner, hoặc ĐÚNG Telesale được gán cho membership
+ * này. Dùng telesale_id (không phải tên) để so khớp — khác với pattern name-
+ * based cũ (Customer.telesale_phu_trach) — tránh trùng tên giữa 2 nhân viên
+ * dẫn tới Telesale A vô tình thao tác được membership của Telesale B.
+ */
+export function canManageMembership(
+  user: CrmSessionUser,
+  membership: { telesale_id?: string | null },
+  campaign: { owner_name?: string | null },
+): boolean {
+  return isCrmAdmin(user) || canManageCampaign(user, campaign) || membership.telesale_id === user.id_nhan_vien;
+}
+
+/**
+ * Quản lý trực tiếp của Telesale đang được gán cho membership (song song với
+ * isDirectManager cho Customer.telesale_phu_trach) — tra theo telesale_id,
+ * không theo tên.
+ */
+export function isMembershipDirectManager(
+  user: CrmSessionUser,
+  membership: { telesale_id?: string | null },
+  employees: NhanVien[],
+): boolean {
+  if (!membership.telesale_id) return false;
+  return employees.some(employee => employee.id_nhan_vien === membership.telesale_id && employee.ql_truc_tiep === user.ho_ten);
+}
