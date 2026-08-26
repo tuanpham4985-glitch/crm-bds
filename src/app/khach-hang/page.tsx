@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import {
   Search, Plus, Edit3, Trash2, X, ChevronLeft, ChevronRight,
   Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle,
-  Database, Loader2, Copy, FileSpreadsheet, History, Eye,
+  Database, Loader2, Copy, FileSpreadsheet, History, Eye, Layers,
 } from 'lucide-react';
 import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig, CrmImportBatch } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
 import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
 import { isAllVisibleSelected, toggleSelectAllVisible, toggleSelection } from '@/lib/khach-hang-selection';
+import { CampaignDistributeModal } from '@/components/crm/CampaignDistributeModal';
 
 export default function KhachHangPage() {
   const router = useRouter();
@@ -51,6 +52,10 @@ export default function KhachHangPage() {
     deleted: number; blocked: number;
     results: { id: string; ten_KH: string; status: string; reason?: string }[];
   } | null>(null);
+
+  // Campaign Foundation (M1A): thêm/phân tập đã chọn vào Campaign — tái dùng
+  // đúng selectedIds ở trên, không tạo cơ chế chọn nhiều mới.
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
 
   // Lịch sử Import (Import Batch)
   const [showImportHistory, setShowImportHistory] = useState(false);
@@ -528,6 +533,12 @@ export default function KhachHangPage() {
             style={{ display: 'none' }}
             onChange={handleImportExcel}
           />
+          {selectedIds.size > 0 && (
+            <button className="btn btn-secondary" onClick={() => setShowCampaignModal(true)}>
+              <Layers size={16} />
+              Thêm vào Campaign ({selectedIds.size})
+            </button>
+          )}
           {selectedIds.size > 0 && (
             <button className="btn btn-danger" onClick={() => setShowBulkConfirm(true)}>
               <Trash2 size={16} />
@@ -1412,6 +1423,15 @@ export default function KhachHangPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showCampaignModal && (
+        <CampaignDistributeModal
+          customerIds={[...selectedIds]}
+          employees={employees}
+          onClose={() => setShowCampaignModal(false)}
+          onDone={() => setSelectedIds(new Set())}
+        />
       )}
     </div>
   );

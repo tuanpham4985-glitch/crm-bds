@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPipeline, deleteKhachHang } from '@/lib/data-access';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
+import { getCampaignMembershipCustomerRefs } from '@/lib/crm-funnel/campaign';
 import { getImportBatch, getImportBatchCustomers } from '@/lib/crm-funnel/import-batch';
 import { executeBulkDelete, planBulkDelete, type BulkDeleteResultItem } from '@/lib/khach-hang-bulk-delete';
 import { assertTransactionalCrm, TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
@@ -26,12 +27,14 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     const batch = await getImportBatch(id);
     if (!batch) return NextResponse.json({ success: false, error: 'Không tìm thấy đợt import' }, { status: 404 });
 
-    const [customers, pipelines] = await Promise.all([getImportBatchCustomers(id), getPipeline()]);
+    const [customers, pipelines, campaignMemberships] = await Promise.all([
+      getImportBatchCustomers(id), getPipeline(), getCampaignMembershipCustomerRefs(),
+    ]);
     // Chỉ xử lý đúng các customer HIỆN vẫn còn thuộc batch (import_batch_id === id) —
     // không bao giờ đụng tới customer trùng SĐT đã tồn tại từ trước hay customer
     // ngoài batch. planBulkDelete tái sử dụng đúng authority với single/bulk-delete.
     const ids = customers.map(customer => customer.id_khach_hang);
-    const { items } = planBulkDelete(ids, customers, pipelines);
+    const { items } = planBulkDelete(ids, customers, pipelines, campaignMemberships);
 
     const results = await executeBulkDelete(items, deleteKhachHang);
     const deleted = results.filter(item => item.status === 'deleted').length;

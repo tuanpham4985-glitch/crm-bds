@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getKhachHang, getPipeline, deleteKhachHang } from '@/lib/data-access';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
+import { getCampaignMembershipCustomerRefs } from '@/lib/crm-funnel/campaign';
 import { executeBulkDelete, planBulkDelete, type BulkDeleteResultItem } from '@/lib/khach-hang-bulk-delete';
 
 export interface BulkDeleteResult {
@@ -21,8 +22,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const body = await request.json().catch(() => null) as { ids?: unknown } | null;
-    const [customers, pipelines] = await Promise.all([getKhachHang(), getPipeline()]);
-    const { ids, items } = planBulkDelete(body?.ids, customers, pipelines);
+    const [customers, pipelines, campaignMemberships] = await Promise.all([
+      getKhachHang(), getPipeline(), getCampaignMembershipCustomerRefs(),
+    ]);
+    const { ids, items } = planBulkDelete(body?.ids, customers, pipelines, campaignMemberships);
 
     if (ids.length === 0) {
       return NextResponse.json({ success: false, error: 'Chưa chọn khách hàng nào để xóa' }, { status: 400 });

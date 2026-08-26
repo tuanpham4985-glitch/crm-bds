@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPipeline } from '@/lib/data-access';
 import { customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
+import { getCampaignMembershipCustomerRefs } from '@/lib/crm-funnel/campaign';
 import { getImportBatch, getImportBatchCustomers } from '@/lib/crm-funnel/import-batch';
 import { assertTransactionalCrm, TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
@@ -11,13 +12,15 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   try {
     assertTransactionalCrm();
     const { id } = await context.params;
-    const [batch, customers, pipelines] = await Promise.all([getImportBatch(id), getImportBatchCustomers(id), getPipeline()]);
+    const [batch, customers, pipelines, campaignMemberships] = await Promise.all([
+      getImportBatch(id), getImportBatchCustomers(id), getPipeline(), getCampaignMembershipCustomerRefs(),
+    ]);
     if (!batch) return NextResponse.json({ success: false, error: 'Không tìm thấy đợt import' }, { status: 404 });
 
     // Preview xóa: tính sẵn eligibility cho từng customer đang thuộc batch,
     // dùng đúng authority với single-delete/bulk-delete (customerDeleteBlockReason).
     const customersWithEligibility = customers.map(customer => {
-      const blockReason = customerDeleteBlockReason(customer, pipelines);
+      const blockReason = customerDeleteBlockReason(customer, pipelines, campaignMemberships);
       return {
         id_khach_hang: customer.id_khach_hang,
         ten_KH: customer.ten_KH,

@@ -153,6 +153,33 @@ export interface CrmImportBatch {
   status: string;
 }
 
+// Campaign Foundation (M1A) — Campaign là lớp trung gian giữa Customer và
+// Telesale (không phải bản sao customer). Xem CampaignMembership trong schema
+// cho field chăm sóc/qualification theo từng campaign (M1B sẽ dùng tới).
+export interface Campaign {
+  id: string;
+  name: string;
+  id_du_an?: string | null;
+  ten_du_an?: string | null;
+  status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  description?: string | null;
+  owner_id?: string | null;
+  owner_name?: string | null;
+  created_by_id: string;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignSummary {
+  total: number;
+  unassigned: number;
+  assigned: number;
+  byTelesale: { telesale_id: string; telesale_name: string; count: number }[];
+}
+
 export type MucDichLead = 'Để ở' | 'Đầu tư' | 'Cho thuê' | 'Khác';
 export type ThoiGianDuKien = 'Trong 1 tháng' | '1-3 tháng' | '3-6 tháng' | '6-12 tháng' | 'Trên 12 tháng' | 'Chưa xác định';
 export type QualificationStatus = 'RAW' | 'CONTACTED' | 'INTERESTED' | 'QUALIFIED' | 'HOT' | 'UNQUALIFIED';

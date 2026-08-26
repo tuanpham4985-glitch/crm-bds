@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/data-access';
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
+import { getCampaignMembershipCustomerRefs } from '@/lib/crm-funnel/campaign';
 import type { KhachHang } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -162,13 +163,15 @@ export async function DELETE(request: NextRequest) {
     const user = await getCrmSessionUser();
     if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     const { id } = await request.json();
-    const [customers, projects, employees, pipelines] = await Promise.all([getKhachHang(), getDuAn(), getNhanVien(), getPipeline()]);
+    const [customers, projects, employees, pipelines, campaignMemberships] = await Promise.all([
+      getKhachHang(), getDuAn(), getNhanVien(), getPipeline(), getCampaignMembershipCustomerRefs(),
+    ]);
     const current = customers.find(customer => customer.id_khach_hang === id);
     if (!current) return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng' }, { status: 404 });
     if (!canManageCustomer(user, current, projects) && !isDirectManager(user, current, employees)) {
       return NextResponse.json({ success: false, error: 'Không có quyền xóa khách hàng' }, { status: 403 });
     }
-    const blockReason = customerDeleteBlockReason(current, pipelines);
+    const blockReason = customerDeleteBlockReason(current, pipelines, campaignMemberships);
     if (blockReason) {
       return NextResponse.json({ success: false, error: blockReason }, { status: 409 });
     }

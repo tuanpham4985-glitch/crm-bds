@@ -154,12 +154,87 @@ model CrmHandoff {
   manager_note          String?
   qualification_score   Int      @default(0)
   qualification_rank    String   @default("UNQUALIFIED")
+  // Provenance-only: ghi lại membership nào (nếu có) đã kích hoạt handoff này.
+  // KHÔNG dùng để đổi hành vi handoff hiện tại (vẫn 1 active handoff/customer
+  // toàn hệ thống, xem CrmHandoff.active_key) — chỉ để truy vết cho M1B sau này.
+  campaign_membership_id String?
   updated_at            DateTime @updatedAt
 
   @@index([customer_id, created_at])
   @@index([sale_name, status])
   @@index([status])
+  @@index([campaign_membership_id])
   @@map("crm_handoffs")
+}
+
+// Campaign: 1 đợt/lý do CSKH cụ thể (VD "Green Paradise - đợt 1") — lớp trung
+// gian giữa Customer và Telesale, KHÔNG phải bản sao customer. Không dùng
+// Prisma @relation tới KhachHang (giống CrmHandoff/CrmPipelineLink) — customer_id
+// chỉ là string ref, tránh ràng buộc cứng.
+model Campaign {
+  id               String    @id @default(uuid())
+  name             String
+  id_du_an         String?
+  ten_du_an        String?
+  status           String    @default("active")
+  start_date       String?
+  end_date         String?
+  description      String?
+  owner_id         String?
+  owner_name       String?
+  created_by_id    String
+  created_by_name  String
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  memberships      CampaignMembership[]
+
+  @@index([status])
+  @@index([id_du_an])
+  @@map("campaigns")
+}
+
+// CampaignMembership: 1 customer trong 1 Campaign cụ thể. Field chăm sóc/
+// qualification ở đây là BẢN RIÊNG cho campaign này — KHÔNG dùng để ghi đè hay
+// đọc thay cho field cùng tên trên KhachHang (những field đó vẫn là nguồn sự
+// thật hiện tại cho tới M1B). M1A chỉ tạo/phân membership — không có route nào
+// ghi vào các field chăm sóc/qualification bên dưới trong milestone này.
+model CampaignMembership {
+  id                    String    @id @default(uuid())
+  customer_id           String
+  campaign_id           String
+  telesale_id           String?
+  telesale_name         String?
+  assignment_status     String    @default("UNASSIGNED")
+  assigned_at           DateTime?
+  assigned_by_id        String?
+  assigned_by_name      String?
+
+  trang_thai_cham_soc   String?   @default("Chưa gọi")
+  muc_do_quan_tam       String?   @default("Chưa xác định")
+  so_lan_lien_he        Int       @default(0)
+  lich_su_cham_soc      String?
+  ngay_lien_he_cuoi     String?
+  ngay_lien_he_tiep     String?
+  qualification_status  String    @default("RAW")
+  lead_quality_score    Int       @default(0)
+  lead_quality_rank     String    @default("UNQUALIFIED")
+  lead_score_breakdown  String?
+  lead_score_history    String?
+  outcome               String?
+  handoff_id            String?
+
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+
+  campaign              Campaign  @relation(fields: [campaign_id], references: [id])
+
+  @@unique([customer_id, campaign_id])
+  @@index([campaign_id])
+  @@index([customer_id])
+  @@index([telesale_id])
+  @@index([assignment_status])
+  @@map("campaign_memberships")
 }
 
 model CrmPipelineLink {

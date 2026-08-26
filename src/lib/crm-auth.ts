@@ -89,15 +89,34 @@ export function customerInManagerScope(
 
 /**
  * Server-side deletion authority dùng chung cho single-delete và bulk-delete.
- * Trả về lý do chặn (string) nếu khách hàng có CRM history/handoff/Pipeline
- * cần bảo vệ, hoặc null nếu được phép xóa.
+ * Trả về lý do chặn (string) nếu khách hàng có CRM history/handoff/Pipeline/
+ * Campaign membership cần bảo vệ, hoặc null nếu được phép xóa.
+ *
+ * campaignMemberships mặc định rỗng (không bắt buộc truyền) để không phá vỡ
+ * caller nào lỡ chưa cập nhật — nhưng mọi route xóa thật (single/bulk/import-batch)
+ * PHẢI truyền đủ getCampaignMembershipCustomerRefs() để guard có hiệu lực.
  */
-export function customerDeleteBlockReason(customer: KhachHang, pipelines: Pipeline[]): string | null {
+export function customerDeleteBlockReason(
+  customer: KhachHang,
+  pipelines: readonly Pipeline[],
+  campaignMemberships: readonly { customer_id: string }[] = [],
+): string | null {
   const hasCrmHistory = Number(customer.so_lan_lien_he || 0) > 0
     || Boolean(customer.lich_su_cham_soc && customer.lich_su_cham_soc !== '[]')
     || Boolean(customer.lich_su_ban_giao && customer.lich_su_ban_giao !== '[]');
   if (hasCrmHistory || customer.trang_thai_ban_giao !== 'Chưa bàn giao' || pipelines.some(pipeline => pipeline.id_khach_hang === customer.id_khach_hang)) {
     return 'Không thể xóa khách đã có lịch sử CRM, handoff hoặc Pipeline';
   }
+  if (campaignMemberships.some(membership => membership.customer_id === customer.id_khach_hang)) {
+    return 'Không thể xóa khách đã tham gia Campaign';
+  }
   return null;
+}
+
+/**
+ * Quyền quản lý Campaign: Admin/Ban lãnh đạo hoặc đúng owner của campaign đó
+ * (owner_name) — cùng pattern với isProjectManager (DuAn.truong_nhom).
+ */
+export function canManageCampaign(user: CrmSessionUser, campaign: { owner_name?: string | null }): boolean {
+  return isCrmAdmin(user) || campaign.owner_name === user.ho_ten;
 }

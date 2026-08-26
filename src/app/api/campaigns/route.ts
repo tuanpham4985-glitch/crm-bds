@@ -1,0 +1,49 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
+import { createCampaign, listCampaigns } from '@/lib/crm-funnel/campaign';
+import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
+
+export async function GET() {
+  const user = await getCrmSessionUser();
+  if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
+  try {
+    const campaigns = await listCampaigns();
+    return NextResponse.json({ success: true, data: campaigns });
+  } catch (error) {
+    if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });
+    console.error('[Campaigns list]', error);
+    return NextResponse.json({ success: false, error: 'Không thể tải danh sách Campaign' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const user = await getCrmSessionUser();
+  if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
+  // Tạo Campaign chỉ Admin/Ban lãnh đạo — giống việc cấu hình team dự án
+  // (chỉ Admin đổi được truong_nhom) chỉ Admin mới cấu hình được cấu trúc mới.
+  if (!isCrmAdmin(user)) {
+    return NextResponse.json({ success: false, error: 'Chỉ Admin/Ban lãnh đạo mới được tạo Campaign' }, { status: 403 });
+  }
+  try {
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+    const name = String(body?.name || '').trim();
+    if (!name) return NextResponse.json({ success: false, error: 'Thiếu tên Campaign' }, { status: 400 });
+    const campaign = await createCampaign({
+      name,
+      id_du_an: body?.id_du_an ? String(body.id_du_an) : undefined,
+      ten_du_an: body?.ten_du_an ? String(body.ten_du_an) : undefined,
+      status: body?.status ? String(body.status) : undefined,
+      start_date: body?.start_date ? String(body.start_date) : undefined,
+      end_date: body?.end_date ? String(body.end_date) : undefined,
+      description: body?.description ? String(body.description) : undefined,
+      owner_id: body?.owner_id ? String(body.owner_id) : undefined,
+      owner_name: body?.owner_name ? String(body.owner_name) : undefined,
+      actor: user,
+    });
+    return NextResponse.json({ success: true, data: campaign });
+  } catch (error) {
+    if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });
+    console.error('[Campaign create]', error);
+    return NextResponse.json({ success: false, error: 'Không thể tạo Campaign' }, { status: 500 });
+  }
+}

@@ -21,6 +21,7 @@ export function planBulkDelete(
   rawIds: unknown,
   customers: readonly KhachHang[],
   pipelines: readonly Pipeline[],
+  campaignMemberships: readonly { customer_id: string }[] = [],
 ): { ids: string[]; items: BulkDeletePlanItem[] } {
   const ids = Array.isArray(rawIds)
     ? [...new Set(rawIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0))]
@@ -30,7 +31,7 @@ export function planBulkDelete(
   const items: BulkDeletePlanItem[] = ids.map(id => {
     const customer = customerMap.get(id);
     if (!customer) return { id, ten_KH: '', status: 'not_found', reason: 'Không tìm thấy khách hàng' };
-    const blockReason = customerDeleteBlockReason(customer, pipelines as Pipeline[]);
+    const blockReason = customerDeleteBlockReason(customer, pipelines as Pipeline[], campaignMemberships);
     if (blockReason) return { id, ten_KH: customer.ten_KH, status: 'blocked', reason: blockReason };
     return { id, ten_KH: customer.ten_KH, status: 'ready' };
   });
