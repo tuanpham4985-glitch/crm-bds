@@ -14,6 +14,7 @@ import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamS
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { bucketOf, CSKH_BUCKETS, isOverdue, type MembershipBucket } from '@/lib/campaign-cskh-bucket';
+import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { MembershipQualificationModal } from './MembershipQualificationModal';
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
@@ -38,7 +39,7 @@ function localDate(value?: string | null): string {
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
 export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [campaigns, setCampaigns] = useState<CampaignType[]>([]);
   const [campaignId, setCampaignId] = useState('');
   const [members, setMembers] = useState<CampaignMembershipWithCustomer[]>([]);
@@ -51,8 +52,6 @@ export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) 
   const [qualificationMember, setQualificationMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [historyMember, setHistoryMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '' });
-
-  const activeEmployeeById = useMemo(() => new Map(employees.map(item => [item.id_nhan_vien, item])), [employees]);
 
   const loadCampaigns = useCallback(async () => {
     try {
@@ -97,10 +96,7 @@ export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) 
   };
 
   function canActOn(member: CampaignMembershipWithCustomer): boolean {
-    if (!user) return false;
-    if (member.telesale_id === user.id_nhan_vien) return true;
-    const telesale = member.telesale_id ? activeEmployeeById.get(member.telesale_id) : undefined;
-    return Boolean(telesale && telesale.ql_truc_tiep === user.ho_ten);
+    return canActOnMembership(user, isAdmin, member, selectedCampaign, employees);
   }
 
   function openInteraction(member: CampaignMembershipWithCustomer) {
