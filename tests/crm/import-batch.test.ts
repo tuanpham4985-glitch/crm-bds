@@ -70,7 +70,7 @@ test('addKhachHangWithBatch (data-access.ts) không có nhánh fallback sang Goo
 test('import-excel/route.ts tạo Import Batch record TRƯỚC vòng lặp xử lý dòng, không bọc try/catch nuốt lỗi — batch tạo thất bại phải dừng cả request trước khi có customer nào được tạo', () => {
   const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
   const createIdx = src.indexOf('createImportBatch(');
-  const loopIdx = src.indexOf('for (let i = 0; i < dataRows.length; i++)');
+  const loopIdx = src.indexOf('for (let i = 0; i < workRows.length; i++)');
   assert.ok(createIdx >= 0 && loopIdx >= 0);
   assert.ok(createIdx < loopIdx, 'batch phải được tạo trước khi vòng lặp xử lý dòng bắt đầu');
   // Đoạn code tạo batch (giữa 2 mốc trên) không được nằm trong try/catch riêng —
@@ -200,9 +200,9 @@ test('legacy import audit script là read-only: không gọi bất kỳ hàm ghi
 // multi-sheet, các file lớn này không bao giờ chạy tới đoạn này (bị chặn sớm
 // ở bước tìm sheet/header), nên bug timeout tồn tại sẵn nhưng chưa lộ ra.
 
-test('createImportBatch được gọi kèm totalRows = dataRows.length -> "Tổng" ghi NGAY lúc tạo batch, không chờ vòng lặp xử lý dòng xong', () => {
+test('createImportBatch được gọi kèm totalRows = workRows.length (tổng dòng dữ liệu WORKBOOK-WIDE, gộp mọi sheet hợp lệ) -> "Tổng" ghi NGAY lúc tạo batch, không chờ vòng lặp xử lý dòng xong', () => {
   const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
-  assert.match(src, /createImportBatch\(\{[^}]*totalRows:\s*dataRows\.length[^}]*\}\)/);
+  assert.match(src, /createImportBatch\(\{[^}]*totalRows:\s*workRows\.length[^}]*\}\)/);
 });
 
 test('createImportBatch (import-batch.ts) ghi total_rows từ input.totalRows thay vì hardcode 0 -> "Tổng" không kẹt ở 0 nếu request bị ngắt giữa chừng', () => {
@@ -267,7 +267,7 @@ test('interrupted-import semantics: "completed" CHỈ xuất hiện trong THÂN 
 test('route: checkpoint được gọi ĐỊNH KỲ mỗi CHECKPOINT_INTERVAL_ROWS dòng bên trong vòng lặp xử lý dòng (không phải mỗi dòng)', () => {
   const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
   assert.match(src, /const CHECKPOINT_INTERVAL_ROWS\s*=\s*\d+/);
-  const loopIdx = src.indexOf('for (let i = 0; i < dataRows.length; i++)');
+  const loopIdx = src.indexOf('for (let i = 0; i < workRows.length; i++)');
   const checkpointCallIdx = src.indexOf('checkpointImportBatchCounts(batchId,');
   const completeCallIdx = src.indexOf('completeImportBatch(batchId,');
   assert.ok(loopIdx >= 0 && checkpointCallIdx >= 0 && completeCallIdx >= 0);
@@ -278,7 +278,7 @@ test('route: checkpoint được gọi ĐỊNH KỲ mỗi CHECKPOINT_INTERVAL_RO
 
 test('route: checkpoint nằm ở đầu mỗi vòng lặp, trước cả "continue" của blank/invalid/duplicate -> chu kỳ checkpoint không bị bỏ lỡ dù file toàn dòng trùng/lỗi', () => {
   const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
-  const loopIdx = src.indexOf('for (let i = 0; i < dataRows.length; i++)');
+  const loopIdx = src.indexOf('for (let i = 0; i < workRows.length; i++)');
   const checkpointCallIdx = src.indexOf('checkpointImportBatchCounts(batchId,');
   const firstContinueAfterLoop = src.indexOf("if (classification.status === 'blank') continue;", loopIdx);
   assert.ok(loopIdx < checkpointCallIdx && checkpointCallIdx < firstContinueAfterLoop, 'checkpoint phải chạy trước dòng continue đầu tiên trong vòng lặp');
@@ -286,7 +286,7 @@ test('route: checkpoint nằm ở đầu mỗi vòng lặp, trước cả "conti
 
 test('route: completeImportBatch chỉ được gọi SAU khi vòng lặp xử lý dòng đã đóng (kết thúc for) -> không thể "hoàn tất" khi còn dòng chưa xử lý', () => {
   const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
-  const loopIdx = src.indexOf('for (let i = 0; i < dataRows.length; i++)');
+  const loopIdx = src.indexOf('for (let i = 0; i < workRows.length; i++)');
   const closeMatch = /\r?\n {4}\}\r?\n/.exec(src.slice(loopIdx)); // đóng khối for ở indent gốc (4 khoảng trắng) — chấp nhận cả CRLF lẫn LF
   assert.ok(loopIdx >= 0 && closeMatch, 'phải tìm được dòng đóng khối for');
   const loopCloseIdx = loopIdx + closeMatch!.index;
@@ -320,4 +320,39 @@ test('getImportBatchCustomers (batch detail) lọc đúng theo import_batch_id �
 test('addKhachHangWithBatch vẫn được gọi trong nhánh pgCrmEnabled của vòng lặp xử lý dòng -> provenance import_batch_id vẫn atomic per-row, không bị ảnh hưởng bởi việc bỏ sleep', () => {
   const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
   assert.match(src, /if\s*\(pgCrmEnabled\)\s*await\s*addKhachHangWithBatch\(kh,\s*batchId!\)/);
+});
+
+// --- Multi-data-sheet: total_rows/checkpoint/counts phải aggregate WORKBOOK-WIDE
+// (mọi sheet hợp lệ gộp thành 1 danh sách xử lý), không phải chỉ sheet đầu tiên. ---
+
+test('route dùng findImportSheets (số nhiều — mọi sheet hợp lệ), không còn dùng findImportSheet (số ít — chỉ sheet đầu tiên) của lần fix trước', () => {
+  const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
+  assert.match(src, /findImportSheets\(/);
+  // "findImportSheet(" (số ít, không có "s" trước dấu ngoặc) không còn được
+  // gọi ở đâu trong route — regex này không match "findImportSheets(" vì sau
+  // "Sheet" trong chuỗi đó là "s" chứ không phải "(".
+  assert.doesNotMatch(src, /findImportSheet\(/);
+});
+
+test('workRows được gộp từ TẤT CẢ resolvedSheets (vòng lặp for...of qua từng sheet), không chỉ lấy sheet đầu tiên hay 1 phần tử đơn lẻ', () => {
+  const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
+  assert.match(src, /for\s*\(const sheet of resolvedSheets\)/);
+  const forOfIdx = src.indexOf('for (const sheet of resolvedSheets)');
+  const workRowsPushIdx = src.indexOf('workRows.push(');
+  assert.ok(forOfIdx >= 0 && workRowsPushIdx > forOfIdx, 'workRows.push phải nằm bên trong vòng lặp qua resolvedSheets');
+});
+
+test('totalRows (createImportBatch) và vòng lặp xử lý dòng (for i < workRows.length) đều dùng CHUNG 1 danh sách workRows đã gộp workbook-wide -> tổng số liệu và checkpoint nhất quán, không tính riêng từng sheet', () => {
+  const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
+  const workRowsDeclIdx = src.indexOf('const workRows: WorkRow[] = []');
+  const createBatchIdx = src.indexOf('createImportBatch({');
+  const loopIdx = src.indexOf('for (let i = 0; i < workRows.length; i++)');
+  assert.ok(workRowsDeclIdx >= 0 && createBatchIdx > workRowsDeclIdx && loopIdx > workRowsDeclIdx);
+});
+
+test('checkpoint dùng chỉ số "i" của vòng lặp workbook-wide duy nhất (không có vòng lặp lồng theo từng sheet trong phần xử lý dòng) -> tiến độ checkpoint là workbook-wide, không reset theo sheet', () => {
+  const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
+  // Chỉ có đúng 1 "for (let i" trong toàn bộ route — vòng lặp xử lý dòng duy nhất.
+  const forLetMatches = src.match(/for \(let i/g) || [];
+  assert.equal(forLetMatches.length, 1, `chỉ được có đúng 1 vòng lặp "for (let i" xử lý dòng, thấy ${forLetMatches.length}`);
 });

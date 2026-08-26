@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  classifyRow, detectDuplicateNameWarnings, findImportSheet, MAX_HEADER_SCAN_ROWS,
-  normalizeHeader, normalizeName, normalizePhone, phoneKey, resolveColumns, resolveRowPhone,
+  classifyRow, detectDuplicateNameWarnings, findImportSheets, MAX_HEADER_SCAN_ROWS,
+  normalizeHeader, normalizeName, normalizePhone, phoneKey, resolveCellPhone, resolveColumns, resolveRowPhone,
 } from '../../src/lib/khach-hang-excel-import';
 
 const NO_DB_DUP = new Set<string>();
@@ -275,7 +275,7 @@ test('fixture đúng loại file gây bug: STT | Tên | Mã căn | Số điện 
   assert.deepEqual(result, { status: 'ready', ten_KH: 'Đặng Văn F', so_dien_thoai: '0903123456', email: '' });
 });
 
-// --- findImportSheet: bug thực tế "Import Excel thất bại: File không có dữ liệu"
+// --- findImportSheets: bug thực tế "Import Excel thất bại: File không có dữ liệu"
 // trên file "446 Manhattan-VHGP.xlsx" — workbook có sheet đầu ("Sheet2") HOÀN
 // TOÀN RỖNG, dữ liệu thật nằm ở sheet thứ 2 ("Sheet1"), header
 // STT | MÃ CĂN | TÊN | SĐT. Code cũ luôn đọc wb.SheetNames[0] -> đọc nhầm sheet
@@ -296,27 +296,28 @@ const MANHATTAN_FIXTURE_SHEETS = [
   },
 ];
 
-test('findImportSheet: sheet đầu rỗng ("Sheet2") bị bỏ qua, chọn đúng sheet có dữ liệu thật ("Sheet1") — fixture 446 Manhattan-VHGP.xlsx', () => {
-  const resolved = findImportSheet(MANHATTAN_FIXTURE_SHEETS);
-  assert.ok(resolved);
-  assert.equal(resolved!.sheetName, 'Sheet1');
-  assert.equal(resolved!.headerRowIndex, 0);
-  const header = resolved!.rows[resolved!.headerRowIndex];
-  assert.equal(header[resolved!.columns.name], 'TÊN');
-  assert.deepEqual(resolved!.columns.phone.map(i => header[i]), ['SĐT']);
-  assert.equal(resolved!.columns.email, -1); // file không có cột Email
+test('findImportSheets: sheet đầu rỗng ("Sheet2") bị bỏ qua, chọn đúng sheet có dữ liệu thật ("Sheet1") — fixture 446 Manhattan-VHGP.xlsx', () => {
+  const resolved = findImportSheets(MANHATTAN_FIXTURE_SHEETS);
+  assert.equal(resolved.length, 1);
+  const sheet = resolved[0];
+  assert.equal(sheet.sheetName, 'Sheet1');
+  assert.equal(sheet.headerRowIndex, 0);
+  const header = sheet.rows[sheet.headerRowIndex];
+  assert.equal(header[sheet.columns.name], 'TÊN');
+  assert.deepEqual(sheet.columns.phone.map(i => header[i]), ['SĐT']);
+  assert.equal(sheet.columns.email, -1); // file không có cột Email
 
   // MÃ CĂN (cột 1) tuyệt đối không được nhận nhầm làm bất kỳ field CRM nào.
-  assert.notEqual(resolved!.columns.name, 1);
-  assert.ok(!resolved!.columns.phone.includes(1));
-  assert.notEqual(resolved!.columns.email, 1);
+  assert.notEqual(sheet.columns.name, 1);
+  assert.ok(!sheet.columns.phone.includes(1));
+  assert.notEqual(sheet.columns.email, 1);
 
-  const dataRows = resolved!.rows.slice(resolved!.headerRowIndex + 1);
-  const row0 = classifyRow(dataRows[0], resolved!.columns, NO_DB_DUP, NO_FILE_DUP);
+  const dataRows = sheet.rows.slice(sheet.headerRowIndex + 1);
+  const row0 = classifyRow(dataRows[0], sheet.columns, NO_DB_DUP, NO_FILE_DUP);
   assert.deepEqual(row0, { status: 'ready', ten_KH: 'BÙI THỊ VINH', so_dien_thoai: '0913803906', email: '' });
 });
 
-test('findImportSheet: cho phép dòng trống/tiêu đề nằm trước header thật trong cùng 1 sheet', () => {
+test('findImportSheets: cho phép dòng trống/tiêu đề nằm trước header thật trong cùng 1 sheet', () => {
   const sheets = [
     {
       sheetName: 'Báo cáo',
@@ -328,33 +329,179 @@ test('findImportSheet: cho phép dòng trống/tiêu đề nằm trước header
       ],
     },
   ];
-  const resolved = findImportSheet(sheets);
-  assert.ok(resolved);
-  assert.equal(resolved!.headerRowIndex, 2);
-  const dataRows = resolved!.rows.slice(resolved!.headerRowIndex + 1);
+  const resolved = findImportSheets(sheets);
+  assert.equal(resolved.length, 1);
+  const sheet = resolved[0];
+  assert.equal(sheet.headerRowIndex, 2);
+  const dataRows = sheet.rows.slice(sheet.headerRowIndex + 1);
   assert.equal(dataRows.length, 1);
-  assert.deepEqual(classifyRow(dataRows[0], resolved!.columns, NO_DB_DUP, NO_FILE_DUP), { status: 'ready', ten_KH: 'Khách A', so_dien_thoai: '0901111111', email: 'a@x.com' });
+  assert.deepEqual(classifyRow(dataRows[0], sheet.columns, NO_DB_DUP, NO_FILE_DUP), { status: 'ready', ten_KH: 'Khách A', so_dien_thoai: '0901111111', email: 'a@x.com' });
 });
 
-test('findImportSheet: header nằm sau MAX_HEADER_SCAN_ROWS dòng trống -> không tìm thấy (tránh quét vô hạn sheet rác)', () => {
+test('findImportSheets: header nằm sau MAX_HEADER_SCAN_ROWS dòng trống -> không tìm thấy (tránh quét vô hạn sheet rác)', () => {
   const paddingRows: unknown[][] = Array.from({ length: MAX_HEADER_SCAN_ROWS + 1 }, () => ['', '', '']);
   const sheets = [{ sheetName: 'Rác', rows: [...paddingRows, ['Tên KH', 'SĐT']] }];
-  assert.equal(findImportSheet(sheets), null);
+  assert.deepEqual(findImportSheets(sheets), []);
 });
 
-test('findImportSheet: nhiều sheet đều không có header Tên+SĐT hợp lệ -> null (chỉ trường hợp này mới báo "không có dữ liệu phù hợp")', () => {
+test('findImportSheets: nhiều sheet đều không có header Tên+SĐT hợp lệ -> [] (chỉ trường hợp này mới báo "không có dữ liệu phù hợp")', () => {
   const sheets = [
     { sheetName: 'Sheet1', rows: [] },
     { sheetName: 'Sheet2', rows: [['STT', 'MÃ CĂN', 'Số CMND']] }, // không có Tên/SĐT hợp lệ
   ];
-  assert.equal(findImportSheet(sheets), null);
+  assert.deepEqual(findImportSheets(sheets), []);
 });
 
-test('findImportSheet: nhiều sheet đều có header hợp lệ -> chọn sheet đầu tiên theo đúng thứ tự workbook, không quét tiếp', () => {
+test('findImportSheets: nhiều sheet đều có header hợp lệ -> TẤT CẢ đều được nhận, theo đúng thứ tự workbook, không dừng ở sheet đầu tiên', () => {
   const sheets = [
     { sheetName: 'Sheet1', rows: [['Tên KH', 'SĐT'], ['Khách 1', '0901111111']] },
     { sheetName: 'Sheet2', rows: [['Tên KH', 'SĐT'], ['Khách 2', '0902222222']] },
   ];
-  const resolved = findImportSheet(sheets);
-  assert.equal(resolved!.sheetName, 'Sheet1');
+  const resolved = findImportSheets(sheets);
+  assert.equal(resolved.length, 2);
+  assert.equal(resolved[0].sheetName, 'Sheet1');
+  assert.equal(resolved[1].sheetName, 'Sheet2');
+});
+
+// =====================================================================
+// Multi-data-sheet workbook thực tế: "CONDOTEL VÀ BIỆT THỰ PHÚ QUỐC.xlsx"
+// — 3 sheet: CONDOTEL (dataset thật), MẪU (form/template, KHÔNG phải
+// dataset), VILLAS (dataset thật). Header không ở row 0 (CONDOTEL: row 4,
+// dưới 1 dòng nhóm-cột-gộp "THÔNG TIN CĂN HỘ/LIÊN HỆ/..."; VILLAS: row 2).
+// =====================================================================
+
+// Đúng header thực tế của sheet CONDOTEL/VILLAS trong file — nhiều cột không
+// liên quan (MÃ CĂN, NVBH, ĐỊA CHỈ, SỐ CMND, TÊN CHỦ TK...) xen giữa, và có
+// cột "TÊN KH NHẬN CHUYỂN NHƯỢNG (NẾU CÓ)" đứng ngay sau "TÊN KH" — bẫy nhận
+// nhầm kinh điển nếu match không anchored.
+const CONDOTEL_STYLE_HEADER = [
+  'STT', '*DỰ ÁN', '*MÃ CĂN', 'NVBH', 'TÊN KH', 'TÊN KH NHẬN CHUYỂN NHƯỢNG (NẾU CÓ)',
+  'SĐT KH', 'EMAIL KH', 'ĐỊA CHỈ THƯỜNG TRÚ (TRÊN HỘ KHẨU)', 'SỐ CMND/\r\nPASSPORT', 'TÊN CHỦ TK',
+];
+
+test('CONDOTEL_STYLE_HEADER: TÊN KH/SĐT KH/EMAIL KH được nhận đúng, không nhận nhầm cột transfer-name hay các cột CRM khác', () => {
+  const columns = resolveColumns(CONDOTEL_STYLE_HEADER);
+  assert.ok(columns);
+  assert.equal(CONDOTEL_STYLE_HEADER[columns!.name], 'TÊN KH');
+  assert.deepEqual(columns!.phone.map(i => CONDOTEL_STYLE_HEADER[i]), ['SĐT KH']);
+  assert.equal(CONDOTEL_STYLE_HEADER[columns!.email], 'EMAIL KH');
+});
+
+test('"TÊN KH NHẬN CHUYỂN NHƯỢNG (NẾU CÓ)" tuyệt đối không bị nhận nhầm thành cột Tên KH', () => {
+  const columns = resolveColumns(CONDOTEL_STYLE_HEADER);
+  assert.ok(columns);
+  const transferNameIdx = CONDOTEL_STYLE_HEADER.indexOf('TÊN KH NHẬN CHUYỂN NHƯỢNG (NẾU CÓ)');
+  assert.notEqual(columns!.name, transferNameIdx);
+  // Header đứng 1 mình, không có "TÊN KH" thật đi kèm — dù vẫn có SĐT KH,
+  // vẫn phải bị từ chối vì không match alias "ten kh" nào (không
+  // substring/fuzzy) -> resolveColumns PHẢI trả về null (thiếu Tên KH hợp lệ).
+  const soloColumns = resolveColumns(['TÊN KH NHẬN CHUYỂN NHƯỢNG (NẾU CÓ)', 'SĐT KH']);
+  assert.equal(soloColumns, null);
+});
+
+test('CMND/CCCD, Mã căn, TÊN CHỦ TK không bao giờ bị nhận thành SĐT hay Tên KH dù đứng cạnh cột thật', () => {
+  const columns = resolveColumns(CONDOTEL_STYLE_HEADER)!;
+  const cmndIdx = CONDOTEL_STYLE_HEADER.indexOf('SỐ CMND/\r\nPASSPORT');
+  const maCanIdx = CONDOTEL_STYLE_HEADER.indexOf('*MÃ CĂN');
+  const tenChuTkIdx = CONDOTEL_STYLE_HEADER.indexOf('TÊN CHỦ TK');
+  assert.ok(!columns.phone.includes(cmndIdx));
+  assert.notEqual(columns.name, maCanIdx);
+  assert.notEqual(columns.name, tenChuTkIdx);
+});
+
+test('sheet MẪU (form/template thật): "Tên KH" và "SĐT:" nằm ở 2 dòng RIÊNG BIỆT (không cùng 1 dòng) -> không sheet nào qua được resolveColumns, sheet bị loại đúng như thiết kế', () => {
+  // Đúng cấu trúc thật của sheet MẪU: dòng 3 có "Tên KH" (label form, không có
+  // SĐT cùng dòng); dòng 9 có "SĐT:" (label khác, không có Tên KH cùng dòng).
+  const mauSheetRows = [
+    ['Dear chị Vy!', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Em gửi hồ sơ làm HĐVV căn VRC-17-12B', '', '', '', '', '', '', '', '', '', '', '', 'TTĐC'],
+    ['Thanks chị!!!', '', '', '', '', '', '', '', '', '', '', '', 'HĐVV'],
+    ['', 'STT', 'Mã căn', 'Tên KH', '', 'Loại Hồ sơ', 'Ngày chuyển TT', 'Ngày hẹn ký', 'Giờ hẹn ký', 'Địa điểm', '', '', 'HĐMB'],
+    ['', 1, 'VBC-39-12A', '', '', 'HĐVV', '05/08/2016', '06/08/2016', '9h', 'HCM', '', '', 'PLTTS'],
+    ['1. Thông tin khách hàng:', 'Khách cá nhân', '', '', '', '', '', '', '', '', '', '', '35% + VAT'],
+    ['Họ và tên:', '', '', '', 'Ngày sinh:', '', 'SĐT:', '', '', '', '', '', 1],
+    ['Số CMND:  ', '', '', '', 'Ngày cấp:', '', 'Nơi cấp:', '', '', '', '', '', ''],
+    ['Email: ', '', '', '', '', '', '', '', '', '', '', '', 'Khách đồng sở hữu'],
+  ];
+  for (const row of mauSheetRows) assert.equal(resolveColumns(row), null);
+  assert.deepEqual(findImportSheets([{ sheetName: 'MẪU', rows: mauSheetRows }]), []);
+});
+
+test('multi-data-sheet: CONDOTEL + MẪU + VILLAS -> chỉ CONDOTEL và VILLAS được chọn, MẪU bị loại, cả 2 dataset đều được xử lý (không dừng ở sheet đầu tiên)', () => {
+  const sheets = [
+    {
+      sheetName: 'CONDOTEL',
+      rows: [
+        ['VinPearl Condotel', '', 1, 2],
+        ['THÔNG TIN CĂN HỘ', '', 'THÔNG TIN LIÊN HỆ', ''],
+        ['STT', 'TÊN KH', 'SĐT KH', 'EMAIL KH'],
+        [1, 'Nguyễn Văn A', '0901111111', 'a@x.com'],
+        [2, 'Trần Thị B', '0902222222', 'b@x.com'],
+      ],
+    },
+    { sheetName: 'MẪU', rows: [['', 'Tên KH', ''], ['Họ và tên:', '', 'SĐT:']] },
+    {
+      sheetName: 'VILLAS ',
+      rows: [
+        ['STT', 'TÊN KH', 'SĐT KH', 'EMAIL KH'],
+        [1, 'Lê Văn C', '0903333333', 'c@x.com'],
+      ],
+    },
+  ];
+  const resolved = findImportSheets(sheets);
+  assert.deepEqual(resolved.map(s => s.sheetName), ['CONDOTEL', 'VILLAS ']);
+});
+
+test('resolveCellPhone: "0913 125 665" (spaced, thực tế trong file) -> "0913125665"', () => {
+  assert.equal(resolveCellPhone('0913 125 665'), '0913125665');
+});
+
+test('resolveCellPhone: "0908236202-0903834016" (2 số thực sự khác nhau trong 1 cell, thực tế trong file) -> lấy số ĐẦU TIÊN, không ghép', () => {
+  assert.equal(resolveCellPhone('0908236202-0903834016'), '0908236202');
+});
+
+test('resolveCellPhone: hỗ trợ cả dấu "/" và "," làm phân tách nhiều số trong 1 cell (thực tế trong file)', () => {
+  assert.equal(resolveCellPhone('043 833 4170 / 0913 046 557'), '0438334170');
+  assert.equal(resolveCellPhone('0983112511 , 61497573478'), '0983112511');
+});
+
+test('resolveCellPhone: không có candidate nào đúng độ dài VN (9-10 số) -> giữ nguyên cả chuỗi, không âm thầm làm mất dữ liệu', () => {
+  assert.equal(resolveCellPhone('48666268268/01675197399/01629828368'), '048666268268/01675197399/01629828368');
+});
+
+test('resolveCellPhone: dấu "-" chỉ là cách trình bày trong 1 số duy nhất (VD định dạng cũ) -> không bị tách nhầm, hành vi giống normalizePhone hiện có (chỉ bỏ khoảng trắng, giữ nguyên dấu "-")', () => {
+  // Toàn bộ digit của cell (bỏ dấu) chỉ có 10 số -> KHÔNG kích hoạt tách multi-phone,
+  // rơi thẳng vào normalizePhone như cũ — không đổi hành vi hiện có.
+  assert.equal(resolveCellPhone('090-123-4567'), '090-123-4567');
+  assert.equal(resolveCellPhone('090-123-4567'), normalizePhone('090-123-4567'));
+});
+
+test('workbook-wide dedupe: cùng canonical phone xuất hiện ở CONDOTEL rồi lại ở VILLAS -> chỉ 1 customer được tạo (dedupe set KHÔNG reset khi chuyển sheet)', () => {
+  const header = ['TÊN KH', 'SĐT KH', 'EMAIL KH'];
+  const columns = resolveColumns(header)!;
+  const condotelRows = [['Nguyễn Văn A', '0901234567', 'a@x.com']];
+  const villasRows = [['Nguyễn Văn A (Villas)', '0901234567', 'a2@x.com']]; // cùng SĐT, xuất hiện lại ở sheet khác
+
+  // Mô phỏng đúng route.ts: 1 Set dùng CHUNG cho toàn workbook, không tạo Set
+  // mới khi chuyển sang xử lý sheet kế tiếp.
+  const seenInFilePhoneKeys = new Set<string>();
+  const r1 = classifyRow(condotelRows[0], columns, NO_DB_DUP, seenInFilePhoneKeys);
+  assert.equal(r1.status, 'ready');
+  if (r1.status === 'ready') seenInFilePhoneKeys.add(phoneKey(r1.so_dien_thoai));
+
+  const r2 = classifyRow(villasRows[0], columns, NO_DB_DUP, seenInFilePhoneKeys);
+  assert.equal(r2.status, 'duplicate_in_file');
+});
+
+test('only Tên/SĐT/Email populate trên đúng header CONDOTEL thật: STT/DỰ ÁN/MÃ CĂN/NVBH/transfer-name/ĐỊA CHỈ/CMND/TÊN CHỦ TK tuyệt đối không lọt vào kết quả', () => {
+  const columns = resolveColumns(CONDOTEL_STYLE_HEADER)!;
+  const row = [
+    1, 'VEC', 'VEC-07-05', 'Nguyễn Kim Ngân', 'Tôn Nữ Kiều Thu', '',
+    '0915508671', 'kieuthutonnu@yahoo.com.vn', '44 Đường Số 7', '021793327', 'Tôn Nữ Kiều Thu',
+  ];
+  const result = classifyRow(row, columns, NO_DB_DUP, NO_FILE_DUP);
+  assert.deepEqual(result, {
+    status: 'ready', ten_KH: 'Tôn Nữ Kiều Thu', so_dien_thoai: '0915508671', email: 'kieuthutonnu@yahoo.com.vn',
+  });
+  assert.equal(Object.keys(result).length, 4); // status + đúng 3 field, không field nào khác
 });

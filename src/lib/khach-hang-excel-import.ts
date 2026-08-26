@@ -5,11 +5,12 @@
 // tự cột cố định như export của phễu lead nội bộ.
 
 const NAME_HEADER_ALIASES = new Set(['ten kh', 'ten khach hang', 'ho ten', 'ten nk', 'ten']);
-const EMAIL_HEADER_ALIASES = new Set(['email', 'e mail']);
+const EMAIL_HEADER_ALIASES = new Set(['email', 'e mail', 'email kh']);
 // Anchored toàn bộ header, không substring/fuzzy: chỉ khớp đúng 1 trong 4 từ gốc,
-// có thể theo sau bởi số thứ tự (VD "Số điện thoại 1", "Phone 2"). Không khớp
-// "Số CMND", "Mã căn", "STT"... vì các header đó không bắt đầu bằng 1 trong 4 từ gốc.
-const PHONE_HEADER_PATTERN = /^(so dien thoai|sdt|dien thoai|phone)( \d+)?$/;
+// có thể theo sau bởi số thứ tự (VD "Số điện thoại 1", "Phone 2") hoặc " kh"
+// (VD "SĐT KH" — mẫu file dự án BĐS nghỉ dưỡng thật). Không khớp "Số CMND",
+// "Mã căn", "STT"... vì các header đó không bắt đầu bằng 1 trong 4 từ gốc.
+const PHONE_HEADER_PATTERN = /^(so dien thoai|sdt|dien thoai|phone)( \d+| kh)?$/;
 
 export function normalizeHeader(raw: unknown): string {
   return String(raw ?? '')
@@ -66,23 +67,38 @@ export interface ResolvedImportSheet {
 }
 
 /**
- * Tìm sheet + dòng header phù hợp để import — KHÔNG giả định sheet đầu tiên
- * trong workbook luôn chứa dữ liệu (VD file có sheet rỗng đứng trước sheet
- * dữ liệu thật). Quét từng sheet theo đúng thứ tự trong workbook; trong mỗi
- * sheet quét tối đa MAX_HEADER_SCAN_ROWS dòng đầu để tìm dòng có header hợp
- * lệ (resolveColumns trả về non-null) — cho phép dòng trống/tiêu đề nằm
- * trước header thật. Trả về sheet+header đầu tiên khớp theo thứ tự; null
- * nếu không sheet nào có header hợp lệ trong phạm vi quét.
+ * Tìm TẤT CẢ sheet + dòng header phù hợp để import — KHÔNG giả định chỉ 1
+ * sheet (hoặc chỉ sheet đầu tiên) trong workbook chứa dữ liệu thật. File dự
+ * án BĐS thật (VD "CONDOTEL VÀ BIỆT THỰ PHÚ QUỐC.xlsx") có thể có NHIỀU sheet
+ * dữ liệu khách hàng thật (CONDOTEL, VILLAS) xen giữa sheet mẫu/form không
+ * phải dataset (MẪU) và/hoặc sheet rỗng.
+ *
+ * Quét TỪNG sheet theo đúng thứ tự trong workbook; trong mỗi sheet quét tối
+ * đa MAX_HEADER_SCAN_ROWS dòng đầu để tìm dòng có header hợp lệ (resolveColumns
+ * trả về non-null, tức có CẢ cột Tên KH VÀ cột SĐT trong CÙNG 1 dòng) — cho
+ * phép dòng trống/tiêu đề/nhóm-cột-gộp (merged title) nằm trước header thật.
+ * Mỗi sheet lấy TỐI ĐA 1 header (dòng đầu tiên khớp trong phạm vi quét) rồi
+ * chuyển sang sheet kế tiếp — không dừng lại ở sheet hợp lệ đầu tiên.
+ *
+ * Yêu cầu "cùng 1 dòng phải có cả Tên KH VÀ SĐT" (không phải chỉ cần xuất
+ * hiện đâu đó trong sheet) là rào chắn chính để loại sheet mẫu/form: 1 sheet
+ * form có thể có ô "Tên KH" (label 1 dòng) và ô "SĐT:" (label dòng khác) rời
+ * rạc, không cùng hàng — sẽ KHÔNG qua được resolveColumns nên sheet đó không
+ * được chọn, dù có chứa các từ khoá này ở đâu đó.
  */
-export function findImportSheet(sheets: readonly SheetRows[]): ResolvedImportSheet | null {
+export function findImportSheets(sheets: readonly SheetRows[]): ResolvedImportSheet[] {
+  const resolved: ResolvedImportSheet[] = [];
   for (const { sheetName, rows } of sheets) {
     const scanLimit = Math.min(rows.length, MAX_HEADER_SCAN_ROWS);
     for (let i = 0; i < scanLimit; i++) {
       const columns = resolveColumns(rows[i]);
-      if (columns) return { sheetName, headerRowIndex: i, columns, rows };
+      if (columns) {
+        resolved.push({ sheetName, headerRowIndex: i, columns, rows });
+        break;
+      }
     }
   }
-  return null;
+  return resolved;
 }
 
 export function cellToText(value: unknown): string {
@@ -112,11 +128,43 @@ export function phoneKey(value: string): string {
   return value.replace(/\D/g, '').slice(-9);
 }
 
+// Ký tự phân tách khi 1 cell chứa nhiều số ĐT thực sự khác nhau — cả 3 đều
+// gặp thực tế trong cùng 1 cột "SĐT KH" của file dự án BĐS thật: "-" (VD
+// "0908236202-0903834016"), "/" (VD "043 833 4170 / 0913 046 557"), ","
+// (VD "0983112511 , 61497573478").
+const MULTI_PHONE_SEPARATORS = /[-/,]/;
+
+/**
+ * 1 CELL đôi khi chứa nhiều số ĐT thực sự khác nhau (xem MULTI_PHONE_SEPARATORS).
+ * Không được ghép/concat các số lại (sẽ ra chuỗi số vô nghĩa và dedupe key
+ * sai), cũng không được tạo nhiều customer từ 1 dòng Excel — chỉ lấy số VN
+ * hợp lệ (đúng 9 hoặc 10 chữ số) ĐẦU TIÊN theo thứ tự xuất hiện trong cell,
+ * deterministic; các số không đúng độ dài VN (VD định dạng cũ 11 số, số quốc
+ * tế) bị bỏ qua khi chọn.
+ *
+ * Chỉ can thiệp khi cell KHÔNG tự nó là 1 số hợp lệ (9-10 chữ số) — nếu dấu
+ * phân tách chỉ là cách trình bày trong 1 số duy nhất, hoặc không có candidate
+ * nào đúng độ dài VN, thì rơi thẳng vào normalizePhone như cũ (giữ nguyên cả
+ * chuỗi, không đổi hành vi hiện có) — không âm thầm làm mất dữ liệu.
+ */
+export function resolveCellPhone(text: string): string {
+  const compact = text.replace(/\s+/g, '');
+  const digitsOnly = compact.replace(/\D/g, '');
+  if ((digitsOnly.length !== 9 && digitsOnly.length !== 10) && MULTI_PHONE_SEPARATORS.test(compact)) {
+    for (const segment of compact.split(MULTI_PHONE_SEPARATORS)) {
+      const segDigits = segment.replace(/\D/g, '');
+      if (segDigits.length === 9 || segDigits.length === 10) return normalizePhone(segment);
+    }
+  }
+  return normalizePhone(compact);
+}
+
 /**
  * Gộp nhiều cột phone trên cùng 1 dòng (VD "Số điện thoại 1"/"2") thành đúng 1 SĐT:
  *  - bỏ qua candidate trống;
- *  - normalize từng candidate (khôi phục số 0 đầu) — 2 candidate chỉ khác nhau ở số 0
- *    đầu sẽ tự động normalize về cùng 1 chuỗi, không coi là khác nhau;
+ *  - resolve từng candidate (khôi phục số 0 đầu, tách nếu 1 cell chứa nhiều số —
+ *    xem resolveCellPhone) — 2 candidate chỉ khác nhau ở số 0 đầu sẽ tự động
+ *    normalize về cùng 1 chuỗi, không coi là khác nhau;
  *  - nếu sau normalize vẫn còn nhiều số THỰC SỰ khác nhau (khác canonical phoneKey),
  *    ưu tiên candidate ở cột đầu tiên theo thứ tự header — không ghép/concat các số lại;
  *  - không có candidate hợp lệ nào -> null (thiếu SĐT).
@@ -125,7 +173,7 @@ export function resolveRowPhone(row: readonly unknown[], phoneColumns: readonly 
   const candidates = phoneColumns
     .map(index => cellToText(row[index]))
     .filter(text => text.length > 0)
-    .map(text => normalizePhone(text));
+    .map(text => resolveCellPhone(text));
   return candidates.length > 0 ? candidates[0] : null;
 }
 

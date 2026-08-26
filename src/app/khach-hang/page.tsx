@@ -100,7 +100,7 @@ export default function KhachHangPage() {
     totalRows: number; imported: number; duplicateInFile: number; alreadyExists: number; invalid: number; errors: number;
     duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[];
     alreadyExistsList: { ten_KH: string; so_dien_thoai: string }[];
-    invalidList: { row: number; reason: string }[];
+    invalidList: { row: number; reason: string; sheet: string }[];
     errorList: { ten_KH: string; error: string }[];
     duplicateNameWarnings: string[];
   } | null>(null);
@@ -956,7 +956,7 @@ export default function KhachHangPage() {
                   <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
                     {excelResult.invalidList.map((item, i) => (
                       <div key={i} style={{ padding: '6px 12px', fontSize: '0.82rem', borderBottom: i < excelResult.invalidList.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Dòng {item.row}</span>
+                        <span>{item.sheet ? `${item.sheet} — ` : ''}Dòng {item.row}</span>
                         <span style={{ color: 'var(--text-label)' }}>{item.reason}</span>
                       </div>
                     ))}

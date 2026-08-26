@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { getKhachHang, addKhachHang, addKhachHangWithBatch } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
-import { classifyRow, detectDuplicateNameWarnings, findImportSheet, phoneKey } from '@/lib/khach-hang-excel-import';
+import { classifyRow, detectDuplicateNameWarnings, findImportSheets, phoneKey, type ExcelColumnMap } from '@/lib/khach-hang-excel-import';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { checkpointImportBatchCounts, completeImportBatch, createImportBatch } from '@/lib/crm-funnel/import-batch';
 
@@ -31,7 +31,7 @@ export interface ImportResult {
   importedList: string[];
   duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[];
   alreadyExistsList: { ten_KH: string; so_dien_thoai: string }[];
-  invalidList: { row: number; reason: string }[];
+  invalidList: { row: number; reason: string; sheet: string }[];
   errorList: { ten_KH: string; error: string }[];
   duplicateNameWarnings: string[];
   /** null nếu Postgres CRM chưa bật (không có batch tracking) */
@@ -74,29 +74,40 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Không giả định sheet đầu tiên trong workbook luôn chứa dữ liệu (VD file có
-    // sheet rỗng/ẩn đứng trước sheet dữ liệu thật) — quét mọi sheet theo thứ tự,
-    // tìm dòng header hợp lệ (có cột Tên KH + ít nhất 1 cột SĐT), cho phép dòng
-    // trống/tiêu đề nằm trước header thật. Xem findImportSheet.
+    // Không giả định chỉ 1 sheet (hay chỉ sheet đầu tiên) trong workbook chứa
+    // dữ liệu thật — quét MỌI sheet theo thứ tự, mỗi sheet tìm dòng header hợp
+    // lệ riêng (có cột Tên KH + cột SĐT CÙNG 1 dòng), cho phép dòng trống/tiêu
+    // đề nằm trước header thật. TẤT CẢ sheet hợp lệ đều được xử lý (VD file dự
+    // án BĐS thật có cả CONDOTEL lẫn VILLAS là 2 dataset khách hàng riêng biệt,
+    // xen giữa sheet mẫu/form MẪU không phải dataset) — xem findImportSheets.
     const sheets = wb.SheetNames.map(sheetName => ({
       sheetName,
       rows: XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' }) as unknown[][],
     }));
-    const resolved = findImportSheet(sheets);
-    if (!resolved) {
+    const resolvedSheets = findImportSheets(sheets);
+    if (resolvedSheets.length === 0) {
       return NextResponse.json({
         success: false,
-        error: `File không có dữ liệu phù hợp để import: không tìm thấy sheet nào có cột "Tên"/"Tên KH" và cột "SĐT"/"Số điện thoại" ở dòng tiêu đề (đã quét ${sheets.length} sheet: ${wb.SheetNames.join(', ') || '(không có sheet)'}). Đặt tên cột theo mẫu: Tên/Tên KH/Tên khách hàng/Họ tên/Tên NK, SĐT/Số điện thoại/Điện thoại/Phone (có thể đánh số 1, 2...), Email (tuỳ chọn).`,
+        error: `File không có dữ liệu phù hợp để import: không tìm thấy sheet nào có cột "Tên"/"Tên KH" và cột "SĐT"/"Số điện thoại" CÙNG một dòng tiêu đề (đã quét ${sheets.length} sheet: ${wb.SheetNames.join(', ') || '(không có sheet)'}). Đặt tên cột theo mẫu: Tên/Tên KH/Tên khách hàng/Họ tên/Tên NK, SĐT/Số điện thoại/Điện thoại/Phone (có thể đánh số 1, 2...), Email (tuỳ chọn).`,
       }, { status: 422 });
     }
 
-    // Cột được xác định qua HEADER thực tế của file, không theo vị trí cố định —
-    // tránh map nhầm khi file nguồn có layout khác export của phễu lead nội bộ.
-    // Hỗ trợ nhiều cột phone (VD "Số điện thoại 1"/"2") — xem resolveRowPhone.
-    const { columns, rows, headerRowIndex } = resolved;
-    const dataRows = rows.slice(headerRowIndex + 1);
-    if (dataRows.length === 0) {
-      return NextResponse.json({ success: false, error: 'File không có dòng dữ liệu' }, { status: 422 });
+    // Gộp dữ liệu của TẤT CẢ sheet hợp lệ thành 1 danh sách dòng xử lý duy
+    // nhất, theo đúng thứ tự sheet trong workbook — để dedupe/checkpoint/tổng
+    // số liệu là WORKBOOK-WIDE (không reset khi chuyển sheet), đúng theo cách
+    // 1 lần import xử lý toàn bộ workbook như 1 operation duy nhất. Mỗi dòng
+    // giữ lại columns/sheetName/excelRow riêng để phân loại và báo lỗi đúng
+    // ngữ cảnh sheet nguồn của nó.
+    interface WorkRow { sheetName: string; columns: ExcelColumnMap; row: readonly unknown[]; excelRow: number }
+    const workRows: WorkRow[] = [];
+    for (const sheet of resolvedSheets) {
+      const sheetDataRows = sheet.rows.slice(sheet.headerRowIndex + 1);
+      sheetDataRows.forEach((row, i) => {
+        workRows.push({ sheetName: sheet.sheetName, columns: sheet.columns, row, excelRow: sheet.headerRowIndex + i + 2 });
+      });
+    }
+    if (workRows.length === 0) {
+      return NextResponse.json({ success: false, error: 'File không có dòng dữ liệu ở các sheet hợp lệ' }, { status: 422 });
     }
 
     // Snapshot phone đã có sẵn trong CRM trước khi import — canonical last-9-digit,
@@ -114,21 +125,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // thời điểm tạo (addKhachHangWithBatch), không phải một bước update sau.
     const pgCrmEnabled = isPostgresEnabled('crm');
     const batchId: string | null = pgCrmEnabled
-      ? (await createImportBatch({ filename: file.name || 'import.xlsx', importedBy: user!, totalRows: dataRows.length })).id
+      ? (await createImportBatch({ filename: file.name || 'import.xlsx', importedBy: user!, totalRows: workRows.length })).id
       : null;
 
     const importedList: string[] = [];
     const readyRecords: { ten_KH: string; so_dien_thoai: string }[] = [];
     const duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[] = [];
     const alreadyExistsList: { ten_KH: string; so_dien_thoai: string }[] = [];
-    const invalidList: { row: number; reason: string }[] = [];
+    const invalidList: { row: number; reason: string; sheet: string }[] = [];
     const errorList: { ten_KH: string; error: string }[] = [];
 
-    for (let i = 0; i < dataRows.length; i++) {
+    for (let i = 0; i < workRows.length; i++) {
       // Checkpoint ở ĐẦU mỗi vòng lặp (trước mọi "continue" bên dưới) để không
       // bao giờ bị bỏ lỡ bất kể dòng trước đó là blank/invalid/duplicate/ready —
       // đảm bảo chu kỳ checkpoint thực sự đều đặn mỗi CHECKPOINT_INTERVAL_ROWS
-      // dòng dữ liệu, không phụ thuộc tỉ lệ phân loại của file.
+      // dòng dữ liệu WORKBOOK-WIDE (không reset khi chuyển sheet), không phụ
+      // thuộc tỉ lệ phân loại của file.
       if (pgCrmEnabled && batchId && i > 0 && i % CHECKPOINT_INTERVAL_ROWS === 0) {
         try {
           await checkpointImportBatchCounts(batchId, {
@@ -141,10 +153,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
       }
 
-      const classification = classifyRow(dataRows[i], columns, existingDbPhoneKeys, seenInFilePhoneKeys);
+      const { sheetName, columns, row, excelRow } = workRows[i];
+      const classification = classifyRow(row, columns, existingDbPhoneKeys, seenInFilePhoneKeys);
       if (classification.status === 'blank') continue;
       if (classification.status === 'invalid') {
-        invalidList.push({ row: headerRowIndex + i + 2, reason: classification.reason }); // +2: bù dòng header (0-based) + 1-based
+        invalidList.push({ row: excelRow, reason: classification.reason, sheet: sheetName });
         continue;
       }
       if (classification.status === 'already_exists') {
@@ -218,7 +231,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       success: true,
-      totalRows:        dataRows.length,
+      totalRows:        workRows.length,
       imported:          importedList.length,
       duplicateInFile:   duplicateInFileList.length,
       alreadyExists:     alreadyExistsList.length,
