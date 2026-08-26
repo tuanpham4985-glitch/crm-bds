@@ -6,11 +6,15 @@
 
 const NAME_HEADER_ALIASES = new Set(['ten kh', 'ten khach hang', 'ho ten', 'ten nk', 'ten']);
 const EMAIL_HEADER_ALIASES = new Set(['email', 'e mail', 'email kh']);
-// Anchored toàn bộ header, không substring/fuzzy: chỉ khớp đúng 1 trong 4 từ gốc,
+// Anchored toàn bộ header, không substring/fuzzy: chỉ khớp đúng 1 trong 5 từ gốc,
 // có thể theo sau bởi số thứ tự (VD "Số điện thoại 1", "Phone 2") hoặc " kh"
-// (VD "SĐT KH" — mẫu file dự án BĐS nghỉ dưỡng thật). Không khớp "Số CMND",
-// "Mã căn", "STT"... vì các header đó không bắt đầu bằng 1 trong 4 từ gốc.
-const PHONE_HEADER_PATTERN = /^(so dien thoai|sdt|dien thoai|phone)( \d+| kh)?$/;
+// (VD "SĐT KH" — mẫu file dự án BĐS nghỉ dưỡng thật). "di dong" ("Di động") là
+// từ gốc riêng (không phải biến thể của "điện thoại") — mẫu file thật khác
+// (VD "Data - Solari-VHGP.xlsx": Building | Tên căn | Tên KH | Di động |
+// House Style | Ghi Chú). Không khớp "Số CMND", "Mã căn", "STT", "Tên căn",
+// "House Style", "Ghi Chú"... vì các header đó không bắt đầu bằng 1 trong 5
+// từ gốc.
+const PHONE_HEADER_PATTERN = /^(so dien thoai|sdt|dien thoai|phone|di dong)( \d+| kh)?$/;
 
 export function normalizeHeader(raw: unknown): string {
   return String(raw ?? '')
@@ -128,11 +132,12 @@ export function phoneKey(value: string): string {
   return value.replace(/\D/g, '').slice(-9);
 }
 
-// Ký tự phân tách khi 1 cell chứa nhiều số ĐT thực sự khác nhau — cả 3 đều
-// gặp thực tế trong cùng 1 cột "SĐT KH" của file dự án BĐS thật: "-" (VD
+// Ký tự phân tách khi 1 cell chứa nhiều số ĐT thực sự khác nhau — cả 4 đều
+// gặp thực tế trong cột phone của các file dự án BĐS thật: "-" (VD
 // "0908236202-0903834016"), "/" (VD "043 833 4170 / 0913 046 557"), ","
-// (VD "0983112511 , 61497573478").
-const MULTI_PHONE_SEPARATORS = /[-/,]/;
+// (VD "0983112511 , 61497573478"), ";" (VD "0918676628;0918686628" — cột
+// "Di động" trong "Data - Solari-VHGP.xlsx").
+const MULTI_PHONE_SEPARATORS = /[-/,;]/;
 
 /**
  * 1 CELL đôi khi chứa nhiều số ĐT thực sự khác nhau (xem MULTI_PHONE_SEPARATORS).

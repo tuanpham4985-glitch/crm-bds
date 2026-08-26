@@ -505,3 +505,77 @@ test('only Tên/SĐT/Email populate trên đúng header CONDOTEL thật: STT/D�
   });
   assert.equal(Object.keys(result).length, 4); // status + đúng 3 field, không field nào khác
 });
+
+// =====================================================================
+// File thực tế "Data - Solari-VHGP.xlsx" — header: Building | Tên căn |
+// Tên KH | Di động | House Style | Ghi Chú. "Di động" trước đây KHÔNG được
+// nhận là cột phone (từ gốc riêng, không phải biến thể của "điện thoại") ->
+// resolveColumns trả về null cho MỌI dòng -> cả workbook bị reject dù có
+// 5532 dòng dữ liệu thật. Phone cell cũng có dạng nhiều số nối bởi ";"
+// (VD "0918676628;0918686628") mà parser cũ chưa hỗ trợ tách.
+// =====================================================================
+
+const SOLARI_HEADER = ['Building', 'Tên căn', 'Tên KH', 'Di động', 'House Style', 'Ghi Chú'];
+
+test('SOLARI_HEADER: "Tên KH" + "Di động" đủ điều kiện làm header hợp lệ (Di động -> cột phone)', () => {
+  const columns = resolveColumns(SOLARI_HEADER);
+  assert.ok(columns);
+  assert.equal(SOLARI_HEADER[columns!.name], 'Tên KH');
+  assert.deepEqual(columns!.phone.map(i => SOLARI_HEADER[i]), ['Di động']);
+  assert.equal(columns!.email, -1); // file không có cột Email
+});
+
+test('"Di động" map đúng vào cột phone qua PHONE_HEADER_PATTERN, không fuzzy/substring', () => {
+  const columns = resolveColumns(['Tên KH', 'Di động'])!;
+  assert.deepEqual(columns.phone, [1]);
+});
+
+test('Building/Tên căn/House Style/Ghi Chú tuyệt đối không bị nhận thành Tên KH hay SĐT dù đứng cạnh cột thật', () => {
+  const columns = resolveColumns(SOLARI_HEADER)!;
+  assert.notEqual(columns.name, SOLARI_HEADER.indexOf('Tên căn'));
+  assert.notEqual(columns.name, SOLARI_HEADER.indexOf('Building'));
+  assert.notEqual(columns.name, SOLARI_HEADER.indexOf('House Style'));
+  assert.notEqual(columns.name, SOLARI_HEADER.indexOf('Ghi Chú'));
+  assert.ok(!columns.phone.includes(SOLARI_HEADER.indexOf('Building')));
+  assert.ok(!columns.phone.includes(SOLARI_HEADER.indexOf('House Style')));
+});
+
+test('resolveCellPhone: "0908323855;0946154545" (2 số nối bởi ";", đúng ví dụ báo cáo lỗi) -> lấy số ĐẦU TIÊN, không ghép', () => {
+  assert.equal(resolveCellPhone('0908323855;0946154545'), '0908323855');
+});
+
+test('resolveCellPhone: các separator cũ (-, /, ,) vẫn hoạt động đúng sau khi thêm ";"', () => {
+  assert.equal(resolveCellPhone('0908236202-0903834016'), '0908236202');
+  assert.equal(resolveCellPhone('043 833 4170 / 0913 046 557'), '0438334170');
+  assert.equal(resolveCellPhone('0983112511 , 61497573478'), '0983112511');
+});
+
+test('resolveCellPhone: số đầu tiên không đúng độ dài VN (VD "+01054508182;0938207008", thực tế trong file Solari) -> bỏ qua, lấy số hợp lệ tiếp theo, không phải lấy mù quáng segment đầu tiên', () => {
+  assert.equal(resolveCellPhone('+01054508182;0938207008'), '0938207008');
+});
+
+test('only Tên/SĐT/Email populate trên đúng header Solari thật: Building/Tên căn/House Style/Ghi Chú tuyệt đối không lọt vào kết quả', () => {
+  const columns = resolveColumns(SOLARI_HEADER)!;
+  const row = ['BS7', 'BS710.03', 'Đoàn Văn Quốc Huy', '0918676628;0918686628', '1PN + 1', 'Ghi chú nội bộ nào đó'];
+  const result = classifyRow(row, columns, NO_DB_DUP, NO_FILE_DUP);
+  assert.deepEqual(result, { status: 'ready', ten_KH: 'Đoàn Văn Quốc Huy', so_dien_thoai: '0918676628', email: '' });
+  assert.equal(Object.keys(result).length, 4);
+});
+
+test('findImportSheets: workbook Solari thật (1 sheet "Tổng", header row 0, không có cột Email) được nhận đúng', () => {
+  const sheets = [{
+    sheetName: 'Tổng',
+    rows: [
+      SOLARI_HEADER,
+      ['BS7', 'BS710.01', 'Trịnh Thị Hậu', '0908555826', 'Studio', ''],
+      ['BS7', 'BS710.02', 'Võ Minh Tuệ', '0388761660', '1PN + 1', ''],
+      ['BS7', 'BS710.03', 'Đoàn Văn Quốc Huy', '0918676628;0918686628', '1PN + 1', ''],
+    ],
+  }];
+  const resolved = findImportSheets(sheets);
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].sheetName, 'Tổng');
+  assert.equal(resolved[0].headerRowIndex, 0);
+  const dataRows = resolved[0].rows.slice(resolved[0].headerRowIndex + 1);
+  assert.equal(dataRows.length, 3);
+});
