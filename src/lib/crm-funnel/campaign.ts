@@ -184,19 +184,98 @@ export interface BulkDistributeResult {
   campaignId: string;
   requested: number;
   notFound: string[];
+  /** Tổng số id đã có membership trong campaign này TỪ TRƯỚC (mọi assignment_status), trước khi gọi này. */
   alreadyMember: number;
+  /** Trong alreadyMember: đã ASSIGNED từ trước — giữ nguyên, KHÔNG đụng vào trong lần gọi này. */
+  alreadyAssigned: number;
+  /** Membership hoàn toàn mới được tạo trong lần gọi này (mọi assignment_status). */
   created: number;
-  assigned: number;
-  unassigned: number;
+  /** Được gán ASSIGNED trong lần gọi này — gồm cả membership mới tạo lẫn membership UNASSIGNED có sẵn vừa được phân. */
+  newlyAssigned: number;
+  /**
+   * Trạng thái CUỐI CÙNG sau lần gọi này: còn UNASSIGNED trong số các id hợp lệ
+   * đã chọn (created hoặc có sẵn từ trước đều tính — KHÔNG chỉ đếm membership
+   * mới tạo). VD: 3 membership UNASSIGNED có sẵn, quota chỉ đủ gán 2 -> đây
+   * PHẢI = 1, không phải 0 (đây chính là fix cho counter bị hiểu sai).
+   */
+  stillUnassigned: number;
+}
+
+interface ExistingMembershipRef {
+  customer_id: string;
+  assignment_status: string;
+}
+
+interface BulkDistributionPlan {
+  notFound: string[];
+  alreadyMember: number;
+  alreadyAssigned: number;
+  toCreate: DistributionPlanItem[];
+  toAssignExisting: DistributionPlanItem[];
+  /** Xem BulkDistributeResult.stillUnassigned — tính trên toàn bộ id hợp lệ, không riêng toCreate. */
+  stillUnassigned: number;
+}
+
+/**
+ * Thuần (không đụng DB) — tách phần "quyết định phân ai" ra khỏi phần ghi DB để
+ * test được không cần Postgres. Nguyên tắc:
+ * - customer chưa có membership trong campaign này -> coi là "eligible", được
+ *   đưa vào planDistribution như bình thường (tạo mới).
+ * - customer đã có membership UNASSIGNED -> VẪN "eligible" để phân lần này
+ *   (đây là fix cho bug: trước đây bị loại hoàn toàn nên không bao giờ phân được).
+ * - customer đã có membership ASSIGNED -> loại khỏi eligible hoàn toàn, không
+ *   bao giờ tự động gán lại (không chiếm chỗ trong round-robin/quantity).
+ */
+export function planBulkDistribution(input: {
+  orderedIds: readonly string[];
+  existingCustomerIds: ReadonlySet<string>;
+  existingMemberships: readonly ExistingMembershipRef[];
+  telesales: readonly TelesaleRef[];
+  mode: DistributionMode;
+  quantities?: Readonly<Record<string, number>>;
+}): BulkDistributionPlan {
+  const { orderedIds, existingCustomerIds, existingMemberships, telesales, mode, quantities } = input;
+
+  const notFound = orderedIds.filter(id => !existingCustomerIds.has(id));
+  const validIds = orderedIds.filter(id => existingCustomerIds.has(id));
+
+  const membershipByCustomer = new Map(existingMemberships.map(m => [m.customer_id, m]));
+  const alreadyAssignedIds = new Set(
+    [...membershipByCustomer.values()].filter(m => m.assignment_status !== 'UNASSIGNED').map(m => m.customer_id),
+  );
+
+  const eligibleIds = validIds.filter(id => !alreadyAssignedIds.has(id));
+  const plan = planDistribution({ customerIds: eligibleIds, telesales, mode, quantities });
+
+  const toCreate = plan.filter(item => !membershipByCustomer.has(item.customer_id));
+  const toAssignExisting = plan.filter(
+    item => membershipByCustomer.has(item.customer_id) && item.assignment_status === 'ASSIGNED',
+  );
+  // plan chỉ chứa đúng các id "eligible" (mới + UNASSIGNED có sẵn) — nên phần còn
+  // lại vẫn UNASSIGNED sau vòng phân này (mới tạo VẪN unassigned, hoặc có sẵn
+  // nhưng rớt vào phần dư của quantity/mode 'none') đều nằm trong chính plan.
+  const stillUnassigned = plan.filter(item => item.assignment_status === 'UNASSIGNED').length;
+
+  return {
+    notFound,
+    alreadyMember: membershipByCustomer.size,
+    alreadyAssigned: alreadyAssignedIds.size,
+    toCreate,
+    toAssignExisting,
+    stillUnassigned,
+  };
 }
 
 /**
  * Thêm 1 tập customer vào Campaign + phân Telesale trong 1 transaction.
  * KHÔNG BAO GIỜ tạo customer mới — chỉ tham chiếu id đã tồn tại. Customer đã
- * có membership trong ĐÚNG campaign này bị bỏ qua (không tạo trùng, không đổi
- * assignment hiện có) — chạy lại cùng input nhiều lần là an toàn (idempotent).
- * unique(customer_id, campaign_id) ở schema là rào chắn cuối cùng; createMany
- * skipDuplicates là lớp bảo vệ thêm cho trường hợp đụng độ concurrent.
+ * ASSIGNED trong ĐÚNG campaign này bị bỏ qua hoàn toàn (không đổi assignment
+ * hiện có). Customer đã có membership nhưng còn UNASSIGNED thì được phân
+ * trong lần gọi này (update, không tạo trùng) — chạy lại cùng input nhiều lần
+ * vẫn an toàn (idempotent): lần 2 trở đi các membership đã ASSIGNED sẽ không
+ * còn bị đổi nữa. unique(customer_id, campaign_id) ở schema là rào chắn cuối
+ * cùng; createMany skipDuplicates + updateMany theo WHERE assignment_status
+ * = 'UNASSIGNED' là lớp bảo vệ thêm cho trường hợp đụng độ concurrent.
  */
 export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<BulkDistributeResult> {
   assertTransactionalCrm();
@@ -215,25 +294,22 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       ? await tx.khachHang.findMany({ where: { id_khach_hang: { in: orderedIds } }, select: { id_khach_hang: true } })
       : [];
     const existingCustomerIds = new Set(existingCustomers.map(c => c.id_khach_hang));
-    const notFound = orderedIds.filter(id => !existingCustomerIds.has(id));
-    const validIds = orderedIds.filter(id => existingCustomerIds.has(id));
 
-    const existingMemberships = validIds.length
+    const existingMemberships = orderedIds.length
       ? await tx.campaignMembership.findMany({
-          where: { campaign_id: input.campaignId, customer_id: { in: validIds } },
-          select: { customer_id: true },
+          where: { campaign_id: input.campaignId, customer_id: { in: orderedIds } },
+          select: { customer_id: true, assignment_status: true },
         })
       : [];
-    const alreadyMemberSet = new Set(existingMemberships.map(m => m.customer_id));
-    const newIds = validIds.filter(id => !alreadyMemberSet.has(id));
 
-    const plan = planDistribution({
-      customerIds: newIds, telesales: input.telesales, mode: input.mode, quantities: input.quantities,
+    const plan = planBulkDistribution({
+      orderedIds, existingCustomerIds, existingMemberships,
+      telesales: input.telesales, mode: input.mode, quantities: input.quantities,
     });
 
-    if (plan.length > 0) {
+    if (plan.toCreate.length > 0) {
       await tx.campaignMembership.createMany({
-        data: plan.map(item => ({
+        data: plan.toCreate.map(item => ({
           customer_id: item.customer_id,
           campaign_id: input.campaignId,
           telesale_id: item.telesale_id,
@@ -247,14 +323,32 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       });
     }
 
+    for (const item of plan.toAssignExisting) {
+      // WHERE assignment_status: 'UNASSIGNED' là guard chống đụng độ concurrent —
+      // nếu một transaction khác đã gán customer này trước, updateMany này
+      // khớp 0 dòng thay vì ghi đè assignment đã có.
+      await tx.campaignMembership.updateMany({
+        where: { campaign_id: input.campaignId, customer_id: item.customer_id, assignment_status: 'UNASSIGNED' },
+        data: {
+          telesale_id: item.telesale_id,
+          telesale_name: item.telesale_name,
+          assignment_status: 'ASSIGNED',
+          assigned_at: new Date(),
+          assigned_by_id: input.actor.id_nhan_vien,
+          assigned_by_name: input.actor.ho_ten,
+        },
+      });
+    }
+
     return {
       campaignId: input.campaignId,
       requested: orderedIds.length,
-      notFound,
-      alreadyMember: alreadyMemberSet.size,
-      created: plan.length,
-      assigned: plan.filter(p => p.assignment_status === 'ASSIGNED').length,
-      unassigned: plan.filter(p => p.assignment_status === 'UNASSIGNED').length,
+      notFound: plan.notFound,
+      alreadyMember: plan.alreadyMember,
+      alreadyAssigned: plan.alreadyAssigned,
+      created: plan.toCreate.length,
+      newlyAssigned: plan.toCreate.filter(p => p.assignment_status === 'ASSIGNED').length + plan.toAssignExisting.length,
+      stillUnassigned: plan.stillUnassigned,
     };
   });
 }

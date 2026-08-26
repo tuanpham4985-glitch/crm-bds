@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { canManageCampaign, customerDeleteBlockReason } from '../../src/lib/crm-auth';
-import { planDistribution } from '../../src/lib/crm-funnel/campaign';
+import { planBulkDistribution, planDistribution } from '../../src/lib/crm-funnel/campaign';
 import type { KhachHang, Pipeline } from '../../src/lib/types';
 
 function customer(overrides: Partial<KhachHang> = {}): KhachHang {
@@ -43,11 +43,13 @@ test('CampaignMembership KHÔNG có unique riêng trên customer_id -> 1 custome
   assert.doesNotMatch(block, /customer_id\s+String\s+@unique(?!\w)/);
 });
 
-test('bulkAddAndDistribute pre-filter existing memberships trước khi tạo (+ skipDuplicates) -> chạy lại cùng input là idempotent, không tạo trùng', () => {
+test('bulkAddAndDistribute pre-filter existing memberships (mọi assignment_status) trước khi tạo (+ skipDuplicates) -> chạy lại cùng input là idempotent, không tạo trùng', () => {
   const src = readFileSync(resolve('src/lib/crm-funnel/campaign.ts'), 'utf8');
-  assert.match(src, /existingMemberships = validIds\.length/);
-  assert.match(src, /alreadyMemberSet\.has\(id\)/);
+  assert.match(src, /existingMemberships = orderedIds\.length/);
+  assert.match(src, /membershipByCustomer\.has\(item\.customer_id\)/);
   assert.match(src, /skipDuplicates: true/);
+  // Membership ASSIGNED có sẵn tuyệt đối không bị update lại (chỉ update khi vẫn còn UNASSIGNED).
+  assert.match(src, /assignment_status: 'UNASSIGNED' },\s*\n\s*data: {/);
   // Không bao giờ tạo customer mới trong hàm này.
   assert.doesNotMatch(src, /khachHang\.create/);
 });
@@ -196,4 +198,178 @@ test('customerDeleteBlockReason: guard cũ (CRM history/handoff/Pipeline) vẫn 
 test('customerDeleteBlockReason: signature backward-compatible — gọi không truyền campaignMemberships (2 tham số như cũ) vẫn chạy đúng cho khách sạch', () => {
   const kh = customer({ id_khach_hang: 'KH_E' });
   assert.equal(customerDeleteBlockReason(kh, []), null);
+});
+
+// --- planBulkDistribution: production remediation — membership UNASSIGNED có
+// sẵn phải được phân được ở lần gọi sau, membership đã ASSIGNED thì tuyệt đối
+// không đụng vào. ---------------------------------------------------------
+
+const ALL_EXIST = new Set(['C1', 'C2', 'C3', 'C4', 'C5']);
+
+test('1) existing UNASSIGNED -> round-robin vẫn phân được (đúng bug production: trước fix, membership UNASSIGNED có sẵn bị loại vĩnh viễn khỏi phân phối)', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C3'],
+    existingCustomerIds: ALL_EXIST,
+    existingMemberships: [
+      { customer_id: 'C1', assignment_status: 'UNASSIGNED' },
+      { customer_id: 'C2', assignment_status: 'UNASSIGNED' },
+      { customer_id: 'C3', assignment_status: 'UNASSIGNED' },
+    ],
+    telesales: [TS('T1', 'Lan'), TS('T2', 'Hương')],
+    mode: 'round_robin',
+  });
+  assert.equal(plan.toCreate.length, 0, 'không tạo mới — cả 3 đã là membership có sẵn');
+  assert.equal(plan.toAssignExisting.length, 3, 'cả 3 membership UNASSIGNED có sẵn đều được phân trong lần gọi này');
+  assert.deepEqual(plan.toAssignExisting.map(p => p.telesale_name), ['Lan', 'Hương', 'Lan']);
+  assert.equal(plan.alreadyMember, 3);
+  assert.equal(plan.alreadyAssigned, 0);
+});
+
+test('2) existing UNASSIGNED -> quantity vẫn phân được, đúng theo quota, phần dư (nếu có) vẫn ở lại UNASSIGNED', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C3'],
+    existingCustomerIds: ALL_EXIST,
+    existingMemberships: [
+      { customer_id: 'C1', assignment_status: 'UNASSIGNED' },
+      { customer_id: 'C2', assignment_status: 'UNASSIGNED' },
+      { customer_id: 'C3', assignment_status: 'UNASSIGNED' },
+    ],
+    telesales: [TS('T1', 'Lan')],
+    mode: 'quantity',
+    quantities: { T1: 2 },
+  });
+  assert.equal(plan.toCreate.length, 0);
+  assert.equal(plan.toAssignExisting.length, 2, 'chỉ đúng quota 2 được phân, phần dư giữ UNASSIGNED (không update)');
+  assert.deepEqual(plan.toAssignExisting.map(p => p.customer_id), ['C1', 'C2']);
+  // Counter fix: trạng thái CUỐI CÙNG phải phản ánh đúng — 3 membership UNASSIGNED
+  // có sẵn, quota chỉ đủ gán 2 -> stillUnassigned PHẢI = 1, không phải 0 (đây là
+  // đúng bug counter báo cáo sai mà production phát hiện: alreadyMember=3,
+  // newlyAssigned=2 nhưng cũ hiển thị unassigned=0 dù C3 vẫn UNASSIGNED thật).
+  assert.equal(plan.stillUnassigned, 1, 'C3 vẫn UNASSIGNED sau vòng phân này (không đủ quota)');
+});
+
+test('3) mixed: khách mới (chưa có membership) + khách đã có membership UNASSIGNED -> cả 2 nhóm đều vào cùng 1 vòng round-robin theo đúng thứ tự request', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C3', 'C4'],
+    existingCustomerIds: ALL_EXIST,
+    existingMemberships: [
+      { customer_id: 'C1', assignment_status: 'UNASSIGNED' }, // đã có, UNASSIGNED
+      // C2, C3, C4: hoàn toàn mới
+    ],
+    telesales: [TS('T1', 'Lan'), TS('T2', 'Hương')],
+    mode: 'round_robin',
+  });
+  assert.equal(plan.toCreate.length, 3, 'C2, C3, C4 là membership mới');
+  assert.deepEqual(plan.toCreate.map(p => p.customer_id), ['C2', 'C3', 'C4']);
+  assert.equal(plan.toAssignExisting.length, 1, 'C1 (UNASSIGNED có sẵn) được phân, không tạo trùng');
+  assert.deepEqual(plan.toAssignExisting.map(p => p.customer_id), ['C1']);
+  // Thứ tự round-robin tính trên toàn bộ eligibleIds (C1,C2,C3,C4) theo đúng thứ tự request.
+  assert.equal(plan.toAssignExisting[0].telesale_name, 'Lan');
+  assert.deepEqual(plan.toCreate.map(p => p.telesale_name), ['Hương', 'Lan', 'Hương']);
+  assert.equal(plan.stillUnassigned, 0, 'round-robin với telesales > 0 luôn gán hết eligible, không ai còn UNASSIGNED');
+});
+
+test('4) existing ASSIGNED -> không bao giờ tự động gán lại, không chiếm chỗ trong round-robin, không xuất hiện ở toCreate lẫn toAssignExisting', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C3'],
+    existingCustomerIds: ALL_EXIST,
+    existingMemberships: [
+      { customer_id: 'C1', assignment_status: 'ASSIGNED' }, // đã phân từ trước cho Lan (giả định)
+    ],
+    telesales: [TS('T1', 'Lan'), TS('T2', 'Hương')],
+    mode: 'round_robin',
+  });
+  assert.ok(!plan.toCreate.some(p => p.customer_id === 'C1'));
+  assert.ok(!plan.toAssignExisting.some(p => p.customer_id === 'C1'));
+  assert.equal(plan.alreadyAssigned, 1);
+  // C2, C3 (mới) vẫn được phân bình thường, không bị lệch bởi việc C1 bị loại khỏi vòng quay.
+  assert.deepEqual(plan.toCreate.map(p => p.customer_id), ['C2', 'C3']);
+  assert.deepEqual(plan.toCreate.map(p => p.telesale_name), ['Lan', 'Hương']);
+});
+
+test('5) gọi lại đúng input sau khi đã áp dụng kết quả lần 1 (giả lập DB state mới) -> lần 2 idempotent: không toCreate, không toAssignExisting nào nữa', () => {
+  const round1 = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C3'],
+    existingCustomerIds: ALL_EXIST,
+    existingMemberships: [],
+    telesales: [TS('T1', 'Lan'), TS('T2', 'Hương')],
+    mode: 'round_robin',
+  });
+  assert.equal(round1.toCreate.length, 3);
+
+  // Giả lập DB sau khi áp dụng round1: cả 3 giờ đã là membership ASSIGNED.
+  const membershipsAfterRound1 = round1.toCreate.map(p => ({ customer_id: p.customer_id, assignment_status: p.assignment_status }));
+
+  const round2 = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C3'],
+    existingCustomerIds: ALL_EXIST,
+    existingMemberships: membershipsAfterRound1,
+    telesales: [TS('T1', 'Lan'), TS('T2', 'Hương')],
+    mode: 'round_robin',
+  });
+  assert.equal(round2.toCreate.length, 0, 'không tạo trùng membership ở lần gọi lại');
+  assert.equal(round2.toAssignExisting.length, 0, 'không tự động gán lại membership đã ASSIGNED');
+  assert.equal(round2.alreadyAssigned, 3);
+});
+
+test('6) membership uniqueness: customer đã có membership (dù UNASSIGNED hay ASSIGNED) không bao giờ xuất hiện ở toCreate -> không bao giờ tạo 2 membership cùng customer_id+campaign_id', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1', 'C2'],
+    existingCustomerIds: ALL_EXIST,
+    existingMemberships: [
+      { customer_id: 'C1', assignment_status: 'UNASSIGNED' },
+      { customer_id: 'C2', assignment_status: 'ASSIGNED' },
+    ],
+    telesales: [TS('T1', 'Lan')],
+    mode: 'round_robin',
+  });
+  const createdIds = new Set(plan.toCreate.map(p => p.customer_id));
+  assert.ok(!createdIds.has('C1') && !createdIds.has('C2'));
+});
+
+test('7) counters phân biệt rõ: alreadyMember (tổng cũ) vs alreadyAssigned (cũ đã ASSIGNED, không đổi) vs toCreate (mới) vs toAssignExisting (cũ UNASSIGNED vừa được phân)', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C3', 'C4', 'C5'],
+    existingCustomerIds: ALL_EXIST,
+    existingMemberships: [
+      { customer_id: 'C1', assignment_status: 'ASSIGNED' }, // already-assigned/unmodified
+      { customer_id: 'C2', assignment_status: 'UNASSIGNED' }, // existing -> newly-assigned lần này
+      // C3, C4, C5: mới hoàn toàn (newly-created)
+    ],
+    telesales: [TS('T1', 'Lan'), TS('T2', 'Hương')],
+    mode: 'round_robin',
+  });
+  assert.equal(plan.alreadyMember, 2, 'existing = C1 + C2');
+  assert.equal(plan.alreadyAssigned, 1, 'already-assigned/unmodified = chỉ C1');
+  assert.equal(plan.toCreate.length, 3, 'newly-created = C3, C4, C5');
+  assert.equal(plan.toAssignExisting.length, 1, 'newly-assigned (từ existing UNASSIGNED) = chỉ C2');
+  assert.deepEqual(plan.toAssignExisting.map(p => p.customer_id), ['C2']);
+  assert.equal(plan.stillUnassigned, 0, 'round-robin gán hết mọi eligible (C2,C3,C4,C5) -> không ai còn UNASSIGNED');
+});
+
+test('8) mixed final state (new + existing UNASSIGNED + existing ASSIGNED, mode quantity với phần dư) -> mọi counter phản ánh đúng trạng thái CUỐI CÙNG của tập đã chọn', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C3', 'C4', 'C5', 'C6'],
+    existingCustomerIds: new Set(['C1', 'C2', 'C3', 'C4', 'C5', 'C6']),
+    existingMemberships: [
+      { customer_id: 'C1', assignment_status: 'ASSIGNED' }, // đã phân từ trước -> giữ nguyên
+      { customer_id: 'C2', assignment_status: 'UNASSIGNED' }, // có sẵn, sẽ được phân trong quota
+      { customer_id: 'C3', assignment_status: 'UNASSIGNED' }, // có sẵn, sẽ được phân trong quota
+      // C4, C5, C6: hoàn toàn mới
+    ],
+    telesales: [TS('T1', 'Lan')],
+    mode: 'quantity',
+    quantities: { T1: 3 }, // đủ cho C2, C3, C4 — C5, C6 rơi vào phần dư
+  });
+
+  assert.equal(plan.alreadyMember, 3, 'existing = C1 + C2 + C3');
+  assert.equal(plan.alreadyAssigned, 1, 'chỉ C1 đã ASSIGNED từ trước -> không đổi');
+  assert.equal(plan.toCreate.length, 3, 'newly-created = C4, C5, C6');
+  assert.deepEqual(plan.toCreate.map(p => p.customer_id).sort(), ['C4', 'C5', 'C6']);
+  assert.equal(plan.toAssignExisting.length, 2, 'C2, C3 (UNASSIGNED có sẵn) lấp đủ phần đầu quota, C1 không tham gia');
+  assert.deepEqual(plan.toAssignExisting.map(p => p.customer_id), ['C2', 'C3']);
+
+  const newlyAssigned = plan.toCreate.filter(p => p.assignment_status === 'ASSIGNED').length + plan.toAssignExisting.length;
+  assert.equal(newlyAssigned, 3, 'C2, C3 (có sẵn) + C4 (mới) = 3 được phân trong lần này');
+  assert.equal(plan.stillUnassigned, 2, 'C5, C6 rơi vào phần dư của quota -> vẫn UNASSIGNED thật sự, phải được đếm');
 });

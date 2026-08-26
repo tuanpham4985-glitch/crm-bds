@@ -18,9 +18,10 @@ interface DistributeResult {
   requested: number;
   notFound: string[];
   alreadyMember: number;
+  alreadyAssigned: number;
   created: number;
-  assigned: number;
-  unassigned: number;
+  newlyAssigned: number;
+  stillUnassigned: number;
 }
 
 export function CampaignDistributeModal({ customerIds, employees, onClose, onDone }: {
@@ -115,8 +116,9 @@ export function CampaignDistributeModal({ customerIds, employees, onClose, onDon
                 <div>Đã chọn: <strong>{result.requested}</strong></div>
                 <div>Đã có sẵn trong Campaign: <strong>{result.alreadyMember}</strong></div>
                 <div>Vừa thêm mới: <strong>{result.created}</strong></div>
-                <div>— Đã phân Telesale: <strong>{result.assigned}</strong></div>
-                <div>— Chưa phân (UNASSIGNED): <strong>{result.unassigned}</strong></div>
+                <div>Đã phân từ trước: <strong>{result.alreadyAssigned}</strong></div>
+                <div>Vừa phân Telesale: <strong>{result.newlyAssigned}</strong></div>
+                <div style={{ gridColumn: '1 / -1' }}>Còn chưa phân: <strong>{result.stillUnassigned}</strong></div>
                 {result.notFound.length > 0 && <div style={{ color: '#b91c1c' }}>Không tìm thấy: <strong>{result.notFound.length}</strong></div>}
               </div>
             </div>
