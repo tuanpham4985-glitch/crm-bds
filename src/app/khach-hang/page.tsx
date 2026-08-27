@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig, CrmImportBatch, Campaign } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
-import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
+import { NGUON } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
 import { isAllVisibleSelected, toggleSelectAllVisible, toggleSelection } from '@/lib/khach-hang-selection';
 import { CampaignDistributeModal } from '@/components/crm/CampaignDistributeModal';
@@ -28,12 +28,6 @@ export default function KhachHangPage() {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [nguon, setNguon] = useState('');
-  const [sale, setSale] = useState(() =>
-    typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('sale') || ''
-      : ''
-  );
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -143,8 +137,6 @@ export default function KhachHangPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) params.set('search', search);
-      if (nguon) params.set('nguon', nguon);
-      if (sale) params.set('sale', sale);
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
       const res = await fetch(`/api/khach-hang?${params}`);
@@ -159,7 +151,7 @@ export default function KhachHangPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, nguon, sale, fromDate, toDate]);
+  }, [page, search, fromDate, toDate]);
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -555,14 +547,12 @@ export default function KhachHangPage() {
 
   const clearFilters = () => {
     setSearchInput('');
-    setNguon('');
-    setSale('');
     setFromDate('');
     setToDate('');
     setPage(1);
   };
 
-  const hasFilters = searchInput || nguon || sale || fromDate || toDate;
+  const hasFilters = searchInput || fromDate || toDate;
 
   if (authLoading) return null;
 
@@ -649,15 +639,6 @@ export default function KhachHangPage() {
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%' }}>
-          <select className="form-select" style={{ width: 'auto', minWidth: 140, flex: '0 0 auto' }} value={nguon} onChange={(e) => { setNguon(e.target.value); setPage(1); }}>
-            <option value="">Tất cả nguồn</option>
-            {NGUON.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          <select className="form-select" style={{ width: 'auto', minWidth: 130, flex: '0 0 auto' }} value={sale} onChange={(e) => { setSale(e.target.value); setPage(1); }}>
-            <option value="">Tất cả sale</option>
-            <option value="__none__">Chưa assign sale</option>
-            {employees.map(nv => <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>)}
-          </select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
             <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', whiteSpace: 'nowrap' }}>Từ</span>
             <input type="date" className="form-input" style={{ width: 'auto', minWidth: 140 }}
@@ -702,11 +683,6 @@ export default function KhachHangPage() {
                     <th>Tên KH</th>
                     <th>SĐT</th>
                     <th>Email</th>
-                    <th>Dự án</th>
-                    <th>Nguồn</th>
-                    <th>Nhu cầu</th>
-                    <th>Deal</th>
-                    <th>Sale</th>
                     <th>Ngày tạo</th>
                     <th style={{ width: 140, textAlign: 'center' }}>Thao tác</th>
                   </tr>
@@ -733,33 +709,6 @@ export default function KhachHangPage() {
                           {kh.email || '—'}
                         </span>
                       </td>
-                      <td style={{ maxWidth: 160 }}>
-                        {kh.du_an ? (
-                          <span className="badge" style={{ background: '#ede9fe', color: '#5b21b6', fontSize: '0.72rem' }}>
-                            {kh.du_an}
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td>
-                        {kh.nguon ? (
-                          <span className="badge badge-info">{kh.nguon}</span>
-                        ) : '—'}
-                      </td>
-                      <td className="truncate" style={{ maxWidth: 200 }}>{kh.nhu_cau || '—'}</td>
-                      <td>
-                        {(() => {
-                          const deal = getDealOfKH(kh.id_khach_hang);
-                          if (!deal) return <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>;
-                          const colors = GIAI_DOAN_COLORS[deal.giai_doan] || { bg: '#f1f5f9', text: '#475569' };
-                          return (
-                            <span className="badge" style={{ background: colors.bg, color: colors.text, fontSize: '0.72rem', cursor: 'pointer' }}
-                              onClick={() => router.push(`/pipeline?kh=${kh.id_khach_hang}`)}>
-                              {deal.giai_doan}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td style={{ fontWeight: 500, color: 'var(--primary-text)' }}>{kh.sale_phu_trach || '—'}</td>
                       <td>{formatDate(kh.ngay_tao)}</td>
                       <td>
                         <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
