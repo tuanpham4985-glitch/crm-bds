@@ -55,7 +55,7 @@ export function MembershipQualificationModal({ campaignId, membership, onClose, 
       <Field label="Mức độ quan tâm"><select className="form-select" value={form.muc_do_quan_tam} onChange={event => set('muc_do_quan_tam', event.target.value)}>{['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'].map(item => <option key={item}>{item}</option>)}</select></Field>
       <Field label="Hành động tiếp theo"><input className="form-input" value={form.hanh_dong_tiep_theo} onChange={event => set('hanh_dong_tiep_theo', event.target.value)} placeholder="Gửi bảng giá, hẹn xem, gọi lại..." /></Field>
     </div>
-    <div style={{ background: '#eff6ff', color: '#1d4ed8', padding: 10, borderRadius: 7, fontSize: 12, marginTop: 12 }}>Lead Score và Lead Rank do server tự tính, riêng cho Campaign này. Telesale không thể nhập hoặc sửa điểm trực tiếp.</div>
+    <div style={{ background: '#eff6ff', color: '#1d4ed8', padding: 10, borderRadius: 7, fontSize: 12, marginTop: 12 }}>Lead Score và Lead Rank do server tự tính, riêng cho Campaign này. Sale không thể nhập hoặc sửa điểm trực tiếp.</div>
   </div><div className="modal-footer"><button className="btn btn-secondary" onClick={onClose}>Hủy</button><button className="btn btn-primary" onClick={() => void save()} disabled={saving}><Save size={15} /> {saving ? 'Đang tính điểm...' : 'Lưu & tính điểm'}</button></div></div></div>;
 }
 

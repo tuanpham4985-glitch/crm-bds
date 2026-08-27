@@ -37,8 +37,17 @@ type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTa
 export default function PhanKhachPage() {
   const { phanKhachIds } = useCrmAccess();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
+  // Sale CSKH model: không có role "Telesale" riêng — Leader/Sale đều là
+  // nhân viên vai_tro 'Sale'. Trang này trước đây chỉ Admin vào được, khiến
+  // Leader/Sale không bao giờ tới được chế độ Campaign CSKH của chính họ dù
+  // đã có đủ quyền thao tác (canManageCampaign/canManageMembership, server-
+  // side). Mở trang cho Sale — KHÔNG đổi logic/quyền bên trong chế độ Project
+  // cũ (canManage ở đó vốn đã hỗ trợ non-admin từ đầu, chỉ chưa ai chạm tới).
+  const canAccessPage = isAdmin || user?.vai_tro === 'Sale';
   // Campaign CSKH (M1B.1): chế độ CSKH THEO CAMPAIGN, cộng thêm vào chế độ
   // "Theo Dự án" cũ — giữ nguyên toàn bộ state/luồng cũ bên dưới không đổi.
+  // Sale (không phải Admin) mặc định vào thẳng chế độ Campaign — đúng luồng
+  // của họ; Admin vẫn mặc định "Theo Dự án" như trước, không đổi hành vi cũ.
   const [mode, setMode] = useState<'project' | 'campaign'>('project');
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
@@ -87,6 +96,7 @@ export default function PhanKhachPage() {
 
   useEffect(() => { void loadBase(); }, [loadBase]);
   useEffect(() => { void loadCustomers(selectedProject); }, [selectedProjectId, selectedProject?.ten_du_an, loadCustomers]);
+  useEffect(() => { if (!authLoading && !isAdmin && user) setMode('campaign'); }, [authLoading, isAdmin, user]);
 
   const accessibleProjects = useMemo(() => projects.filter(project =>
     phanKhachIds === null || (Array.isArray(phanKhachIds) && phanKhachIds.includes(project.id_du_an))), [projects, phanKhachIds]);
@@ -164,11 +174,11 @@ export default function PhanKhachPage() {
 
   if (authLoading) return null;
 
-  if (!isAdmin) return (
+  if (!canAccessPage) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
       <AlertTriangle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
       <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
-      <p style={{ fontSize: 13, margin: 0 }}>CRM đang trong giai đoạn setup, tạm thời chỉ Admin/Chủ tịch mới có thể xem</p>
+      <p style={{ fontSize: 13, margin: 0 }}>Chỉ Admin/Ban lãnh đạo hoặc Sale mới có thể xem trang này</p>
     </div>
   );
 
@@ -180,7 +190,7 @@ export default function PhanKhachPage() {
       <button className={mode === 'campaign' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setMode('campaign')}><Layers size={13} /> Theo Campaign</button>
     </div>
 
-    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} /> : <>
+    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} projects={projects} /> : <>
     {notice && <div style={{ padding: '11px 14px', marginBottom: 16, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', background: notice.type === 'ok' ? '#ecfdf5' : notice.type === 'warn' ? '#fffbeb' : '#fef2f2', color: notice.type === 'ok' ? '#047857' : notice.type === 'warn' ? '#a16207' : '#b91c1c' }}>{notice.type === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}<span style={{ flex: 1 }}>{notice.text}</span><button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)}><X size={14} /></button></div>}
     <div className="card" style={{ padding: 16, marginBottom: 16 }}><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><div style={{ minWidth: 280 }}><label className="form-label">Dự án</label><div style={{ position: 'relative' }}><select className="form-select" value={selectedProjectId} onChange={event => setSelectedProjectId(event.target.value)}><option value="">— Chọn dự án —</option>{accessibleProjects.map(project => <option key={project.id_du_an} value={project.id_du_an}>{project.ten_du_an}</option>)}</select><ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} /></div></div>{selectedProject && <><div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9 }}>Trưởng nhóm: <strong style={{ color: 'var(--text-title)' }}>{selectedProject.truong_nhom || 'Chưa cấu hình'}</strong></div>{canManage && <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto', marginBottom: 3 }} onClick={openTeam}><Settings size={14} /> Cấu hình team</button>}</>}</div></div>
 

@@ -1,16 +1,16 @@
 'use client';
 
-// Campaign Foundation (M1A) — modal tối thiểu để Admin: chọn/tạo Campaign,
-// phân tập customer đã chọn (từ bảng Khách hàng, tái dùng selectedIds có sẵn)
-// cho Telesale. KHÔNG đụng CSKH interaction/qualification — chỉ tạo/phân
-// CampaignMembership. Đóng scope M1B: không có work-queue, không ghi chăm sóc.
+// Campaign Foundation (M1A) + Sale CSKH model — modal để: (a) Admin chọn/tạo
+// Campaign + chọn Leader phụ trách + phân tập customer đã chọn (từ bảng
+// Khách hàng) cho Sale, HOẶC (b) Leader phân đúng CÁC MEMBERSHIP CHƯA PHÂN
+// của Campaign họ phụ trách (fixedCampaign — tái dùng từ CampaignCskhWorkQueue,
+// bỏ qua bước chọn/tạo Campaign). KHÔNG đụng CSKH interaction/qualification —
+// chỉ tạo/phân CampaignMembership. Không có role "Telesale" riêng — người
+// được phân là nhân viên vai_tro 'Sale' (eligibleCampaignSales).
 import { useEffect, useState } from 'react';
 import { Layers, Loader2, Save, Users, X } from 'lucide-react';
-import type { Campaign, NhanVien } from '@/lib/types';
-
-function isTelesale(employee: NhanVien): boolean {
-  return `${employee.employee_type || ''} ${employee.vai_tro || ''}`.toLowerCase().match(/telesale|cskh/) !== null;
-}
+import type { Campaign, DuAn, NhanVien } from '@/lib/types';
+import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
 
 type Mode = 'none' | 'round_robin' | 'quantity';
 
@@ -24,28 +24,47 @@ interface DistributeResult {
   stillUnassigned: number;
 }
 
-export function CampaignDistributeModal({ customerIds, employees, onClose, onDone }: {
+export function CampaignDistributeModal({ customerIds, employees, projects, isAdmin, fixedCampaign, onClose, onDone }: {
   customerIds: string[];
   employees: NhanVien[];
+  projects: DuAn[];
+  isAdmin: boolean;
+  /** Khi có giá trị (Leader phân data cho Campaign của chính họ): bỏ qua bước chọn/tạo Campaign. */
+  fixedCampaign?: { id: string; name: string; id_du_an?: string | null };
   onClose: () => void;
   onDone: () => void;
 }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(!fixedCampaign);
   const [campaignId, setCampaignId] = useState<string>('');
   const [creatingNew, setCreatingNew] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newProject, setNewProject] = useState('');
-  const [selectedTelesales, setSelectedTelesales] = useState<string[]>([]);
+  const [newProjectId, setNewProjectId] = useState('');
+  const [newLeaderName, setNewLeaderName] = useState('');
+  const [selectedSales, setSelectedSales] = useState<string[]>([]);
   const [mode, setMode] = useState<Mode>('none');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<DistributeResult | null>(null);
 
-  const activeTelesales = employees.filter(item => item.trang_thai !== 'Nghỉ việc' && isTelesale(item));
+  const activeCampaign = fixedCampaign || campaigns.find(item => item.id === campaignId);
+  // Chưa chọn/tạo Campaign nào (bước tạo mới của Admin — POST /api/campaigns
+  // chỉ Admin gọi được) -> chưa có gì để thu hẹp, coi như không giới hạn.
+  // Khi ĐÃ có activeCampaign: dùng đúng eligibleCampaignSales — nếu Leader
+  // không có roster đáng tin cậy, kết quả blocked:true và KHÔNG được rơi về
+  // toàn bộ Sale công ty (đúng kiến trúc đã duyệt).
+  const eligibility = activeCampaign
+    ? eligibleCampaignSales(isAdmin, activeCampaign, projects, employees)
+    : { blocked: false as const, scoped: false, sales: employees.filter(item => item.trang_thai !== 'Nghỉ việc' && item.vai_tro === 'Sale') };
+  const eligibleSales = eligibility.blocked ? [] : eligibility.sales;
 
   useEffect(() => {
+    if (eligibility.blocked && mode !== 'none') setMode('none');
+  }, [eligibility.blocked, mode]);
+
+  useEffect(() => {
+    if (fixedCampaign) return;
     (async () => {
       setLoadingCampaigns(true);
       try {
@@ -58,27 +77,41 @@ export function CampaignDistributeModal({ customerIds, employees, onClose, onDon
       } catch { /* để trống, form vẫn dùng được cho tạo mới */ }
       finally { setLoadingCampaigns(false); }
     })();
-  }, []);
+  }, [fixedCampaign]);
 
-  function toggleTelesale(name: string) {
-    setSelectedTelesales(current => current.includes(name) ? current.filter(item => item !== name) : [...current, name]);
+  function toggleSale(name: string) {
+    setSelectedSales(current => current.includes(name) ? current.filter(item => item !== name) : [...current, name]);
   }
 
   async function submit() {
     setError('');
-    if (creatingNew && !newName.trim()) { setError('Nhập tên Campaign.'); return; }
-    if (!creatingNew && !campaignId) { setError('Chọn một Campaign.'); return; }
-    if ((mode === 'round_robin' || mode === 'quantity') && selectedTelesales.length === 0) {
-      setError('Chọn ít nhất 1 Telesale để phân, hoặc chọn "Chưa phân (chỉ thêm vào Campaign)".');
+    if (!fixedCampaign) {
+      if (creatingNew && !newName.trim()) { setError('Nhập tên Campaign.'); return; }
+      if (!creatingNew && !campaignId) { setError('Chọn một Campaign.'); return; }
+    }
+    if ((mode === 'round_robin' || mode === 'quantity') && eligibility.blocked) {
+      setError(eligibility.reason);
+      return;
+    }
+    if ((mode === 'round_robin' || mode === 'quantity') && selectedSales.length === 0) {
+      setError('Chọn ít nhất 1 Sale để phân, hoặc chọn "Chưa phân (chỉ thêm vào Campaign)".');
       return;
     }
     setSubmitting(true);
     try {
-      let targetId = campaignId;
-      if (creatingNew) {
+      let targetId = fixedCampaign?.id || campaignId;
+      if (!fixedCampaign && creatingNew) {
+        const project = projects.find(item => item.id_du_an === newProjectId);
+        const leader = employees.find(item => item.ho_ten === newLeaderName);
         const createRes = await fetch('/api/campaigns', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: newName.trim(), ten_du_an: newProject.trim() || undefined }),
+          body: JSON.stringify({
+            name: newName.trim(),
+            id_du_an: project?.id_du_an || undefined,
+            ten_du_an: project?.ten_du_an || undefined,
+            owner_id: leader?.id_nhan_vien || undefined,
+            owner_name: leader?.ho_ten || undefined,
+          }),
         });
         const created = await createRes.json();
         if (!created.success) throw new Error(created.error);
@@ -86,7 +119,7 @@ export function CampaignDistributeModal({ customerIds, employees, onClose, onDon
       }
       const distributeRes = await fetch(`/api/campaigns/${targetId}/distribute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customer_ids: customerIds, telesale_names: selectedTelesales, mode, quantities }),
+        body: JSON.stringify({ customer_ids: customerIds, telesale_names: selectedSales, mode, quantities }),
       });
       const distributed = await distributeRes.json();
       if (!distributed.success) throw new Error(distributed.error);
@@ -103,7 +136,7 @@ export function CampaignDistributeModal({ customerIds, employees, onClose, onDon
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" style={{ maxWidth: 620 }} onClick={event => event.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="modal-title"><Layers size={18} /> Thêm vào Campaign &amp; phân Telesale</h3>
+          <h3 className="modal-title"><Layers size={18} /> {fixedCampaign ? `Phân Sale — ${fixedCampaign.name}` : 'Thêm vào Campaign & phân Sale'}</h3>
           <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
@@ -117,7 +150,7 @@ export function CampaignDistributeModal({ customerIds, employees, onClose, onDon
                 <div>Đã có sẵn trong Campaign: <strong>{result.alreadyMember}</strong></div>
                 <div>Vừa thêm mới: <strong>{result.created}</strong></div>
                 <div>Đã phân từ trước: <strong>{result.alreadyAssigned}</strong></div>
-                <div>Vừa phân Telesale: <strong>{result.newlyAssigned}</strong></div>
+                <div>Vừa phân Sale: <strong>{result.newlyAssigned}</strong></div>
                 <div style={{ gridColumn: '1 / -1' }}>Còn chưa phân: <strong>{result.stillUnassigned}</strong></div>
                 {result.notFound.length > 0 && <div style={{ color: '#b91c1c' }}>Không tìm thấy: <strong>{result.notFound.length}</strong></div>}
               </div>
@@ -130,24 +163,31 @@ export function CampaignDistributeModal({ customerIds, employees, onClose, onDon
                 Đang thao tác trên <strong>{customerIds.length}</strong> khách hàng đã chọn.
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Campaign</label>
-                {loadingCampaigns ? <Loader2 size={16} className="spin" /> : (
-                  <>
-                    {!creatingNew && (
-                      <select className="form-select" value={campaignId} onChange={event => setCampaignId(event.target.value)}>
-                        <option value="">— Chọn Campaign —</option>
-                        {campaigns.map(item => <option key={item.id} value={item.id}>{item.name}{item.ten_du_an ? ` · ${item.ten_du_an}` : ''}</option>)}
-                      </select>
-                    )}
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6 }} onClick={() => setCreatingNew(current => !current)}>
-                      {creatingNew ? '← Chọn Campaign có sẵn' : '+ Tạo Campaign mới'}
-                    </button>
-                  </>
-                )}
-              </div>
+              {fixedCampaign ? (
+                <div className="form-group">
+                  <label className="form-label">Campaign</label>
+                  <div style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 7, fontSize: 13, fontWeight: 600 }}>{fixedCampaign.name}</div>
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label className="form-label">Campaign</label>
+                  {loadingCampaigns ? <Loader2 size={16} className="spin" /> : (
+                    <>
+                      {!creatingNew && (
+                        <select className="form-select" value={campaignId} onChange={event => setCampaignId(event.target.value)}>
+                          <option value="">— Chọn Campaign —</option>
+                          {campaigns.map(item => <option key={item.id} value={item.id}>{item.name}{item.ten_du_an ? ` · ${item.ten_du_an}` : ''}</option>)}
+                        </select>
+                      )}
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6 }} onClick={() => setCreatingNew(current => !current)}>
+                        {creatingNew ? '← Chọn Campaign có sẵn' : '+ Tạo Campaign mới'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
 
-              {creatingNew && (
+              {!fixedCampaign && creatingNew && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label className="form-label">Tên Campaign *</label>
@@ -155,36 +195,52 @@ export function CampaignDistributeModal({ customerIds, employees, onClose, onDon
                   </div>
                   <div className="form-group">
                     <label className="form-label">Dự án (tuỳ chọn)</label>
-                    <input className="form-input" value={newProject} onChange={event => setNewProject(event.target.value)} />
+                    <select className="form-select" value={newProjectId} onChange={event => setNewProjectId(event.target.value)}>
+                      <option value="">— Không gắn Dự án —</option>
+                      {projects.filter(item => item.hien_thi !== 0).map(item => <option key={item.id_du_an} value={item.id_du_an}>{item.ten_du_an}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label className="form-label">Leader phụ trách</label>
+                    <select className="form-select" value={newLeaderName} onChange={event => setNewLeaderName(event.target.value)}>
+                      <option value="">— Chưa cấu hình —</option>
+                      {employees.filter(item => item.trang_thai !== 'Nghỉ việc').map(item => <option key={item.id_nhan_vien} value={item.ho_ten}>{item.ho_ten} · {item.employee_type}</option>)}
+                    </select>
                   </div>
                 </div>
               )}
 
+              {eligibility.blocked && (
+                <div style={{ padding: 12, background: '#fff7ed', color: '#9a3412', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
+                  {eligibility.reason}
+                </div>
+              )}
+
               <div className="form-group">
-                <label className="form-label">Cách phân Telesale</label>
+                <label className="form-label">Cách phân Sale</label>
                 <div style={{ display: 'flex', gap: 14, fontSize: 13 }}>
                   <label style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                     <input type="radio" checked={mode === 'none'} onChange={() => setMode('none')} /> Chưa phân (chỉ thêm vào Campaign)
                   </label>
-                  <label style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                    <input type="radio" checked={mode === 'round_robin'} onChange={() => setMode('round_robin')} /> Chia đều (round-robin)
+                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', opacity: eligibility.blocked ? 0.5 : 1 }}>
+                    <input type="radio" checked={mode === 'round_robin'} disabled={eligibility.blocked} onChange={() => setMode('round_robin')} /> Chia đều (round-robin)
                   </label>
-                  <label style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                    <input type="radio" checked={mode === 'quantity'} onChange={() => setMode('quantity')} /> Theo số lượng
+                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', opacity: eligibility.blocked ? 0.5 : 1 }}>
+                    <input type="radio" checked={mode === 'quantity'} disabled={eligibility.blocked} onChange={() => setMode('quantity')} /> Theo số lượng
                   </label>
                 </div>
               </div>
 
-              {mode !== 'none' && (
+              {!eligibility.blocked && mode !== 'none' && (
                 <div className="form-group">
-                  <label className="form-label">Chọn Telesale</label>
+                  <label className="form-label">Chọn Sale</label>
                   <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
-                    {activeTelesales.length === 0 && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-muted)' }}>Không có Telesale/CSKH đang hoạt động.</div>}
-                    {activeTelesales.map(item => (
+                    {eligibleSales.length === 0 && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-muted)' }}>Không có Sale nào đang hoạt động trong phạm vi Campaign này.</div>}
+                    {eligibleSales.map(item => (
                       <div key={item.id_nhan_vien} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
-                        <input type="checkbox" checked={selectedTelesales.includes(item.ho_ten)} onChange={() => toggleTelesale(item.ho_ten)} />
+                        <input type="checkbox" checked={selectedSales.includes(item.ho_ten)} onChange={() => toggleSale(item.ho_ten)} />
                         <span style={{ flex: 1, fontSize: 13 }}>{item.ho_ten}</span>
-                        {mode === 'quantity' && selectedTelesales.includes(item.ho_ten) && (
+                        {mode === 'quantity' && selectedSales.includes(item.ho_ten) && (
                           <input
                             type="number" min={0} className="form-input" style={{ width: 72, fontSize: 12 }}
                             value={quantities[item.ho_ten] ?? ''}

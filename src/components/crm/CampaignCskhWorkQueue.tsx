@@ -9,12 +9,13 @@
 // Qualified/Hot chỉ hiển thị đúng trạng thái, KHÔNG tạo CrmHandoff/Pipeline/
 // đổi Sale ownership (phạm vi M1B.2).
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, History, Layers, Phone, RefreshCw, Save, Search, X } from 'lucide-react';
-import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamSocEntry, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
+import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, History, Layers, Phone, RefreshCw, Save, Search, Users, X } from 'lucide-react';
+import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamSocEntry, DuAn, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { bucketOf, CSKH_BUCKETS, isOverdue, type MembershipBucket } from '@/lib/campaign-cskh-bucket';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
+import { CampaignDistributeModal } from './CampaignDistributeModal';
 import { MembershipQualificationModal } from './MembershipQualificationModal';
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
@@ -38,7 +39,7 @@ function localDate(value?: string | null): string {
 
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
-export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) {
+export function CampaignCskhWorkQueue({ employees, projects }: { employees: NhanVien[]; projects: DuAn[] }) {
   const { user, isAdmin } = useAuth();
   const [campaigns, setCampaigns] = useState<CampaignType[]>([]);
   const [campaignId, setCampaignId] = useState('');
@@ -51,6 +52,7 @@ export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) 
   const [interactionMember, setInteractionMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [qualificationMember, setQualificationMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [historyMember, setHistoryMember] = useState<CampaignMembershipWithCustomer | null>(null);
+  const [showDistribute, setShowDistribute] = useState(false);
   const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '' });
 
   const loadCampaigns = useCallback(async () => {
@@ -122,6 +124,11 @@ export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) 
   }
 
   const selectedCampaign = campaigns.find(item => item.id === campaignId);
+  // Leader phụ trách (canManageCampaign, server-side) HOẶC Admin mới được phân
+  // Sale cho membership CHƯA PHÂN của Campaign này — cùng authority với
+  // canManageMembership's Campaign-owner nhánh, không suy diễn theo Customer.du_an.
+  const canManageThisCampaign = Boolean(user && (isAdmin || selectedCampaign?.owner_name === user.ho_ten));
+  const unassignedMembers = useMemo(() => members.filter(member => member.assignment_status === 'UNASSIGNED'), [members]);
 
   if (loading && campaigns.length === 0) return <div className="loading-spinner"><div className="spinner" /></div>;
 
@@ -138,8 +145,13 @@ export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) 
             <ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} />
           </div>
         </div>
-        {selectedCampaign && <div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9 }}>Owner: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.owner_name || 'Chưa cấu hình'}</strong></div>}
-        <button className="btn btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => loadMembers(campaignId)} disabled={!campaignId || loading}><RefreshCw size={15} /> Làm mới</button>
+        {selectedCampaign && <div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9 }}>Leader phụ trách: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.owner_name || 'Chưa cấu hình'}</strong></div>}
+        {canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 && (
+          <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setShowDistribute(true)}>
+            <Users size={15} /> Phân Sale ({unassignedMembers.length} chưa phân)
+          </button>
+        )}
+        <button className="btn btn-secondary" style={canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 ? undefined : { marginLeft: 'auto' }} onClick={() => loadMembers(campaignId)} disabled={!campaignId || loading}><RefreshCw size={15} /> Làm mới</button>
       </div>
     </div>
 
@@ -159,7 +171,7 @@ export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) 
       </div>
       <div className="card" style={{ padding: 12, marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <div className="search-wrapper" style={{ flex: 1, minWidth: 240 }}><Search size={15} className="search-icon" /><input className="form-input" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tìm tên, số điện thoại hoặc Telesale..." /></div>
+          <div className="search-wrapper" style={{ flex: 1, minWidth: 240 }}><Search size={15} className="search-icon" /><input className="form-input" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tìm tên, số điện thoại hoặc Sale..." /></div>
         </div>
       </div>
       <MembershipTable
@@ -197,6 +209,18 @@ export function CampaignCskhWorkQueue({ employees }: { employees: NhanVien[] }) 
 
     {qualificationMember && <MembershipQualificationModal campaignId={campaignId} membership={qualificationMember} onClose={() => setQualificationMember(null)} onSaved={(updated, message) => { replaceMember(updated); setQualificationMember(null); setNotice({ type: 'ok', text: message }); }} />}
     {historyMember && <MembershipHistoryModal member={historyMember} onClose={() => setHistoryMember(null)} />}
+
+    {showDistribute && selectedCampaign && (
+      <CampaignDistributeModal
+        customerIds={unassignedMembers.map(member => member.customer_id)}
+        employees={employees}
+        projects={projects}
+        isAdmin={isAdmin}
+        fixedCampaign={{ id: selectedCampaign.id, name: selectedCampaign.name, id_du_an: selectedCampaign.id_du_an }}
+        onClose={() => setShowDistribute(false)}
+        onDone={() => { setShowDistribute(false); void loadMembers(campaignId); }}
+      />
+    )}
   </div>;
 }
 
@@ -207,7 +231,7 @@ function MembershipTable({ members, loading, canActOn, onInteraction, onQualific
   if (loading) return <div className="card"><div className="loading-spinner"><div className="spinner" /></div></div>;
   if (members.length === 0) return <div className="card"><div className="empty-state"><Layers size={38} /><h3>Không có khách hàng phù hợp</h3></div></div>;
   return <div className="card" style={{ padding: 0, overflow: 'hidden' }}><div className="table-wrapper" style={{ overflowX: 'auto' }}><table className="data-table" style={{ minWidth: 1300 }}>
-    <thead><tr><th>Khách hàng</th><th>Telesale</th><th>Trạng thái</th><th>Qualification</th><th>Score/Rank</th><th>Lịch tiếp theo</th><th style={{ textAlign: 'right' }}>Thao tác</th></tr></thead>
+    <thead><tr><th>Khách hàng</th><th>Sale CSKH</th><th>Trạng thái</th><th>Qualification</th><th>Score/Rank</th><th>Lịch tiếp theo</th><th style={{ textAlign: 'right' }}>Thao tác</th></tr></thead>
     <tbody>{members.map(member => {
       const status = member.trang_thai_cham_soc || 'Chưa gọi'; const palette = statusColors[status] || statusColors['Chưa gọi'];
       const actionable = canActOn(member);

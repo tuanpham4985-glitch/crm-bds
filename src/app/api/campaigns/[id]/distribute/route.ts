@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getNhanVien } from '@/lib/data-access';
-import { canManageCampaign, getCrmSessionUser, isTelesale } from '@/lib/crm-auth';
+import { getDuAn, getNhanVien } from '@/lib/data-access';
+import { canManageCampaign, eligibleCampaignSales, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { bulkAddAndDistribute, getCampaign, type DistributionMode } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
@@ -35,17 +35,28 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       : [];
     const telesales: { id_nhan_vien: string; ho_ten: string }[] = [];
     if (telesaleNames.length > 0) {
-      const employees = await getNhanVien();
+      // Không có role "Telesale" riêng — Sale CSKH hợp lệ là nhân viên vai_tro
+      // 'Sale' đang hoạt động, thu hẹp theo team Dự án liên kết nếu Leader
+      // (không phải Admin) thao tác (eligibleCampaignSales, crm-auth.ts).
+      // Nếu KHÔNG xác định được phạm vi Leader→Sale đáng tin cậy (Campaign
+      // không gắn Dự án, hoặc Dự án chưa cấu hình ds_sale) -> CHẶN hẳn, không
+      // được tự suy diễn "toàn bộ Sale công ty" cho Leader (chỉ Admin mới có
+      // quyền đó, và Admin luôn blocked=false).
+      const [employees, projects] = await Promise.all([getNhanVien(), getDuAn()]);
+      const eligibility = eligibleCampaignSales(isCrmAdmin(user), campaign, projects, employees);
+      if (eligibility.blocked) {
+        return NextResponse.json({ success: false, error: eligibility.reason }, { status: 403 });
+      }
       for (const name of telesaleNames) {
-        const target = employees.find(item => item.ho_ten === name && item.trang_thai !== 'Nghỉ việc');
-        if (!target || !isTelesale(target)) {
-          return NextResponse.json({ success: false, error: `"${name}" không phải Telesale/CSKH đang hoạt động` }, { status: 400 });
+        const target = eligibility.sales.find(item => item.ho_ten === name);
+        if (!target) {
+          return NextResponse.json({ success: false, error: `"${name}" không phải Sale hợp lệ trong phạm vi Campaign này` }, { status: 400 });
         }
         telesales.push({ id_nhan_vien: target.id_nhan_vien, ho_ten: target.ho_ten });
       }
     }
     if ((mode === 'round_robin' || mode === 'quantity') && telesales.length === 0) {
-      return NextResponse.json({ success: false, error: 'Chưa chọn Telesale nào để phân' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Chưa chọn Sale nào để phân' }, { status: 400 });
     }
 
     // Client gửi quantities theo TÊN telesale (đồng nhất với telesale_names và
@@ -56,7 +67,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (mode === 'quantity') {
       const raw = body?.quantities;
       if (!raw || typeof raw !== 'object') {
-        return NextResponse.json({ success: false, error: 'Thiếu số lượng phân cho từng Telesale' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Thiếu số lượng phân cho từng Sale' }, { status: 400 });
       }
       quantities = {};
       for (const t of telesales) {

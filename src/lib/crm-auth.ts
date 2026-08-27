@@ -149,3 +149,14 @@ export function isMembershipDirectManager(
   if (!membership.telesale_id) return false;
   return employees.some(employee => employee.id_nhan_vien === membership.telesale_id && employee.ql_truc_tiep === user.ho_ten);
 }
+
+// Không có role "Telesale" riêng trong hệ thống (xem VAI_TRO) — người thực
+// hiện Campaign CSKH luôn là nhân viên vai_tro 'Sale' đang hoạt động. Thay
+// thế isTelesale() (match text tự do theo employee_type, không đáng tin cậy —
+// đa số Sale thật không có "telesale"/"cskh" trong Position) CHỈ cho phạm vi
+// Campaign; isTelesale() vẫn giữ nguyên cho luồng CSKH theo Dự án cũ.
+//
+// Re-export từ module thuần (không import next/headers) để component
+// 'use client' (CampaignDistributeModal.tsx) dùng chung được logic mà không
+// kéo next/headers vào client bundle — xem campaign-sale-eligibility.ts.
+export { isActiveSale, eligibleCampaignSales } from './campaign-sale-eligibility';

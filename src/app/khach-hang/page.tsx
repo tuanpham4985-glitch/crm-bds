@@ -1429,6 +1429,8 @@ export default function KhachHangPage() {
         <CampaignDistributeModal
           customerIds={[...selectedIds]}
           employees={employees}
+          projects={duAnList}
+          isAdmin={isAdmin}
           onClose={() => setShowCampaignModal(false)}
           onDone={() => setSelectedIds(new Set())}
         />
