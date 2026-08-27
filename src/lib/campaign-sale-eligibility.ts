@@ -13,7 +13,7 @@ export function isActiveSale(employee: Pick<NhanVien, 'vai_tro' | 'trang_thai'>)
   return employee.vai_tro === 'Sale' && employee.trang_thai !== 'Nghỉ việc';
 }
 
-function parseSaleRoster(raw?: string | null): string[] | null {
+export function parseSaleRoster(raw?: string | null): string[] | null {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);

@@ -225,6 +225,8 @@ export interface CampaignMembership {
 
 export interface CampaignMembershipWithCustomer extends CampaignMembership {
   customer: { ten_KH: string; so_dien_thoai: string; email: string } | null;
+  /** M1B.2 — read-only join của CrmHandoff khi membership.handoff_id đã set. */
+  handoff?: { id: string; status: string; sale_name: string | null } | null;
 }
 
 export type MucDichLead = 'Để ở' | 'Đầu tư' | 'Cho thuê' | 'Khác';

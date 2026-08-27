@@ -9,6 +9,7 @@ import { appendBanGiao, appendChamSoc, parseJsonList } from '../crm-workflow';
 import { calculateLeadQuality } from './scoring';
 import type { CrmSessionUser } from '../crm-auth';
 import { isHandoffEligible, isOwnershipLocked, validRejectionReason } from './handoff-policy';
+import { isActiveSale, parseSaleRoster } from '../campaign-sale-eligibility';
 
 export class TransactionalCrmRequiredError extends Error {
   constructor() { super('Qualified Lead Funnel yêu cầu PostgreSQL CRM được bật và đã migrate.'); }
@@ -37,6 +38,21 @@ async function serializable<T>(operation: (tx: Tx) => Promise<T>): Promise<T> {
 }
 
 function nowIso(): string { return new Date().toISOString(); }
+
+/**
+ * M1B.2 — quyết định THUẦN (không đụng DB) cho guard chống Handoff conflict
+ * đa nguồn. So khớp provenance: cả 2 phía cùng null (legacy-legacy) hoặc
+ * cùng đúng 1 CampaignMembership id -> KHÔNG conflict (cho phép re-target
+ * trong cùng phiên/nguồn). Khác nhau (VD: Handoff đang mở từ Campaign A,
+ * request đến từ Campaign B hoặc từ legacy) -> conflict, phải BLOCK, không
+ * bao giờ silently re-target handoff của nguồn khác.
+ */
+export function handoffConflictsWithOtherSource(
+  activeCampaignMembershipId: string | null,
+  requestedCampaignMembershipId: string | null,
+): boolean {
+  return activeCampaignMembershipId !== requestedCampaignMembershipId;
+}
 
 function customerScoreInput(customer: Record<string, unknown>): Parameters<typeof calculateLeadQuality>[0] {
   return customer as Parameters<typeof calculateLeadQuality>[0];
@@ -269,6 +285,22 @@ async function ensurePipeline(tx: Tx, customer: Awaited<ReturnType<Tx['khachHang
   return pipeline;
 }
 
+/**
+ * M1B.2 — Campaign-scoped initiation của action 'handoff'. CHỈ set khi request
+ * đến từ CampaignCskhWorkQueue (không phải legacy /phan-khach). Khi có mặt:
+ * (a) transaction re-validate membership vẫn 'Quan tâm', actor vẫn Admin/đúng
+ * Campaign.owner, target Sale vẫn active + (nếu Leader) vẫn thuộc
+ * Project.ds_sale — KHÔNG tin bất kỳ giá trị nào client gửi lên mà không
+ * kiểm lại; (b) link CrmHandoff.campaign_membership_id +
+ * CampaignMembership.handoff_id/outcome; (c) chặn conflict nếu Customer đã
+ * có active Handoff từ nguồn KHÁC (campaign khác hoặc legacy) — không bao
+ * giờ silently re-target handoff khác nguồn.
+ */
+export interface CampaignHandoffInitiation {
+  membershipId: string;
+  actorIsAdmin: boolean;
+}
+
 export async function transitionHandoffTransactional(input: {
   customerId: string;
   actor: CrmSessionUser;
@@ -276,6 +308,7 @@ export async function transitionHandoffTransactional(input: {
   action: 'handoff' | 'accept' | 'reject';
   targetSale?: { id_nhan_vien: string; ho_ten: string };
   reason?: string;
+  campaignHandoff?: CampaignHandoffInitiation;
 }) {
   return serializable(async tx => {
     const customer = await tx.khachHang.findUnique({ where: { id_khach_hang: input.customerId } });
@@ -294,7 +327,42 @@ export async function transitionHandoffTransactional(input: {
 
     if (input.action === 'handoff') {
       if (!input.targetSale) throw new Error('SALE_REQUIRED');
+
+      // Re-validate mọi authority/eligibility TRONG transaction — không tin
+      // membershipId/targetSale client gửi lên mà không kiểm lại DB thật.
+      let membership: Prisma.CampaignMembershipGetPayload<{ include: { campaign: true } }> | null = null;
+      if (input.campaignHandoff) {
+        membership = await tx.campaignMembership.findUnique({
+          where: { id: input.campaignHandoff.membershipId },
+          include: { campaign: true },
+        });
+        if (!membership) throw new Error('MEMBERSHIP_NOT_FOUND');
+        if (membership.customer_id !== input.customerId) throw new Error('MEMBERSHIP_CUSTOMER_MISMATCH');
+        if (membership.trang_thai_cham_soc !== 'Quan tâm') throw new Error('MEMBERSHIP_NOT_CANDIDATE');
+        if (!input.campaignHandoff.actorIsAdmin && membership.campaign.owner_name !== input.actor.ho_ten) {
+          throw new Error('NOT_CAMPAIGN_OWNER');
+        }
+        const targetEmployee = await tx.nhanVien.findUnique({ where: { id_nhan_vien: input.targetSale.id_nhan_vien } });
+        if (!targetEmployee || !isActiveSale(targetEmployee)) {
+          throw new Error('TARGET_SALE_INVALID');
+        }
+        if (!input.campaignHandoff.actorIsAdmin) {
+          if (!membership.campaign.id_du_an) throw new Error('NO_SALE_SCOPE');
+          const project = await tx.duAn.findUnique({ where: { id_du_an: membership.campaign.id_du_an } });
+          const roster = project ? parseSaleRoster(project.ds_sale) : null;
+          if (!roster || roster.length === 0 || !roster.includes(targetEmployee.ho_ten)) {
+            throw new Error('TARGET_SALE_OUT_OF_ROSTER');
+          }
+        }
+      }
+
+      // Conflict: Customer đã có active Handoff từ nguồn KHÁC (campaign khác
+      // hoặc legacy) — BLOCK, không silently re-target handoff của nguồn khác.
       if (active) {
+        const requestedMembershipId = input.campaignHandoff?.membershipId ?? null;
+        if (handoffConflictsWithOtherSource(active.campaign_membership_id, requestedMembershipId)) {
+          throw new Error('HANDOFF_CONFLICT_OTHER_SOURCE');
+        }
         active = await tx.crmHandoff.update({
           where: { id: active.id },
           data: { sale_id: input.targetSale.id_nhan_vien, sale_name: input.targetSale.ho_ten, status: 'WAITING_ACCEPTANCE', manager_note: input.reason },
@@ -303,10 +371,12 @@ export async function transitionHandoffTransactional(input: {
         active = await tx.crmHandoff.create({ data: {
           customer_id: input.customerId, idempotency_key: `handoff:${input.idempotencyKey}`,
           active_key: input.customerId, status: 'WAITING_ACCEPTANCE',
-          telesale_name: customer.telesale_phu_trach || '', sale_id: input.targetSale.id_nhan_vien,
+          telesale_name: membership?.telesale_name || customer.telesale_phu_trach || input.actor.ho_ten, sale_id: input.targetSale.id_nhan_vien,
           sale_name: input.targetSale.ho_ten, created_by_id: input.actor.id_nhan_vien,
           created_by_name: input.actor.ho_ten, manager_note: input.reason,
-          qualification_score: customer.lead_quality_score, qualification_rank: customer.lead_quality_rank,
+          qualification_score: membership?.lead_quality_score ?? customer.lead_quality_score,
+          qualification_rank: membership?.lead_quality_rank ?? customer.lead_quality_rank,
+          campaign_membership_id: membership?.id,
         } });
       }
       const event: CrmBanGiaoEntry = { id: eventId, thoi_gian: now.toISOString(), hanh_dong: 'Bàn giao', nguoi_thuc_hien: input.actor.ho_ten, telesale: active.telesale_name, sale_nhan: input.targetSale.ho_ten, ghi_chu: input.reason };
@@ -315,6 +385,12 @@ export async function transitionHandoffTransactional(input: {
         ban_giao_luc: now.toISOString(), sale_xac_nhan_luc: null,
         lich_su_ban_giao: appendBanGiao(customer.lich_su_ban_giao ?? undefined, event), row_version: { increment: 1 },
       } });
+      if (membership) {
+        await tx.campaignMembership.update({
+          where: { id: membership.id },
+          data: { handoff_id: active.id, outcome: 'HANDOFF_INITIATED', row_version: { increment: 1 } },
+        });
+      }
       return { customer: updated, handoff: active, pipeline: null };
     }
 
@@ -338,6 +414,15 @@ export async function transitionHandoffTransactional(input: {
       } });
       const pipeline = await ensurePipeline(tx, updated);
       if (pipeline) await tx.pipeline.update({ where: { id_pipeline: pipeline.id_pipeline }, data: { sale_phu_trach: active.sale_name || '', ngay_cap_nhat: now.toISOString() } });
+      // M1B.2 additive: nếu Handoff này bắt nguồn từ 1 CampaignMembership,
+      // phản ánh outcome ACCEPTED lên đó — không ảnh hưởng Handoff legacy
+      // (campaign_membership_id null -> bỏ qua, hành vi cũ giữ nguyên).
+      if (active.campaign_membership_id) {
+        await tx.campaignMembership.update({
+          where: { id: active.campaign_membership_id },
+          data: { outcome: 'HANDOFF_ACCEPTED', row_version: { increment: 1 } },
+        });
+      }
       return { customer: updated, handoff: active, pipeline };
     }
 
@@ -353,6 +438,12 @@ export async function transitionHandoffTransactional(input: {
       trang_thai_ban_giao: 'Từ chối', sale_xac_nhan_luc: now.toISOString(),
       lich_su_ban_giao: appendBanGiao(customer.lich_su_ban_giao ?? undefined, event), row_version: { increment: 1 },
     } });
+    if (active.campaign_membership_id) {
+      await tx.campaignMembership.update({
+        where: { id: active.campaign_membership_id },
+        data: { outcome: 'HANDOFF_REJECTED', row_version: { increment: 1 } },
+      });
+    }
     return { customer: updated, handoff: active, pipeline: null };
   });
 }

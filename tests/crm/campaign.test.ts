@@ -497,32 +497,37 @@ test('CampaignCskhWorkQueue: CampaignLeaderEditModal save qua existing PUT /api/
 
 // --- Admin Test Data Cleanup: xóa Campaign an toàn qua application ---------
 
-// Evidence (không phải assumption): grep toàn bộ src/ xác nhận KHÔNG có code
-// path nào ghi CampaignMembership.handoff_id hay CrmHandoff.campaign_membership_id
-// hôm nay (M1B.2 đóng) — nên cả 2 field luôn null trong dữ liệu thật hiện tại.
-// Guard vẫn phải là truy vấn DB thật (queryHandoffBlockReason), KHÔNG được bỏ
-// qua chỉ vì "chắc luôn null" — test này ghi lại bằng chứng, không phải để
-// thay thế cho DB check.
-test('evidence: không có code path nào (ngoài types.ts/schema) ghi CampaignMembership.handoff_id hoặc CrmHandoff.campaign_membership_id — cả 2 field luôn null hôm nay, nhưng preflight/delete vẫn phải truy vấn DB thật, không được giả định', () => {
-  // Chỉ xét các dòng CODE THẬT (bỏ comment, bỏ nội dung nằm trong string
-  // literal — VD thông báo lỗi tiếng Việt nhắc tên field trong ngoặc kép)
-  // — tránh false-positive từ comment giải thích hoặc error message.
+// Evidence gốc (session Admin Cleanup, M1B.2 đóng): grep toàn bộ src/ xác
+// nhận KHÔNG có code path nào ghi 2 field này — nên guard vẫn PHẢI là truy
+// vấn DB thật (queryHandoffBlockReason), không được giả định "chắc luôn
+// null". M1B.2 (session sau) giờ đã CHỦ Ý bắt đầu ghi 2 field này qua đúng 1
+// engine sanctioned (transitionHandoffTransactional) — evidence gốc hết hiệu
+// lực. Test dưới đây giữ nguyên tinh thần gốc ở mức khác: xác nhận KHÔNG có
+// code path nào NGOÀI 2 file đã audit (transactional-workflow.ts — write;
+// campaign.ts — read-only join + Admin Cleanup guard) từng đụng tới 2 field
+// này — nếu một engine song song nào khác xuất hiện sau này, test này báo đỏ.
+test('CampaignMembership.handoff_id và CrmHandoff.campaign_membership_id chỉ được đụng tới (code thật, không tính comment) trong đúng 2 file đã audit (transactional-workflow.ts, campaign.ts) — không có code path song song nào khác ghi/đọc trực tiếp 2 field này', () => {
+  // Comment giải thích ở các file khác (route mới, route legacy, UI) được
+  // phép nhắc tên field — chỉ CODE THẬT (bỏ comment/string literal) mới bị
+  // tính, tránh false-positive từ prose giải thích kiến trúc.
   const realCodeLines = (content: string) => content.split('\n')
     .map(line => line.trim())
     .filter(line => line && !line.startsWith('//') && !line.startsWith('*') && !line.startsWith('/*'))
     .map(line => line.replace(/'[^']*'|"[^"]*"|`[^`]*`/g, ''));
 
-  const files = listSourceFiles('src').filter(f => !f.replace(/\\/g, '/').endsWith('src/lib/types.ts'));
-  const handoffIdLines: string[] = [];
-  const membershipRefLines: string[] = [];
+  const allowedBasenames = new Set(['transactional-workflow.ts', 'campaign.ts']);
+  const files = listSourceFiles('src').filter(f => f.replace(/\\/g, '/').split('/').pop() !== 'types.ts');
+  const handoffIdOutsideAllowed: string[] = [];
+  const membershipRefOutsideAllowed: string[] = [];
   for (const file of files) {
+    if (allowedBasenames.has(file.replace(/\\/g, '/').split('/').pop() || '')) continue;
     for (const line of realCodeLines(readFileSync(file, 'utf8'))) {
-      if (line.includes('handoff_id') && !/handoff_id: \{ not: null \}|hasMembershipHandoffId/.test(line)) handoffIdLines.push(`${file}: ${line}`);
-      if (line.includes('campaign_membership_id') && !/campaign_membership_id: \{ in: membershipIds \}|hasReferencingHandoff/.test(line)) membershipRefLines.push(`${file}: ${line}`);
+      if (line.includes('handoff_id')) handoffIdOutsideAllowed.push(`${file}: ${line}`);
+      if (line.includes('campaign_membership_id')) membershipRefOutsideAllowed.push(`${file}: ${line}`);
     }
   }
-  assert.deepEqual(handoffIdLines, [], 'handoff_id chỉ được đọc (read-filter) trong guard mới — không nơi nào ghi giá trị (types.ts declaration loại trừ riêng)');
-  assert.deepEqual(membershipRefLines, [], 'campaign_membership_id chỉ được đọc trong guard mới (schema field, không ai ghi) — xác nhận field này thật sự luôn null hôm nay');
+  assert.deepEqual(handoffIdOutsideAllowed, [], 'handoff_id (code thật) chỉ được đụng trong transactional-workflow.ts (write, sanctioned) hoặc campaign.ts (read-only join + Admin Cleanup guard)');
+  assert.deepEqual(membershipRefOutsideAllowed, [], 'campaign_membership_id (code thật) chỉ được đụng trong transactional-workflow.ts hoặc campaign.ts — không có engine song song nào khác');
 });
 
 test('campaignHandoffBlockReason: cả 2 chiều false -> null (không block)', () => {

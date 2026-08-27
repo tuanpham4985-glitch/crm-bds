@@ -209,7 +209,22 @@ test('11) legacy CSKH theo Dự án (isTelesale, /api/crm/telesale/*, transactio
   const workflowSrc = readFileSync(resolve('src/lib/crm-funnel/transactional-workflow.ts'), 'utf8');
   assert.match(workflowSrc, /export async function recordInteractionTransactional/);
   assert.match(workflowSrc, /export async function transitionHandoffTransactional/);
-  assert.doesNotMatch(workflowSrc, /eligibleCampaignSales|campaign-sale-eligibility/, 'legacy workflow không phụ thuộc vào Sale CSKH eligibility mới của Campaign');
+  // M1B.2: transactional-workflow.ts giờ import isActiveSale/parseSaleRoster
+  // (2 hàm thuần hẹp, KHÔNG phải eligibleCampaignSales() — bộ resolver đầy đủ
+  // dùng cho CSKH distribution) để re-validate target Sale trong nhánh
+  // Campaign-aware MỚI của transitionHandoffTransactional. Bất biến cần giữ
+  // không còn là "không import gì từ campaign-sale-eligibility" (đã hết hiệu
+  // lực) mà là: (a) không dùng full eligibleCampaignSales(), (b) 2 hàm import
+  // chỉ được gọi bên TRONG guard "if (input.campaignHandoff)" — recordInteractionTransactional/
+  // updateQualificationTransactional (100% legacy, Customer-global) và nhánh
+  // accept/reject/legacy-handoff của transitionHandoffTransactional tuyệt đối
+  // không gọi tới, hành vi giữ nguyên 100%.
+  assert.doesNotMatch(workflowSrc, /eligibleCampaignSales/, 'legacy workflow không được dùng full eligibleCampaignSales() — chỉ 2 hàm thuần hẹp isActiveSale/parseSaleRoster cho re-check target Sale trong nhánh Campaign-aware');
+  assert.match(workflowSrc, /import \{ isActiveSale, parseSaleRoster \} from '\.\.\/campaign-sale-eligibility';/);
+  const recordInteractionBody = workflowSrc.slice(workflowSrc.indexOf('export async function recordInteractionTransactional'), workflowSrc.indexOf('export async function updateQualificationTransactional'));
+  const updateQualificationBody = workflowSrc.slice(workflowSrc.indexOf('export async function updateQualificationTransactional'), workflowSrc.indexOf('async function ensurePipeline'));
+  assert.doesNotMatch(recordInteractionBody, /isActiveSale|parseSaleRoster/, 'recordInteractionTransactional (Customer-global, legacy) không được gọi tới Campaign Sale eligibility');
+  assert.doesNotMatch(updateQualificationBody, /isActiveSale|parseSaleRoster/, 'updateQualificationTransactional (Customer-global, legacy) không được gọi tới Campaign Sale eligibility');
 
   const pageSrc = readFileSync(resolve('src/app/phan-khach/page.tsx'), 'utf8');
   assert.match(pageSrc, /function isTelesale\(employee: NhanVien\)/, 'chế độ Theo Dự án cũ vẫn dùng đúng isTelesale local như trước, không đổi');

@@ -33,10 +33,15 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });
     const code = error instanceof Error ? error.message : '';
-    const status = ['HANDOFF_ALREADY_ACCEPTED', 'ACTIVE_HANDOFF_NOT_FOUND'].includes(code) ? 409 : code === 'NOT_HANDOFF_RECEIVER' ? 403 : 500;
+    // M1B.2: HANDOFF_CONFLICT_OTHER_SOURCE — Customer đã có Handoff đang mở từ
+    // nguồn khác (Campaign khác hoặc Campaign vs legacy) — chặn silently
+    // re-target, không đổi hành vi cho Handoff cùng nguồn (100% Handoff legacy
+    // hiện có vẫn campaign_membership_id = null cả 2 phía -> không bị ảnh hưởng).
+    const status = ['HANDOFF_ALREADY_ACCEPTED', 'ACTIVE_HANDOFF_NOT_FOUND', 'HANDOFF_CONFLICT_OTHER_SOURCE'].includes(code) ? 409 : code === 'NOT_HANDOFF_RECEIVER' ? 403 : 500;
     const messages: Record<string, string> = {
       HANDOFF_ALREADY_ACCEPTED: 'Sale đã nhận khách; ownership đã khóa', ACTIVE_HANDOFF_NOT_FOUND: 'Không có handoff active',
       NOT_HANDOFF_RECEIVER: 'Bạn không phải người nhận handoff', REJECTION_REASON_REQUIRED: 'Từ chối phải có lý do',
+      HANDOFF_CONFLICT_OTHER_SOURCE: 'Khách hàng đang có Handoff chờ xử lý từ nguồn khác',
     };
     return NextResponse.json({ success: false, error: messages[code] || 'Không thể xử lý bàn giao' }, { status });
   }

@@ -116,6 +116,14 @@ export async function getCampaignMembersWithCustomers(campaignId: string) {
       })
     : [];
   const customerMap = new Map(customers.map(customer => [customer.id_khach_hang, customer]));
+  // M1B.2 — join read-only CrmHandoff summary (status/sale_name) khi membership
+  // đã có handoff_id, để UI biết ai là receiver hiện tại (hiện nút Accept/
+  // Reject đúng người) mà không cần fetch riêng cho từng membership.
+  const handoffIds = [...new Set(members.map(member => member.handoff_id).filter((id): id is string => Boolean(id)))];
+  const handoffs = handoffIds.length
+    ? await prisma.crmHandoff.findMany({ where: { id: { in: handoffIds } }, select: { id: true, status: true, sale_name: true } })
+    : [];
+  const handoffMap = new Map(handoffs.map(handoff => [handoff.id, handoff]));
   return members.map(member => ({
     ...member,
     customer: customerMap.get(member.customer_id)
@@ -125,6 +133,7 @@ export async function getCampaignMembersWithCustomers(campaignId: string) {
           email: customerMap.get(member.customer_id)!.email || '',
         }
       : null,
+    handoff: member.handoff_id ? handoffMap.get(member.handoff_id) ?? null : null,
   }));
 }
 

@@ -67,10 +67,25 @@ test('CampaignCskhWorkQueue: sau khi lưu interaction/qualification thành công
   assert.match(src, /const stats = useMemo\(\(\) => \{[\s\S]*?\}, \[members\]\);/);
 });
 
-test('CampaignCskhWorkQueue + MembershipQualificationModal: không có bất kỳ lệnh gọi CrmHandoff/Pipeline nào (M1B.2 chưa mở)', () => {
-  for (const file of ['src/components/crm/CampaignCskhWorkQueue.tsx', 'src/components/crm/MembershipQualificationModal.tsx']) {
-    const src = readFileSync(resolve(file), 'utf8');
-    const codeOnly = src.split('\n').filter(line => !line.trim().startsWith('//') && !line.trim().startsWith('*')).join('\n');
-    assert.doesNotMatch(codeOnly, /handoff|pipeline/i, `${file} không được nhắc tới handoff/pipeline trong code`);
-  }
+test('MembershipQualificationModal: không có bất kỳ lệnh gọi CrmHandoff/Pipeline nào — Đánh giá (qualification save) vẫn chỉ ghi CampaignMembership, không tự trigger Handoff (M1B.2: chỉ Bàn giao explicit trong CampaignCskhWorkQueue mới được động tới Handoff)', () => {
+  const src = readFileSync(resolve('src/components/crm/MembershipQualificationModal.tsx'), 'utf8');
+  const codeOnly = src.split('\n').filter(line => !line.trim().startsWith('//') && !line.trim().startsWith('*')).join('\n');
+  assert.doesNotMatch(codeOnly, /handoff|pipeline/i, 'MembershipQualificationModal.tsx không được nhắc tới handoff/pipeline trong code');
+});
+
+// M1B.2: CampaignCskhWorkQueue.tsx GIỜ ĐÃ hợp lệ nhắc tới handoff (action Bàn
+// giao + Accept/Reject explicit) — không còn kiểm tra "không nhắc tới" toàn
+// file như M1B.1. Thay vào đó siết đúng bất biến còn lại: hàm saveInteraction
+// (lưu kết quả Chăm sóc, M1B.1) tuyệt đối không được tự đụng tới handoff —
+// chỉ action "Bàn giao" explicit (nút riêng, người dùng tự bấm) mới được.
+test('CampaignCskhWorkQueue.tsx: saveInteraction() (lưu Chăm sóc) không tự gọi handoff/pipeline nào — trigger Quan tâm chỉ đưa vào candidate, Handoff vẫn phải qua hành động Bàn giao explicit riêng biệt', () => {
+  const src = readFileSync(resolve('src/components/crm/CampaignCskhWorkQueue.tsx'), 'utf8');
+  const fnStart = src.indexOf('async function saveInteraction()');
+  // Chỉ tới dòng đóng hàm ("  }\n") đầu tiên sau fnStart — không lấy tới tận
+  // đầu hàm kế tiếp, tránh dính comment giải thích nằm GIỮA 2 hàm.
+  const fnEndMarker = '\n  }\n';
+  const fnEnd = src.indexOf(fnEndMarker, fnStart) + fnEndMarker.length;
+  const fnBody = src.slice(fnStart, fnEnd);
+  assert.ok(fnStart > -1 && fnEnd > fnStart);
+  assert.doesNotMatch(fnBody, /handoff|pipeline/i, 'saveInteraction() không được tự trigger handoff/pipeline nào');
 });
