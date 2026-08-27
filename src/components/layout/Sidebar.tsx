@@ -328,8 +328,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           );
         })}
 
-        {/* CRM GROUP — vòng đời khách hàng. Đang setup, tạm thời chỉ Admin/Chủ tịch thấy toàn bộ tab CRM. */}
-        {isAdmin && (
+        {/* CRM GROUP — vòng đời khách hàng. TẠM THỜI mở lại toàn bộ (bỏ gate
+            `isAdmin &&`) để tài khoản test hoàn tất M1B.2 production
+            validation. Khôi phục `{isAdmin && (` sau khi validation xong
+            (task riêng "ẩn lại CRM"). */}
+        {(
           <div className={styles.navSection}>
             <button
               className={styles.groupHeader}

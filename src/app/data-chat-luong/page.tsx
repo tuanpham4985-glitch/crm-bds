@@ -75,13 +75,16 @@ export default function DataChatLuongPage() {
 
   if (authLoading) return null;
 
-  if (!isAdmin) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
-      <AlertCircle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
-      <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
-      <p style={{ fontSize: 13, margin: 0 }}>CRM đang trong giai đoạn setup, tạm thời chỉ Admin/Chủ tịch mới có thể xem</p>
-    </div>
-  );
+  // TẠM THỜI TẮT — M1B.2 production validation cần tài khoản test (non-admin)
+  // vào được trang này. Khôi phục nguyên khối bên dưới sau khi validation
+  // xong (task riêng "ẩn lại CRM").
+  // if (!isAdmin) return (
+  //   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+  //     <AlertCircle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+  //     <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+  //     <p style={{ fontSize: 13, margin: 0 }}>CRM đang trong giai đoạn setup, tạm thời chỉ Admin/Chủ tịch mới có thể xem</p>
+  //   </div>
+  // );
 
   return <div>
     <div className="page-header"><div className="page-header-left"><h1>Data tiềm năng</h1><p>Qualified Lead Funnel và chất lượng nguồn data — số liệu authoritative từ server</p></div><div style={{ display: 'flex', gap: 8 }}>
