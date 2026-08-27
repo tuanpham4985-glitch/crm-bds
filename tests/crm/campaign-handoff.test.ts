@@ -275,3 +275,84 @@ test('getCampaignMembersWithCustomers() join CrmHandoff READ-ONLY (chỉ select 
   assert.match(fnBody, /prisma\.crmHandoff\.findMany\(\{ where: \{ id: \{ in: handoffIds \} \}, select: \{ id: true, status: true, sale_name: true \} \}\)/);
   assert.doesNotMatch(fnBody, /crmHandoff\.(update|create|delete)/);
 });
+
+// --- Cache invalidation remediation (production defect audit 2026-08-27) ---
+// ACCEPT ghi Customer.sale_phu_trach/trang_thai_ban_giao + Pipeline qua raw
+// tx.* TRONG transaction, không đi qua wrapper data-access.ts nên không tự
+// invalidate cache Vercel Data Cache tag 'kh'/'pl' (unstable_cache, 30s TTL)
+// -> /api/khach-hang và các consumer khác (Dashboard, báo cáo) có thể trả
+// stale ownership/Pipeline 1-3 phút sau accept dù Postgres đã đúng. Fix:
+// invalidate 2 tag này NGAY SAU khi transaction commit thành công, CHỈ cho
+// nhánh accept — không mở rộng sang handoff/reject (ngoài phạm vi audit).
+
+test('transitionHandoffTransactional import đúng revalidateTag (next/cache) + invalidate (mem-cache) — không tự chế cơ chế cache riêng', () => {
+  const src = readFileSync(resolve('src/lib/crm-funnel/transactional-workflow.ts'), 'utf8');
+  assert.match(src, /import \{ revalidateTag \} from 'next\/cache';/);
+  assert.match(src, /import \{ invalidate \} from '\.\.\/mem-cache';/);
+});
+
+test('transitionHandoffTransactional: accept thành công invalidate cache "kh" và "pl", reuse ĐÚNG convention revalidateTag(tag, {}) + invalidate("gs:"+tag) y hệt data-access.ts — không phát minh convention mới', () => {
+  const src = readFileSync(resolve('src/lib/crm-funnel/transactional-workflow.ts'), 'utf8');
+  const dataAccessSrc = readFileSync(resolve('src/lib/data-access.ts'), 'utf8');
+  // Convention đã có sẵn trong data-access.ts cho các write path khác — xác
+  // nhận nó thực sự tồn tại trước khi khẳng định ta "reuse" nó.
+  assert.match(dataAccessSrc, /revalidateTag\('kh', \{\}\); invalidate\('gs:kh'\);/);
+  assert.match(dataAccessSrc, /revalidateTag\('pl', \{\}\); invalidate\('gs:pl'\);/);
+  const fnStart = src.indexOf('export async function transitionHandoffTransactional');
+  const fnEnd = src.indexOf('export async function assignTelesaleTransactional');
+  const fnBody = src.slice(fnStart, fnEnd);
+  assert.match(fnBody, /if \(input\.action === 'accept'\) \{\s*\n\s*revalidateTag\('kh', \{\}\); invalidate\('gs:kh'\);\s*\n\s*revalidateTag\('pl', \{\}\); invalidate\('gs:pl'\);\s*\n\s*\}/,
+    'accept phải invalidate đúng 2 tag kh+pl, đúng cú pháp revalidateTag(tag, {}) + invalidate(gs:tag) như data-access.ts');
+});
+
+test('transitionHandoffTransactional: invalidation nằm SAU khi transaction (serializable) đã commit thành công — không invalidate trước/trong transaction, không lộ uncommitted/failed state nếu transaction throw', () => {
+  const src = readFileSync(resolve('src/lib/crm-funnel/transactional-workflow.ts'), 'utf8');
+  const fnStart = src.indexOf('export async function transitionHandoffTransactional');
+  const fnEnd = src.indexOf('export async function assignTelesaleTransactional');
+  const fnBody = src.slice(fnStart, fnEnd);
+  const iTxStart = fnBody.indexOf('const result = await serializable(async tx => {');
+  // Neo chính xác: return cuối cùng BÊN TRONG transaction (nhánh reject, nằm
+  // cuối cùng theo thứ tự code) nối liền dấu đóng "});" của serializable(),
+  // rồi MỚI tới khối invalidate — chứng minh invalidate nằm NGOÀI transaction,
+  // sau khi nó đã đóng (commit), không phải một nhánh chạy song song/độc lập.
+  const commitThenInvalidateAnchor = 'return { customer: updated, handoff: active, pipeline: null };\n  });\n  // Cache-invalidation gap';
+  const iAnchor = fnBody.indexOf(commitThenInvalidateAnchor);
+  const iInvalidateBlock = fnBody.indexOf("if (input.action === 'accept') {\n    revalidateTag('kh'");
+  const iReturnResult = fnBody.indexOf('return result;');
+  assert.ok(iTxStart > -1 && iAnchor > -1 && iInvalidateBlock > -1 && iReturnResult > -1);
+  assert.ok(iTxStart < iAnchor && iAnchor < iInvalidateBlock && iInvalidateBlock < iReturnResult,
+    'thứ tự bắt buộc: transaction bắt đầu -> transaction đóng (commit) -> invalidate cache -> return kết quả cho caller');
+  // await ở đầu đảm bảo throw từ serializable() (transaction fail/retry hết)
+  // propagate ra NGOÀI trước khi chạm tới dòng invalidate — invalidate không
+  // nằm trong try/catch nuốt lỗi nào, nên failed ACCEPT không invalidate.
+  assert.doesNotMatch(fnBody.slice(0, iInvalidateBlock), /catch/, 'không được có try/catch nuốt lỗi transaction trước khối invalidate — failed ACCEPT phải propagate throw, không chạy tới invalidate');
+});
+
+test('transitionHandoffTransactional: nhánh "handoff" (initiate) và "reject" KHÔNG bị đụng bởi remediation — không có revalidateTag/invalidate nào trong 2 nhánh này (ngoài phạm vi audit, tránh mở rộng invalidation ngoài yêu cầu)', () => {
+  const src = readFileSync(resolve('src/lib/crm-funnel/transactional-workflow.ts'), 'utf8');
+  const fnStart = src.indexOf('export async function transitionHandoffTransactional');
+  const actionHandoffStart = src.indexOf("if (input.action === 'handoff') {", fnStart);
+  const actionHandoffEnd = src.indexOf('if (!active) {', actionHandoffStart);
+  const handoffBranch = src.slice(actionHandoffStart, actionHandoffEnd);
+  assert.doesNotMatch(handoffBranch, /revalidateTag|invalidate\(/, 'nhánh handoff (initiate) không thuộc phạm vi remediation này, không được thêm cache invalidation');
+
+  const rejectStart = src.indexOf('if (!validRejectionReason(input.reason))', fnStart);
+  const fnEnd = src.indexOf('export async function assignTelesaleTransactional');
+  const rejectBranch = src.slice(rejectStart, fnEnd);
+  // rejectBranch kéo dài tới hết file bao gồm cả khối invalidate cuối hàm
+  // (guarded bởi input.action === 'accept') — cắt trước khối đó để test đúng
+  // ý "REJECT không tự invalidate", không đo nhầm khối invalidate dùng chung.
+  const rejectOnly = rejectBranch.slice(0, rejectBranch.indexOf("if (input.action === 'accept') {\n    revalidateTag"));
+  assert.doesNotMatch(rejectOnly, /revalidateTag|invalidate\(/, 'nhánh reject không được tự ý invalidate ownership/Pipeline cache — reject không mutate 2 thứ này');
+  assert.doesNotMatch(rejectOnly, /(?<!tele)sale_phu_trach:/, 'regression: reject vẫn không được set ownership (hành vi cũ không đổi bởi remediation này)');
+  assert.doesNotMatch(rejectOnly, /ensurePipeline/, 'regression: reject vẫn không được tạo Pipeline (hành vi cũ không đổi bởi remediation này)');
+});
+
+test('transitionHandoffTransactional: invalidation áp dụng ĐÚNG action "accept" — không phải mọi lần gọi hàm đều invalidate, tránh false-positive khi handoff/reject cũng chạm nhánh chung', () => {
+  const src = readFileSync(resolve('src/lib/crm-funnel/transactional-workflow.ts'), 'utf8');
+  const fnStart = src.indexOf('export async function transitionHandoffTransactional');
+  const fnEnd = src.indexOf('export async function assignTelesaleTransactional');
+  const fnBody = src.slice(fnStart, fnEnd);
+  const matches = fnBody.match(/revalidateTag\(/g) || [];
+  assert.equal(matches.length, 2, 'chỉ đúng 2 lời gọi revalidateTag trong toàn bộ hàm (kh + pl), cả 2 cùng nằm trong 1 guard action === accept duy nhất — không rải rác nhiều nơi');
+});

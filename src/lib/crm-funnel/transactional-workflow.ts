@@ -1,6 +1,8 @@
+import { revalidateTag } from 'next/cache';
 import { Prisma } from '../../generated/prisma/client';
 import { prisma } from '../db/client';
 import { isPostgresEnabled } from '../db/feature-flags';
+import { invalidate } from '../mem-cache';
 import type {
   CrmBanGiaoEntry, CrmChamSocEntry, KhachHang, LeadScoreHistoryEntry,
   MucDoQuanTam, TrangThaiChamSoc,
@@ -310,7 +312,7 @@ export async function transitionHandoffTransactional(input: {
   reason?: string;
   campaignHandoff?: CampaignHandoffInitiation;
 }) {
-  return serializable(async tx => {
+  const result = await serializable(async tx => {
     const customer = await tx.khachHang.findUnique({ where: { id_khach_hang: input.customerId } });
     if (!customer) throw new Error('CUSTOMER_NOT_FOUND');
     const handoffHistory = parseJsonList<CrmBanGiaoEntry>(customer.lich_su_ban_giao ?? undefined);
@@ -446,6 +448,20 @@ export async function transitionHandoffTransactional(input: {
     }
     return { customer: updated, handoff: active, pipeline: null };
   });
+  // Cache-invalidation gap (production defect, audit 2026-08-27): nhánh accept
+  // ghi Customer.sale_phu_trach/trang_thai_ban_giao + Pipeline qua raw tx.*
+  // TRONG transaction, không đi qua wrapper data-access.ts (updateKhachHang/
+  // addPipeline) nên không tự invalidate cache 'kh'/'pl' như convention còn
+  // lại của repo. Invalidate SAU KHI transaction đã commit thành công (chạy
+  // tới đây nghĩa là serializable() ở trên không throw) — không invalidate
+  // trước/trong transaction để tránh lộ uncommitted/failed state. Phạm vi CHỈ
+  // accept — handoff/reject không mutate ownership/Pipeline nên không cần
+  // invalidate 2 tag này (ngoài phạm vi remediation).
+  if (input.action === 'accept') {
+    revalidateTag('kh', {}); invalidate('gs:kh');
+    revalidateTag('pl', {}); invalidate('gs:pl');
+  }
+  return result;
 }
 
 export async function assignTelesaleTransactional(input: { customerId: string; telesaleName: string; actor: CrmSessionUser }) {
