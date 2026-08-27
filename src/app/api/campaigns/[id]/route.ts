@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { canManageCampaign, getCrmSessionUser } from '@/lib/crm-auth';
+import { campaignOwnerFieldsTouched, canManageCampaign, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { getCampaign, getCampaignSummary, updateCampaign } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
@@ -31,6 +31,13 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     }
     const body = await request.json().catch(() => null) as Record<string, unknown> | null;
     if (!body) return NextResponse.json({ success: false, error: 'Thiếu dữ liệu cập nhật' }, { status: 400 });
+    // Gán/thay/xoá Leader phụ trách (owner_id/owner_name) chỉ Admin được làm —
+    // current Leader (canManageCampaign qua owner_name) không được tự đổi
+    // owner của chính mình. Check theo field presence, không theo truthiness,
+    // để gửi null/rỗng không lách được gate.
+    if (campaignOwnerFieldsTouched(body) && !isCrmAdmin(user)) {
+      return NextResponse.json({ success: false, error: 'Chỉ Admin được gán/thay Leader phụ trách Campaign' }, { status: 403 });
+    }
     const updated = await updateCampaign(id, {
       name: body.name !== undefined ? String(body.name).trim() || undefined : undefined,
       status: body.status !== undefined ? String(body.status) : undefined,

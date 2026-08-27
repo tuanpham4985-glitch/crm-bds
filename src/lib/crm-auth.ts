@@ -122,6 +122,18 @@ export function canManageCampaign(user: CrmSessionUser, campaign: { owner_name?:
 }
 
 /**
+ * True nếu body PUT Campaign có đụng tới owner_id/owner_name — kể cả gửi
+ * null/rỗng để xoá Leader. Check theo field presence (hasOwnProperty), KHÔNG
+ * theo truthiness, để giá trị null/empty không lách qua Admin gate bên dưới.
+ * Gán/thay/xoá Leader phụ trách Campaign chỉ Admin được làm — current Leader
+ * (canManageCampaign qua owner_name) không được tự đổi owner của chính mình.
+ */
+export function campaignOwnerFieldsTouched(body: Record<string, unknown>): boolean {
+  return Object.prototype.hasOwnProperty.call(body, 'owner_id')
+    || Object.prototype.hasOwnProperty.call(body, 'owner_name');
+}
+
+/**
  * Quyền thao tác (interaction/qualification) trên 1 CampaignMembership cụ thể
  * (M1B.1) — Admin, Campaign owner, hoặc ĐÚNG Telesale được gán cho membership
  * này. Dùng telesale_id (không phải tên) để so khớp — khác với pattern name-

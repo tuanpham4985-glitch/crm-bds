@@ -9,7 +9,7 @@
 // Qualified/Hot chỉ hiển thị đúng trạng thái, KHÔNG tạo CrmHandoff/Pipeline/
 // đổi Sale ownership (phạm vi M1B.2).
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, History, Layers, Phone, RefreshCw, Save, Search, Users, X } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, History, Layers, Loader2, Phone, RefreshCw, Save, Search, Users, X } from 'lucide-react';
 import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamSocEntry, DuAn, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -54,6 +54,7 @@ export function CampaignCskhWorkQueue({ employees, projects }: { employees: Nhan
   const [historyMember, setHistoryMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [showDistribute, setShowDistribute] = useState(false);
   const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '' });
+  const [showLeaderEdit, setShowLeaderEdit] = useState(false);
 
   const loadCampaigns = useCallback(async () => {
     try {
@@ -145,7 +146,10 @@ export function CampaignCskhWorkQueue({ employees, projects }: { employees: Nhan
             <ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} />
           </div>
         </div>
-        {selectedCampaign && <div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9 }}>Leader phụ trách: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.owner_name || 'Chưa cấu hình'}</strong></div>}
+        {selectedCampaign && <div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9, display: 'flex', alignItems: 'center', gap: 8 }}>
+          Leader phụ trách: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.owner_name || 'Chưa cấu hình'}</strong>
+          {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setShowLeaderEdit(true)}>{selectedCampaign.owner_name ? 'Sửa Leader' : 'Gán Leader'}</button>}
+        </div>}
         {canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 && (
           <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setShowDistribute(true)}>
             <Users size={15} /> Phân Sale ({unassignedMembers.length} chưa phân)
@@ -210,6 +214,19 @@ export function CampaignCskhWorkQueue({ employees, projects }: { employees: Nhan
     {qualificationMember && <MembershipQualificationModal campaignId={campaignId} membership={qualificationMember} onClose={() => setQualificationMember(null)} onSaved={(updated, message) => { replaceMember(updated); setQualificationMember(null); setNotice({ type: 'ok', text: message }); }} />}
     {historyMember && <MembershipHistoryModal member={historyMember} onClose={() => setHistoryMember(null)} />}
 
+    {showLeaderEdit && selectedCampaign && (
+      <CampaignLeaderEditModal
+        campaign={selectedCampaign}
+        employees={employees}
+        onClose={() => setShowLeaderEdit(false)}
+        onSaved={updated => {
+          setCampaigns(current => current.map(item => item.id === updated.id ? updated : item));
+          setShowLeaderEdit(false);
+          setNotice({ type: 'ok', text: 'Đã cập nhật Leader phụ trách.' });
+        }}
+      />
+    )}
+
     {showDistribute && selectedCampaign && (
       <CampaignDistributeModal
         customerIds={unassignedMembers.map(member => member.customer_id)}
@@ -266,5 +283,57 @@ function MembershipHistoryModal({ member, onClose }: { member: CampaignMembershi
       </div>)}
     </div>
     <div className="modal-footer"><button className="btn btn-primary" onClick={onClose}>Đóng</button></div>
+  </div></div>;
+}
+
+// Admin-only: gán/sửa Leader phụ trách Campaign (owner_id/owner_name). Chỉ
+// render khi isAdmin (gate thật ở server — PUT /api/campaigns/[id] chặn
+// non-admin đụng owner_id/owner_name, xem crm-auth.ts#campaignOwnerFieldsTouched).
+// Active employee eligibility giống hệt Leader picker trong
+// CampaignDistributeModal.tsx (employees.filter trang_thai !== 'Nghỉ việc') —
+// không phát minh rule mới.
+function CampaignLeaderEditModal({ campaign, employees, onClose, onSaved }: {
+  campaign: CampaignType; employees: NhanVien[]; onClose: () => void; onSaved: (updated: CampaignType) => void;
+}) {
+  const [leaderName, setLeaderName] = useState(campaign.owner_name || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const activeEmployees = employees.filter(item => item.trang_thai !== 'Nghỉ việc');
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      const leader = activeEmployees.find(item => item.ho_ten === leaderName);
+      const response = await fetch(`/api/campaigns/${campaign.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner_id: leader?.id_nhan_vien || null, owner_name: leader?.ho_ten || null }),
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Không thể cập nhật Leader.');
+      onSaved(data.data);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không thể cập nhật Leader.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="modal-overlay" onClick={onClose}><div className="modal-content" style={{ maxWidth: 460 }} onClick={event => event.stopPropagation()}>
+    <div className="modal-header"><h3 className="modal-title">Leader phụ trách — {campaign.name}</h3><button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button></div>
+    <div style={{ padding: 20 }}>
+      {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
+      <div className="form-group">
+        <label className="form-label">Leader phụ trách</label>
+        <select className="form-select" value={leaderName} onChange={event => setLeaderName(event.target.value)}>
+          <option value="">— Chưa cấu hình —</option>
+          {activeEmployees.map(item => <option key={item.id_nhan_vien} value={item.ho_ten}>{item.ho_ten} · {item.employee_type}</option>)}
+        </select>
+      </div>
+    </div>
+    <div className="modal-footer">
+      <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Hủy</button>
+      <button className="btn btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />} Lưu</button>
+    </div>
   </div></div>;
 }

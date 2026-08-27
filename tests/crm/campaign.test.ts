@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { canManageCampaign, customerDeleteBlockReason } from '../../src/lib/crm-auth';
+import { campaignOwnerFieldsTouched, canManageCampaign, customerDeleteBlockReason, isCrmAdmin } from '../../src/lib/crm-auth';
 import { planBulkDistribution, planDistribution } from '../../src/lib/crm-funnel/campaign';
 import type { KhachHang, Pipeline } from '../../src/lib/types';
 
@@ -372,4 +372,106 @@ test('8) mixed final state (new + existing UNASSIGNED + existing ASSIGNED, mode 
   const newlyAssigned = plan.toCreate.filter(p => p.assignment_status === 'ASSIGNED').length + plan.toAssignExisting.length;
   assert.equal(newlyAssigned, 3, 'C2, C3 (có sẵn) + C4 (mới) = 3 được phân trong lần này');
   assert.equal(plan.stillUnassigned, 2, 'C5, C6 rơi vào phần dư của quota -> vẫn UNASSIGNED thật sự, phải được đếm');
+});
+
+// --- Campaign Leader edit remediation: chỉ Admin được gán/thay/xóa Leader ---
+// (owner_id/owner_name), current Leader (canManageCampaign qua owner_name)
+// không được tự đổi owner của chính mình. -----------------------------------
+
+const adminUser = { id_nhan_vien: 'ADM1', ho_ten: 'Sếp', email: 'a@x.com', vai_tro: 'Admin' };
+const leaderUser = { id_nhan_vien: 'LD1', ho_ten: 'Leader X', email: 'l@x.com', vai_tro: 'Sale' };
+const strangerUser = { id_nhan_vien: 'ST1', ho_ten: 'Người khác', email: 's@x.com', vai_tro: 'Sale' };
+const campaignOwnedByLeader = { owner_name: 'Leader X' };
+
+test('campaignOwnerFieldsTouched: body có key owner_id -> true (kể cả giá trị null/empty) — check theo presence, không theo truthiness', () => {
+  assert.equal(campaignOwnerFieldsTouched({ owner_id: null }), true);
+  assert.equal(campaignOwnerFieldsTouched({ owner_id: '' }), true);
+  assert.equal(campaignOwnerFieldsTouched({ owner_id: 'NV1' }), true);
+});
+
+test('campaignOwnerFieldsTouched: body có key owner_name -> true (kể cả giá trị null/empty)', () => {
+  assert.equal(campaignOwnerFieldsTouched({ owner_name: null }), true);
+  assert.equal(campaignOwnerFieldsTouched({ owner_name: '' }), true);
+});
+
+test('campaignOwnerFieldsTouched: body KHÔNG có owner_id/owner_name (chỉ sửa field khác) -> false, không kích hoạt Admin gate oan', () => {
+  assert.equal(campaignOwnerFieldsTouched({ name: 'Đợt 2', status: 'active', description: null, start_date: null }), false);
+  assert.equal(campaignOwnerFieldsTouched({}), false);
+});
+
+test('Remediation: non-admin current Campaign Leader (canManageCampaign=true qua owner_name) KHÔNG được đụng owner_id/owner_name — route phải chặn dù canManageCampaign cho phép sửa field khác', () => {
+  assert.equal(canManageCampaign(leaderUser, campaignOwnedByLeader), true, 'leader vẫn quản lý được Campaign của chính mình (field khác)');
+  const bodyChangingOwner = { owner_id: 'OTHER_ID', owner_name: 'Người khác' };
+  assert.equal(campaignOwnerFieldsTouched(bodyChangingOwner), true);
+  assert.equal(isCrmAdmin(leaderUser), false, '-> route phải trả 403 vì campaignOwnerFieldsTouched=true && isCrmAdmin=false');
+});
+
+test('Remediation: Admin gán/thay Leader được phép (isCrmAdmin=true) dù body chỉ chứa owner_id/owner_name', () => {
+  const bodyChangingOwner = { owner_id: 'NEW_ID', owner_name: 'Leader Mới' };
+  assert.equal(campaignOwnerFieldsTouched(bodyChangingOwner), true);
+  assert.equal(isCrmAdmin(adminUser), true, '-> route phải cho qua vì isCrmAdmin=true');
+});
+
+test('Remediation: Admin xóa Leader (gửi owner_id/owner_name = null) vẫn được phép — presence check không chặn Admin', () => {
+  const bodyClearingOwner = { owner_id: null, owner_name: null };
+  assert.equal(campaignOwnerFieldsTouched(bodyClearingOwner), true);
+  assert.equal(isCrmAdmin(adminUser), true);
+});
+
+test('Remediation: existing non-owner update (không đụng owner_id/owner_name) vẫn giữ nguyên authority cũ — canManageCampaign, không cần isCrmAdmin', () => {
+  const bodyOnlyStatus = { status: 'paused', description: 'Tạm dừng' };
+  assert.equal(campaignOwnerFieldsTouched(bodyOnlyStatus), false, '-> route KHÔNG kích hoạt Admin gate, dùng canManageCampaign như cũ');
+  assert.equal(canManageCampaign(leaderUser, campaignOwnedByLeader), true, 'leader vẫn sửa được field khác của Campaign mình phụ trách');
+  assert.equal(canManageCampaign(strangerUser, campaignOwnedByLeader), false, 'người không liên quan vẫn bị chặn như cũ');
+});
+
+test('Remediation: người lạ (không phải Admin, không phải owner) vẫn bị canManageCampaign chặn trước khi tới Admin gate — không có lỗ hổng mới', () => {
+  assert.equal(canManageCampaign(strangerUser, campaignOwnedByLeader), false);
+});
+
+test('route.ts: wiring đúng — import isCrmAdmin/campaignOwnerFieldsTouched, gate đặt SAU canManageCampaign check và TRƯỚC updateCampaign, dùng đúng field-presence helper (không tái tạo logic truthiness riêng)', () => {
+  const src = readFileSync(resolve('src/app/api/campaigns/[id]/route.ts'), 'utf8');
+  assert.match(src, /import \{[^}]*campaignOwnerFieldsTouched[^}]*isCrmAdmin[^}]*\} from '@\/lib\/crm-auth'|import \{[^}]*isCrmAdmin[^}]*campaignOwnerFieldsTouched[^}]*\} from '@\/lib\/crm-auth'/);
+  const putStart = src.indexOf('export async function PUT');
+  const putBody = src.slice(putStart);
+  const canManageIdx = putBody.indexOf('canManageCampaign(user, campaign)');
+  const gateIdx = putBody.indexOf('campaignOwnerFieldsTouched(body) && !isCrmAdmin(user)');
+  const updateIdx = putBody.indexOf('updateCampaign(id,');
+  assert.ok(canManageIdx > -1 && gateIdx > -1 && updateIdx > -1, 'cả 3 điểm mốc phải tồn tại trong PUT handler');
+  assert.ok(canManageIdx < gateIdx && gateIdx < updateIdx, 'thứ tự phải là: canManageCampaign -> Admin owner-field gate -> updateCampaign');
+  assert.match(putBody, /status: 403 \}\)/, 'Admin gate phải trả 403 giống pattern lỗi quyền hiện có');
+});
+
+test('route.ts: PUT vẫn tái sử dụng updateCampaign() hiện có, không tạo endpoint mới, không tự viết prisma.campaign.update trực tiếp trong route', () => {
+  const src = readFileSync(resolve('src/app/api/campaigns/[id]/route.ts'), 'utf8');
+  assert.match(src, /await updateCampaign\(id,/);
+  assert.doesNotMatch(src, /prisma\.campaign\.update/);
+});
+
+test('POST /api/campaigns (tạo Campaign) không bị đụng bởi remediation — vẫn Admin-only như cũ, không regression', () => {
+  const src = readFileSync(resolve('src/app/api/campaigns/route.ts'), 'utf8');
+  assert.match(src, /if \(!isCrmAdmin\(user\)\) \{/);
+  assert.match(src, /Chỉ Admin\/Ban lãnh đạo mới được tạo Campaign/);
+});
+
+test('CampaignCskhWorkQueue: control Gán/Sửa Leader chỉ render khi isAdmin (Admin-only UI, business authority không duplicate sang client — server vẫn là nguồn thật)', () => {
+  const src = readFileSync(resolve('src/components/crm/CampaignCskhWorkQueue.tsx'), 'utf8');
+  assert.match(src, /\{isAdmin && <button className="btn btn-ghost btn-sm" onClick=\{\(\) => setShowLeaderEdit\(true\)\}>/);
+});
+
+test('CampaignCskhWorkQueue: CampaignLeaderEditModal dùng active employee eligibility giống Leader picker của CampaignDistributeModal (trang_thai !== "Nghỉ việc"), không phát minh rule mới', () => {
+  const src = readFileSync(resolve('src/components/crm/CampaignCskhWorkQueue.tsx'), 'utf8');
+  const modalStart = src.indexOf('function CampaignLeaderEditModal');
+  const modalBody = src.slice(modalStart, modalStart + 2500);
+  assert.match(modalBody, /employees\.filter\(item => item\.trang_thai !== 'Nghỉ việc'\)/);
+});
+
+test('CampaignCskhWorkQueue: CampaignLeaderEditModal save qua existing PUT /api/campaigns/${campaign.id} với owner_id/owner_name, thành công thì cập nhật state Campaign để label đổi ngay (không cần reload trang)', () => {
+  const src = readFileSync(resolve('src/components/crm/CampaignCskhWorkQueue.tsx'), 'utf8');
+  const modalStart = src.indexOf('function CampaignLeaderEditModal');
+  const modalBody = src.slice(modalStart, modalStart + 2500);
+  assert.match(modalBody, /method: 'PUT'/);
+  assert.match(modalBody, /\/api\/campaigns\/\$\{campaign\.id\}/);
+  assert.match(modalBody, /owner_id: leader\?\.id_nhan_vien \|\| null, owner_name: leader\?\.ho_ten \|\| null/);
+  assert.match(src, /setCampaigns\(current => current\.map\(item => item\.id === updated\.id \? updated : item\)\)/, 'onSaved phải cập nhật campaigns state để label Leader đổi ngay');
 });
