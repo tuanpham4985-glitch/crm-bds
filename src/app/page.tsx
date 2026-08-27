@@ -1643,13 +1643,20 @@ function BirthdayWidget({ employees }: { employees: SinhNhatNhanVien[] }) {
                   src={emp.avatar_url}
                   name={emp.ho_ten}
                   imgStyle={{
-                      width: 64, height: 64, borderRadius: '50%',
+                      width: 72, height: 72, borderRadius: '50%',
+                      // Portrait sources are taller than the round avatar. Crop from
+                      // the top so the face remains visible instead of centering on
+                      // the torso.
                       objectFit: 'cover',
+                      objectPosition: 'center top',
+                      background: '#fff',
+                      boxSizing: 'border-box',
+                      flexShrink: 0,
                       border: isToday ? '3px solid #f59e0b' : '3px solid #e2e8f0',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                     }}
                   fallbackStyle={{
-                    width: 64, height: 64, borderRadius: '50%',
+                    width: 72, height: 72, borderRadius: '50%',
                     background: grad,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 22, fontWeight: 700, color: '#fff',
