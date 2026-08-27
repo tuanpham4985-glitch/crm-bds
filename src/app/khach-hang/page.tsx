@@ -11,12 +11,15 @@ import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig, CrmImportBat
 import { formatDate, formatPhone } from '@/lib/utils';
 import { NGUON } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
+import { useCrmModule } from '@/hooks/useCrmModule';
+import { canAccessCrmModule } from '@/lib/crm-module-access';
 import { isAllVisibleSelected, toggleSelectAllVisible, toggleSelection } from '@/lib/khach-hang-selection';
 import { CampaignDistributeModal } from '@/components/crm/CampaignDistributeModal';
 
 export default function KhachHangPage() {
   const router = useRouter();
   const { isAdmin, isLoading: authLoading } = useAuth();
+  const { enabled: crmEnabled, isLoading: crmModuleLoading } = useCrmModule();
   const [data, setData] = useState<KhachHang[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -554,18 +557,19 @@ export default function KhachHangPage() {
 
   const hasFilters = searchInput || fromDate || toDate;
 
-  if (authLoading) return null;
+  if (authLoading || crmModuleLoading) return null;
 
-  // TẠM THỜI TẮT — M1B.2 production validation cần tài khoản test (non-admin)
-  // vào được trang này. Khôi phục nguyên khối bên dưới sau khi validation
-  // xong (task riêng "ẩn lại CRM").
-  // if (!isAdmin) return (
-  //   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
-  //     <AlertCircle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
-  //     <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
-  //     <p style={{ fontSize: 13, margin: 0 }}>CRM đang trong giai đoạn setup, tạm thời chỉ Admin/Chủ tịch mới có thể xem</p>
-  //   </div>
-  // );
+  // CRM Module Toggle là authority DUY NHẤT cho việc non-admin có vào được
+  // trang này hay không (thay thế hard-coded isAdmin-only gate cũ). Admin
+  // luôn bypass; non-admin cần CRM Module đang BẬT — dữ liệu thực tế nhìn
+  // thấy vẫn do canViewCustomer (server-side) quyết định như hiện tại.
+  if (!canAccessCrmModule(isAdmin, crmEnabled)) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+      <AlertCircle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+      <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+      <p style={{ fontSize: 13, margin: 0 }}>Module CRM hiện đang tắt. Liên hệ Admin để bật lại.</p>
+    </div>
+  );
 
   return (
     <div>

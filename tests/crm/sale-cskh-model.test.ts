@@ -234,5 +234,8 @@ test('11) legacy CSKH theo Dự án (isTelesale, /api/crm/telesale/*, transactio
 test('11b) canAccessPage mở rộng cho Sale KHÔNG làm thay đổi authority bên trong chế độ Project — canManage vẫn dùng đúng logic cũ (Admin/Trưởng nhóm/quản lý trực tiếp)', () => {
   const pageSrc = readFileSync(resolve('src/app/phan-khach/page.tsx'), 'utf8');
   assert.match(pageSrc, /const canManage = Boolean\(isAdmin \|\| \(selectedProject && selectedProject\.truong_nhom === user\?\.ho_ten\) \|\| managesAssignedTelesale\)/);
-  assert.match(pageSrc, /const canAccessPage = isAdmin \|\| user\?\.vai_tro === 'Sale'/);
+  // CRM Module Toggle (task riêng, độc lập M1B.2) thêm crmEnabled && vào biểu
+  // thức — vẫn phải giữ nguyên "Admin hoặc Sale" làm lõi authority, chỉ AND
+  // thêm module gate bên ngoài, không thay thế/thu hẹp business authority này.
+  assert.match(pageSrc, /const canAccessPage = isAdmin \|\| \(crmEnabled && user\?\.vai_tro === 'Sale'\)/);
 });

@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { useCrmModule } from '@/hooks/useCrmModule';
+import { canAccessCrmModule } from '@/lib/crm-module-access';
 import {
   Plus, Edit3, Trash2, X,
-  SlidersHorizontal, ClipboardList,
+  SlidersHorizontal, ClipboardList, AlertTriangle,
   CheckCircle2, Circle, Clock, XCircle, Eye,
 } from 'lucide-react';
 import type { Pipeline, KhachHang, DuAn, NhanVien, CongViec } from '@/lib/types';
@@ -87,7 +89,8 @@ function safeToDateInput(raw: string): string {
 }
 
 function PipelineContent() {
-  const { user } = useAuth();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
+  const { enabled: crmEnabled, isLoading: crmModuleLoading } = useCrmModule();
   const searchParams = useSearchParams();
   const router = useRouter();
   const isAllVisible = user && (
@@ -412,6 +415,25 @@ function PipelineContent() {
     if (selectedDeal) fetchTasks(selectedDeal.id_pipeline);
   };
   // ──────────────────────────────────────────────────────────────
+
+  if (authLoading || crmModuleLoading) {
+    return <div className="loading-spinner"><div className="spinner" /></div>;
+  }
+
+  // CRM Module Toggle — Giao dịch (Pipeline) là 1 trong 4 CRM entry surface
+  // được gate theo module availability (mới thêm, trang này trước đây không
+  // có page-level access gate nào). Admin luôn bypass; business authority
+  // (field-level visibility isAllVisible/showPhiTraSale/...) giữ nguyên,
+  // không đổi bởi gate này.
+  if (!canAccessCrmModule(isAdmin, crmEnabled)) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+        <AlertTriangle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+        <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+        <p style={{ fontSize: 13, margin: 0 }}>Module CRM hiện đang tắt. Liên hệ Admin để bật lại.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return <div className="loading-spinner"><div className="spinner" /></div>;

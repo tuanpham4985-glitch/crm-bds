@@ -6,6 +6,7 @@ import type { CrmBanGiaoEntry, CrmChamSocEntry, DuAn, KhachHang, MucDoQuanTam, N
 import { formatPhone } from '@/lib/utils';
 import { useCrmAccess } from '@/hooks/useCrmAccess';
 import { useAuth } from '@/hooks/useAuth';
+import { useCrmModule } from '@/hooks/useCrmModule';
 import { QualificationModal } from '@/components/crm/QualificationModal';
 import { CampaignCskhWorkQueue } from '@/components/crm/CampaignCskhWorkQueue';
 
@@ -37,13 +38,17 @@ type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTa
 export default function PhanKhachPage() {
   const { phanKhachIds } = useCrmAccess();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
+  const { enabled: crmEnabled, isLoading: crmModuleLoading } = useCrmModule();
   // Sale CSKH model: không có role "Telesale" riêng — Leader/Sale đều là
   // nhân viên vai_tro 'Sale'. Trang này trước đây chỉ Admin vào được, khiến
   // Leader/Sale không bao giờ tới được chế độ Campaign CSKH của chính họ dù
   // đã có đủ quyền thao tác (canManageCampaign/canManageMembership, server-
   // side). Mở trang cho Sale — KHÔNG đổi logic/quyền bên trong chế độ Project
   // cũ (canManage ở đó vốn đã hỗ trợ non-admin từ đầu, chỉ chưa ai chạm tới).
-  const canAccessPage = isAdmin || user?.vai_tro === 'Sale';
+  // CRM Module Toggle là gate BỔ SUNG bên ngoài — Admin luôn bypass; Sale cần
+  // CẢ HAI: đúng vai_tro 'Sale' (business authority, không đổi) VÀ module
+  // đang BẬT (module availability, mới).
+  const canAccessPage = isAdmin || (crmEnabled && user?.vai_tro === 'Sale');
   // Campaign CSKH (M1B.1): chế độ CSKH THEO CAMPAIGN, cộng thêm vào chế độ
   // "Theo Dự án" cũ — giữ nguyên toàn bộ state/luồng cũ bên dưới không đổi.
   // Sale (không phải Admin) mặc định vào thẳng chế độ Campaign — đúng luồng
@@ -172,13 +177,13 @@ export default function PhanKhachPage() {
     } catch (error) { setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không thể lưu team.' }); } finally { setBusyId(''); }
   }
 
-  if (authLoading) return null;
+  if (authLoading || crmModuleLoading) return null;
 
   if (!canAccessPage) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
       <AlertTriangle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
       <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
-      <p style={{ fontSize: 13, margin: 0 }}>Chỉ Admin/Ban lãnh đạo hoặc Sale mới có thể xem trang này</p>
+      <p style={{ fontSize: 13, margin: 0 }}>{!crmEnabled ? 'Module CRM hiện đang tắt. Liên hệ Admin để bật lại.' : 'Chỉ Admin/Ban lãnh đạo hoặc Sale mới có thể xem trang này'}</p>
     </div>
   );
 

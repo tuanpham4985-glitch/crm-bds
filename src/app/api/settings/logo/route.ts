@@ -1,32 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleSpreadsheet } from 'google-spreadsheet';
-import { JWT } from 'google-auth-library';
 import { cookies } from 'next/headers';
+import { getSettingsSheet } from '@/lib/settings-store';
 
-const SETTINGS_SHEET = 'SETTINGS';
 const LOGO_KEY = 'company_logo';
 // Cache logo in memory (5 phút) để tránh đọc Sheets mỗi request
 let _logoCache: { data: string | null; ts: number } | null = null;
 const LOGO_CACHE_TTL = 5 * 60_000;
-
-function getJWT(): JWT {
-  const email = process.env.GOOGLE_CLIENT_EMAIL!;
-  const key = (process.env.GOOGLE_PRIVATE_KEY ?? '').trim().replace(/^"(.*)"$/, '$1').replace(/\\n/g, '\n');
-  return new JWT({ email, key, scopes: ['https://www.googleapis.com/auth/spreadsheets'] });
-}
-
-async function getSettingsSheet() {
-  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID!, getJWT());
-  await doc.loadInfo();
-
-  let sheet = doc.sheetsByTitle[SETTINGS_SHEET];
-  if (!sheet) {
-    // Tạo sheet SETTINGS nếu chưa có
-    sheet = await doc.addSheet({ title: SETTINGS_SHEET, headerValues: ['key', 'value'] });
-  }
-  await sheet.loadHeaderRow();
-  return sheet;
-}
 
 // ── GET: trả về logo hiện tại ────────────────────────────────
 export async function GET() {
