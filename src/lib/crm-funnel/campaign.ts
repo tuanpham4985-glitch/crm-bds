@@ -7,6 +7,9 @@ import { prisma } from '../db/client';
 import { isPostgresEnabled } from '../db/feature-flags';
 import { assertTransactionalCrm } from './transactional-workflow';
 import type { CrmSessionUser } from '../crm-auth';
+import type { PrismaClient } from '../../generated/prisma/client';
+
+type TxClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
 export interface CreateCampaignInput {
   name: string;
@@ -379,5 +382,153 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       newlyAssigned: plan.toCreate.filter(p => p.assignment_status === 'ASSIGNED').length + plan.toAssignExisting.length,
       stillUnassigned: plan.stillUnassigned,
     };
+  });
+}
+
+// --- Admin Test Data Cleanup: xóa Campaign (+ memberships) an toàn --------
+//
+// CampaignMembership.campaign_id -> Campaign.id là FK thật với
+// ON DELETE RESTRICT (migration 20260826000001) — Postgres tự chặn xóa
+// Campaign còn membership. Vì vậy phải tự xóa memberships trước Campaign
+// trong 1 transaction (không có cascade nào ở DB, không thêm cascade mới).
+//
+// KHÔNG BAO GIỜ đụng KhachHang ở đây — Customer cleanup vẫn hoàn toàn thuộc
+// customerDeleteBlockReason() (crm-auth.ts), không tự động xóa Customer kèm
+// Campaign.
+
+const CAMPAIGN_DELETE_SAMPLE_LIMIT = 10;
+
+export interface CampaignDeletePreflightSample {
+  customer_id: string;
+  ten_KH: string;
+  telesale_name: string | null;
+}
+
+export interface CampaignDeletePreflight {
+  campaign: { id: string; name: string; ten_du_an: string | null; owner_name: string | null } | null;
+  membershipCount: number;
+  sample: CampaignDeletePreflightSample[];
+  blocked: boolean;
+  blockedReason?: string;
+}
+
+/**
+ * Quyết định THUẦN (không đụng DB) cho guard 2 CHIỀU chống orphan Handoff —
+ * tách riêng khỏi truy vấn để test được logic block mà không cần Postgres
+ * thật (đúng kiến trúc plan/execute đã dùng cho customerDeleteBlockReason).
+ *
+ * Chiều 1: CampaignMembership.handoff_id đã được set trên chính membership.
+ * Chiều 2: CrmHandoff.campaign_membership_id (loose reference — KHÔNG có FK
+ * ở schema, xem comment trên model CrmHandoff trong schema.prisma) có dòng
+ * nào trỏ ngược tới 1 trong các membership này. Vì không có FK, DB sẽ KHÔNG
+ * tự chặn hay báo lỗi nếu ta lỡ xóa membership đang bị CrmHandoff tham chiếu
+ * — phải tự truy vấn bảng CrmHandoff thật để phát hiện (xem
+ * queryHandoffBlockReason bên dưới), không thể suy diễn hay bỏ qua chỉ vì
+ * hiện tại (M1B.2 đóng) chưa có code path nào ghi 2 field này (xác nhận bằng
+ * grep toàn bộ src/ — xem campaign-delete-cleanup.test.ts).
+ */
+export function campaignHandoffBlockReason(input: { hasMembershipHandoffId: boolean; hasReferencingHandoff: boolean }): string | null {
+  if (input.hasMembershipHandoffId) {
+    return 'Campaign có membership đã liên kết Handoff (CampaignMembership.handoff_id) — không thể xóa.';
+  }
+  if (input.hasReferencingHandoff) {
+    return 'Tồn tại Handoff tham chiếu tới membership của Campaign này (CrmHandoff.campaign_membership_id) — không thể xóa.';
+  }
+  return null;
+}
+
+/**
+ * Truy vấn DB thật cho cả 2 chiều rồi gọi campaignHandoffBlockReason() — chạy
+ * được cả ngoài transaction (preflight, dùng `prisma`) lẫn trong transaction
+ * (re-check trước delete thật, dùng `tx`) — cùng 1 hàm, tránh lệch logic giữa
+ * preflight và transaction-time check (TOCTOU).
+ */
+async function queryHandoffBlockReason(client: PrismaClient | TxClient, membershipIds: string[]): Promise<string | null> {
+  if (membershipIds.length === 0) return null;
+  const hasMembershipHandoffId = await client.campaignMembership.count({
+    where: { id: { in: membershipIds }, handoff_id: { not: null } },
+  }) > 0;
+  const hasReferencingHandoff = await client.crmHandoff.count({
+    where: { campaign_membership_id: { in: membershipIds } },
+  }) > 0;
+  return campaignHandoffBlockReason({ hasMembershipHandoffId, hasReferencingHandoff });
+}
+
+/**
+ * Preflight cho Admin Test Data Cleanup — KHÔNG xóa gì, chỉ trả đủ thông tin
+ * để Admin quyết định: Campaign, số membership, mẫu customer/sale, và
+ * blocked+reason nếu có dependency Handoff không an toàn.
+ */
+export async function getCampaignDeletePreflight(campaignId: string): Promise<CampaignDeletePreflight> {
+  assertTransactionalCrm();
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { id: true, name: true, ten_du_an: true, owner_name: true },
+  });
+  if (!campaign) return { campaign: null, membershipCount: 0, sample: [], blocked: false };
+
+  const memberships = await prisma.campaignMembership.findMany({
+    where: { campaign_id: campaignId },
+    select: { id: true, customer_id: true, telesale_name: true },
+    orderBy: { created_at: 'asc' },
+  });
+
+  const sampleMemberships = memberships.slice(0, CAMPAIGN_DELETE_SAMPLE_LIMIT);
+  const customerIds = [...new Set(sampleMemberships.map(m => m.customer_id))];
+  const customers = customerIds.length
+    ? await prisma.khachHang.findMany({ where: { id_khach_hang: { in: customerIds } }, select: { id_khach_hang: true, ten_KH: true } })
+    : [];
+  const customerNameById = new Map(customers.map(c => [c.id_khach_hang, c.ten_KH]));
+  const sample: CampaignDeletePreflightSample[] = sampleMemberships.map(m => ({
+    customer_id: m.customer_id,
+    ten_KH: customerNameById.get(m.customer_id) || m.customer_id,
+    telesale_name: m.telesale_name,
+  }));
+
+  const blockedReason = await queryHandoffBlockReason(prisma, memberships.map(m => m.id));
+
+  return {
+    campaign,
+    membershipCount: memberships.length,
+    sample,
+    blocked: Boolean(blockedReason),
+    blockedReason: blockedReason || undefined,
+  };
+}
+
+export class CampaignDeleteBlockedError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'CampaignDeleteBlockedError';
+  }
+}
+
+/**
+ * Xóa Campaign + toàn bộ CampaignMembership của nó trong 1 transaction.
+ * KHÔNG BAO GIỜ đụng KhachHang. Re-check queryHandoffBlockReason() BÊN TRONG
+ * transaction (không chỉ ở preflight) để tránh TOCTOU — nếu một Handoff vừa
+ * được tạo tham chiếu tới membership này giữa lúc Admin xem preflight và lúc
+ * bấm xác nhận, transaction phải phát hiện và rollback, không xóa liều.
+ * Không tạo cascade DB mới — schema vẫn giữ nguyên ON DELETE RESTRICT; thứ
+ * tự xóa (memberships trước, Campaign sau) hoàn toàn ở tầng application.
+ */
+export async function deleteCampaignWithMemberships(campaignId: string): Promise<{ campaignId: string; deletedMemberships: number }> {
+  assertTransactionalCrm();
+  return prisma.$transaction(async tx => {
+    const campaign = await tx.campaign.findUnique({ where: { id: campaignId }, select: { id: true } });
+    if (!campaign) throw new Error('Không tìm thấy Campaign');
+
+    const memberships = await tx.campaignMembership.findMany({ where: { campaign_id: campaignId }, select: { id: true } });
+    const membershipIds = memberships.map(m => m.id);
+
+    const blockedReason = await queryHandoffBlockReason(tx, membershipIds);
+    if (blockedReason) throw new CampaignDeleteBlockedError(blockedReason);
+
+    if (membershipIds.length > 0) {
+      await tx.campaignMembership.deleteMany({ where: { campaign_id: campaignId } });
+    }
+    await tx.campaign.delete({ where: { id: campaignId } });
+
+    return { campaignId, deletedMemberships: membershipIds.length };
   });
 }

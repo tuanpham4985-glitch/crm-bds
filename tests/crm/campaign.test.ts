@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { campaignOwnerFieldsTouched, canManageCampaign, customerDeleteBlockReason, isCrmAdmin } from '../../src/lib/crm-auth';
-import { planBulkDistribution, planDistribution } from '../../src/lib/crm-funnel/campaign';
+import { campaignHandoffBlockReason, planBulkDistribution, planDistribution } from '../../src/lib/crm-funnel/campaign';
 import type { KhachHang, Pipeline } from '../../src/lib/types';
 
 function customer(overrides: Partial<KhachHang> = {}): KhachHang {
@@ -16,6 +16,25 @@ function customer(overrides: Partial<KhachHang> = {}): KhachHang {
 }
 
 const MIGRATION_PATH = 'prisma/migrations/20260826000001_add_campaign_foundation/migration.sql';
+
+/**
+ * Liệt kê toàn bộ *.ts/*.tsx dưới src/, loại src/generated (Prisma codegen).
+ * Dùng cho evidence test (grep bằng Node fs thuần, không shell ra "grep" —
+ * execSync + grep phụ thuộc PATH/shell, không đáng tin cậy trên Windows CI).
+ */
+function listSourceFiles(dir: string): string[] {
+  const abs = resolve(dir);
+  let entries: import('node:fs').Dirent[];
+  try { entries = readdirSync(abs, { withFileTypes: true }); } catch { return []; }
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (entry.name === 'generated' || entry.name === 'node_modules') continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...listSourceFiles(full));
+    else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) files.push(full);
+  }
+  return files;
+}
 
 // --- Schema / migration safety ------------------------------------------
 
@@ -474,4 +493,134 @@ test('CampaignCskhWorkQueue: CampaignLeaderEditModal save qua existing PUT /api/
   assert.match(modalBody, /\/api\/campaigns\/\$\{campaign\.id\}/);
   assert.match(modalBody, /owner_id: leader\?\.id_nhan_vien \|\| null, owner_name: leader\?\.ho_ten \|\| null/);
   assert.match(src, /setCampaigns\(current => current\.map\(item => item\.id === updated\.id \? updated : item\)\)/, 'onSaved phải cập nhật campaigns state để label Leader đổi ngay');
+});
+
+// --- Admin Test Data Cleanup: xóa Campaign an toàn qua application ---------
+
+// Evidence (không phải assumption): grep toàn bộ src/ xác nhận KHÔNG có code
+// path nào ghi CampaignMembership.handoff_id hay CrmHandoff.campaign_membership_id
+// hôm nay (M1B.2 đóng) — nên cả 2 field luôn null trong dữ liệu thật hiện tại.
+// Guard vẫn phải là truy vấn DB thật (queryHandoffBlockReason), KHÔNG được bỏ
+// qua chỉ vì "chắc luôn null" — test này ghi lại bằng chứng, không phải để
+// thay thế cho DB check.
+test('evidence: không có code path nào (ngoài types.ts/schema) ghi CampaignMembership.handoff_id hoặc CrmHandoff.campaign_membership_id — cả 2 field luôn null hôm nay, nhưng preflight/delete vẫn phải truy vấn DB thật, không được giả định', () => {
+  // Chỉ xét các dòng CODE THẬT (bỏ comment, bỏ nội dung nằm trong string
+  // literal — VD thông báo lỗi tiếng Việt nhắc tên field trong ngoặc kép)
+  // — tránh false-positive từ comment giải thích hoặc error message.
+  const realCodeLines = (content: string) => content.split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('//') && !line.startsWith('*') && !line.startsWith('/*'))
+    .map(line => line.replace(/'[^']*'|"[^"]*"|`[^`]*`/g, ''));
+
+  const files = listSourceFiles('src').filter(f => !f.replace(/\\/g, '/').endsWith('src/lib/types.ts'));
+  const handoffIdLines: string[] = [];
+  const membershipRefLines: string[] = [];
+  for (const file of files) {
+    for (const line of realCodeLines(readFileSync(file, 'utf8'))) {
+      if (line.includes('handoff_id') && !/handoff_id: \{ not: null \}|hasMembershipHandoffId/.test(line)) handoffIdLines.push(`${file}: ${line}`);
+      if (line.includes('campaign_membership_id') && !/campaign_membership_id: \{ in: membershipIds \}|hasReferencingHandoff/.test(line)) membershipRefLines.push(`${file}: ${line}`);
+    }
+  }
+  assert.deepEqual(handoffIdLines, [], 'handoff_id chỉ được đọc (read-filter) trong guard mới — không nơi nào ghi giá trị (types.ts declaration loại trừ riêng)');
+  assert.deepEqual(membershipRefLines, [], 'campaign_membership_id chỉ được đọc trong guard mới (schema field, không ai ghi) — xác nhận field này thật sự luôn null hôm nay');
+});
+
+test('campaignHandoffBlockReason: cả 2 chiều false -> null (không block)', () => {
+  assert.equal(campaignHandoffBlockReason({ hasMembershipHandoffId: false, hasReferencingHandoff: false }), null);
+});
+
+test('campaignHandoffBlockReason: CampaignMembership.handoff_id đã set -> block, lý do nhắc đúng field', () => {
+  const reason = campaignHandoffBlockReason({ hasMembershipHandoffId: true, hasReferencingHandoff: false });
+  assert.ok(reason);
+  assert.match(reason!, /handoff_id/);
+});
+
+test('campaignHandoffBlockReason: KHÔNG có membership.handoff_id nhưng CÓ CrmHandoff.campaign_membership_id trỏ tới -> vẫn block (chiều 2, loose reference không có FK)', () => {
+  const reason = campaignHandoffBlockReason({ hasMembershipHandoffId: false, hasReferencingHandoff: true });
+  assert.ok(reason, 'phải block dù membership.handoff_id null — vì CrmHandoff có thể trỏ ngược mà không có FK ràng buộc 2 chiều');
+  assert.match(reason!, /campaign_membership_id/);
+});
+
+test('campaignHandoffBlockReason: cả 2 chiều true -> vẫn block (không cần ưu tiên assert cụ thể lý do nào, chỉ cần chắc chắn không lọt qua)', () => {
+  assert.ok(campaignHandoffBlockReason({ hasMembershipHandoffId: true, hasReferencingHandoff: true }));
+});
+
+test('campaign.ts: queryHandoffBlockReason() truy vấn CẢ 2 bảng thật (campaignMembership.count theo handoff_id, crmHandoff.count theo campaign_membership_id) rồi mới gọi campaignHandoffBlockReason() — không suy diễn, không bỏ qua truy vấn DB', () => {
+  const src = readFileSync(resolve('src/lib/crm-funnel/campaign.ts'), 'utf8');
+  const fnStart = src.indexOf('async function queryHandoffBlockReason');
+  const fnBody = src.slice(fnStart, fnStart + 700);
+  assert.match(fnBody, /client\.campaignMembership\.count\(\{\s*\n\s*where: \{ id: \{ in: membershipIds \}, handoff_id: \{ not: null \} \}/);
+  assert.match(fnBody, /client\.crmHandoff\.count\(\{\s*\n\s*where: \{ campaign_membership_id: \{ in: membershipIds \} \}/);
+  assert.match(fnBody, /return campaignHandoffBlockReason\(\{ hasMembershipHandoffId, hasReferencingHandoff \}\);/);
+});
+
+test('deleteCampaignWithMemberships: thứ tự đúng trong transaction — fetch memberships -> re-check queryHandoffBlockReason (TOCTOU) -> deleteMany membership -> delete Campaign, không có cascade DB mới', () => {
+  const src = readFileSync(resolve('src/lib/crm-funnel/campaign.ts'), 'utf8');
+  const fnStart = src.indexOf('export async function deleteCampaignWithMemberships');
+  const fnBody = src.slice(fnStart, fnStart + 1400);
+  const findIdx = fnBody.indexOf('tx.campaignMembership.findMany');
+  const guardIdx = fnBody.indexOf('queryHandoffBlockReason(tx, membershipIds)');
+  const throwIdx = fnBody.indexOf('throw new CampaignDeleteBlockedError');
+  const deleteManyIdx = fnBody.indexOf('tx.campaignMembership.deleteMany');
+  const deleteCampaignIdx = fnBody.indexOf('tx.campaign.delete');
+  assert.ok(findIdx > -1 && guardIdx > -1 && throwIdx > -1 && deleteManyIdx > -1 && deleteCampaignIdx > -1, 'cả 5 mốc phải tồn tại trong deleteCampaignWithMemberships');
+  assert.ok(findIdx < guardIdx && guardIdx < throwIdx && throwIdx < deleteManyIdx && deleteManyIdx < deleteCampaignIdx,
+    'thứ tự bắt buộc: fetch memberships -> re-check guard (TOCTOU) -> block nếu unsafe -> xóa membership TRƯỚC -> xóa Campaign SAU (đúng vì FK ON DELETE RESTRICT, không có cascade DB)');
+  assert.match(fnBody, /prisma\.\$transaction\(async tx =>/, 'phải chạy trong 1 transaction thật, không phải 2 lệnh rời rạc');
+});
+
+test('campaign.ts: deleteCampaignWithMemberships/getCampaignDeletePreflight KHÔNG BAO GIỜ đụng KhachHang — không có tx.khachHang.delete/update hay prisma.khachHang.delete/update trong toàn bộ khối Admin Test Data Cleanup', () => {
+  const src = readFileSync(resolve('src/lib/crm-funnel/campaign.ts'), 'utf8');
+  const cleanupStart = src.indexOf('// --- Admin Test Data Cleanup');
+  const cleanupBlock = src.slice(cleanupStart);
+  assert.doesNotMatch(cleanupBlock, /khachHang\.(delete|update|deleteMany|updateMany)/, 'Campaign cleanup không được xóa/sửa Customer — chỉ Campaign + CampaignMembership');
+});
+
+test('route.ts DELETE: chỉ isCrmAdmin được xóa Campaign — KHÔNG dùng canManageCampaign (Leader/owner không phải Admin phải bị 403, khác hẳn PUT field thường)', () => {
+  const src = readFileSync(resolve('src/app/api/campaigns/[id]/route.ts'), 'utf8');
+  const fnStart = src.indexOf('export async function DELETE');
+  const fnBody = src.slice(fnStart, fnStart + 1400);
+  assert.match(fnBody, /if \(!isCrmAdmin\(user\)\) \{/);
+  assert.doesNotMatch(fnBody, /canManageCampaign/, 'DELETE handler không được gọi canManageCampaign — owner/Leader không phải Admin không được cấp quyền xóa qua đường này');
+  assert.match(fnBody, /status: 403 \}/);
+});
+
+test('route.ts DELETE: gọi preflight trước, BLOCK (409, không xóa) nếu preflight.blocked, chỉ gọi deleteCampaignWithMemberships khi an toàn, và bắt CampaignDeleteBlockedError (TOCTOU) trả 409', () => {
+  const src = readFileSync(resolve('src/app/api/campaigns/[id]/route.ts'), 'utf8');
+  const fnStart = src.indexOf('export async function DELETE');
+  const fnBody = src.slice(fnStart, fnStart + 1400);
+  const preflightIdx = fnBody.indexOf('getCampaignDeletePreflight(id)');
+  const blockedCheckIdx = fnBody.indexOf('if (preflight.blocked)');
+  const deleteCallIdx = fnBody.indexOf('deleteCampaignWithMemberships(id)');
+  assert.ok(preflightIdx > -1 && blockedCheckIdx > -1 && deleteCallIdx > -1);
+  assert.ok(preflightIdx < blockedCheckIdx && blockedCheckIdx < deleteCallIdx, 'thứ tự: preflight -> kiểm tra blocked (không xóa nếu blocked) -> mới gọi delete thật');
+  assert.match(fnBody, /error instanceof CampaignDeleteBlockedError\) return NextResponse\.json\(\{ success: false, error: error\.message \}, \{ status: 409 \}\)/, 'TOCTOU tại transaction-time phải trả 409, không phải 500 hay xóa liều');
+});
+
+test('Campaign migration (ON DELETE RESTRICT) giữ nguyên — Admin Test Data Cleanup không thêm cascade DB mới, xóa 2 bước hoàn toàn ở tầng application', () => {
+  const sql = readFileSync(resolve(MIGRATION_PATH), 'utf8');
+  assert.match(sql, /FOREIGN KEY \("campaign_id"\) REFERENCES "campaigns"\("id"\) ON DELETE RESTRICT ON UPDATE CASCADE;/);
+});
+
+test('CampaignCskhWorkQueue.tsx (CSKH operational workspace) KHÔNG có Campaign delete/cleanup UI — capability này chỉ đặt ở /khach-hang (Customer management), không biến CSKH work queue thành generic database admin', () => {
+  const src = readFileSync(resolve('src/components/crm/CampaignCskhWorkQueue.tsx'), 'utf8');
+  assert.doesNotMatch(src, /deleteCampaignWithMemberships|delete-preflight|Quản lý Campaign|Xóa Campaign/);
+});
+
+test('khach-hang/page.tsx: nút "Quản lý Campaign" mở list, "Xem chi tiết & Xóa" gọi GET delete-preflight, xác nhận rõ ràng (confirm dialog) trước khi DELETE thật, và không hiện nút xóa khi preflight.blocked', () => {
+  const src = readFileSync(resolve('src/app/khach-hang/page.tsx'), 'utf8');
+  assert.match(src, /Quản lý Campaign/);
+  assert.match(src, /fetch\(`\/api\/campaigns\/\$\{campaignId\}\/delete-preflight`\)/);
+  assert.match(src, /fetch\(`\/api\/campaigns\/\$\{campaignPreflight\.campaign\.id\}`, \{ method: 'DELETE' \}\)/);
+  assert.match(src, /showCampaignDeleteConfirm/, 'phải có bước confirm dialog riêng trước khi gọi DELETE thật');
+  assert.match(src, /\{!campaignDeleteResult && !campaignPreflight\.blocked && \(/, 'nút Xóa Campaign chỉ render khi KHÔNG blocked');
+  assert.match(src, /campaignPreflight\.blocked && \(\s*\n\s*<div[^>]*>\{campaignPreflight\.blockedReason\}<\/div>/, 'khi blocked phải hiển thị lý do, không có đường nào để force xóa qua UI');
+});
+
+test('khach-hang/page.tsx: không dùng heuristic tên "TEST" để lọc/chặn Campaign nào được xem hay xóa — Admin thấy và có thể thử xóa bất kỳ Campaign nào, chỉ dependency guard (server) mới quyết định block', () => {
+  const src = readFileSync(resolve('src/app/khach-hang/page.tsx'), 'utf8');
+  const cleanupStart = src.indexOf('const openCampaignManager');
+  const cleanupEnd = src.indexOf('const totalPages');
+  const cleanupBlock = src.slice(cleanupStart, cleanupEnd);
+  assert.doesNotMatch(cleanupBlock, /\.filter\([^)]*TEST/i, 'không được filter theo tên chứa "TEST" hay bất kỳ heuristic tên nào');
 });

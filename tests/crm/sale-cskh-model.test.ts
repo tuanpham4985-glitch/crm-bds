@@ -191,7 +191,11 @@ test('10) campaign.ts (bulkAddAndDistribute) và distribute route không bao gi�
   for (const file of ['src/lib/crm-funnel/campaign.ts', 'src/app/api/campaigns/[id]/distribute/route.ts']) {
     const src = readFileSync(resolve(file), 'utf8');
     const codeOnly = src.split('\n').filter(line => !line.trim().startsWith('//') && !line.trim().startsWith('*')).join('\n');
-    assert.doesNotMatch(codeOnly, /sale_phu_trach|sale_nhan_khach|crmHandoff|tx\.pipeline|khachHang\.(update|create)/i, `${file} không được ghi Sale ownership/Handoff/Pipeline/KhachHang`);
+    assert.doesNotMatch(codeOnly, /sale_phu_trach|sale_nhan_khach|tx\.pipeline|khachHang\.(update|create)/i, `${file} không được ghi Sale ownership/Pipeline/KhachHang`);
+    // crmHandoff.count() (READ-ONLY, Admin Test Data Cleanup — kiểm tra
+    // dependency trước khi xóa Campaign) là ngoại lệ hợp lệ duy nhất; mọi
+    // WRITE (create/update/delete/upsert) vào CrmHandoff vẫn bị cấm tuyệt đối.
+    assert.doesNotMatch(codeOnly, /crmHandoff\.(create|update|delete|upsert)/i, `${file} không được ghi CrmHandoff`);
   }
 });
 

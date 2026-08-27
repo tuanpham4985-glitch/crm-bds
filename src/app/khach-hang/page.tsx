@@ -7,7 +7,7 @@ import {
   Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle,
   Database, Loader2, Copy, FileSpreadsheet, History, Eye, Layers,
 } from 'lucide-react';
-import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig, CrmImportBatch } from '@/lib/types';
+import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig, CrmImportBatch, Campaign } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
 import { NGUON, GIAI_DOAN_COLORS } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
@@ -73,6 +73,28 @@ export default function KhachHangPage() {
     deleted: number; blocked: number;
     results: { id: string; ten_KH: string; status: string; reason?: string }[];
   } | null>(null);
+
+  // Admin Test Data Cleanup (Campaign) — xóa Campaign + membership của nó an
+  // toàn qua application, cùng UX pattern với Lịch sử Import (list -> chi
+  // tiết/preflight -> confirm -> xóa). KHÔNG BAO GIỜ xóa Customer ở đây —
+  // Customer cleanup vẫn hoàn toàn qua customerDeleteBlockReason() hiện có.
+  const [showCampaignManager, setShowCampaignManager] = useState(false);
+  const [campaignList, setCampaignList] = useState<Campaign[]>([]);
+  const [loadingCampaignList, setLoadingCampaignList] = useState(false);
+  const [campaignManagerError, setCampaignManagerError] = useState('');
+  type CampaignDeletePreflightView = {
+    campaign: { id: string; name: string; ten_du_an: string | null; owner_name: string | null } | null;
+    membershipCount: number;
+    sample: { customer_id: string; ten_KH: string; telesale_name: string | null }[];
+    blocked: boolean;
+    blockedReason?: string;
+  };
+  const [campaignPreflight, setCampaignPreflight] = useState<CampaignDeletePreflightView | null>(null);
+  const [loadingCampaignPreflight, setLoadingCampaignPreflight] = useState(false);
+  const [showCampaignDeleteConfirm, setShowCampaignDeleteConfirm] = useState(false);
+  const [deletingCampaign, setDeletingCampaign] = useState(false);
+  const [campaignDeleteResult, setCampaignDeleteResult] = useState<{ deletedMemberships: number } | null>(null);
+  const [campaignDeleteError, setCampaignDeleteError] = useState('');
 
   // Quản lý Sheet nguồn
   const [showPanel, setShowPanel] = useState(false);
@@ -470,6 +492,65 @@ export default function KhachHangPage() {
     }
   };
 
+  const openCampaignManager = async () => {
+    setShowCampaignManager(true);
+    setCampaignManagerError('');
+    setLoadingCampaignList(true);
+    try {
+      const res = await fetch('/api/campaigns');
+      const result = await res.json();
+      if (result.success) setCampaignList(result.data);
+      else setCampaignManagerError(result.error || 'Không thể tải danh sách Campaign');
+    } catch (err) {
+      console.error('Load campaigns error:', err);
+      setCampaignManagerError('Lỗi kết nối khi tải danh sách Campaign');
+    } finally {
+      setLoadingCampaignList(false);
+    }
+  };
+
+  const openCampaignPreflight = async (campaignId: string) => {
+    setLoadingCampaignPreflight(true);
+    setCampaignDeleteResult(null);
+    setCampaignDeleteError('');
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/delete-preflight`);
+      const result = await res.json();
+      if (result.success) setCampaignPreflight(result.data);
+      else alert('Không tải được thông tin Campaign: ' + result.error);
+    } catch (err) {
+      console.error('Load campaign delete preflight error:', err);
+      alert('Lỗi kết nối khi kiểm tra Campaign');
+    } finally {
+      setLoadingCampaignPreflight(false);
+    }
+  };
+
+  const handleDeleteCampaign = async () => {
+    if (!campaignPreflight?.campaign) return;
+    setDeletingCampaign(true);
+    setCampaignDeleteError('');
+    try {
+      const res = await fetch(`/api/campaigns/${campaignPreflight.campaign.id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (result.success) {
+        setShowCampaignDeleteConfirm(false);
+        setCampaignDeleteResult(result.data);
+        openCampaignManager(); // refresh danh sách Campaign
+      } else {
+        // TOCTOU: preflight từng cho phép nhưng lúc xóa thật đã bị chặn
+        // (VD Handoff vừa được tạo) — hiển thị lý do, không tự retry.
+        setShowCampaignDeleteConfirm(false);
+        setCampaignDeleteError(result.error || 'Xóa Campaign thất bại');
+      }
+    } catch (err) {
+      console.error('Delete campaign error:', err);
+      setCampaignDeleteError('Lỗi kết nối khi xóa Campaign');
+    } finally {
+      setDeletingCampaign(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / limit);
 
   const clearFilters = () => {
@@ -509,6 +590,10 @@ export default function KhachHangPage() {
           <button className="btn btn-secondary" onClick={openImportHistory}>
             <History size={15} />
             Lịch sử Import
+          </button>
+          <button className="btn btn-secondary" onClick={openCampaignManager}>
+            <Layers size={15} />
+            Quản lý Campaign
           </button>
           <button
             className="btn btn-secondary"
@@ -1333,6 +1418,142 @@ export default function KhachHangPage() {
               <button className="btn btn-secondary" onClick={() => setShowBatchDeleteConfirm(false)} disabled={deletingBatch}>Hủy</button>
               <button className="btn btn-danger" onClick={handleDeleteBatch} disabled={deletingBatch}>
                 {deletingBatch ? 'Đang xóa...' : `Xóa ${selectedBatch.eligibleCount} khách hàng`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quản lý Campaign — Admin Test Data Cleanup */}
+      {showCampaignManager && (
+        <>
+          <div onClick={() => setShowCampaignManager(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)', zIndex: 1000 }} />
+          <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 560, background: 'var(--bg-card)', borderLeft: '1px solid var(--border)', zIndex: 1001, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '-4px 0 24px rgba(0,0,0,0.10)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Layers size={18} color="var(--primary)" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.975rem', color: 'var(--text-title)' }}>Quản lý Campaign</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Xem và xóa Campaign test — Customer không bị xóa</div>
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowCampaignManager(false)}><X size={18} /></button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+              {campaignManagerError && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: 12, marginBottom: 14, fontSize: '0.85rem' }}>{campaignManagerError}</div>}
+              {loadingCampaignList ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: 30 }}>
+                  <Loader2 size={22} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary)' }} />
+                </div>
+              ) : campaignList.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '30px 0' }}>Chưa có Campaign nào.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {campaignList.map(campaign => (
+                    <div key={campaign.id} style={{ border: '1.5px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 650, fontSize: '0.9rem', color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaign.name}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 3 }}>
+                            {campaign.ten_du_an ? `${campaign.ten_du_an} · ` : ''}Leader: {campaign.owner_name || 'Chưa cấu hình'}
+                          </div>
+                        </div>
+                        <span className="badge" style={{ background: '#f0fdf4', color: '#16a34a', fontSize: '0.68rem', flexShrink: 0 }}>{campaign.status}</span>
+                      </div>
+                      <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={() => openCampaignPreflight(campaign.id)}>
+                        <Eye size={13} /> Xem chi tiết &amp; Xóa
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Campaign Delete Preflight / Result */}
+      {(loadingCampaignPreflight || campaignPreflight) && (
+        <div className="modal-overlay" onClick={() => { setCampaignPreflight(null); setCampaignDeleteResult(null); setCampaignDeleteError(''); }}>
+          <div className="modal-content" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Chi tiết Campaign{campaignPreflight?.campaign ? `: ${campaignPreflight.campaign.name}` : ''}</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => { setCampaignPreflight(null); setCampaignDeleteResult(null); setCampaignDeleteError(''); }}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {loadingCampaignPreflight ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: 30 }}>
+                  <Loader2 size={22} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary)' }} />
+                </div>
+              ) : campaignPreflight?.campaign && (
+                <>
+                  {campaignDeleteResult ? (
+                    <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f0fdf4', borderRadius: 8 }}>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#16a34a' }}>{campaignDeleteResult.deletedMemberships}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginTop: 2 }}>Membership đã xóa cùng Campaign</div>
+                    </div>
+                  ) : (
+                    <>
+                      {campaignDeleteError && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: 12, fontSize: '0.85rem' }}>{campaignDeleteError}</div>}
+                      {campaignPreflight.blocked && (
+                        <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: 12, fontSize: '0.85rem' }}>{campaignPreflight.blockedReason}</div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: '0.85rem' }}>
+                        <div>Dự án: <strong>{campaignPreflight.campaign.ten_du_an || '—'}</strong></div>
+                        <div>Leader: <strong>{campaignPreflight.campaign.owner_name || 'Chưa cấu hình'}</strong></div>
+                        <div style={{ gridColumn: '1 / -1' }}>Số khách hàng (CampaignMembership) sẽ bị xóa: <strong>{campaignPreflight.membershipCount}</strong></div>
+                      </div>
+                      {campaignPreflight.sample.length > 0 && (
+                        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                          {campaignPreflight.sample.map((s, i, arr) => (
+                            <div key={s.customer_id} style={{ padding: '8px 12px', fontSize: '0.82rem', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                              <span style={{ fontWeight: 500 }}>{s.ten_KH}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{s.telesale_name || 'Chưa phân'}</span>
+                            </div>
+                          ))}
+                          {campaignPreflight.membershipCount > campaignPreflight.sample.length && (
+                            <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              …và {campaignPreflight.membershipCount - campaignPreflight.sample.length} khách hàng khác.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+                        Chỉ Campaign và các CampaignMembership của nó bị xóa. Khách hàng (Customer) không bị xóa hay thay đổi.
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            {campaignPreflight?.campaign && !loadingCampaignPreflight && (
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => { setCampaignPreflight(null); setCampaignDeleteResult(null); setCampaignDeleteError(''); }}>Đóng</button>
+                {!campaignDeleteResult && !campaignPreflight.blocked && (
+                  <button className="btn btn-danger" onClick={() => setShowCampaignDeleteConfirm(true)}>
+                    <Trash2 size={15} /> Xóa Campaign ({campaignPreflight.membershipCount})
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Campaign */}
+      {showCampaignDeleteConfirm && campaignPreflight?.campaign && (
+        <div className="confirm-overlay" onClick={() => !deletingCampaign && setShowCampaignDeleteConfirm(false)}>
+          <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
+            <h3>Xác nhận xóa Campaign</h3>
+            <p>
+              Campaign <strong>{campaignPreflight.campaign.name}</strong> có <strong>{campaignPreflight.membershipCount}</strong> khách hàng (CampaignMembership) sẽ bị xóa cùng lịch sử chăm sóc/qualification.
+              {' '}Khách hàng (Customer) sẽ được giữ lại. Hành động này không thể hoàn tác.
+            </p>
+            <div className="confirm-actions">
+              <button className="btn btn-secondary" onClick={() => setShowCampaignDeleteConfirm(false)} disabled={deletingCampaign}>Hủy</button>
+              <button className="btn btn-danger" onClick={handleDeleteCampaign} disabled={deletingCampaign}>
+                {deletingCampaign ? 'Đang xóa...' : `Xóa Campaign (${campaignPreflight.membershipCount})`}
               </button>
             </div>
           </div>
