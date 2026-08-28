@@ -20,7 +20,19 @@ test('export projection contains all required columns', () => {
   const record = qualityExportRecords([row])[0];
   assert.deepEqual(Object.keys(record), [...QUALITY_EXPORT_HEADERS]);
   assert.equal(record['SĐT'], '0900123456');
-  assert.equal(record['Lead Score'], 82);
+  assert.equal(record['Điểm'], 82);
+});
+
+// Việt hóa display layer (Data tiềm năng): export phải ghi NHÃN tiếng Việt cho
+// qualification_status/lead_quality_rank, không phải giá trị enum thô (HOT/
+// RAW/...) — nhưng row.qualification_status gốc (input) vẫn phải là enum
+// thật, không đổi contract nội bộ.
+test('export projection dịch qualification_status/lead_quality_rank sang nhãn tiếng Việt ở cột "Trạng thái"/"Xếp hạng", không lộ enum thô ra file', () => {
+  const record = qualityExportRecords([row])[0];
+  assert.equal(row.qualification_status, 'HOT', 'input vẫn phải là enum gốc, không đổi contract');
+  assert.equal(row.lead_quality_rank, 'HOT');
+  assert.equal(record['Trạng thái'], 'Tiềm năng cao');
+  assert.equal(record['Xếp hạng'], 'Tiềm năng cao');
 });
 
 test('xlsx export can be reopened and retains filtered record', () => {
