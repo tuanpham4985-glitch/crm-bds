@@ -580,41 +580,48 @@ export default function KhachHangPage() {
           <p>Quản lý thông tin khách hàng ({total} khách hàng)</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" onClick={openPanel}>
-            <Database size={15} />
-            Quản lý Sheet
-          </button>
-          <button className="btn btn-secondary" onClick={openImportHistory}>
-            <History size={15} />
-            Lịch sử Import
-          </button>
-          <button className="btn btn-secondary" onClick={openCampaignManager}>
-            <Layers size={15} />
-            Quản lý Campaign
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            <RefreshCw size={16} style={syncing ? { animation: 'spin 1s linear infinite' } : {}} />
-            {syncing ? 'Đang sync...' : 'Sync từ phễu'}
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() => excelInputRef.current?.click()}
-            disabled={importingExcel}
-          >
-            {importingExcel ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <FileSpreadsheet size={16} />}
-            {importingExcel ? 'Đang import...' : 'Import Excel'}
-          </button>
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            ref={excelInputRef}
-            style={{ display: 'none' }}
-            onChange={handleImportExcel}
-          />
+          {/* Admin-only controls: quản trị nguồn/import/campaign, không phải
+              business data hàng ngày của Leader/Sale — ẩn hoàn toàn khỏi DOM
+              (không phải CSS-hide) để header tự co lại, không để khoảng trống. */}
+          {isAdmin && (
+            <>
+              <button className="btn btn-secondary" onClick={openPanel}>
+                <Database size={15} />
+                Quản lý Sheet
+              </button>
+              <button className="btn btn-secondary" onClick={openImportHistory}>
+                <History size={15} />
+                Lịch sử Import
+              </button>
+              <button className="btn btn-secondary" onClick={openCampaignManager}>
+                <Layers size={15} />
+                Quản lý Campaign
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleSync}
+                disabled={syncing}
+              >
+                <RefreshCw size={16} style={syncing ? { animation: 'spin 1s linear infinite' } : {}} />
+                {syncing ? 'Đang sync...' : 'Sync từ phễu'}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => excelInputRef.current?.click()}
+                disabled={importingExcel}
+              >
+                {importingExcel ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <FileSpreadsheet size={16} />}
+                {importingExcel ? 'Đang import...' : 'Import Excel'}
+              </button>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                ref={excelInputRef}
+                style={{ display: 'none' }}
+                onChange={handleImportExcel}
+              />
+            </>
+          )}
           {selectedIds.size > 0 && (
             <button className="btn btn-secondary" onClick={() => setShowCampaignModal(true)}>
               <Layers size={16} />
@@ -627,10 +634,12 @@ export default function KhachHangPage() {
               Xóa đã chọn ({selectedIds.size})
             </button>
           )}
-          <button className="btn btn-primary" onClick={openCreate}>
-            <Plus size={18} />
-            Thêm khách hàng
-          </button>
+          {isAdmin && (
+            <button className="btn btn-primary" onClick={openCreate}>
+              <Plus size={18} />
+              Thêm khách hàng
+            </button>
+          )}
         </div>
       </div>
 
@@ -675,7 +684,7 @@ export default function KhachHangPage() {
           <div className="empty-state">
             <Users size={40} />
             <h3>Chưa có khách hàng</h3>
-            <p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới</p>
+            {isAdmin && <p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới</p>}
           </div>
         ) : (
           <>
