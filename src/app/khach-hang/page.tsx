@@ -53,6 +53,12 @@ export default function KhachHangPage() {
   // Campaign Foundation (M1A): thêm/phân tập đã chọn vào Campaign — tái dùng
   // đúng selectedIds ở trên, không tạo cơ chế chọn nhiều mới.
   const [showCampaignModal, setShowCampaignModal] = useState(false);
+  // "Chọn tất cả N khách hàng phù hợp bộ lọc" (dataset có thể vài nghìn dòng,
+  // selectedIds chỉ bao giờ chứa id của trang đang xem — KHÔNG được để Admin
+  // tưởng nhầm "đã tick hết trang" = "đã chọn hết cả bộ lọc"). Cờ riêng, tách
+  // khỏi selectedIds — khi bật, CampaignDistributeModal gửi filter (search/
+  // from/to) để server tự resolve id thật lúc submit, không gửi id list.
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
 
   // Lịch sử Import (Import Batch)
   const [showImportHistory, setShowImportHistory] = useState(false);
@@ -148,6 +154,7 @@ export default function KhachHangPage() {
         setData(result.data);
         setTotal(result.total);
         setSelectedIds(new Set()); // danh sách hiển thị đổi -> reset lựa chọn cho khớp
+        setSelectAllMatching(false); // filter/trang đổi -> "chọn tất cả" cũ không còn đúng nghĩa
       }
     } catch (err) {
       console.error('Fetch error:', err);
@@ -622,13 +629,13 @@ export default function KhachHangPage() {
               />
             </>
           )}
-          {selectedIds.size > 0 && (
+          {(selectedIds.size > 0 || (isAdmin && selectAllMatching)) && (
             <button className="btn btn-secondary" onClick={() => setShowCampaignModal(true)}>
               <Layers size={16} />
-              Thêm vào Campaign ({selectedIds.size})
+              Tạo Campaign ({selectAllMatching ? total : selectedIds.size})
             </button>
           )}
-          {selectedIds.size > 0 && (
+          {selectedIds.size > 0 && !selectAllMatching && (
             <button className="btn btn-danger" onClick={() => setShowBulkConfirm(true)}>
               <Trash2 size={16} />
               Xóa đã chọn ({selectedIds.size})
@@ -688,6 +695,27 @@ export default function KhachHangPage() {
           </div>
         ) : (
           <>
+            {/* "Chọn tất cả N phù hợp bộ lọc" — chỉ Admin (bulk-add Campaign
+                theo filter là thao tác Admin-only, xem POST .../distribute).
+                Chỉ đề nghị khi đã tick hết trang HIỆN TẠI và còn nhiều hơn thế
+                (total > data.length) — tránh Admin tưởng nhầm "tick hết trang"
+                = "đã chọn hết toàn bộ kết quả lọc". */}
+            {isAdmin && allVisibleSelected && !selectAllMatching && total > data.length && (
+              <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#eff6ff', color: '#1d4ed8', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                <span>Đã chọn {selectedIds.size} khách hàng trên trang này.</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSelectAllMatching(true)}>
+                  Chọn tất cả {total} khách hàng phù hợp với bộ lọc
+                </button>
+              </div>
+            )}
+            {isAdmin && selectAllMatching && (
+              <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#eff6ff', color: '#1d4ed8', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                <span>Đã chọn <strong>{total}</strong> khách hàng (tất cả phù hợp với bộ lọc hiện tại).</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSelectAllMatching(false)}>
+                  Bỏ chọn tất cả
+                </button>
+              </div>
+            )}
             <div className="table-wrapper">
               <table className="data-table">
                 <thead>
@@ -1613,12 +1641,13 @@ export default function KhachHangPage() {
 
       {showCampaignModal && (
         <CampaignDistributeModal
-          customerIds={[...selectedIds]}
+          customerIds={selectAllMatching ? undefined : [...selectedIds]}
+          customerFilter={selectAllMatching ? { search, from: fromDate, to: toDate, count: total } : undefined}
           employees={employees}
           projects={duAnList}
           isAdmin={isAdmin}
           onClose={() => setShowCampaignModal(false)}
-          onDone={() => setSelectedIds(new Set())}
+          onDone={() => { setSelectedIds(new Set()); setSelectAllMatching(false); }}
         />
       )}
     </div>

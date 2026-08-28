@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getNhanVien } from '@/lib/data-access';
 import { canManageCampaign, eligibleCampaignSales, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
-import { bulkAddAndDistribute, getCampaign, type DistributionMode } from '@/lib/crm-funnel/campaign';
+import { bulkAddAndDistribute, getCampaign, resolveCustomerIdsByFilter, type DistributionMode } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
 const MODES: DistributionMode[] = ['round_robin', 'quantity', 'none'];
@@ -20,11 +20,30 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const body = await request.json().catch(() => null) as {
-      customer_ids?: unknown; telesale_names?: unknown; mode?: unknown; quantities?: unknown;
+      customer_ids?: unknown; customer_filter?: unknown; telesale_names?: unknown; mode?: unknown; quantities?: unknown;
     } | null;
-    const customerIds = Array.isArray(body?.customer_ids)
-      ? body!.customer_ids.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
-      : [];
+
+    let customerIds: string[];
+    if (body?.customer_filter && typeof body.customer_filter === 'object') {
+      // "Chọn tất cả N khách hàng phù hợp bộ lọc" — id resolve THẲNG từ DB
+      // theo bộ lọc, KHÔNG nhận id list từ client cho đường này. Chỉ Admin
+      // được dùng (tương đương "Tạo Campaign/bulk-add từ /khach-hang" trong
+      // spec) — canManageCampaign phía trên đã cho phép cả Leader (owner
+      // Campaign) đi tới đây, nên phải gate CHẶT hơn riêng cho customer_filter.
+      if (!isCrmAdmin(user)) {
+        return NextResponse.json({ success: false, error: 'Chỉ Admin được thêm khách hàng theo bộ lọc (chọn tất cả)' }, { status: 403 });
+      }
+      const filterInput = body.customer_filter as Record<string, unknown>;
+      customerIds = await resolveCustomerIdsByFilter({
+        search: typeof filterInput.search === 'string' ? filterInput.search : undefined,
+        from: typeof filterInput.from === 'string' ? filterInput.from : undefined,
+        to: typeof filterInput.to === 'string' ? filterInput.to : undefined,
+      });
+    } else {
+      customerIds = Array.isArray(body?.customer_ids)
+        ? body!.customer_ids.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+        : [];
+    }
     if (customerIds.length === 0) {
       return NextResponse.json({ success: false, error: 'Chưa chọn khách hàng nào' }, { status: 400 });
     }

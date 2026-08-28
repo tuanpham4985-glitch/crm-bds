@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, Eye, History, Layers, Phone, RefreshCw, Save, Search, Send, Settings, UserCheck, Users, X } from 'lucide-react';
 import type { CrmBanGiaoEntry, CrmChamSocEntry, DuAn, KhachHang, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
@@ -35,10 +36,11 @@ function isOverdue(value?: string): boolean { return Boolean(value && new Date(v
 
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
-export default function PhanKhachPage() {
+function PhanKhachContent() {
   const { phanKhachIds } = useCrmAccess();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
   const { enabled: crmEnabled, isLoading: crmModuleLoading } = useCrmModule();
+  const searchParams = useSearchParams();
   // Sale CSKH model: không có role "Telesale" riêng — Leader/Sale đều là
   // nhân viên vai_tro 'Sale'. Trang này trước đây chỉ Admin vào được, khiến
   // Leader/Sale không bao giờ tới được chế độ Campaign CSKH của chính họ dù
@@ -53,7 +55,11 @@ export default function PhanKhachPage() {
   // "Theo Dự án" cũ — giữ nguyên toàn bộ state/luồng cũ bên dưới không đổi.
   // Sale (không phải Admin) mặc định vào thẳng chế độ Campaign — đúng luồng
   // của họ; Admin vẫn mặc định "Theo Dự án" như trước, không đổi hành vi cũ.
-  const [mode, setMode] = useState<'project' | 'campaign'>('project');
+  // ?mode=campaign (+ ?campaignId=…, tuỳ chọn) — link "đi thẳng sang CSKH →
+  // Theo Campaign" sau khi Admin tạo Campaign từ /khach-hang; không đổi mặc
+  // định khi không có query param.
+  const [mode, setMode] = useState<'project' | 'campaign'>(searchParams.get('mode') === 'campaign' ? 'campaign' : 'project');
+  const initialCampaignId = searchParams.get('campaignId') || undefined;
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
@@ -195,7 +201,7 @@ export default function PhanKhachPage() {
       <button className={mode === 'campaign' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setMode('campaign')}><Layers size={13} /> Theo Campaign</button>
     </div>
 
-    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} projects={projects} /> : <>
+    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} projects={projects} initialCampaignId={initialCampaignId} /> : <>
     {notice && <div style={{ padding: '11px 14px', marginBottom: 16, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', background: notice.type === 'ok' ? '#ecfdf5' : notice.type === 'warn' ? '#fffbeb' : '#fef2f2', color: notice.type === 'ok' ? '#047857' : notice.type === 'warn' ? '#a16207' : '#b91c1c' }}>{notice.type === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}<span style={{ flex: 1 }}>{notice.text}</span><button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)}><X size={14} /></button></div>}
     <div className="card" style={{ padding: 16, marginBottom: 16 }}><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><div style={{ minWidth: 280 }}><label className="form-label">Dự án</label><div style={{ position: 'relative' }}><select className="form-select" value={selectedProjectId} onChange={event => setSelectedProjectId(event.target.value)}><option value="">— Chọn dự án —</option>{accessibleProjects.map(project => <option key={project.id_du_an} value={project.id_du_an}>{project.ten_du_an}</option>)}</select><ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} /></div></div>{selectedProject && <><div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9 }}>Trưởng nhóm: <strong style={{ color: 'var(--text-title)' }}>{selectedProject.truong_nhom || 'Chưa cấu hình'}</strong></div>{canManage && <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto', marginBottom: 3 }} onClick={openTeam}><Settings size={14} /> Cấu hình team</button>}</>}</div></div>
 
@@ -213,6 +219,15 @@ export default function PhanKhachPage() {
     {showTeam && selectedProject && <Modal title="Cấu hình team dự án" onClose={() => setShowTeam(false)}><div style={{ padding: 20 }}><div className="form-group"><label className="form-label">Trưởng nhóm</label><select className="form-select" disabled={!isAdmin} value={teamForm.truong_nhom} onChange={event => setTeamForm(current => ({ ...current, truong_nhom: event.target.value }))}><option value="">— Chọn trưởng nhóm —</option>{activeEmployees.map(item => <option key={item.id_nhan_vien} value={item.ho_ten}>{item.ho_ten} · {item.employee_type}</option>)}</select></div><div className="form-group"><label className="form-label">Thành viên được truy cập dự án</label><div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>{activeEmployees.map(item => <label key={item.id_nhan_vien} style={{ display: 'flex', padding: '9px 12px', gap: 9, alignItems: 'center', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}><input type="checkbox" checked={teamForm.ds_sale.includes(item.ho_ten)} onChange={() => setTeamForm(current => ({ ...current, ds_sale: current.ds_sale.includes(item.ho_ten) ? current.ds_sale.filter(name => name !== item.ho_ten) : [...current.ds_sale, item.ho_ten] }))} /><span style={{ flex: 1 }}>{item.ho_ten}</span><span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.employee_type}</span></label>)}</div></div></div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowTeam(false)}>Hủy</button><button className="btn btn-primary" disabled={busyId === 'team'} onClick={() => void saveTeam()}><Save size={15} /> Lưu cấu hình</button></div></Modal>}
     </>}
   </div>;
+}
+
+// Wrapper bắt buộc: useSearchParams() yêu cầu Suspense boundary trong Next.js App Router
+export default function PhanKhachPage() {
+  return (
+    <Suspense fallback={<div className="loading-spinner"><div className="spinner" /></div>}>
+      <PhanKhachContent />
+    </Suspense>
+  );
 }
 
 function CustomerTable({ customers, loading, busyId, canManage, userName, telesales, sales, onAssign, onInteraction, onQualification, onHandoff, onHistory }: {

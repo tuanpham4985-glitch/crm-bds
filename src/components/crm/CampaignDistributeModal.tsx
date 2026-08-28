@@ -8,7 +8,8 @@
 // chỉ tạo/phân CampaignMembership. Không có role "Telesale" riêng — người
 // được phân là nhân viên vai_tro 'Sale' (eligibleCampaignSales).
 import { useEffect, useState } from 'react';
-import { Layers, Loader2, Save, Users, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Layers, Loader2, Save, Users, X } from 'lucide-react';
 import type { Campaign, DuAn, NhanVien } from '@/lib/types';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
 
@@ -24,8 +25,17 @@ interface DistributeResult {
   stillUnassigned: number;
 }
 
-export function CampaignDistributeModal({ customerIds, employees, projects, isAdmin, fixedCampaign, onClose, onDone }: {
-  customerIds: string[];
+export function CampaignDistributeModal({ customerIds, customerFilter, employees, projects, isAdmin, fixedCampaign, onClose, onDone }: {
+  /** Danh sách id tường minh do UI chọn từng dòng (page-local selection). */
+  customerIds?: string[];
+  /**
+   * "Chọn tất cả N khách hàng phù hợp bộ lọc" — thay cho customerIds khi
+   * Admin chọn TẤT CẢ khách hàng khớp bộ lọc hiện tại trên /khach-hang
+   * (dataset có thể vài nghìn dòng, không gửi id list từ client). `count` chỉ
+   * để hiển thị — server tự resolve lại id thật theo search/from/to khi submit
+   * (xem POST /api/campaigns/[id]/distribute), không tin count từ client.
+   */
+  customerFilter?: { search?: string; from?: string; to?: string; count: number };
   employees: NhanVien[];
   projects: DuAn[];
   isAdmin: boolean;
@@ -34,6 +44,8 @@ export function CampaignDistributeModal({ customerIds, employees, projects, isAd
   onClose: () => void;
   onDone: () => void;
 }) {
+  const router = useRouter();
+  const selectionCount = customerFilter ? customerFilter.count : (customerIds?.length ?? 0);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(!fixedCampaign);
   const [campaignId, setCampaignId] = useState<string>('');
@@ -47,6 +59,10 @@ export function CampaignDistributeModal({ customerIds, employees, projects, isAd
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<DistributeResult | null>(null);
+  // Chỉ set khi lần submit này THỰC SỰ vừa tạo Campaign mới (không phải chọn
+  // Campaign có sẵn) — dùng để hiện đúng câu "Đã tạo Campaign X với Y khách
+  // hàng" + link "đi thẳng" sang CSKH → Theo Campaign của ĐÚNG Campaign đó.
+  const [createdCampaign, setCreatedCampaign] = useState<{ id: string; name: string } | null>(null);
 
   const activeCampaign = fixedCampaign || campaigns.find(item => item.id === campaignId);
   // Chưa chọn/tạo Campaign nào (bước tạo mới của Admin — POST /api/campaigns
@@ -116,10 +132,16 @@ export function CampaignDistributeModal({ customerIds, employees, projects, isAd
         const created = await createRes.json();
         if (!created.success) throw new Error(created.error);
         targetId = created.data.id;
+        setCreatedCampaign({ id: created.data.id, name: created.data.name });
       }
       const distributeRes = await fetch(`/api/campaigns/${targetId}/distribute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customer_ids: customerIds, telesale_names: selectedSales, mode, quantities }),
+        body: JSON.stringify({
+          ...(customerFilter
+            ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to } }
+            : { customer_ids: customerIds }),
+          telesale_names: selectedSales, mode, quantities,
+        }),
       });
       const distributed = await distributeRes.json();
       if (!distributed.success) throw new Error(distributed.error);
@@ -143,7 +165,9 @@ export function CampaignDistributeModal({ customerIds, employees, projects, isAd
           {result ? (
             <div>
               <div style={{ padding: 12, background: '#ecfdf5', color: '#047857', borderRadius: 8, marginBottom: 12, fontWeight: 600 }}>
-                Đã xử lý xong.
+                {createdCampaign
+                  ? `Đã tạo Campaign "${createdCampaign.name}" với ${result.created} khách hàng.`
+                  : 'Đã xử lý xong.'}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
                 <div>Đã chọn: <strong>{result.requested}</strong></div>
@@ -154,13 +178,22 @@ export function CampaignDistributeModal({ customerIds, employees, projects, isAd
                 <div style={{ gridColumn: '1 / -1' }}>Còn chưa phân: <strong>{result.stillUnassigned}</strong></div>
                 {result.notFound.length > 0 && <div style={{ color: '#b91c1c' }}>Không tìm thấy: <strong>{result.notFound.length}</strong></div>}
               </div>
+              {!fixedCampaign && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
+                  onClick={() => router.push(`/phan-khach?mode=campaign&campaignId=${createdCampaign?.id || campaignId}`)}
+                >
+                  Đi tới CSKH → Theo Campaign <ArrowRight size={15} />
+                </button>
+              )}
             </div>
           ) : (
             <>
               {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
               <div style={{ padding: 10, background: '#f8fafc', borderRadius: 7, marginBottom: 14, fontSize: 13 }}>
                 <Users size={14} style={{ verticalAlign: -2, marginRight: 5 }} />
-                Đang thao tác trên <strong>{customerIds.length}</strong> khách hàng đã chọn.
+                Đang thao tác trên <strong>{selectionCount}</strong> khách hàng đã chọn.
               </div>
 
               {fixedCampaign ? (

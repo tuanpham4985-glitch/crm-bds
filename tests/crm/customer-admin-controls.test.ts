@@ -49,16 +49,22 @@ test('khach-hang/page.tsx: nút "Thêm khách hàng" (tạo mới, header) nằm
   assert.doesNotMatch(editBefore, /isAdmin &&/, 'nút "Sửa" theo dòng không được gate thêm bởi isAdmin — giữ nguyên authority cũ (canManageCustomer/isDirectManager, enforce ở server PUT /api/khach-hang)');
 });
 
-test('khach-hang/page.tsx: 2 nút bulk-action theo lựa chọn ("Thêm vào Campaign", "Xóa đã chọn") KHÔNG bị gate thêm bởi isAdmin — giữ nguyên điều kiện selectedIds.size > 0 hiện có, task này không đổi authority chọn-nhiều', () => {
+test('khach-hang/page.tsx: 2 nút bulk-action theo lựa chọn ("Tạo Campaign", "Xóa đã chọn") KHÔNG bị gate CHỈ bởi isAdmin — vẫn giữ nhánh selectedIds.size > 0 hiện có cho non-admin (Leader/Sale vẫn thêm được data đã chọn vào Campaign có sẵn/xóa data của mình, task này không đổi authority chọn-nhiều)', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
-  const addToCampaignIdx = src.indexOf('Thêm vào Campaign (');
+  const addToCampaignIdx = src.indexOf('Tạo Campaign (');
   const bulkDeleteIdx = src.indexOf('Xóa đã chọn (');
   assert.ok(addToCampaignIdx >= 0 && bulkDeleteIdx >= 0);
   const beforeAdd = src.slice(Math.max(0, addToCampaignIdx - 250), addToCampaignIdx);
   const beforeDel = src.slice(Math.max(0, bulkDeleteIdx - 250), bulkDeleteIdx);
+  // "Tạo Campaign" giờ có thêm nhánh OR isAdmin-only (chọn tất cả N khách
+  // hàng phù hợp bộ lọc — feature mới, Admin-only theo spec) — nhưng nhánh
+  // selectedIds.size > 0 gốc (non-admin thêm data đã chọn vào Campaign có
+  // sẵn) PHẢI vẫn còn nguyên, không bị thay thế hẳn bằng isAdmin.
   assert.match(beforeAdd, /selectedIds\.size > 0/);
   assert.match(beforeDel, /selectedIds\.size > 0/);
-  assert.doesNotMatch(beforeAdd, /isAdmin/, '"Thêm vào Campaign" không được thêm điều kiện isAdmin');
+  // "Xóa đã chọn" (bulk-delete) không liên quan gì tới feature Campaign mới —
+  // tuyệt đối không được có điều kiện isAdmin nào chen vào (giữ nguyên
+  // authority chọn-nhiều cũ, chỉ Admin/Ban lãnh đạo đã tự enforce server-side).
   assert.doesNotMatch(beforeDel, /isAdmin/, '"Xóa đã chọn" không được thêm điều kiện isAdmin');
 });
 

@@ -6,6 +6,7 @@
 import { prisma } from '../db/client';
 import { isPostgresEnabled } from '../db/feature-flags';
 import { assertTransactionalCrm } from './transactional-workflow';
+import { matchesCustomerBulkFilter, type CustomerBulkFilter } from '../khach-hang-bulk-filter';
 import type { CrmSessionUser } from '../crm-auth';
 import type { PrismaClient } from '../../generated/prisma/client';
 
@@ -149,6 +150,21 @@ export async function getCampaignMembershipCustomerRefs(): Promise<{ customer_id
 }
 
 // --- Bulk distribution ------------------------------------------------
+
+/**
+ * "Chọn tất cả N khách hàng phù hợp bộ lọc" (bulk add vào Campaign từ
+ * /khach-hang, dataset có thể vài nghìn dòng) — resolve id THẲNG từ DB theo
+ * đúng bộ lọc Admin đang xem, để client KHÔNG PHẢI gửi hàng nghìn
+ * id/Customer object lên server. Chỉ lấy field cần cho matchesCustomerBulkFilter
+ * (không load nguyên KhachHang) — nhẹ ngay cả với vài nghìn dòng.
+ */
+export async function resolveCustomerIdsByFilter(filter: CustomerBulkFilter): Promise<string[]> {
+  assertTransactionalCrm();
+  const customers = await prisma.khachHang.findMany({
+    select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true },
+  });
+  return customers.filter(customer => matchesCustomerBulkFilter(customer, filter)).map(customer => customer.id_khach_hang);
+}
 
 export type DistributionMode = 'round_robin' | 'quantity' | 'none';
 

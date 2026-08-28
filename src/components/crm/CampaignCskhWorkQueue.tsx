@@ -51,10 +51,14 @@ function localDate(value?: string | null): string {
 
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
-export function CampaignCskhWorkQueue({ employees, projects }: { employees: NhanVien[]; projects: DuAn[] }) {
+export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }: { employees: NhanVien[]; projects: DuAn[]; initialCampaignId?: string }) {
   const { user, isAdmin } = useAuth();
   const [campaigns, setCampaigns] = useState<CampaignType[]>([]);
-  const [campaignId, setCampaignId] = useState('');
+  // initialCampaignId (từ ?campaignId= trên /phan-khach — link "đi thẳng" sau
+  // khi tạo Campaign ở /khach-hang): nếu có, effect auto-select bên dưới
+  // (`if (!campaignId && campaigns.length > 0)`) sẽ tự bỏ qua vì campaignId
+  // đã có giá trị sẵn — không cần sửa effect đó.
+  const [campaignId, setCampaignId] = useState(initialCampaignId || '');
   const [members, setMembers] = useState<CampaignMembershipWithCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
