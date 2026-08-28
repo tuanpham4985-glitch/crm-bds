@@ -275,26 +275,29 @@ test('campaign.ts + distribute route: không có bất kỳ lệnh gọi crmHand
 
 // --- H. UI wiring: CampaignCskhWorkQueue.tsx ---
 
-test('CampaignCskhWorkQueue.tsx: filtered dùng matchesMembershipQueueFilter (module dùng chung với server) — không còn tự viết search/bucket filter riêng (tránh lệch với server)', () => {
+// Addendum (Assigned Customer Visibility) mở rộng filter/request với field
+// "assignment" — cập nhật các assertion dưới đây theo đúng cấu trúc mới,
+// không phải regression.
+test('CampaignCskhWorkQueue.tsx: filtered dùng matchesMembershipQueueFilter (module dùng chung với server), kèm assignmentFilter (addendum) — không còn tự viết search/bucket filter riêng (tránh lệch với server)', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  assert.match(src, /const filtered = useMemo\(\(\) => members\.filter\(member => matchesMembershipQueueFilter\(member, \{ search, bucket: bucketFilter \}\)\)/);
+  assert.match(src, /const filtered = useMemo\(\s*\(\) => members\.filter\(member => matchesMembershipQueueFilter\(member, \{ search, bucket: bucketFilter, assignment: assignmentFilter \}\)\)/);
 });
 
-test('CampaignCskhWorkQueue.tsx: distributeRange() gửi membership_range (from/to/search/bucket) + mode round_robin + telesale_names = TOÀN BỘ eligibleSales (chia đều tự động, không cần Admin/Leader tick từng Sale) tới ĐÚNG POST /api/campaigns/[id]/distribute hiện có', () => {
+test('CampaignCskhWorkQueue.tsx: distributeRange() gửi membership_range (from/to/search/bucket/assignment) + mode round_robin + telesale_names = TOÀN BỘ eligibleSales (chia đều tự động, không cần Admin/Leader tick từng Sale) tới ĐÚNG POST /api/campaigns/[id]/distribute hiện có', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
   const fnStart = src.indexOf('async function distributeRange()');
   assert.ok(fnStart >= 0);
-  const fnBody = src.slice(fnStart, fnStart + 1200);
+  const fnBody = src.slice(fnStart, fnStart + 1400);
   assert.match(fnBody, /`\/api\/campaigns\/\$\{campaignId\}\/distribute`/);
-  assert.match(fnBody, /membership_range: \{ from: rangeFromNum, to: rangeToNum, search, bucket: bucketFilter \|\| undefined \}/);
+  assert.match(fnBody, /membership_range: \{ from: rangeFromNum, to: rangeToNum, search, bucket: bucketFilter \|\| undefined, assignment: assignmentFilter \}/);
   assert.match(fnBody, /mode: 'round_robin'/);
   assert.match(fnBody, /telesale_names: saleNames/);
   assert.match(fnBody, /rangeEligibility\.sales\.map\(item => item\.ho_ten\)/);
 });
 
-test('CampaignCskhWorkQueue.tsx: distributeRange() có confirm() trước khi submit, đúng câu "Chia đều N khách cho M Sale?"', () => {
+test('CampaignCskhWorkQueue.tsx: distributeRange() có confirm() trước khi submit — đúng câu "Chia đều N khách (chưa phân) cho M Sale?", N = số THỰC TẾ sẽ được chia (rangeBreakdown.unassigned, addendum), không phải tổng cả range', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  assert.match(src, /window\.confirm\(`Chia đều \$\{rangeSize\} khách cho \$\{saleNames\.length\} Sale\?`\)/);
+  assert.match(src, /window\.confirm\(`Chia đều \$\{toDistribute\} khách \(chưa phân\) cho \$\{saleNames\.length\} Sale\?\$\{skipNote\}`\)/);
 });
 
 test('CampaignCskhWorkQueue.tsx: distributeRange() chặn khi rangeEligibility.blocked (Leader không có Project.ds_sale hợp lệ) — không tự fallback company-wide', () => {
@@ -309,15 +312,20 @@ test('CampaignCskhWorkQueue.tsx: rangeEligibility dùng ĐÚNG eligibleCampaignS
   assert.match(src, /const rangeEligibility = selectedCampaign \? eligibleCampaignSales\(isAdmin, selectedCampaign, projects, employees\) : null;/);
 });
 
-test('CampaignCskhWorkQueue.tsx: UI hiển thị "Đã chọn N khách" và ghi rõ khi đang lọc — không để Admin tưởng nhầm range áp dụng trên toàn Campaign khi đang search/filter bucket', () => {
+// Cập nhật theo addendum "Assigned Customer Visibility": preview giờ hiện đủ
+// breakdown (tổng/đã chia/chưa chia/sẽ chia — xem campaign-assignment-visibility.test.ts)
+// thay vì chỉ "Đã chọn N khách" đơn giản như milestone gốc. Vẫn giữ đúng yêu
+// cầu gốc: ghi rõ khi đang lọc, không để Admin tưởng nhầm range áp dụng trên
+// toàn Campaign.
+test('CampaignCskhWorkQueue.tsx: UI ghi rõ khi đang lọc (search/bucket/assignment) — không để Admin tưởng nhầm range áp dụng trên toàn Campaign', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  assert.match(src, /Đã chọn \{rangeResult\.ids\.length\} khách/);
   assert.match(src, /trong \$\{rangeResult\.total\} khách đang lọc theo bộ lọc\/tìm kiếm hiện tại/);
+  assert.match(src, /search \|\| bucketFilter \|\| assignmentFilter !== 'all'/, 'điều kiện ghi chú "đang lọc" phải tính cả assignmentFilter, không chỉ search/bucket như trước addendum');
 });
 
 test('CampaignCskhWorkQueue.tsx: input Từ/Đến là type="number" min={1} (không âm, không thập phân theo UI)', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  const blockStart = src.indexOf('<span style={{ fontSize: 13, color: \'var(--text-label)\' }}>Chọn khách:</span>');
+  const blockStart = src.indexOf('<span style={{ fontSize: 13, color: \'var(--text-label)\', marginLeft: 8 }}>Chọn khách:</span>');
   assert.ok(blockStart >= 0);
   const block = src.slice(blockStart, blockStart + 500);
   const numberInputs = block.match(/type="number" min=\{1\}/g) || [];

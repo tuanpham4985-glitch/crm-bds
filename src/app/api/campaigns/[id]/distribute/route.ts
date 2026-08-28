@@ -48,11 +48,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       // customer_filter — đây là chia data ĐÃ Ở TRONG Campaign, không phải
       // thêm Customer mới từ ngoài vào).
       const rangeInput = body.membership_range as Record<string, unknown>;
+      const ASSIGNMENT_FILTERS = new Set(['all', 'unassigned', 'assigned']);
       const resolved = await resolveCampaignMembershipCustomerIdsByRange(id, {
         from: Number(rangeInput.from),
         to: Number(rangeInput.to),
         search: typeof rangeInput.search === 'string' ? rangeInput.search : undefined,
         bucket: typeof rangeInput.bucket === 'string' ? rangeInput.bucket : undefined,
+        assignment: typeof rangeInput.assignment === 'string' && ASSIGNMENT_FILTERS.has(rangeInput.assignment)
+          ? (rangeInput.assignment as 'all' | 'unassigned' | 'assigned') : undefined,
       });
       if ('error' in resolved) {
         return NextResponse.json({ success: false, error: resolved.error }, { status: 400 });

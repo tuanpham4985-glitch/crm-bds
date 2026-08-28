@@ -19,7 +19,10 @@ import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamS
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { bucketOf, CSKH_BUCKETS, isOverdue, type MembershipBucket } from '@/lib/campaign-cskh-bucket';
-import { matchesMembershipQueueFilter, resolveMembershipRange } from '@/lib/campaign-cskh-range';
+import {
+  isMembershipAssigned, matchesMembershipQueueFilter, membershipAssignmentBreakdown, resolveMembershipRange,
+  type MembershipAssignmentFilter,
+} from '@/lib/campaign-cskh-range';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
 import { CampaignDistributeModal } from './CampaignDistributeModal';
@@ -65,6 +68,8 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   const [busyId, setBusyId] = useState('');
   const [search, setSearch] = useState('');
   const [bucketFilter, setBucketFilter] = useState<MembershipBucket | ''>('');
+  // Addendum — "Tất cả | Chưa chia | Đã chia": lọc thêm theo CampaignMembership.telesale_id.
+  const [assignmentFilter, setAssignmentFilter] = useState<MembershipAssignmentFilter>('all');
   const [notice, setNotice] = useState<{ type: 'ok' | 'error' | 'warn'; text: string } | null>(null);
   const [interactionMember, setInteractionMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [qualificationMember, setQualificationMember] = useState<CampaignMembershipWithCustomer | null>(null);
@@ -114,7 +119,10 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // campaign.ts) — bắt buộc để "Từ x đến y" trên UI luôn khớp đúng với id
   // server thật sự resolve khi bấm "Chia đều" (không có 2 định nghĩa filter
   // lệch nhau). "members" đã sort created_at asc từ server (getCampaignMembersWithCustomers) — đây là thứ tự "Từ/Đến" tham chiếu.
-  const filtered = useMemo(() => members.filter(member => matchesMembershipQueueFilter(member, { search, bucket: bucketFilter })), [members, search, bucketFilter]);
+  const filtered = useMemo(
+    () => members.filter(member => matchesMembershipQueueFilter(member, { search, bucket: bucketFilter, assignment: assignmentFilter })),
+    [members, search, bucketFilter, assignmentFilter],
+  );
 
   const stats = useMemo(() => {
     const counts = new Map<MembershipBucket, number>();
@@ -122,6 +130,11 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
     for (const member of members) counts.set(bucketOf(member), (counts.get(bucketOf(member)) || 0) + 1);
     return counts;
   }, [members]);
+
+  // Addendum — summary "Tổng X · Đã chia Y · Chưa chia Z" tính trên TOÀN
+  // Campaign (không phụ thuộc search/bucket/assignment filter) để Admin luôn
+  // thấy đúng bức tranh tổng, độc lập với việc đang lọc gì.
+  const assignmentSummary = useMemo(() => membershipAssignmentBreakdown(members), [members]);
 
   const replaceMember = (updated: CampaignMembershipWithCustomer) => {
     setMembers(current => current.map(item => item.id === updated.id ? updated : item));
@@ -187,36 +200,42 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   const unassignedMembers = useMemo(() => members.filter(member => member.assignment_status === 'UNASSIGNED'), [members]);
 
   // "Chọn khách: Từ x đến y" — preview client-side (non-authoritative, chỉ để
-  // hiển thị ngay khi Admin gõ số) trên "filtered" (đã áp search/bucket hiện
-  // tại) bằng ĐÚNG hàm resolveMembershipRange server cũng dùng. Số thật đưa
-  // vào request luôn được server resolve lại từ DB lúc submit (xem distributeRange).
+  // hiển thị ngay khi Admin gõ số) trên "filtered" (đã áp search/bucket/
+  // assignment hiện tại) bằng ĐÚNG hàm resolveMembershipRange server cũng
+  // dùng. Số thật đưa vào request luôn được server resolve lại từ DB lúc
+  // submit (xem distributeRange).
   const rangeFromNum = Number(rangeFrom);
   const rangeToNum = Number(rangeTo);
   const rangeResult = rangeFrom.trim() !== '' && rangeTo.trim() !== ''
     ? resolveMembershipRange(filtered, { from: rangeFromNum, to: rangeToNum })
     : null;
+  // Addendum — preview PHẢI tách rõ: tổng trong range / đã chia / chưa chia /
+  // số THỰC TẾ sẽ được chia (= chưa chia, vì Chia đều luôn bỏ qua khách đã
+  // có telesale_id — xem bulkAddAndDistribute/planBulkDistribution, KHÔNG đổi).
+  const rangeBreakdown = rangeResult?.ok ? membershipAssignmentBreakdown(rangeResult.ids) : null;
   const rangeEligibility = selectedCampaign ? eligibleCampaignSales(isAdmin, selectedCampaign, projects, employees) : null;
 
   async function distributeRange() {
-    if (!selectedCampaign || !rangeResult?.ok || !rangeEligibility) return;
+    if (!selectedCampaign || !rangeResult?.ok || !rangeBreakdown || !rangeEligibility) return;
+    if (rangeBreakdown.unassigned === 0) { setNotice({ type: 'error', text: 'Toàn bộ khách trong khoảng đã chọn đều đã được phân Sale — không còn ai để chia.' }); return; }
     if (rangeEligibility.blocked) { setNotice({ type: 'error', text: rangeEligibility.reason }); return; }
     const saleNames = rangeEligibility.sales.map(item => item.ho_ten);
     if (saleNames.length === 0) { setNotice({ type: 'error', text: 'Không có Sale nào đang hoạt động trong phạm vi Campaign này.' }); return; }
-    const rangeSize = rangeResult.ids.length;
-    if (!window.confirm(`Chia đều ${rangeSize} khách cho ${saleNames.length} Sale?`)) return;
+    const toDistribute = rangeBreakdown.unassigned;
+    const skipNote = rangeBreakdown.assigned > 0 ? ` (${rangeBreakdown.assigned} khách trong khoảng đã có Sale từ trước sẽ được GIỮ NGUYÊN, không đụng tới.)` : '';
+    if (!window.confirm(`Chia đều ${toDistribute} khách (chưa phân) cho ${saleNames.length} Sale?${skipNote}`)) return;
     setRangeSubmitting(true);
     try {
       const response = await fetch(`/api/campaigns/${campaignId}/distribute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          membership_range: { from: rangeFromNum, to: rangeToNum, search, bucket: bucketFilter || undefined },
+          membership_range: { from: rangeFromNum, to: rangeToNum, search, bucket: bucketFilter || undefined, assignment: assignmentFilter },
           telesale_names: saleNames, mode: 'round_robin',
         }),
       });
       const data = await response.json();
       if (!data.success) throw new Error(data.error);
-      const extra = data.data.alreadyAssigned > 0 ? ` (${data.data.alreadyAssigned} trong khoảng đã có Sale từ trước, giữ nguyên.)` : '';
-      setNotice({ type: 'ok', text: `Đã chia ${rangeSize} khách cho ${saleNames.length} Sale.${extra}` });
+      setNotice({ type: 'ok', text: `Đã chia ${data.data.newlyAssigned} khách cho ${saleNames.length} Sale.${skipNote}` });
       setRangeFrom(''); setRangeTo('');
       void loadMembers(campaignId);
     } catch (error) {
@@ -253,27 +272,39 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         <button className="btn btn-secondary" style={canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 ? undefined : { marginLeft: 'auto' }} onClick={() => loadMembers(campaignId)} disabled={!campaignId || loading}><RefreshCw size={15} /> Làm mới</button>
       </div>
       {canManageThisCampaign && selectedCampaign && members.length > 0 && (
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Chọn khách:</span>
-          <span style={{ fontSize: 13 }}>Từ</span>
-          <input type="number" min={1} className="form-input" style={{ width: 80 }} value={rangeFrom} onChange={event => setRangeFrom(event.target.value)} />
-          <span style={{ fontSize: 13 }}>đến</span>
-          <input type="number" min={1} className="form-input" style={{ width: 80 }} value={rangeTo} onChange={event => setRangeTo(event.target.value)} />
-          {rangeResult && (
-            rangeResult.ok
-              ? <span style={{ fontSize: 13, fontWeight: 650, color: 'var(--primary)' }}>
-                  → Đã chọn {rangeResult.ids.length} khách{(search || bucketFilter) ? ` (trong ${rangeResult.total} khách đang lọc theo bộ lọc/tìm kiếm hiện tại)` : ''}
-                </span>
-              : <span style={{ fontSize: 12, color: '#b91c1c' }}>{rangeResult.error}</span>
-          )}
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => void distributeRange()}
-            disabled={!rangeResult?.ok || rangeSubmitting || Boolean(rangeEligibility?.blocked)}
-          >
-            {rangeSubmitting ? <Loader2 size={14} className="spin" /> : <Users size={14} />} Chia đều cho Sale
-          </button>
-          {rangeEligibility?.blocked && <span style={{ fontSize: 12, color: '#9a3412' }}>{rangeEligibility.reason}</span>}
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 10 }}>
+            Tổng {assignmentSummary.total} · Đã chia {assignmentSummary.assigned} · Chưa chia {assignmentSummary.unassigned}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Hiển thị:</span>
+            <select className="form-select" style={{ width: 140, fontSize: 12 }} value={assignmentFilter} onChange={event => setAssignmentFilter(event.target.value as MembershipAssignmentFilter)}>
+              <option value="all">Tất cả</option>
+              <option value="unassigned">Chưa chia</option>
+              <option value="assigned">Đã chia</option>
+            </select>
+            <span style={{ fontSize: 13, color: 'var(--text-label)', marginLeft: 8 }}>Chọn khách:</span>
+            <span style={{ fontSize: 13 }}>Từ</span>
+            <input type="number" min={1} className="form-input" style={{ width: 80 }} value={rangeFrom} onChange={event => setRangeFrom(event.target.value)} />
+            <span style={{ fontSize: 13 }}>đến</span>
+            <input type="number" min={1} className="form-input" style={{ width: 80 }} value={rangeTo} onChange={event => setRangeTo(event.target.value)} />
+            {rangeResult && (
+              rangeResult.ok && rangeBreakdown
+                ? <span style={{ fontSize: 13, fontWeight: 650, color: 'var(--primary)' }}>
+                    → Tổng {rangeBreakdown.total} · Đã chia {rangeBreakdown.assigned} · Chưa chia {rangeBreakdown.unassigned} · Sẽ chia {rangeBreakdown.unassigned} khách
+                    {(search || bucketFilter || assignmentFilter !== 'all') ? ` (trong ${rangeResult.total} khách đang lọc theo bộ lọc/tìm kiếm hiện tại)` : ''}
+                  </span>
+                : !rangeResult.ok ? <span style={{ fontSize: 12, color: '#b91c1c' }}>{rangeResult.error}</span> : null
+            )}
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => void distributeRange()}
+              disabled={!rangeResult?.ok || !rangeBreakdown || rangeBreakdown.unassigned === 0 || rangeSubmitting || Boolean(rangeEligibility?.blocked)}
+            >
+              {rangeSubmitting ? <Loader2 size={14} className="spin" /> : <Users size={14} />} Chia đều cho Sale
+            </button>
+          </div>
+          {rangeEligibility?.blocked && <div style={{ fontSize: 12, color: '#9a3412', marginTop: 6 }}>{rangeEligibility.reason}</div>}
         </div>
       )}
     </div>
@@ -389,9 +420,21 @@ function MembershipTable({ members, loading, canActOn, onInteraction, onQualific
       const status = member.trang_thai_cham_soc || 'Chưa gọi'; const palette = statusColors[status] || statusColors['Chưa gọi'];
       const actionable = canActOn(member);
       const isReceiver = Boolean(currentUserName && member.handoff?.sale_name === currentUserName);
-      return <tr key={member.id} style={isOverdue(member.ngay_lien_he_tiep) ? { background: '#fff7f7' } : undefined}>
+      // Addendum — Assigned Customer Visibility: authority là ĐÚNG
+      // CampaignMembership.telesale_id (isMembershipAssigned), không phải
+      // assignment_status hay field riêng nào khác — khách đã có Sale mờ đi
+      // (opacity ~50%) để phân biệt trực quan với khách chưa chia.
+      const assigned = isMembershipAssigned(member);
+      return <tr key={member.id} style={{ ...(isOverdue(member.ngay_lien_he_tiep) ? { background: '#fff7f7' } : {}), ...(assigned ? { opacity: 0.5 } : {}) }}>
         <td><div style={{ fontWeight: 700 }}>{member.customer?.ten_KH || member.customer_id}</div>{member.customer?.so_dien_thoai && <a href={`tel:${member.customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(member.customer.so_dien_thoai)}</a>}</td>
-        <td><div style={{ fontWeight: 600, fontSize: 13 }}>{member.telesale_name || 'Chưa phân'}</div></td>
+        <td>
+          {assigned
+            ? <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ background: '#ecfdf5', color: '#047857', borderRadius: 20, padding: '3px 8px', fontSize: 11, fontWeight: 650 }}>Đã chia</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{member.telesale_name}</span>
+              </div>
+            : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '3px 8px', fontSize: 11, fontWeight: 650 }}>Chưa chia</span>}
+        </td>
         <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '4px 9px', fontSize: 12, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 7 }}>{member.so_lan_lien_he || 0} lần · {member.muc_do_quan_tam || 'Chưa xác định'}</div></td>
         <td><span style={{ fontSize: 12, fontWeight: 600 }}>{member.qualification_status}</span></td>
         <td><span style={{ fontSize: 12 }}>{member.lead_quality_score}/100 · {member.lead_quality_rank}</span></td>

@@ -63,7 +63,7 @@ test('CampaignCskhWorkQueue: sau khi lưu interaction/qualification thành công
   const src = readFileSync(resolve('src/components/crm/CampaignCskhWorkQueue.tsx'), 'utf8');
   assert.match(src, /replaceMember\(\{ \.\.\.data\.data, customer: interactionMember\.customer \}\)/);
   assert.match(src, /onSaved=\{\(updated, message\) => \{ replaceMember\(updated\)/);
-  assert.match(src, /const filtered = useMemo\(\(\) => members\.filter/);
+  assert.match(src, /const filtered = useMemo\(\s*\(\) => members\.filter/);
   assert.match(src, /const stats = useMemo\(\(\) => \{[\s\S]*?\}, \[members\]\);/);
 });
 
