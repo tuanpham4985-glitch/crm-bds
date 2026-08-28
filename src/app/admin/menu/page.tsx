@@ -42,7 +42,7 @@ function ToggleButton({ enabled, onClick, disabled }: { enabled: boolean; onClic
 
 export default function AdminMenuPage() {
   const { isAdmin, isLoading: authLoading } = useAuth();
-  const { enabled: crmEnabled, mutate: mutateCrmModule } = useCrmModule();
+  const { enabled: crmEnabled, isLoading: crmLoading, mutate: mutateCrmModule } = useCrmModule();
   const { config, isLoading: configLoading, mutate: mutateConfig } = useNavigationConfig();
 
   const [draft, setDraft] = useState<ResolvedNavigation | null>(null);
@@ -51,14 +51,19 @@ export default function AdminMenuPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
 
-  // Chỉ khởi tạo draft đúng 1 lần khi data load xong — tránh SWR revalidate
-  // nền giữa chừng ghi đè edit dang dở của Admin.
+  // Chỉ khởi tạo draft đúng 1 lần khi CẢ 2 nguồn (nav config + CRM Module
+  // thật) đã load xong — nếu chỉ đợi configLoading, draftCrmEnabled có thể
+  // "chốt" nhầm vào giá trị fallback mặc định (true) của useCrmModule trước
+  // khi giá trị thật (crm_module_enabled) kịp resolve, rồi không bao giờ
+  // đồng bộ lại (initialized chặn). Hậu quả: Save có thể âm thầm BẬT CRM dù
+  // Admin không hề chạm vào công tắc CRM — vi phạm thẳng bất biến "1 authority
+  // duy nhất cho CRM" (đã phát hiện live trong production validation).
   useEffect(() => {
-    if (initialized || configLoading) return;
+    if (initialized || configLoading || crmLoading) return;
     setDraft(resolveNavigationConfig(MENU_REGISTRY, config ?? DEFAULT_NAVIGATION_CONFIG, { crm: crmEnabled }));
     setDraftCrmEnabled(crmEnabled);
     setInitialized(true);
-  }, [initialized, configLoading, config, crmEnabled]);
+  }, [initialized, configLoading, crmLoading, config, crmEnabled]);
 
   function toggleRoot(key: string) {
     setDraft(current => current && { roots: current.roots.map(r => r.key === key ? { ...r, enabled: !r.enabled } : r) });

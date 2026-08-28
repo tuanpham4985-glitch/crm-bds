@@ -204,6 +204,16 @@ test('MENU_REGISTRY thật của app: đúng 4 child CRM và 4 child HRM như Si
   assert.deepEqual(hrm.children?.map(c => c.key), ['hrm.employees', 'hrm.contracts', 'hrm.payroll', 'hrm.attendance']);
 });
 
+test('admin/menu/page.tsx: draft chỉ khởi tạo khi CẢ configLoading VÀ crmLoading đều false — phát hiện live trong production validation: nếu chỉ đợi configLoading, draftCrmEnabled có thể chốt nhầm vào fallback mặc định (true) của useCrmModule trước khi giá trị thật resolve, khiến Save âm thầm BẬT CRM dù Admin không chạm vào công tắc CRM (vi phạm bất biến 1 authority duy nhất, §5)', () => {
+  const src = readFileSync(resolve('src/app/admin/menu/page.tsx'), 'utf8');
+  assert.match(src, /const \{ enabled: crmEnabled, isLoading: crmLoading, mutate: mutateCrmModule \} = useCrmModule\(\);/);
+  const iEffect = src.indexOf('useEffect(() => {\n    if (initialized || configLoading');
+  assert.ok(iEffect > -1, 'phải có effect khởi tạo draft với guard initialized/configLoading');
+  const effectBody = src.slice(iEffect, iEffect + 400);
+  assert.match(effectBody, /if \(initialized \|\| configLoading \|\| crmLoading\) return;/, 'guard phải chặn cả 3 điều kiện — thiếu crmLoading là root cause của bug đã phát hiện');
+  assert.match(effectBody, /\}, \[initialized, configLoading, crmLoading, config, crmEnabled\]\);/, 'dependency array phải khai báo đủ crmLoading');
+});
+
 // --- Wiring: Sidebar/API/admin page (không unit-test được thuần, source-regex) ---
 
 test('Sidebar.tsx: resolveNavigationConfig gọi với externalAvailability={ crm: crmEnabled } — CRM root đọc đúng authority hiện có, không phải state cục bộ mới', () => {
