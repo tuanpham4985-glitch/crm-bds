@@ -4,10 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
-  Building2, UserCog, FileText, LogOut, Download, ShieldCheck, Shield, BadgeDollarSign, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Briefcase, BarChart3, LayoutList, TrendingUp, MapPin, ClipboardList, PhoneCall, BadgeCheck, Users, GitBranch,
-  Power,
+  Building2, LogOut, Download, ShieldCheck, Shield, Key, Lock, Eye, EyeOff, X,
+  ChevronDown, Power, LayoutGrid,
 } from 'lucide-react';
 import useSWR from 'swr';
 import styles from './Sidebar.module.css';
@@ -16,7 +14,10 @@ import { useTmStore } from '@/stores/tmStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useCrmAccess } from '@/hooks/useCrmAccess';
 import { useCrmModule } from '@/hooks/useCrmModule';
+import { useNavigationConfig } from '@/hooks/useNavigationConfig';
 import { canAccessCrmModule } from '@/lib/crm-module-access';
+import { MENU_REGISTRY, hasBusinessAccess, type MenuRootDef, type MenuChildDef } from '@/lib/menu-registry';
+import { resolveNavigationConfig, DEFAULT_NAVIGATION_CONFIG } from '@/lib/navigation-config-resolve';
 
 // Hook: trả về badge count cho sidebar
 // - Nếu đang ở trang TM: lấy từ Zustand (đã được cập nhật bởi useNotifications)
@@ -33,6 +34,24 @@ function useTmBadge(loggedIn: boolean, onTmPage: boolean): number {
 }
 
 const swrFetcher = (url: string) => fetch(url).then(r => r.json());
+
+// Badge số (chờ duyệt/chưa đọc) gắn theo registry key — dữ liệu runtime,
+// KHÔNG thuộc registry (registry chỉ tĩnh: route/icon/structure).
+function navBadgeForKey(key: string, counts: { handoffCount: number; tmBadge: number; pendingCount: number }): number {
+  if (key === 'crm.cskh') return counts.handoffCount;
+  if (key === 'taskManagement') return counts.tmBadge;
+  if (key === 'hrm.attendance') return counts.pendingCount;
+  return 0;
+}
+
+function NavBadge({ count }: { count: number }) {
+  return (
+    <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, lineHeight: '16px', minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, textAlign: 'center', flexShrink: 0 }}>
+      {count > 9 ? '9+' : count}
+    </span>
+  );
+}
+
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -41,21 +60,6 @@ interface BeforeInstallPromptEvent extends Event {
   }>;
   prompt(): Promise<void>;
 }
-
-const CRM_CATALOG = [
-  { href: '/du-an',     label: 'Dự án',        icon: Building2 },
-  { href: '/stacking',  label: 'Bảng hàng',    icon: LayoutList },
-];
-
-// CRM vòng đời khách hàng: Khách hàng → CSKH → Data tiềm năng → Giao dịch
-const CRM_ROUTES = ['/khach-hang', '/phan-khach', '/data-chat-luong', '/pipeline'];
-
-const HRM_ITEMS = [
-  { href: '/nhan-vien', label: 'Nhân viên', icon: UserCog },
-  { href: '/nhan-vien/hop-dong', label: 'Hợp đồng', icon: FileText },
-  { href: '/nhan-vien/bang-luong', label: 'Bảng lương', icon: BadgeDollarSign },
-  { href: '/cham-cong-ngoai', label: 'Chấm công online', icon: MapPin },
-];
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -67,9 +71,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const { user, isAdmin, canEditHRM } = useAuth();
   const { canPhanKhach, handoffCount, canQualityDashboard } = useCrmAccess();
   const { enabled: crmEnabled, mutate: mutateCrmModule } = useCrmModule();
-
-  // Tab "Nhân viên" chỉ hiển thị cho HR (và Admin). Nhân viên thường không thấy.
-  const hrmItems = HRM_ITEMS.filter(item => item.href !== '/nhan-vien' || canEditHRM);
+  const { config: navConfigRaw } = useNavigationConfig();
 
   const { data: pendingData } = useSWR(
     user ? '/api/cham-cong-ngoai/pending-count' : null,
@@ -87,22 +89,57 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
-  const [hrmOpen, setHrmOpen] = useState(true);
-  const [crmOpen, setCrmOpen] = useState(true);
+  // Menu Manager (ADMIN_MODULE_MENU_MANAGER) — pipeline: registry (route/
+  // icon/structure/business rule) -> runtime order/visible (navConfigRaw) ->
+  // module availability (crm root: authority DUY NHẤT vẫn là crm_module_
+  // enabled qua useCrmModule, KHÔNG đọc từ navConfigRaw.disabledRoots cho
+  // key 'crm' — resolveNavigationConfig tự override qua externalAvailability)
+  // -> business authorization hiện có (canPhanKhach/canQualityDashboard/
+  // canEditHRM/isAdmin) -> render. Business authorization LUÔN là bước cuối,
+  // Menu Manager bật 1 mục không tự cấp quyền truy cập.
+  const resolvedNav = resolveNavigationConfig(MENU_REGISTRY, navConfigRaw ?? DEFAULT_NAVIGATION_CONFIG, { crm: crmEnabled });
+  const businessAccessCtx = { isAdmin, canPhanKhach, canQualityDashboard, canEditHRM };
+  const visibleRoots = resolvedNav.roots
+    .map(root => {
+      const def = MENU_REGISTRY.find(r => r.key === root.key);
+      if (!def) return null;
+      // 'crm' giữ nguyên Admin bypass hiện có (canAccessCrmModule) — root
+      // khác không có bypass này (không mở rộng ngoài scope milestone).
+      const rootEnabled = def.moduleAvailability === 'crm' ? canAccessCrmModule(isAdmin, root.enabled) : root.enabled;
+      if (!rootEnabled || !hasBusinessAccess(def.businessAccess, businessAccessCtx)) return null;
+      const children = root.children
+        .map(child => {
+          const childDef = def.children?.find(c => c.key === child.key);
+          if (!childDef || !child.enabled || !hasBusinessAccess(childDef.businessAccess, businessAccessCtx)) return null;
+          return childDef;
+        })
+        .filter((c): c is MenuChildDef => Boolean(c));
+      return { def, children };
+    })
+    .filter((r): r is { def: MenuRootDef; children: MenuChildDef[] } => Boolean(r));
 
-  // Auto-expand HRM group if current path is inside
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const isGroupOpen = (key: string) => openGroups[key] ?? true;
+
+  // Auto-expand group nếu path hiện tại nằm trong 1 child của nó
   useEffect(() => {
-    if (HRM_ITEMS.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))) setHrmOpen(true);
+    for (const { def, children } of visibleRoots) {
+      if (children.length && children.some(c => pathname === c.href || pathname.startsWith(c.href + '/'))) {
+        setOpenGroups(current => current[def.key] ? current : { ...current, [def.key]: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // Auto-expand CRM group if current path is inside (Khách hàng / CSKH / Data tiềm năng / Giao dịch)
+  // Force mở tất cả group khi collapsed (để icon vẫn thấy được)
   useEffect(() => {
-    if (CRM_ROUTES.some(href => pathname === href || pathname.startsWith(href + '/'))) setCrmOpen(true);
-  }, [pathname]);
-
-  // Force groups open when collapsed (so icons are visible)
-  useEffect(() => {
-    if (collapsed) { setHrmOpen(true); setCrmOpen(true); }
+    if (!collapsed) return;
+    setOpenGroups(current => {
+      const next = { ...current };
+      for (const { def } of visibleRoots) if (def.children) next[def.key] = true;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapsed]);
 
   // Password Modal State
@@ -326,201 +363,60 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         />
       </div>
 
-      {/* Navigation */}
+      {/* Navigation — data-driven từ MENU_REGISTRY (route/icon/structure/
+          business rule) + runtime navigation_config_v1 (order/visible) qua
+          resolveNavigationConfig(), xem visibleRoots ở trên. Quản lý order/
+          bật-tắt tại "Quản lý Menu & Module" (Admin-only, cố định ngoài
+          registry — xem cuối component). */}
       <nav className={styles.nav}>
-        {/* DASHBOARD */}
-        <div className={styles.navSection}>
-          <Link
-            href="/"
-            className={`${styles.navItem} ${pathname === '/' ? styles.active : ''}`}
-            title="Dashboard"
-          >
-            <LayoutDashboard size={20} />
-            <span>Dashboard</span>
-          </Link>
-        </div>
+        {visibleRoots.map(({ def, children }) => {
+          const Icon = def.icon;
+          const badge = navBadgeForKey(def.key, { handoffCount, tmBadge, pendingCount });
 
-        {/* Dự án & Bảng hàng — standalone links */}
-        {CRM_CATALOG.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href);
-          const Icon = item.icon;
+          if (!def.children) {
+            const isActive = def.href === '/' ? pathname === '/' : (pathname === def.href || pathname.startsWith(def.href!));
+            return (
+              <div key={def.key} className={styles.navSection}>
+                <Link href={def.href!} className={`${styles.navItem} ${isActive ? styles.active : ''}`} title={def.label}>
+                  <Icon size={20} />
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                    <span style={{ flex: 1 }}>{def.label}</span>
+                    {badge > 0 && <NavBadge count={badge} />}
+                  </span>
+                </Link>
+              </div>
+            );
+          }
+
+          const open = isGroupOpen(def.key);
           return (
-            <div key={item.href} className={styles.navSection}>
-              <Link
-                href={item.href}
-                className={`${styles.navItem} ${isActive ? styles.active : ''}`}
-                title={item.label}
-              >
-                <Icon size={20} />
-                <span>{item.label}</span>
-              </Link>
+            <div key={def.key} className={styles.navSection}>
+              <button className={styles.groupHeader} onClick={() => setOpenGroups(current => ({ ...current, [def.key]: !open }))}>
+                <div className="flex items-center gap-3">
+                  <Icon size={18} />
+                  <span>{def.label}</span>
+                </div>
+                <ChevronDown size={14} className={`${styles.chevron} ${open ? styles.open : ''}`} />
+              </button>
+              <div className={`${styles.groupContent} ${open ? styles.open : ''}`}>
+                {children.map(child => {
+                  const ChildIcon = child.icon;
+                  const childBadge = navBadgeForKey(child.key, { handoffCount, tmBadge, pendingCount });
+                  const isActive = pathname.startsWith(child.href);
+                  return (
+                    <Link key={child.key} href={child.href} className={`${styles.navItem} ${styles.subItem} ${isActive ? styles.active : ''}`} title={child.label}>
+                      <ChildIcon size={18} />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                        <span style={{ flex: 1 }}>{child.label}</span>
+                        {childBadge > 0 && <NavBadge count={childBadge} />}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
-
-        {/* CRM GROUP — vòng đời khách hàng. Authority DUY NHẤT cho việc
-            non-admin có thấy nhóm này không là CRM Module Toggle (Admin bật/
-            tắt runtime, xem modal "CRM Module" bên dưới) — thay thế hard-code
-            `isAdmin &&` cũ. Admin luôn thấy, không phụ thuộc toggle. */}
-        {canAccessCrmModule(isAdmin, crmEnabled) && (
-          <div className={styles.navSection}>
-            <button
-              className={styles.groupHeader}
-              onClick={() => setCrmOpen(!crmOpen)}
-            >
-              <div className="flex items-center gap-3">
-                <Users size={18} />
-                <span>CRM</span>
-              </div>
-              <ChevronDown size={14} className={`${styles.chevron} ${crmOpen ? styles.open : ''}`} />
-            </button>
-
-            <div className={`${styles.groupContent} ${crmOpen ? styles.open : ''}`}>
-              <Link
-                href="/khach-hang"
-                className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/khach-hang') ? styles.active : ''}`}
-                title="Khách hàng"
-              >
-                <Users size={18} />
-                <span>Khách hàng</span>
-              </Link>
-
-              {canPhanKhach && (
-                <Link
-                  href="/phan-khach"
-                  className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/phan-khach') ? styles.active : ''}`}
-                  title="CSKH"
-                >
-                  <PhoneCall size={18} />
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                    <span style={{ flex: 1 }}>CSKH</span>
-                    {handoffCount > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 17, height: 17, lineHeight: '17px', padding: '0 4px', borderRadius: 9, textAlign: 'center' }}>{handoffCount > 9 ? '9+' : handoffCount}</span>}
-                  </span>
-                </Link>
-              )}
-
-              {canQualityDashboard && (
-                <Link
-                  href="/data-chat-luong"
-                  className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/data-chat-luong') ? styles.active : ''}`}
-                  title="Data tiềm năng"
-                >
-                  <BadgeCheck size={18} />
-                  <span>Data tiềm năng</span>
-                </Link>
-              )}
-
-              <Link
-                href="/pipeline"
-                className={`${styles.navItem} ${styles.subItem} ${pathname.startsWith('/pipeline') ? styles.active : ''}`}
-                title="Giao dịch"
-              >
-                <GitBranch size={18} />
-                <span>Giao dịch</span>
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* TASK MANAGEMENT */}
-        <div className={styles.navSection}>
-          <Link
-            href="/quan-ly-cong-viec"
-            className={`${styles.navItem} ${pathname.startsWith('/quan-ly-cong-viec') ? styles.active : ''}`}
-            title="Quản lý công việc"
-          >
-            <ClipboardList size={20} />
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-              <span style={{ flex: 1 }}>Giao việc</span>
-              {tmBadge > 0 && (
-                <span style={{
-                  background: '#ef4444', color: '#fff',
-                  fontSize: 10, fontWeight: 700,
-                  lineHeight: '16px', minWidth: 16, height: 16,
-                  padding: '0 4px', borderRadius: 8, textAlign: 'center', flexShrink: 0,
-                }}>
-                  {tmBadge > 9 ? '9+' : tmBadge}
-                </span>
-              )}
-            </span>
-          </Link>
-        </div>
-
-        {/* BÁO CÁO — standalone link */}
-        <div className={styles.navSection}>
-          <Link
-            href="/bao-cao-ban-hang"
-            className={`${styles.navItem} ${pathname.startsWith('/bao-cao-ban-hang') ? styles.active : ''}`}
-            title="Báo cáo bán hàng"
-          >
-            <BarChart3 size={20} />
-            <span>Báo cáo bán hàng</span>
-          </Link>
-        </div>
-        {isAdmin && (
-          <div className={styles.navSection}>
-            <Link
-              href="/tai-chinh"
-              className={`${styles.navItem} ${pathname.startsWith('/tai-chinh') ? styles.active : ''}`}
-              title="Tài chính"
-            >
-              <TrendingUp size={20} />
-              <span>Tài chính</span>
-            </Link>
-          </div>
-        )}
-
-        {/* HRM GROUP */}
-        <div className={styles.navSection}>
-          <button 
-            className={styles.groupHeader} 
-            onClick={() => setHrmOpen(!hrmOpen)}
-          >
-            <div className="flex items-center gap-3">
-              <Briefcase size={18} />
-              <span>HRM</span>
-            </div>
-            <ChevronDown size={14} className={`${styles.chevron} ${hrmOpen ? styles.open : ''}`} />
-          </button>
-          
-          <div className={`${styles.groupContent} ${hrmOpen ? styles.open : ''}`}>
-            {hrmItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href);
-              const Icon = item.icon;
-              const showBadge = item.href === '/cham-cong-ngoai' && pendingCount > 0;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`${styles.navItem} ${isActive ? styles.active : ''} ${styles.subItem}`}
-                  title={showBadge ? `${item.label} (${pendingCount} đơn chờ duyệt)` : item.label}
-                >
-                  <Icon size={18} />
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                    <span style={{ flex: 1 }}>{item.label}</span>
-                    {showBadge && (
-                      <span style={{
-                        background: '#ef4444',
-                        color: '#fff',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        lineHeight: '16px',
-                        minWidth: 16,
-                        height: 16,
-                        padding: '0 4px',
-                        borderRadius: 8,
-                        textAlign: 'center',
-                        flexShrink: 0,
-                      }}>
-                        {pendingCount}
-                      </span>
-                    )}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
       </nav>
 
       {/* User section */}
@@ -564,6 +460,16 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
             <Power size={18} />
             <span>CRM Module: {crmEnabled ? 'Bật' : 'Tắt'}</span>
           </button>
+        )}
+        {/* Quản lý Menu & Module — Admin-only, CỐ ĐỊNH NGOÀI registry (không
+            phải 1 mục trong MENU_REGISTRY) nên Admin KHÔNG THỂ tự ẩn/khoá
+            khỏi chính control này bằng drag/drop hay tắt module, và CRM OFF
+            cũng không ảnh hưởng — đây là entry point recovery bắt buộc. */}
+        {isAdmin && (
+          <Link href="/admin/menu" className={styles.installBtn} style={{ marginTop: 4, background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)' }}>
+            <LayoutGrid size={18} />
+            <span>Quản lý Menu & Module</span>
+          </Link>
         )}
         <button onClick={handleLogout} className={styles.logoutBtn}>
           <LogOut size={18} />

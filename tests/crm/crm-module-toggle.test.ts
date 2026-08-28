@@ -120,12 +120,16 @@ test('phan-khach/page.tsx: canAccessPage kết hợp CẢ module toggle VÀ busi
 
 // --- 5. Sidebar: CRM group gate + Admin-only toggle control ----------------
 
-test('Sidebar.tsx: nhóm CRM dùng canAccessCrmModule(isAdmin, crmEnabled) thay cho hard-coded `isAdmin &&` cũ, comment "TẠM THỜI mở lại" đã được thay bằng giải thích authority mới', () => {
+test('Sidebar.tsx: nhóm CRM dùng canAccessCrmModule(isAdmin, ...) thay cho hard-coded `isAdmin &&` cũ, comment "TẠM THỜI mở lại" đã được thay bằng giải thích authority mới', () => {
   const src = readFileSync(resolve('src/components/layout/Sidebar.tsx'), 'utf8');
   assert.match(src, /import \{ useCrmModule \} from '@\/hooks\/useCrmModule';/);
   assert.match(src, /import \{ canAccessCrmModule \} from '@\/lib\/crm-module-access';/, "Sidebar.tsx là 'use client' component — phải import từ crm-module-access (pure), không từ crm-module (server-only)");
   assert.doesNotMatch(src, /from '@\/lib\/crm-module';/);
-  assert.match(src, /\{canAccessCrmModule\(isAdmin, crmEnabled\) && \(/);
+  // ADMIN_MODULE_MENU_MANAGER (milestone sau) chuyển gate CRM group từ JSX
+  // wrapper `{canAccessCrmModule(...) && (<div>...` sang tính trong
+  // visibleRoots (data-driven, dùng chung cho mọi root/child) — vẫn gọi
+  // đúng canAccessCrmModule(isAdmin, ...), chỉ khác chỗ gọi.
+  assert.match(src, /canAccessCrmModule\(isAdmin, root\.enabled\)/, 'CRM root vẫn phải qua canAccessCrmModule (Admin bypass) khi resolve visibleRoots, không được bỏ qua bypass này');
   assert.doesNotMatch(src, /TẠM THỜI mở lại toàn bộ/, 'comment tạm thời cũ phải được dọn, không để lại 2 giải thích authority mâu thuẫn nhau');
 });
 
