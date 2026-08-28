@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
-import { getKhachHang, addKhachHang, addKhachHangWithBatch } from '@/lib/data-access';
+import { getKhachHang, addKhachHang, addKhachHangWithBatch, addKhachHangBatchWithImportBatch } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { classifyRow, detectDuplicateNameWarnings, findImportSheets, phoneKey, type ExcelColumnMap } from '@/lib/khach-hang-excel-import';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { checkpointImportBatchCounts, completeImportBatch, createImportBatch } from '@/lib/crm-funnel/import-batch';
 
-// Headroom cho file thật nhiều dòng (VD "446 Manhattan-VHGP.xlsx": 444 dòng)
-// để CÓ CƠ HỘI chạy xong trong 1 request và được đánh dấu 'completed' sớm —
-// KHÔNG phải cơ chế đảm bảo tính đúng đắn: nếu vẫn bị ngắt (vượt cả giá trị
-// này, crash, deploy...), checkpointImportBatchCounts() bên dưới đã đảm bảo
-// Lịch sử Import không bao giờ kẹt ở số liệu sai/0 — xem CHECKPOINT_INTERVAL_ROWS.
+// Headroom cho file thật nhiều dòng (VD "446 Manhattan-VHGP.xlsx": 444 dòng,
+// "DATA MKT VIN HẠ LONG XANH.xlsx": 3387 dòng) để CÓ CƠ HỘI chạy xong trong 1
+// request và được đánh dấu 'completed' sớm — KHÔNG phải cơ chế đảm bảo tính
+// đúng đắn: nếu vẫn bị ngắt (vượt cả giá trị này, crash, deploy...),
+// checkpointImportBatchCounts() bên dưới đã đảm bảo Lịch sử Import không bao
+// giờ kẹt ở số liệu sai/0 — xem CHECKPOINT_INTERVAL_ROWS. Nhánh Postgres ghi
+// theo BATCH (xem PG_INSERT_CHUNK_SIZE) để thực sự chạy xong trong ngân sách
+// này trên file vài nghìn dòng — N insert tuần tự (1 round-trip DB/dòng) là
+// nguyên nhân thật gây timeout trên file lớn, khiến serverless function bị
+// kill giữa chừng và client chỉ nhận được lỗi kết nối thô (không phải lỗi
+// validation/parsing — parser đã xử lý đúng toàn bộ dữ liệu từ bước trước).
 export const maxDuration = 60;
 
 // Ghi số liệu tiến độ định kỳ mỗi N dòng (không phải mỗi dòng — tránh nhân
@@ -19,6 +25,13 @@ export const maxDuration = 60;
 // giữa chừng vẫn để lại số liệu gần với thực tế, đủ lớn để không tạo thêm
 // tải DB đáng kể trên file vài nghìn dòng (VD 2000 dòng / 25 = 80 lần ghi).
 const CHECKPOINT_INTERVAL_ROWS = 25;
+
+// Nhánh Postgres: gộp N dòng "ready" thành 1 lệnh createMany() thay vì N
+// round-trip tuần tự — đây là fix thật cho timeout trên file lớn. 200 đủ nhỏ
+// để 1 lỗi bulk-insert (hiếm, VD DB blip giữa chừng) chỉ cần fallback per-row
+// cho tối đa 200 dòng thay vì cả file, đủ lớn để giảm số round-trip đáng kể
+// trên file nghìn dòng (3387 dòng / 200 ≈ 17 lần ghi thay vì 3387 lần).
+const PG_INSERT_CHUNK_SIZE = 200;
 
 export interface ImportResult {
   success: boolean;
@@ -135,12 +148,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const invalidList: { row: number; reason: string; sheet: string }[] = [];
     const errorList: { ten_KH: string; error: string }[] = [];
 
+    // Nhánh Postgres: gom các dòng 'ready' vào đây, ghi thật theo chunk (xem
+    // flushPgChunk) thay vì 1 round-trip DB/dòng — đây là fix cho timeout
+    // thật trên file lớn (xem comment PG_INSERT_CHUNK_SIZE). Nhánh Google
+    // Sheets (pgCrmEnabled=false) KHÔNG dùng buffer này, giữ nguyên hành vi
+    // per-row + sleep cũ (rate-limit Sheets API, không đổi ở đây).
+    const pgPending: { kh: KhachHang; ten_KH: string; so_dien_thoai: string }[] = [];
+
+    async function flushPgChunk() {
+      if (pgPending.length === 0) return;
+      const batch = pgPending.splice(0, pgPending.length);
+      try {
+        await addKhachHangBatchWithImportBatch(batch.map(p => p.kh), batchId!);
+        for (const p of batch) {
+          importedList.push(p.ten_KH);
+          readyRecords.push({ ten_KH: p.ten_KH, so_dien_thoai: p.so_dien_thoai });
+        }
+      } catch {
+        // Bulk insert lỗi (hiếm — VD DB blip giữa chừng) -> fallback per-row để
+        // cô lập ĐÚNG dòng lỗi, không fail cả chunk vì 1 dòng (giữ đúng yêu cầu
+        // "1 dòng lỗi không làm fail toàn bộ import" ở cấp độ chunk).
+        for (const p of batch) {
+          try {
+            await addKhachHangWithBatch(p.kh, batchId!);
+            importedList.push(p.ten_KH);
+            readyRecords.push({ ten_KH: p.ten_KH, so_dien_thoai: p.so_dien_thoai });
+          } catch (rowError: unknown) {
+            const msg = rowError instanceof Error ? rowError.message : String(rowError);
+            errorList.push({ ten_KH: p.ten_KH, error: msg });
+          }
+        }
+      }
+    }
+
     for (let i = 0; i < workRows.length; i++) {
       // Checkpoint ở ĐẦU mỗi vòng lặp (trước mọi "continue" bên dưới) để không
       // bao giờ bị bỏ lỡ bất kể dòng trước đó là blank/invalid/duplicate/ready —
       // đảm bảo chu kỳ checkpoint thực sự đều đặn mỗi CHECKPOINT_INTERVAL_ROWS
       // dòng dữ liệu WORKBOOK-WIDE (không reset khi chuyển sheet), không phụ
-      // thuộc tỉ lệ phân loại của file.
+      // thuộc tỉ lệ phân loại của file. importedList/errorList có thể trễ vài
+      // dòng nếu chunk hiện tại chưa flush — đúng tinh thần "gần đúng" đã ghi
+      // ở CHECKPOINT_INTERVAL_ROWS, tự cập nhật đúng khi chunk flush/kết thúc.
       if (pgCrmEnabled && batchId && i > 0 && i % CHECKPOINT_INTERVAL_ROWS === 0) {
         try {
           await checkpointImportBatchCounts(batchId, {
@@ -169,10 +217,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         continue;
       }
 
+      // Đánh dấu "đã thấy trong file" NGAY khi phân loại 'ready' (không đợi ghi
+      // DB xong) — bắt buộc để dedupe đúng trong 1 chunk chưa flush: 2 dòng
+      // trùng SĐT nằm cùng 1 chunk (chưa kịp ghi DB) vẫn phải nhận diện đúng
+      // dòng thứ 2 là duplicate_in_file, không phải chờ dòng đầu "ghi xong".
+      seenInFilePhoneKeys.add(phoneKey(classification.so_dien_thoai));
+
       // Import Excel CHỈ ghi tên/SĐT/email — các field CRM khác giữ default
       // theo contract hiện tại, không suy diễn từ bất kỳ cột nào khác trong file.
+      //
+      // ID có "i" (index dòng, tăng dần tuyệt đối trong request) thay vì chỉ
+      // dựa vào Date.now()+random — bắt buộc từ khi chuyển sang ghi theo chunk
+      // (PG_INSERT_CHUNK_SIZE): ID cho CẢ CHUNK giờ được sinh trong 1 vòng lặp
+      // đồng bộ (không còn await giữa các dòng như code cũ), nên Date.now() có
+      // thể ĐỨNG YÊN qua hàng chục dòng liên tiếp — random-10000 một mình
+      // không đủ chống trùng (createMany skipDuplicates sẽ ÂM THẦM bỏ dòng
+      // trùng id mà route vẫn đếm là "đã import"). "i" duy nhất tuyệt đối
+      // trong 1 request loại bỏ hoàn toàn rủi ro này.
       const kh: KhachHang = {
-        id_khach_hang: `KH_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        id_khach_hang: `KH_${Date.now()}_${i}_${Math.floor(Math.random() * 10000)}`,
         ngay_tao: new Date().toISOString(),
         ten_KH: classification.ten_KH,
         so_dien_thoai: classification.so_dien_thoai,
@@ -184,28 +247,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         label_khach: `${classification.ten_KH} - ${classification.so_dien_thoai}`,
       };
 
-      try {
+      if (pgCrmEnabled) {
         // pgCrmEnabled -> provenance ghi ATOMIC cùng lúc tạo (không fallback GS,
-        // lỗi sẽ ném ra và rơi vào catch bên dưới thành per-row error — không có
-        // đường nào để customer "lọt" vào GS mà vẫn được báo là batch-tracked).
-        if (pgCrmEnabled) await addKhachHangWithBatch(kh, batchId!);
-        else await addKhachHang(kh);
-        seenInFilePhoneKeys.add(phoneKey(classification.so_dien_thoai)); // prevent intra-file duplicate
-        importedList.push(classification.ten_KH);
-        readyRecords.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
-        // Rate-limit buffer chỉ cần cho nhánh ghi thẳng Google Sheets (giới hạn
-        // ~60 request/phút/user của Sheets API) — nhánh Postgres không gọi Sheets
-        // nên không có rate limit này. Giữ sleep cho nhánh GS đúng như trước;
-        // bỏ hoàn toàn cho nhánh PG — đây là phần lớn thời gian chạy của cả vòng
-        // lặp trên file thật nhiều dòng (VD 444 dòng × 150ms = 66s, dễ vượt
-        // execution timeout và làm updateImportBatchCounts() phía dưới không
-        // bao giờ chạy tới dù customer đã được tạo đúng).
-        if (!pgCrmEnabled) await new Promise(r => setTimeout(r, 150));
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        errorList.push({ ten_KH: classification.ten_KH, error: msg });
+        // xem addKhachHangBatchWithImportBatch/addKhachHangWithBatch) — gom vào
+        // buffer, ghi thật theo chunk qua flushPgChunk(), không phải ngay đây.
+        pgPending.push({ kh, ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
+        if (pgPending.length >= PG_INSERT_CHUNK_SIZE) await flushPgChunk();
+      } else {
+        try {
+          await addKhachHang(kh);
+          importedList.push(classification.ten_KH);
+          readyRecords.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
+          // Rate-limit buffer cho nhánh ghi thẳng Google Sheets (giới hạn ~60
+          // request/phút/user của Sheets API) — không đổi so với trước.
+          await new Promise(r => setTimeout(r, 150));
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          errorList.push({ ten_KH: classification.ten_KH, error: msg });
+        }
       }
     }
+    await flushPgChunk(); // chunk cuối chưa đủ PG_INSERT_CHUNK_SIZE dòng
 
     // Cảnh báo trùng tên (khác SĐT) — chỉ để cảnh báo, KHÔNG merge/xóa customer nào.
     const duplicateNameWarnings = detectDuplicateNameWarnings(readyRecords);

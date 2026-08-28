@@ -268,6 +268,28 @@ export async function addKhachHangWithBatch(data: KhachHang, importBatchId: stri
   return getCustomerRepository().create({ ...data, import_batch_id: importBatchId });
 }
 
+/**
+ * Bulk variant của addKhachHangWithBatch() — 1 lệnh createMany() cho cả mảng
+ * thay vì N round-trip tuần tự. Thêm để sửa timeout thật trên file lớn (VD
+ * "DATA MKT VIN HẠ LONG XANH.xlsx": 3387 dòng) — N create() tuần tự dễ vượt
+ * maxDuration=60 của route import-excel, khiến serverless function bị kill
+ * giữa chừng và client nhận lỗi kết nối thô thay vì response JSON có ý nghĩa.
+ *
+ * Cùng nguyên tắc atomic/no-GS-fallback như addKhachHangWithBatch() — GS
+ * không có cột import_batch_id nên KHÔNG được lấy làm fallback (customer sẽ
+ * "mất dấu" batch provenance). Ném lỗi để caller tự quyết định retry per-row
+ * cho đúng phần bị lỗi (route import-excel làm việc này để cô lập lỗi ở
+ * đúng 1 dòng, không fail nguyên chunk).
+ */
+export async function addKhachHangBatchWithImportBatch(data: KhachHang[], importBatchId: string): Promise<void> {
+  if (!isPostgresEnabled('crm')) {
+    throw new Error('addKhachHangBatchWithImportBatch requires Postgres CRM (PG_ENABLED_MODULES=crm) — batch provenance is not supported over Google Sheets.');
+  }
+  if (data.length === 0) return;
+  revalidateTag('kh', {}); invalidate('gs:kh');
+  await getCustomerRepository().createBatch(data.map(kh => ({ ...kh, import_batch_id: importBatchId })));
+}
+
 export function addKhachHangBatch(data: KhachHang[]): Promise<void> {
   revalidateTag('kh', {}); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.addKhachHangBatch(data);

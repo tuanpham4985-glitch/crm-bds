@@ -294,12 +294,17 @@ test('route: completeImportBatch chỉ được gọi SAU khi vòng lặp xử l
   assert.ok(completeCallIdx > loopCloseIdx, 'completeImportBatch phải nằm sau khi vòng lặp for đã đóng');
 });
 
-test('rate-limit sleep 150ms/dòng CHỈ áp dụng cho nhánh Google Sheets (!pgCrmEnabled) — nhánh Postgres không sleep, tránh vượt execution timeout trên file thật nhiều dòng', () => {
+test('rate-limit sleep 150ms/dòng CHỈ áp dụng cho nhánh else (Google Sheets) của if (pgCrmEnabled) — nhánh Postgres (buffer pgPending) không sleep, tránh vượt execution timeout trên file thật nhiều dòng', () => {
   const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
-  const sleepIdx = src.indexOf('setTimeout(r, 150)');
-  assert.ok(sleepIdx >= 0, 'sleep phải vẫn tồn tại cho nhánh Google Sheets');
-  const before = src.slice(Math.max(0, sleepIdx - 120), sleepIdx);
-  assert.match(before, /if\s*\(\s*!pgCrmEnabled\s*\)/, 'sleep phải được gate bởi !pgCrmEnabled, không chạy unconditional nữa');
+  const ifIdx = src.indexOf('if (pgCrmEnabled) {');
+  assert.ok(ifIdx >= 0, 'phải tìm được nhánh if (pgCrmEnabled)');
+  const elseIdx = src.indexOf('} else {', ifIdx);
+  assert.ok(elseIdx >= 0, 'phải tìm được nhánh else (Google Sheets) ngay sau if (pgCrmEnabled)');
+  const sleepIdx = src.indexOf('setTimeout(r, 150)', elseIdx);
+  assert.ok(sleepIdx >= 0, 'sleep phải nằm trong nhánh else (Google Sheets), không phải nhánh if (pgCrmEnabled)');
+  const elseBody = src.slice(elseIdx, sleepIdx);
+  assert.match(elseBody, /addKhachHang\(kh\)/, 'sleep phải theo sau lệnh ghi Google Sheets (addKhachHang) trong cùng nhánh else, xác nhận đúng vị trí');
+  assert.doesNotMatch(elseBody, /pgPending\.push/, 'nhánh else (chứa sleep) không được lẫn code buffer Postgres của nhánh if (pgCrmEnabled)');
 });
 
 test('import-excel route khai báo maxDuration đủ lớn cho file thật nhiều dòng (không phụ thuộc mặc định quá ngắn của nền tảng)', () => {
@@ -317,9 +322,27 @@ test('getImportBatchCustomers (batch detail) lọc đúng theo import_batch_id �
   assert.match(fnBody, /where:\s*\{\s*import_batch_id:\s*batchId\s*\}/);
 });
 
-test('addKhachHangWithBatch vẫn được gọi trong nhánh pgCrmEnabled của vòng lặp xử lý dòng -> provenance import_batch_id vẫn atomic per-row, không bị ảnh hưởng bởi việc bỏ sleep', () => {
+test('nhánh pgCrmEnabled gom dòng vào pgPending và flush theo chunk qua addKhachHangBatchWithImportBatch (bulk), có fallback addKhachHangWithBatch per-row để cô lập lỗi -> provenance import_batch_id vẫn atomic, không bị ảnh hưởng bởi việc bỏ sleep', () => {
   const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
-  assert.match(src, /if\s*\(pgCrmEnabled\)\s*await\s*addKhachHangWithBatch\(kh,\s*batchId!\)/);
+  assert.match(src, /pgPending\.push\(/, 'dòng pgCrmEnabled phải được buffer vào pgPending thay vì ghi DB ngay từng dòng');
+  const flushStart = src.indexOf('async function flushPgChunk');
+  assert.ok(flushStart >= 0, 'phải có hàm flushPgChunk');
+  const flushBody = src.slice(flushStart, flushStart + 1000);
+  assert.match(flushBody, /addKhachHangBatchWithImportBatch\(/, 'flushPgChunk phải ghi bulk qua addKhachHangBatchWithImportBatch');
+  assert.match(flushBody, /addKhachHangWithBatch\(p\.kh,\s*batchId!\)/, 'flushPgChunk phải có fallback per-row addKhachHangWithBatch khi bulk lỗi, để cô lập đúng dòng lỗi và giữ provenance atomic');
+});
+
+test('flushPgChunk: 1 dòng lỗi trong nhánh fallback per-row bị bắt riêng (try/catch/errorList), KHÔNG throw ra ngoài làm fail cả request/toàn bộ import', () => {
+  const src = readFileSync(resolve('src/app/api/khach-hang/import-excel/route.ts'), 'utf8');
+  const flushStart = src.indexOf('async function flushPgChunk');
+  assert.ok(flushStart >= 0);
+  const flushEnd = src.indexOf('\n    }\n', flushStart); // đóng hàm flushPgChunk ở indent gốc
+  const flushBody = src.slice(flushStart, flushEnd >= 0 ? flushEnd : flushStart + 1200);
+  const perRowForStart = flushBody.indexOf('for (const p of batch)', flushBody.indexOf('catch'));
+  assert.ok(perRowForStart >= 0, 'phải có vòng lặp per-row trong nhánh catch (fallback) của flushPgChunk');
+  const perRowBody = flushBody.slice(perRowForStart);
+  assert.match(perRowBody, /try\s*\{[\s\S]*?addKhachHangWithBatch\(p\.kh,\s*batchId!\)[\s\S]*?\}\s*catch\s*\(rowError/, 'mỗi dòng trong fallback phải có try/catch RIÊNG — 1 dòng lỗi không được làm dừng vòng lặp/fail các dòng còn lại trong chunk');
+  assert.match(perRowBody, /errorList\.push\(/, 'dòng lỗi phải được ghi nhận vào errorList để báo cáo cho user, không âm thầm biến mất và không throw');
 });
 
 // --- Multi-data-sheet: total_rows/checkpoint/counts phải aggregate WORKBOOK-WIDE

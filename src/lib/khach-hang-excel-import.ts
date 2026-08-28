@@ -139,6 +139,11 @@ export function phoneKey(value: string): string {
 // "Di động" trong "Data - Solari-VHGP.xlsx").
 const MULTI_PHONE_SEPARATORS = /[-/,;]/;
 
+/** SĐT VN hợp lệ (trước khi khôi phục số 0 đầu) luôn có đúng 9 (thiếu số 0) hoặc 10 (đủ) chữ số — dùng làm gate chống đoán bừa ở cả 2 nơi bên dưới. */
+function isValidVnRawDigitLength(digitsOnly: string): boolean {
+  return digitsOnly.length === 9 || digitsOnly.length === 10;
+}
+
 /**
  * 1 CELL đôi khi chứa nhiều số ĐT thực sự khác nhau (xem MULTI_PHONE_SEPARATORS).
  * Không được ghép/concat các số lại (sẽ ra chuỗi số vô nghĩa và dedupe key
@@ -148,37 +153,47 @@ const MULTI_PHONE_SEPARATORS = /[-/,;]/;
  * tế) bị bỏ qua khi chọn.
  *
  * Chỉ can thiệp khi cell KHÔNG tự nó là 1 số hợp lệ (9-10 chữ số) — nếu dấu
- * phân tách chỉ là cách trình bày trong 1 số duy nhất, hoặc không có candidate
- * nào đúng độ dài VN, thì rơi thẳng vào normalizePhone như cũ (giữ nguyên cả
- * chuỗi, không đổi hành vi hiện có) — không âm thầm làm mất dữ liệu.
+ * phân tách chỉ là cách trình bày trong 1 số duy nhất thì rơi thẳng vào
+ * normalizePhone như cũ.
+ *
+ * KHÔNG còn giữ nguyên chuỗi gốc khi không có candidate nào đúng độ dài VN
+ * (khác hành vi cũ) — trả về null để caller coi là "không có SĐT hợp lệ",
+ * skip + report rõ (invalid), thay vì âm thầm tạo customer với SĐT sai/rác
+ * (VD cell 8 số thiếu 2 chữ số, 11 số dư 1 chữ số, hoặc 2 SĐT dính liền
+ * không có dấu phân tách nào — tất cả gặp thực tế trong file "DATA MKT VIN
+ * HẠ LONG XANH.xlsx"). "Không tự đoán bừa nếu độ dài bất thường" ưu tiên hơn
+ * "không mất dữ liệu" — dữ liệu vẫn còn nguyên trong file gốc, chỉ không tự
+ * ý nhét vào CRM như 1 SĐT không đáng tin.
  */
-export function resolveCellPhone(text: string): string {
+export function resolveCellPhone(text: string): string | null {
   const compact = text.replace(/\s+/g, '');
   const digitsOnly = compact.replace(/\D/g, '');
-  if ((digitsOnly.length !== 9 && digitsOnly.length !== 10) && MULTI_PHONE_SEPARATORS.test(compact)) {
+  if (!isValidVnRawDigitLength(digitsOnly) && MULTI_PHONE_SEPARATORS.test(compact)) {
     for (const segment of compact.split(MULTI_PHONE_SEPARATORS)) {
       const segDigits = segment.replace(/\D/g, '');
-      if (segDigits.length === 9 || segDigits.length === 10) return normalizePhone(segment);
+      if (isValidVnRawDigitLength(segDigits)) return normalizePhone(segment);
     }
   }
-  return normalizePhone(compact);
+  return isValidVnRawDigitLength(digitsOnly) ? normalizePhone(compact) : null;
 }
 
 /**
  * Gộp nhiều cột phone trên cùng 1 dòng (VD "Số điện thoại 1"/"2") thành đúng 1 SĐT:
- *  - bỏ qua candidate trống;
+ *  - bỏ qua candidate trống HOẶC sai độ dài VN (resolveCellPhone trả null cho
+ *    cả 2 trường hợp) — nếu cột 1 rác nhưng cột 2 hợp lệ, vẫn lấy được cột 2;
  *  - resolve từng candidate (khôi phục số 0 đầu, tách nếu 1 cell chứa nhiều số —
  *    xem resolveCellPhone) — 2 candidate chỉ khác nhau ở số 0 đầu sẽ tự động
  *    normalize về cùng 1 chuỗi, không coi là khác nhau;
  *  - nếu sau normalize vẫn còn nhiều số THỰC SỰ khác nhau (khác canonical phoneKey),
  *    ưu tiên candidate ở cột đầu tiên theo thứ tự header — không ghép/concat các số lại;
- *  - không có candidate hợp lệ nào -> null (thiếu SĐT).
+ *  - không có candidate hợp lệ nào -> null (thiếu SĐT hoặc toàn bộ sai độ dài).
  */
 export function resolveRowPhone(row: readonly unknown[], phoneColumns: readonly number[]): string | null {
   const candidates = phoneColumns
     .map(index => cellToText(row[index]))
     .filter(text => text.length > 0)
-    .map(text => resolveCellPhone(text));
+    .map(text => resolveCellPhone(text))
+    .filter((phone): phone is string => phone !== null);
   return candidates.length > 0 ? candidates[0] : null;
 }
 
@@ -212,10 +227,21 @@ export function classifyRow(
   const tenKH = cellToText(row[columns.name]);
   const resolvedPhone = resolveRowPhone(row, columns.phone);
   const email = columns.email >= 0 ? cellToText(row[columns.email]) : '';
+  // resolvedPhone null có 2 nguyên nhân khác nhau — phân biệt để "report rõ"
+  // (yêu cầu): cột phone hoàn toàn trống (Thiếu SĐT) vs có text nhưng không
+  // cột nào đúng độ dài VN 9-10 số (SĐT sai định dạng/độ dài, xem
+  // resolveCellPhone) — VD "913700319" (8 số thiếu), "09038962211" (11 số dư),
+  // 2 SĐT dính liền không dấu phân tách.
+  const hasAnyPhoneText = columns.phone.some(index => cellToText(row[index]).length > 0);
 
-  if (!tenKH && resolvedPhone === null && !email) return { status: 'blank' };
+  if (!tenKH && !hasAnyPhoneText && !email) return { status: 'blank' };
   if (!tenKH || resolvedPhone === null) {
-    return { status: 'invalid', reason: !tenKH && resolvedPhone === null ? 'Thiếu Tên KH và SĐT' : !tenKH ? 'Thiếu Tên KH' : 'Thiếu SĐT' };
+    const reason = !tenKH && resolvedPhone === null
+      ? (hasAnyPhoneText ? 'Thiếu Tên KH; SĐT sai định dạng/độ dài' : 'Thiếu Tên KH và SĐT')
+      : !tenKH
+        ? 'Thiếu Tên KH'
+        : (hasAnyPhoneText ? 'SĐT sai định dạng/độ dài (không đúng 9-10 chữ số VN)' : 'Thiếu SĐT');
+    return { status: 'invalid', reason };
   }
 
   const so_dien_thoai = resolvedPhone;

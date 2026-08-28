@@ -30,6 +30,19 @@ test('file có nhiều cột lạ: chỉ Tên KH/SĐT/Email được lấy, đú
   assert.deepEqual(result, { status: 'ready', ten_KH: 'Nguyễn Văn A', so_dien_thoai: '0901234567', email: 'a@example.com' });
 });
 
+test('header thật của file DATA MKT VIN HẠ LONG XANH.xlsx ["Tên KH","SĐT",""] — cột thứ 3 header rỗng/không ổn định KHÔNG bị nhận nhầm là Email hay làm resolveColumns thất bại, và KHÔNG bị import (chỉ Tên KH/SĐT được lấy)', () => {
+  const header = ['Tên KH', 'SĐT', ''];
+  const columns = resolveColumns(header);
+  assert.ok(columns, 'phải resolve được dù có cột thừa header rỗng');
+  assert.equal(header[columns!.name], 'Tên KH');
+  assert.deepEqual(columns!.phone.map(i => header[i]), ['SĐT']);
+  assert.equal(columns!.email, -1, 'cột header rỗng không được suy diễn thành cột Email');
+
+  const row = ['Nguyễn Văn A', '901234567', 'giá trị rác ở cột không tên'];
+  const result = classifyRow(row, columns!, NO_DB_DUP, NO_FILE_DUP);
+  assert.deepEqual(result, { status: 'ready', ten_KH: 'Nguyễn Văn A', so_dien_thoai: '0901234567', email: '' });
+});
+
 test('"Số CMND" không bao giờ được nhận diện là cột SĐT', () => {
   const headerWithCmndOnly = ['Tên KH', 'Số CMND'];
   const columns = resolveColumns(headerWithCmndOnly);
@@ -113,6 +126,27 @@ test('thiếu Tên KH hoặc SĐT bị đánh dấu invalid, không âm thầm b
   assert.deepEqual(classifyRow(['', '0901234567'], columns, NO_DB_DUP, NO_FILE_DUP), { status: 'invalid', reason: 'Thiếu Tên KH' });
   assert.deepEqual(classifyRow(['Không có SĐT', ''], columns, NO_DB_DUP, NO_FILE_DUP), { status: 'invalid', reason: 'Thiếu SĐT' });
   assert.deepEqual(classifyRow(['', ''], columns, NO_DB_DUP, NO_FILE_DUP), { status: 'blank' }); // dòng trắng hoàn toàn, không tính invalid
+});
+
+test('SĐT sai độ dài (8/11/20 chữ số — các dị dạng thực tế gặp trong file DATA MKT VIN HẠ LONG XANH.xlsx) -> invalid có lý do rõ ràng, KHÔNG bị coi là "blank" rồi âm thầm biến mất', () => {
+  const header = ['Tên KH', 'SĐT'];
+  const columns = resolveColumns(header)!;
+  // 8 chữ số (thiếu 1 số so với chuẩn 9/10) -> không đủ dài để suy ra số hợp lệ.
+  assert.deepEqual(
+    classifyRow(['Khách SĐT 8 số', '91370031'], columns, NO_DB_DUP, NO_FILE_DUP),
+    { status: 'invalid', reason: 'SĐT sai định dạng/độ dài (không đúng 9-10 chữ số VN)' },
+  );
+  // 11 chữ số (dư 1 số so với chuẩn 10) -> không tự đoán bỏ số nào.
+  assert.deepEqual(
+    classifyRow(['Khách SĐT 11 số', '09038962211'], columns, NO_DB_DUP, NO_FILE_DUP),
+    { status: 'invalid', reason: 'SĐT sai định dạng/độ dài (không đúng 9-10 chữ số VN)' },
+  );
+  // 20 chữ số dính liền không có dấu phân tách (2 số bị nối lại do lỗi nhập liệu/convert Excel)
+  // -> không có separator để tách, không đúng độ dài đơn -> reject, không suy diễn.
+  assert.deepEqual(
+    classifyRow(['Khách SĐT 20 số dính liền', '09875116300987221080'], columns, NO_DB_DUP, NO_FILE_DUP),
+    { status: 'invalid', reason: 'SĐT sai định dạng/độ dài (không đúng 9-10 chữ số VN)' },
+  );
 });
 
 test('field Dự án/Nguồn/Sale/Nhu cầu/Mã căn/Loại căn/STT không bao giờ bị populate từ Excel dù file có các cột này', () => {
@@ -465,8 +499,8 @@ test('resolveCellPhone: hỗ trợ cả dấu "/" và "," làm phân tách nhi�
   assert.equal(resolveCellPhone('0983112511 , 61497573478'), '0983112511');
 });
 
-test('resolveCellPhone: không có candidate nào đúng độ dài VN (9-10 số) -> giữ nguyên cả chuỗi, không âm thầm làm mất dữ liệu', () => {
-  assert.equal(resolveCellPhone('48666268268/01675197399/01629828368'), '048666268268/01675197399/01629828368');
+test('resolveCellPhone: không có candidate nào đúng độ dài VN (9-10 số) -> trả về null (reject), KHÔNG tự đoán bừa/giữ chuỗi rác -> row bị báo invalid thay vì tạo customer với SĐT sai', () => {
+  assert.equal(resolveCellPhone('48666268268/01675197399/01629828368'), null);
 });
 
 test('resolveCellPhone: dấu "-" chỉ là cách trình bày trong 1 số duy nhất (VD định dạng cũ) -> không bị tách nhầm, hành vi giống normalizePhone hiện có (chỉ bỏ khoảng trắng, giữ nguyên dấu "-")', () => {
