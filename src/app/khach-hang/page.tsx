@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCrmModule } from '@/hooks/useCrmModule';
 import { canAccessCrmModule } from '@/lib/crm-module-access';
 import { isAllVisibleSelected, toggleSelectAllVisible, toggleSelection } from '@/lib/khach-hang-selection';
+import { validateListRangeAgainstTotal } from '@/lib/list-range';
 import { CampaignDistributeModal } from '@/components/crm/CampaignDistributeModal';
 
 export default function KhachHangPage() {
@@ -59,6 +60,15 @@ export default function KhachHangPage() {
   // khỏi selectedIds — khi bật, CampaignDistributeModal gửi filter (search/
   // from/to) để server tự resolve id thật lúc submit, không gửi id list.
   const [selectAllMatching, setSelectAllMatching] = useState(false);
+  // REMEDIATION — "Chọn khách: Từ [x] đến [y]" theo STT (Admin-only, giống
+  // customer_filter) — lối vào Campaign RIÊNG, độc lập hoàn toàn với
+  // selectedIds/selectAllMatching (checkbox), tránh mơ hồ "đang chọn theo
+  // cách nào". Không cần tải cả danh sách về trình duyệt để preview: chỉ cần
+  // "total" (tổng số khách khớp filter hiện tại, đã có sẵn từ fetchData) để
+  // validate/đếm — server mới là nơi thật sự resolve id khi submit.
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
+  const [showRangeCampaignModal, setShowRangeCampaignModal] = useState(false);
 
   // Lịch sử Import (Import Batch)
   const [showImportHistory, setShowImportHistory] = useState(false);
@@ -186,6 +196,10 @@ export default function KhachHangPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
   useEffect(() => { fetchDuAn(); }, [fetchDuAn]);
+  // Range theo STT tham chiếu "total" của filter hiện tại (search/fromDate/
+  // toDate) — KHÔNG phụ thuộc "page" (range không phải theo trang). Đổi filter
+  // -> total đổi -> range cũ (nếu có) không còn chắc đúng nghĩa, phải reset.
+  useEffect(() => { setRangeFrom(''); setRangeTo(''); }, [search, fromDate, toDate]);
 
   // Load pipeline data in background để hiển thị trạng thái deal của mỗi KH
   useEffect(() => {
@@ -564,6 +578,18 @@ export default function KhachHangPage() {
 
   const hasFilters = searchInput || fromDate || toDate;
 
+  // REMEDIATION — "Chọn khách: Từ x đến y" (Customer range, Admin-only).
+  // Preview client-side chỉ cần "total" (đã có sẵn từ fetchData, không cần
+  // tải cả danh sách/Customer object nào về trình duyệt) — validateListRangeAgainstTotal
+  // là hàm TOÁN HỌC thuần (không đụng DB), server mới resolve id thật khi submit
+  // (POST /api/campaigns/[id]/distribute, xem resolveCustomerIdsByRange).
+  const rangeFromNum = Number(rangeFrom);
+  const rangeToNum = Number(rangeTo);
+  const rangeValidation = rangeFrom.trim() !== '' && rangeTo.trim() !== ''
+    ? validateListRangeAgainstTotal(total, { from: rangeFromNum, to: rangeToNum })
+    : null;
+  const rangeAppliedOnFilteredSet = Boolean(search || fromDate || toDate);
+
   if (authLoading || crmModuleLoading) return null;
 
   // CRM Module Toggle là authority DUY NHẤT cho việc non-admin có vào được
@@ -680,6 +706,33 @@ export default function KhachHangPage() {
           )}
         </div>
       </div>
+
+      {/* REMEDIATION — Customer Range Selection: chọn khách theo STT để đưa
+          vào Campaign, không bắt Admin tick từng trang 20 khách. Admin-only
+          (giống "chọn tất cả theo bộ lọc"), độc lập với checkbox selectedIds. */}
+      {isAdmin && total > 0 && (
+        <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Chọn khách:</span>
+          <span style={{ fontSize: 13 }}>Từ</span>
+          <input type="number" min={1} className="form-input" style={{ width: 90 }} value={rangeFrom} onChange={e => setRangeFrom(e.target.value)} />
+          <span style={{ fontSize: 13 }}>đến</span>
+          <input type="number" min={1} className="form-input" style={{ width: 90 }} value={rangeTo} onChange={e => setRangeTo(e.target.value)} />
+          {rangeValidation && (
+            rangeValidation.ok
+              ? <span style={{ fontSize: 13, fontWeight: 650, color: 'var(--primary)' }}>
+                  → Đã chọn {rangeValidation.count} khách hàng{rangeAppliedOnFilteredSet ? ` (trong ${rangeValidation.total} khách đang lọc theo bộ lọc/tìm kiếm hiện tại)` : ''}
+                </span>
+              : <span style={{ fontSize: 12, color: '#b91c1c' }}>{rangeValidation.error}</span>
+          )}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowRangeCampaignModal(true)}
+            disabled={!rangeValidation?.ok}
+          >
+            <Layers size={14} /> Tạo Campaign ({rangeValidation?.ok ? rangeValidation.count : 0})
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -1648,6 +1701,17 @@ export default function KhachHangPage() {
           isAdmin={isAdmin}
           onClose={() => setShowCampaignModal(false)}
           onDone={() => { setSelectedIds(new Set()); setSelectAllMatching(false); }}
+        />
+      )}
+
+      {showRangeCampaignModal && rangeValidation?.ok && (
+        <CampaignDistributeModal
+          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, count: rangeValidation.count }}
+          employees={employees}
+          projects={duAnList}
+          isAdmin={isAdmin}
+          onClose={() => setShowRangeCampaignModal(false)}
+          onDone={() => { setRangeFrom(''); setRangeTo(''); }}
         />
       )}
     </div>

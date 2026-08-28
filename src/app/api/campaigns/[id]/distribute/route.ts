@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getNhanVien } from '@/lib/data-access';
 import { canManageCampaign, eligibleCampaignSales, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
-import { bulkAddAndDistribute, getCampaign, resolveCampaignMembershipCustomerIdsByRange, resolveCustomerIdsByFilter, type DistributionMode } from '@/lib/crm-funnel/campaign';
+import {
+  bulkAddAndDistribute, getCampaign, resolveCampaignMembershipCustomerIdsByRange,
+  resolveCustomerIdsByFilter, resolveCustomerIdsByRange, type DistributionMode,
+} from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
 const MODES: DistributionMode[] = ['round_robin', 'quantity', 'none'];
@@ -20,7 +23,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const body = await request.json().catch(() => null) as {
-      customer_ids?: unknown; customer_filter?: unknown; membership_range?: unknown; telesale_names?: unknown; mode?: unknown; quantities?: unknown;
+      customer_ids?: unknown; customer_filter?: unknown; customer_range?: unknown; membership_range?: unknown;
+      telesale_names?: unknown; mode?: unknown; quantities?: unknown;
     } | null;
 
     let customerIds: string[];
@@ -39,6 +43,31 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         from: typeof filterInput.from === 'string' ? filterInput.from : undefined,
         to: typeof filterInput.to === 'string' ? filterInput.to : undefined,
       });
+    } else if (body?.customer_range && typeof body.customer_range === 'object') {
+      // REMEDIATION — "Chọn khách: Từ [x] đến [y]" trên /khach-hang (Customer
+      // range, đưa Customer MỚI vào Campaign) — id resolve THẲNG từ DB theo
+      // ĐÚNG thứ tự hiển thị (ngay_tao desc) + filter search/date hiện tại,
+      // không nhận id list từ client. Admin-only, CÙNG tinh thần customer_filter
+      // ở trên (khác membership_range bên dưới — đó là chọn CampaignMembership
+      // ĐÃ CÓ trong Campaign để chia Sale, canManageCampaign chung là đủ).
+      // Field "from"/"to" ở đây là VỊ TRÍ (STT) — tách riêng khỏi "dateFrom"/
+      // "dateTo" (bộ lọc ngày trên /khach-hang) để không đụng tên với
+      // customer_filter.from/to (vốn LÀ ngày) ở nhánh trên.
+      if (!isCrmAdmin(user)) {
+        return NextResponse.json({ success: false, error: 'Chỉ Admin được thêm khách hàng theo khoảng STT' }, { status: 403 });
+      }
+      const rangeInput = body.customer_range as Record<string, unknown>;
+      const resolvedRange = await resolveCustomerIdsByRange({
+        from: Number(rangeInput.from),
+        to: Number(rangeInput.to),
+        search: typeof rangeInput.search === 'string' ? rangeInput.search : undefined,
+        dateFrom: typeof rangeInput.dateFrom === 'string' ? rangeInput.dateFrom : undefined,
+        dateTo: typeof rangeInput.dateTo === 'string' ? rangeInput.dateTo : undefined,
+      });
+      if ('error' in resolvedRange) {
+        return NextResponse.json({ success: false, error: resolvedRange.error }, { status: 400 });
+      }
+      customerIds = resolvedRange.customerIds;
     } else if (body?.membership_range && typeof body.membership_range === 'object') {
       // "Chọn khách: Từ [x] đến [y]" trong CSKH → Theo Campaign — id resolve
       // THẲNG từ DB theo ĐÚNG thứ tự/bộ lọc (created_at asc + search/bucket)

@@ -155,16 +155,20 @@ test('khach-hang/page.tsx: nút "Tạo Campaign" hiện đúng số đã chọn 
 
 // --- E. UI: CampaignDistributeModal — customerFilter wiring + kết quả "Đã tạo Campaign" ---
 
-test('CampaignDistributeModal.tsx: selectionCount lấy từ customerFilter.count khi có customerFilter, ngược lại từ customerIds.length', () => {
+// REMEDIATION (Customer Range Selection) thêm nhánh thứ 3 customerRange —
+// cập nhật assertion theo cấu trúc mới, không phải regression (xem
+// campaign-customer-range.test.ts cho coverage đầy đủ nhánh mới).
+test('CampaignDistributeModal.tsx: selectionCount lấy từ customerFilter.count khi có customerFilter, customerRange.count khi có customerRange, ngược lại từ customerIds.length', () => {
   const src = readFileSync(resolve(MODAL_PATH), 'utf8');
-  assert.match(src, /const selectionCount = customerFilter \? customerFilter\.count : \(customerIds\?\.length \?\? 0\);/);
+  assert.match(src, /const selectionCount = customerFilter \? customerFilter\.count : customerRange \? customerRange\.count : \(customerIds\?\.length \?\? 0\);/);
 });
 
-test('CampaignDistributeModal.tsx: submit() gửi customer_filter (KHÔNG kèm customer_ids) khi có customerFilter, ngược lại gửi customer_ids như cũ', () => {
+test('CampaignDistributeModal.tsx: submit() gửi customer_filter (KHÔNG kèm customer_ids) khi có customerFilter, customer_range khi có customerRange, ngược lại gửi customer_ids như cũ', () => {
   const src = readFileSync(resolve(MODAL_PATH), 'utf8');
   const bodyStart = src.indexOf('body: JSON.stringify({', src.indexOf('/distribute`'));
-  const body = src.slice(bodyStart, bodyStart + 350);
+  const body = src.slice(bodyStart, bodyStart + 500);
   assert.match(body, /customerFilter\s*\?\s*\{ customer_filter:/);
+  assert.match(body, /:\s*customerRange\s*\n\s*\? \{ customer_range:/);
   assert.match(body, /:\s*\{ customer_ids: customerIds \}\)/);
 });
 

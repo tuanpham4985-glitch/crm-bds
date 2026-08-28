@@ -8,6 +8,7 @@ import { isPostgresEnabled } from '../db/feature-flags';
 import { assertTransactionalCrm } from './transactional-workflow';
 import { matchesCustomerBulkFilter, type CustomerBulkFilter } from '../khach-hang-bulk-filter';
 import { matchesMembershipQueueFilter, resolveMembershipRange, type MembershipQueueFilter } from '../campaign-cskh-range';
+import { resolveListRange } from '../list-range';
 import type { CrmSessionUser } from '../crm-auth';
 import type { PrismaClient } from '../../generated/prisma/client';
 
@@ -190,6 +191,44 @@ export async function resolveCustomerIdsByFilter(filter: CustomerBulkFilter): Pr
     select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true },
   });
   return customers.filter(customer => matchesCustomerBulkFilter(customer, filter)).map(customer => customer.id_khach_hang);
+}
+
+export interface CustomerRangeSelection {
+  /** Vị trí (STT), 1-indexed, inclusive — KHÔNG phải ngày, cố ý tách tên
+   * khỏi CustomerBulkFilter.from/to (đó LÀ ngày) để tránh đụng field khi
+   * gọi matchesCustomerBulkFilter bên dưới. */
+  from: number;
+  to: number;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/**
+ * REMEDIATION — "Chọn khách: Từ [x] đến [y]" trên /khach-hang (Customer
+ * range, KHÁC hẳn resolveCampaignMembershipCustomerIdsByRange ở trên —
+ * feature đó chọn CampaignMembership của 1 Campaign cụ thể để chia Sale,
+ * feature này chọn KhachHang để đưa vào Campaign; 2 authority KHÔNG trộn,
+ * chỉ tình cờ tái dùng chung 1 utility toán học resolveListRange).
+ *
+ * orderBy PHẢI khớp CHÍNH XÁC thứ tự GET /api/khach-hang đang hiển thị —
+ * ngay_tao desc, đúng PostgresCustomerRepository.findAll() (customer.repo.ts,
+ * KHÔNG đổi ở đây) — nếu 2 nơi lệch order, "STT 301-500 trên UI" sẽ không
+ * còn khớp "STT 301-500 server resolve", phá vỡ đúng bất biến deterministic
+ * ordering. Chỉ select field cần cho matchesCustomerBulkFilter — không load
+ * nguyên KhachHang, nhẹ cả với vài nghìn dòng (3.000+).
+ */
+export async function resolveCustomerIdsByRange(selection: CustomerRangeSelection): Promise<{ customerIds: string[] } | { error: string }> {
+  assertTransactionalCrm();
+  const customers = await prisma.khachHang.findMany({
+    orderBy: { ngay_tao: 'desc' },
+    select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true },
+  });
+  const filter: CustomerBulkFilter = { search: selection.search, from: selection.dateFrom, to: selection.dateTo };
+  const orderedFiltered = customers.filter(customer => matchesCustomerBulkFilter(customer, filter));
+  const result = resolveListRange(orderedFiltered, { from: selection.from, to: selection.to });
+  if (!result.ok) return { error: result.error };
+  return { customerIds: result.ids.map(customer => customer.id_khach_hang) };
 }
 
 export type DistributionMode = 'round_robin' | 'quantity' | 'none';

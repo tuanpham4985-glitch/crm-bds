@@ -25,7 +25,7 @@ interface DistributeResult {
   stillUnassigned: number;
 }
 
-export function CampaignDistributeModal({ customerIds, customerFilter, employees, projects, isAdmin, fixedCampaign, onClose, onDone }: {
+export function CampaignDistributeModal({ customerIds, customerFilter, customerRange, employees, projects, isAdmin, fixedCampaign, onClose, onDone }: {
   /** Danh sách id tường minh do UI chọn từng dòng (page-local selection). */
   customerIds?: string[];
   /**
@@ -36,6 +36,14 @@ export function CampaignDistributeModal({ customerIds, customerFilter, employees
    * (xem POST /api/campaigns/[id]/distribute), không tin count từ client.
    */
   customerFilter?: { search?: string; from?: string; to?: string; count: number };
+  /**
+   * REMEDIATION — "Chọn khách: Từ [x] đến [y]" trên /khach-hang (Customer
+   * range theo STT, KHÁC hẳn membership_range của CampaignCskhWorkQueue —
+   * đó chọn CampaignMembership ĐÃ TRONG Campaign để chia Sale, đây chọn
+   * KhachHang MỚI để đưa vào Campaign). from/to là vị trí (STT), 1-indexed.
+   * `count` chỉ để hiển thị — server resolve lại thật khi submit.
+   */
+  customerRange?: { from: number; to: number; search?: string; dateFrom?: string; dateTo?: string; count: number };
   employees: NhanVien[];
   projects: DuAn[];
   isAdmin: boolean;
@@ -45,7 +53,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, employees
   onDone: () => void;
 }) {
   const router = useRouter();
-  const selectionCount = customerFilter ? customerFilter.count : (customerIds?.length ?? 0);
+  const selectionCount = customerFilter ? customerFilter.count : customerRange ? customerRange.count : (customerIds?.length ?? 0);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(!fixedCampaign);
   const [campaignId, setCampaignId] = useState<string>('');
@@ -139,7 +147,9 @@ export function CampaignDistributeModal({ customerIds, customerFilter, employees
         body: JSON.stringify({
           ...(customerFilter
             ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to } }
-            : { customer_ids: customerIds }),
+            : customerRange
+              ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo } }
+              : { customer_ids: customerIds }),
           telesale_names: selectedSales, mode, quantities,
         }),
       });

@@ -7,6 +7,7 @@
 // non-authoritative) và server (resolve thật trước khi ghi, campaign.ts) dùng
 // chung 1 định nghĩa — tránh 2 nơi tính khác nhau -> off-by-one/lệch kết quả.
 import { bucketOf } from './campaign-cskh-bucket';
+import { resolveListRange, type ListRangeInput, type ListRangeResult } from './list-range';
 
 // Addendum — Assigned Customer Visibility + Overlap Protection: authority
 // cho "đã chia hay chưa" là ĐÚNG CampaignMembership.telesale_id (KHÔNG thêm
@@ -70,32 +71,12 @@ export function matchesMembershipQueueFilter(
   return matchesSearch && matchesBucket && matchesAssignment;
 }
 
-export interface MembershipRangeInput {
-  from: number;
-  to: number;
-}
-
-export type MembershipRangeResult<T> =
-  | { ok: true; ids: T[]; total: number }
-  | { ok: false; error: string; total: number };
-
-/**
- * orderedFiltered PHẢI đã đúng thứ tự (created_at asc) + đã lọc sẵn (search/
- * bucket) trước khi gọi — hàm này chỉ validate + cắt [from, to] (1-indexed,
- * inclusive cả 2 đầu). "to" so với total của CHÍNH tập đã lọc (đúng yêu cầu
- * "range áp dụng trên tập sau filter"), không phải tổng toàn Campaign.
- */
-export function resolveMembershipRange<T>(orderedFiltered: readonly T[], range: MembershipRangeInput): MembershipRangeResult<T> {
-  const total = orderedFiltered.length;
-  if (!Number.isInteger(range.from) || range.from < 1) {
-    return { ok: false, error: 'Từ phải là số nguyên >= 1', total };
-  }
-  if (!Number.isInteger(range.to) || range.to < range.from) {
-    return { ok: false, error: 'Đến phải là số nguyên >= Từ', total };
-  }
-  if (range.to > total) {
-    return { ok: false, error: `Đến không được vượt quá tổng số khách phù hợp (${total})`, total };
-  }
-  // from=1,to=200 -> slice(0,200) -> đúng 200 phần tử (index 0..199) — không off-by-one.
-  return { ok: true, ids: orderedFiltered.slice(range.from - 1, range.to), total };
-}
+// REMEDIATION (Customer Range Selection): validate+slice thuần chuyển sang
+// list-range.ts (generic, dùng chung với Customer range tại /khach-hang) —
+// alias lại đúng tên cũ để KHÔNG phải sửa bất kỳ call site/test nào đã có
+// (campaign.ts, CampaignCskhWorkQueue.tsx). "orderedFiltered" PHẢI đã đúng
+// thứ tự (created_at asc) + đã lọc sẵn (search/bucket/assignment) trước khi
+// gọi — "to" so với total của CHÍNH tập đã lọc, không phải tổng toàn Campaign.
+export type MembershipRangeInput = ListRangeInput;
+export type MembershipRangeResult<T> = ListRangeResult<T>;
+export const resolveMembershipRange = resolveListRange;
