@@ -71,11 +71,18 @@ export function CampaignCskhWorkQueue({ employees, projects }: { employees: Nhan
   const [acceptRejectBusyId, setAcceptRejectBusyId] = useState('');
 
   const loadCampaigns = useCallback(async () => {
+    // Phải tự set/clear loading ở đây — nếu không, khi campaigns rỗng (tài
+    // khoản chưa gắn Campaign nào, hoặc fetch lỗi) thì loadMembers('') (gọi
+    // lúc mount vì campaignId ban đầu rỗng) chỉ return sớm mà không đụng
+    // loading, khiến "loading" mắc kẹt ở giá trị khởi tạo true mãi mãi ->
+    // spinner ở dòng "if (loading && campaigns.length === 0)" quay vô hạn.
+    setLoading(true);
     try {
       const response = await fetch('/api/campaigns');
       const data = await response.json();
       if (data.success) setCampaigns(data.data);
-    } catch { setNotice({ type: 'error', text: 'Không tải được danh sách Campaign.' }); }
+      else setNotice({ type: 'error', text: data.error || 'Không tải được danh sách Campaign.' });
+    } catch { setNotice({ type: 'error', text: 'Không tải được danh sách Campaign.' }); } finally { setLoading(false); }
   }, []);
 
   const loadMembers = useCallback(async (id: string) => {

@@ -89,3 +89,30 @@ test('CampaignCskhWorkQueue.tsx: saveInteraction() (lưu Chăm sóc) không tự
   assert.ok(fnStart > -1 && fnEnd > fnStart);
   assert.doesNotMatch(fnBody, /handoff|pipeline/i, 'saveInteraction() không được tự trigger handoff/pipeline nào');
 });
+
+// --- Root-cause regression: tab "Theo Campaign" (CampaignCskhWorkQueue) treo
+// spinner vô hạn khi tài khoản KHÔNG có Campaign nào (hoặc GET /api/campaigns
+// lỗi/rỗng) ---
+//
+// "loading" khởi tạo true. Trước fix, loadCampaigns() KHÔNG hề đụng tới
+// setLoading — chỉ loadMembers(id) mới set/clear loading, và loadMembers chỉ
+// làm vậy khi id có giá trị thật. Vì campaignId ban đầu rỗng, và chỉ được
+// gán giá trị SAU KHI campaigns.length > 0, nếu campaigns fetch xong mà rỗng
+// (0 Campaign) hoặc lỗi, "loading" mắc kẹt mãi mãi ở true -> gate
+// "if (loading && campaigns.length === 0)" quay spinner vô hạn, không bao
+// giờ tự thoát để hiện empty-state/thông báo lỗi.
+test("CampaignCskhWorkQueue.tsx: loadCampaigns() phải tự setLoading(true)/setLoading(false) (finally) — nếu không, tài khoản không có Campaign nào (hoặc GET /api/campaigns lỗi) sẽ bị kẹt spinner vô hạn vì loadMembers('') lúc mount không đụng tới loading", () => {
+  const src = readFileSync(resolve('src/components/crm/CampaignCskhWorkQueue.tsx'), 'utf8');
+  const fnStart = src.indexOf('const loadCampaigns = useCallback(async () => {');
+  assert.ok(fnStart >= 0, 'phải tìm được loadCampaigns');
+  const fnEndMarker = '}, []);';
+  const fnEnd = src.indexOf(fnEndMarker, fnStart) + fnEndMarker.length;
+  const fnBody = src.slice(fnStart, fnEnd);
+  assert.match(fnBody, /setLoading\(true\)/, 'loadCampaigns phải setLoading(true) khi bắt đầu fetch');
+  assert.match(fnBody, /finally\s*\{\s*setLoading\(false\);?\s*\}/, 'loadCampaigns phải setLoading(false) trong finally — đảm bảo thoát spinner dù fetch thành công, lỗi, hay campaigns trả về rỗng');
+});
+
+test('CampaignCskhWorkQueue.tsx: gate spinner top-level "loading && campaigns.length === 0" vẫn còn nguyên (chỉ fix nguồn set loading, không đổi điều kiện render)', () => {
+  const src = readFileSync(resolve('src/components/crm/CampaignCskhWorkQueue.tsx'), 'utf8');
+  assert.match(src, /if\s*\(loading && campaigns\.length === 0\)\s*return/);
+});
