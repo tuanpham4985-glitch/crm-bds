@@ -25,7 +25,16 @@ export async function isCrmModuleEnabled(): Promise<boolean> {
   // Chưa từng set (key không tồn tại) -> mặc định BẬT, giữ nguyên hành vi
   // hiện tại (CRM đang mở cho M1B.2 validation) cho tới khi Admin chủ động
   // tắt — tránh đổi hành vi bất ngờ ngay lúc deploy tính năng này.
-  const enabled = row ? row.get('value') === 'true' : true;
+  //
+  // So sánh KHÔNG PHÂN BIỆT HOA/THƯỜNG — phát hiện live trong production
+  // validation (ADMIN_MODULE_MENU_MANAGER): Google Sheets tự động coerce ô
+  // chứa literal "true"/"false" sang kiểu Boolean nội bộ, và trả về dạng
+  // hiển thị chuẩn "TRUE"/"FALSE" (viết hoa) khi đọc qua API — bất kể
+  // setCrmModuleEnabled() ghi xuống chữ thường "true" như thế nào. So sánh
+  // strict === 'true' (chữ thường) trước đây khiến MỌI giá trị đọc lại sau
+  // khi cache 15s hết hạn đều thành false — toggle "BẬT" tưởng lưu thành
+  // công (cache tức thời đúng) nhưng luôn tự trả về "TẮT" sau ~15s.
+  const enabled = row ? row.get('value')?.toLowerCase() === 'true' : true;
   _cache = { enabled, ts: Date.now() };
   return enabled;
 }

@@ -17,6 +17,12 @@ test('crm-module-access.ts hoàn toàn pure — KHÔNG import bất kỳ module 
   assert.doesNotMatch(src, /^import /m, 'crm-module-access.ts phải là pure function, không import gì — nếu cần import gì đó, đặt lại vào crm-module.ts (server-only) và tách helper khác');
 });
 
+test('crm-module.ts: isCrmModuleEnabled() so sánh KHÔNG PHÂN BIỆT HOA/THƯỜNG khi đọc giá trị từ Sheets — phát hiện live trong production validation (ADMIN_MODULE_MENU_MANAGER): Google Sheets tự coerce cell chứa "true"/"false" sang kiểu Boolean nội bộ và trả về dạng viết hoa "TRUE"/"FALSE" khi đọc qua API, strict === \'true\' (chữ thường) khiến MỌI giá trị đọc lại sau khi cache 15s hết hạn đều thành false dù vừa ghi "BẬT" thành công', () => {
+  const src = readFileSync(resolve('src/lib/crm-module.ts'), 'utf8');
+  assert.match(src, /row\.get\('value'\)\?\.toLowerCase\(\) === 'true'/, 'phải so sánh case-insensitive (.toLowerCase()) — so sánh strict với \'true\' chữ thường sẽ luôn false khi Sheets trả về "TRUE" viết hoa');
+  assert.doesNotMatch(src, /row\.get\('value'\) === 'true'/, 'không được còn phép so sánh strict-case cũ nằm song song (dead code gây nhầm lẫn)');
+});
+
 test('canAccessCrmModule: Admin luôn true bất kể module ON/OFF — Admin không bao giờ tự khóa khỏi CRM/toggle', () => {
   assert.equal(canAccessCrmModule(true, true), true);
   assert.equal(canAccessCrmModule(true, false), true);
@@ -55,7 +61,7 @@ test('crm-module.ts KHÔNG dùng PG_ENABLED_MODULES/isPostgresEnabled hay bất 
 
 test('crm-module.ts: mặc định BẬT khi key chưa từng được set — không đổi hành vi hiện tại (CRM đang mở cho M1B.2) ngay lúc deploy tính năng này', () => {
   const src = readFileSync(resolve('src/lib/crm-module.ts'), 'utf8');
-  assert.match(src, /const enabled = row \? row\.get\('value'\) === 'true' : true;/, 'thiếu row (key chưa set) phải mặc định enabled=true');
+  assert.match(src, /const enabled = row \? row\.get\('value'\)\?\.toLowerCase\(\) === 'true' : true;/, 'thiếu row (key chưa set) phải mặc định enabled=true');
 });
 
 test('crm-module.ts: setCrmModuleEnabled() thực sự ghi/persist qua Sheets row (save/addRow), không chỉ update in-memory cache — đảm bảo state persist sau reload/instance khác', () => {
