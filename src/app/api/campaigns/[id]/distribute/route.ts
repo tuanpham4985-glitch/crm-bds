@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getNhanVien } from '@/lib/data-access';
 import { canManageCampaign, eligibleCampaignSales, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
-import { bulkAddAndDistribute, getCampaign, resolveCustomerIdsByFilter, type DistributionMode } from '@/lib/crm-funnel/campaign';
+import { bulkAddAndDistribute, getCampaign, resolveCampaignMembershipCustomerIdsByRange, resolveCustomerIdsByFilter, type DistributionMode } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
 const MODES: DistributionMode[] = ['round_robin', 'quantity', 'none'];
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const body = await request.json().catch(() => null) as {
-      customer_ids?: unknown; customer_filter?: unknown; telesale_names?: unknown; mode?: unknown; quantities?: unknown;
+      customer_ids?: unknown; customer_filter?: unknown; membership_range?: unknown; telesale_names?: unknown; mode?: unknown; quantities?: unknown;
     } | null;
 
     let customerIds: string[];
@@ -39,6 +39,25 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         from: typeof filterInput.from === 'string' ? filterInput.from : undefined,
         to: typeof filterInput.to === 'string' ? filterInput.to : undefined,
       });
+    } else if (body?.membership_range && typeof body.membership_range === 'object') {
+      // "Chọn khách: Từ [x] đến [y]" trong CSKH → Theo Campaign — id resolve
+      // THẲNG từ DB theo ĐÚNG thứ tự/bộ lọc (created_at asc + search/bucket)
+      // UI đang áp dụng, không nhận id list từ client. Authority GIỐNG hệt
+      // "Phân Sale" hiện có — canManageCampaign phía trên (Admin HOẶC Leader/
+      // owner Campaign) đã đủ, KHÔNG cần gate Admin-only riêng (khác
+      // customer_filter — đây là chia data ĐÃ Ở TRONG Campaign, không phải
+      // thêm Customer mới từ ngoài vào).
+      const rangeInput = body.membership_range as Record<string, unknown>;
+      const resolved = await resolveCampaignMembershipCustomerIdsByRange(id, {
+        from: Number(rangeInput.from),
+        to: Number(rangeInput.to),
+        search: typeof rangeInput.search === 'string' ? rangeInput.search : undefined,
+        bucket: typeof rangeInput.bucket === 'string' ? rangeInput.bucket : undefined,
+      });
+      if ('error' in resolved) {
+        return NextResponse.json({ success: false, error: resolved.error }, { status: 400 });
+      }
+      customerIds = resolved.customerIds;
     } else {
       customerIds = Array.isArray(body?.customer_ids)
         ? body!.customer_ids.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)

@@ -7,6 +7,7 @@ import { prisma } from '../db/client';
 import { isPostgresEnabled } from '../db/feature-flags';
 import { assertTransactionalCrm } from './transactional-workflow';
 import { matchesCustomerBulkFilter, type CustomerBulkFilter } from '../khach-hang-bulk-filter';
+import { matchesMembershipQueueFilter, resolveMembershipRange, type MembershipQueueFilter } from '../campaign-cskh-range';
 import type { CrmSessionUser } from '../crm-auth';
 import type { PrismaClient } from '../../generated/prisma/client';
 
@@ -136,6 +137,31 @@ export async function getCampaignMembersWithCustomers(campaignId: string) {
       : null,
     handoff: member.handoff_id ? handoffMap.get(member.handoff_id) ?? null : null,
   }));
+}
+
+export interface MembershipRangeSelection extends MembershipQueueFilter {
+  from: number;
+  to: number;
+}
+
+/**
+ * "Chọn khách: Từ [x] đến [y]" trong CSKH → Theo Campaign — resolve customer_id
+ * THẲNG từ DB theo ĐÚNG thứ tự + bộ lọc (search/bucket) UI đang áp dụng, để
+ * client không phải gửi id list vài nghìn phần tử lên server. Dùng lại
+ * getCampaignMembersWithCustomers() (đã sort created_at asc — cùng nguồn UI
+ * đang hiển thị) rồi lọc/cắt qua matchesMembershipQueueFilter +
+ * resolveMembershipRange (module thuần, dùng chung với UI preview).
+ */
+export async function resolveCampaignMembershipCustomerIdsByRange(
+  campaignId: string,
+  selection: MembershipRangeSelection,
+): Promise<{ customerIds: string[] } | { error: string }> {
+  assertTransactionalCrm();
+  const members = await getCampaignMembersWithCustomers(campaignId);
+  const orderedFiltered = members.filter(member => matchesMembershipQueueFilter(member, selection));
+  const result = resolveMembershipRange(orderedFiltered, selection);
+  if (!result.ok) return { error: result.error };
+  return { customerIds: result.ids.map(member => member.customer_id) };
 }
 
 /**

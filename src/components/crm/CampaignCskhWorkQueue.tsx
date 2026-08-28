@@ -19,6 +19,7 @@ import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamS
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { bucketOf, CSKH_BUCKETS, isOverdue, type MembershipBucket } from '@/lib/campaign-cskh-bucket';
+import { matchesMembershipQueueFilter, resolveMembershipRange } from '@/lib/campaign-cskh-range';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
 import { CampaignDistributeModal } from './CampaignDistributeModal';
@@ -73,6 +74,11 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   const [showLeaderEdit, setShowLeaderEdit] = useState(false);
   const [handoffMember, setHandoffMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [acceptRejectBusyId, setAcceptRejectBusyId] = useState('');
+  // "Chọn khách: Từ [x] đến [y]" -> "Chia đều cho Sale" — string (không phải
+  // number) để input rỗng không tự nhảy về 0 khi Admin đang gõ.
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
+  const [rangeSubmitting, setRangeSubmitting] = useState(false);
 
   const loadCampaigns = useCallback(async () => {
     // Phải tự set/clear loading ở đây — nếu không, khi campaigns rỗng (tài
@@ -104,12 +110,11 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   useEffect(() => { void loadMembers(campaignId); }, [campaignId, loadMembers]);
   useEffect(() => { if (!campaignId && campaigns.length > 0) setCampaignId(campaigns[0].id); }, [campaigns, campaignId]);
 
-  const filtered = useMemo(() => members.filter(member => {
-    const q = search.trim().toLowerCase();
-    const matchesSearch = !q || [member.customer?.ten_KH, member.customer?.so_dien_thoai, member.telesale_name]
-      .some(value => (value || '').toLowerCase().includes(q));
-    return matchesSearch && (!bucketFilter || bucketOf(member) === bucketFilter);
-  }), [members, search, bucketFilter]);
+  // Cùng 1 hàm với server (resolveCampaignMembershipCustomerIdsByRange,
+  // campaign.ts) — bắt buộc để "Từ x đến y" trên UI luôn khớp đúng với id
+  // server thật sự resolve khi bấm "Chia đều" (không có 2 định nghĩa filter
+  // lệch nhau). "members" đã sort created_at asc từ server (getCampaignMembersWithCustomers) — đây là thứ tự "Từ/Đến" tham chiếu.
+  const filtered = useMemo(() => members.filter(member => matchesMembershipQueueFilter(member, { search, bucket: bucketFilter })), [members, search, bucketFilter]);
 
   const stats = useMemo(() => {
     const counts = new Map<MembershipBucket, number>();
@@ -181,6 +186,46 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   const canManageThisCampaign = Boolean(user && (isAdmin || selectedCampaign?.owner_name === user.ho_ten));
   const unassignedMembers = useMemo(() => members.filter(member => member.assignment_status === 'UNASSIGNED'), [members]);
 
+  // "Chọn khách: Từ x đến y" — preview client-side (non-authoritative, chỉ để
+  // hiển thị ngay khi Admin gõ số) trên "filtered" (đã áp search/bucket hiện
+  // tại) bằng ĐÚNG hàm resolveMembershipRange server cũng dùng. Số thật đưa
+  // vào request luôn được server resolve lại từ DB lúc submit (xem distributeRange).
+  const rangeFromNum = Number(rangeFrom);
+  const rangeToNum = Number(rangeTo);
+  const rangeResult = rangeFrom.trim() !== '' && rangeTo.trim() !== ''
+    ? resolveMembershipRange(filtered, { from: rangeFromNum, to: rangeToNum })
+    : null;
+  const rangeEligibility = selectedCampaign ? eligibleCampaignSales(isAdmin, selectedCampaign, projects, employees) : null;
+
+  async function distributeRange() {
+    if (!selectedCampaign || !rangeResult?.ok || !rangeEligibility) return;
+    if (rangeEligibility.blocked) { setNotice({ type: 'error', text: rangeEligibility.reason }); return; }
+    const saleNames = rangeEligibility.sales.map(item => item.ho_ten);
+    if (saleNames.length === 0) { setNotice({ type: 'error', text: 'Không có Sale nào đang hoạt động trong phạm vi Campaign này.' }); return; }
+    const rangeSize = rangeResult.ids.length;
+    if (!window.confirm(`Chia đều ${rangeSize} khách cho ${saleNames.length} Sale?`)) return;
+    setRangeSubmitting(true);
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/distribute`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          membership_range: { from: rangeFromNum, to: rangeToNum, search, bucket: bucketFilter || undefined },
+          telesale_names: saleNames, mode: 'round_robin',
+        }),
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error);
+      const extra = data.data.alreadyAssigned > 0 ? ` (${data.data.alreadyAssigned} trong khoảng đã có Sale từ trước, giữ nguyên.)` : '';
+      setNotice({ type: 'ok', text: `Đã chia ${rangeSize} khách cho ${saleNames.length} Sale.${extra}` });
+      setRangeFrom(''); setRangeTo('');
+      void loadMembers(campaignId);
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không thể chia đều.' });
+    } finally {
+      setRangeSubmitting(false);
+    }
+  }
+
   if (loading && campaigns.length === 0) return <div className="loading-spinner"><div className="spinner" /></div>;
 
   return <div>
@@ -207,6 +252,30 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         )}
         <button className="btn btn-secondary" style={canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 ? undefined : { marginLeft: 'auto' }} onClick={() => loadMembers(campaignId)} disabled={!campaignId || loading}><RefreshCw size={15} /> Làm mới</button>
       </div>
+      {canManageThisCampaign && selectedCampaign && members.length > 0 && (
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Chọn khách:</span>
+          <span style={{ fontSize: 13 }}>Từ</span>
+          <input type="number" min={1} className="form-input" style={{ width: 80 }} value={rangeFrom} onChange={event => setRangeFrom(event.target.value)} />
+          <span style={{ fontSize: 13 }}>đến</span>
+          <input type="number" min={1} className="form-input" style={{ width: 80 }} value={rangeTo} onChange={event => setRangeTo(event.target.value)} />
+          {rangeResult && (
+            rangeResult.ok
+              ? <span style={{ fontSize: 13, fontWeight: 650, color: 'var(--primary)' }}>
+                  → Đã chọn {rangeResult.ids.length} khách{(search || bucketFilter) ? ` (trong ${rangeResult.total} khách đang lọc theo bộ lọc/tìm kiếm hiện tại)` : ''}
+                </span>
+              : <span style={{ fontSize: 12, color: '#b91c1c' }}>{rangeResult.error}</span>
+          )}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => void distributeRange()}
+            disabled={!rangeResult?.ok || rangeSubmitting || Boolean(rangeEligibility?.blocked)}
+          >
+            {rangeSubmitting ? <Loader2 size={14} className="spin" /> : <Users size={14} />} Chia đều cho Sale
+          </button>
+          {rangeEligibility?.blocked && <span style={{ fontSize: 12, color: '#9a3412' }}>{rangeEligibility.reason}</span>}
+        </div>
+      )}
     </div>
 
     {notice && <div style={{ padding: '11px 14px', marginBottom: 16, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', background: notice.type === 'ok' ? '#ecfdf5' : notice.type === 'warn' ? '#fffbeb' : '#fef2f2', color: notice.type === 'ok' ? '#047857' : notice.type === 'warn' ? '#a16207' : '#b91c1c' }}>{notice.type === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}<span style={{ flex: 1 }}>{notice.text}</span><button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)}><X size={14} /></button></div>}
