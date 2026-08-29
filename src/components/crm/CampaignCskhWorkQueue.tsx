@@ -451,13 +451,21 @@ function MembershipTable({
         chung .table-wrapper/.data-table (nơi khác trong app không bị ảnh
         hưởng). thead th đã sẵn position:sticky;top:0 (globals.css) — trong
         khung bounded này nó tự dính vào đúng khung, không cần đổi CSS. */}
-    <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table" style={{ minWidth: 1500 }}>
+    {/* REMEDIATION (Compact CSKH table columns) — className "cskh-compact"
+        (globals.css) co padding th/td cho riêng bảng này + cho phép header
+        wrap 2 dòng thay vì ép cột rộng theo nowrap mặc định. Width hint theo
+        đúng thứ tự ưu tiên: STT/Bàn giao rất hẹp, Trạng thái/Mức độ tiềm
+        năng/Điểm-Xếp hạng/Lịch tiếp theo hẹp, Khách hàng/Sale CSKH vừa, Thao
+        tác không set width cứng — dựa vào flexWrap có sẵn trong cell để tự
+        xuống dòng thay vì ép cột "Thao tác" rộng ra (cột ưu tiên hiển thị đủ
+        trong viewport, không phải cột chiếm nhiều không gian nhất). */}
+    <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table cskh-compact" style={{ minWidth: 980 }}>
     <thead><tr>
-      <th style={{ width: 56 }}>STT</th>
-      <th>Khách hàng</th><th style={{ width: 160 }}>Sale CSKH</th><th style={{ width: 170 }}>Trạng thái</th>
-      <th style={{ width: 140 }}>Mức độ tiềm năng</th><th style={{ width: 130 }}>Điểm / Xếp hạng</th>
-      <th style={{ width: 170 }}>Lịch tiếp theo</th><th style={{ width: 170 }}>Bàn giao</th>
-      <th style={{ textAlign: 'right', width: 230 }}>Thao tác</th>
+      <th style={{ width: 40 }}>STT</th>
+      <th style={{ width: 190 }}>Khách hàng</th><th style={{ width: 110 }}>Sale CSKH</th><th style={{ width: 120 }}>Trạng thái</th>
+      <th style={{ width: 100 }}>Mức độ tiềm năng</th><th style={{ width: 90 }}>Điểm / Xếp hạng</th>
+      <th style={{ width: 100 }}>Lịch tiếp theo</th><th style={{ width: 76 }}>Bàn giao</th>
+      <th style={{ textAlign: 'right', width: 150 }}>Thao tác</th>
     </tr></thead>
     <tbody>{members.map((member, idx) => {
       const status = member.trang_thai_cham_soc || 'Chưa gọi'; const palette = statusColors[status] || statusColors['Chưa gọi'];
@@ -473,29 +481,38 @@ function MembershipTable({
         <td><div style={{ fontWeight: 700 }}>{member.customer?.ten_KH || member.customer_id}</div>{member.customer?.so_dien_thoai && <a href={`tel:${member.customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(member.customer.so_dien_thoai)}</a>}</td>
         <td>
           {assigned
-            ? <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ background: '#ecfdf5', color: '#047857', borderRadius: 20, padding: '3px 8px', fontSize: 11, fontWeight: 650 }}>Đã chia</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{member.telesale_name}</span>
+            ? <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                <span style={{ background: '#ecfdf5', color: '#047857', borderRadius: 20, padding: '2px 6px', fontSize: 11, fontWeight: 650 }}>Đã chia</span>
+                <span style={{ fontWeight: 600, fontSize: 12 }}>{member.telesale_name}</span>
               </div>
-            : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '3px 8px', fontSize: 11, fontWeight: 650 }}>Chưa chia</span>}
+            : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 6px', fontSize: 11, fontWeight: 650 }}>Chưa chia</span>}
         </td>
-        <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '4px 9px', fontSize: 12, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 7 }}>{member.so_lan_lien_he || 0} lần · {member.muc_do_quan_tam || 'Chưa xác định'}</div></td>
+        <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>{member.so_lan_lien_he || 0} lần · {member.muc_do_quan_tam || 'Chưa xác định'}</div></td>
         <td><span style={{ fontSize: 12, fontWeight: 600 }}>{qualificationStatusLabel(member.qualification_status)}</span></td>
         <td><span style={{ fontSize: 12 }}>{member.lead_quality_score}/100 · {leadQualityRankLabel(member.lead_quality_rank)}</span></td>
-        <td><div style={{ display: 'flex', gap: 5, alignItems: 'center', color: isOverdue(member.ngay_lien_he_tiep) ? '#dc2626' : 'var(--text-body)', fontSize: 12 }}><CalendarClock size={14} />{localDate(member.ngay_lien_he_tiep)}</div>{member.ngay_lien_he_cuoi && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>Gần nhất: {localDate(member.ngay_lien_he_cuoi)}</div>}</td>
+        {/* REMEDIATION — Lịch tiếp theo giữ nguyên field/dữ liệu, chỉ compact
+            hiển thị: flexWrap để icon+giờ tự xuống dòng thay vì ép cột rộng;
+            localDate() đã tự trả "—" khi ngay_lien_he_tiep rỗng (không đổi). */}
+        <td><div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', color: isOverdue(member.ngay_lien_he_tiep) ? '#dc2626' : 'var(--text-body)', fontSize: 12 }}><CalendarClock size={14} />{localDate(member.ngay_lien_he_tiep)}</div>{member.ngay_lien_he_cuoi && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Gần nhất: {localDate(member.ngay_lien_he_cuoi)}</div>}</td>
+        {/* REMEDIATION — Bàn giao giữ nguyên business information (Handoff
+            status + Sale nhận), chỉ compact hiển thị: badge ngắn "Chờ nhận"/
+            "Đã nhận"/"Từ chối" thay vì "Chờ xác nhận · {tên}"/"Đã nhận · {tên}"
+            dài, tên Sale chuyển vào title (tooltip) thay vì render trực tiếp
+            trong cell — KHÔNG đổi outcome/handoff.status/authority nào, chỉ
+            đổi cách trình bày. */}
         <td>
-          {member.outcome === 'HANDOFF_ACCEPTED' && <span style={{ background: '#ecfdf5', color: '#047857', borderRadius: 20, padding: '4px 9px', fontSize: 11, fontWeight: 650 }}>Đã nhận · {member.handoff?.sale_name}</span>}
-          {member.outcome === 'HANDOFF_REJECTED' && <span style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 20, padding: '4px 9px', fontSize: 11, fontWeight: 650 }}>Đã từ chối</span>}
+          {member.outcome === 'HANDOFF_ACCEPTED' && <span title={member.handoff?.sale_name ? `Đã nhận · ${member.handoff.sale_name}` : undefined} style={{ background: '#ecfdf5', color: '#047857', borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>Đã nhận</span>}
+          {member.outcome === 'HANDOFF_REJECTED' && <span style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>Từ chối</span>}
           {member.outcome === 'HANDOFF_INITIATED' && <>
-            <span style={{ background: '#fffbeb', color: '#a16207', borderRadius: 20, padding: '4px 9px', fontSize: 11, fontWeight: 650 }}>Chờ xác nhận · {member.handoff?.sale_name || '—'}</span>
-            {isReceiver && member.handoff?.status === 'WAITING_ACCEPTANCE' && <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
+            <span title={member.handoff?.sale_name ? `Chờ nhận · ${member.handoff.sale_name}` : undefined} style={{ background: '#fffbeb', color: '#a16207', borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>Chờ nhận</span>
+            {isReceiver && member.handoff?.status === 'WAITING_ACCEPTANCE' && <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
               <button className="btn btn-primary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'accept')}><UserCheck size={12} /> Nhận</button>
               <button className="btn btn-secondary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'reject')}><X size={12} /> Từ chối</button>
             </div>}
           </>}
           {!member.outcome && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
         </td>
-        <td><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>
+        <td><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' }}>
           {actionable && <button className="btn btn-primary btn-sm" onClick={() => onInteraction(member)}><Phone size={13} /> Chăm sóc</button>}
           {actionable && <button className="btn btn-secondary btn-sm" onClick={() => onQualification(member)}><BadgeCheck size={13} /> Đánh giá</button>}
           {canManageThisCampaign && isHandoffCandidate(member) && <button className="btn btn-secondary btn-sm" onClick={() => onHandoff(member)}><Send size={13} /> Bàn giao</button>}

@@ -446,6 +446,27 @@ select:focus {
   border-bottom: none;
 }
 
+/* CSKH TABLE UX — REMEDIATION (Compact CSKH table columns): layout co gọn để
+   cột "Thao tác" luôn hiển thị trên desktop thông thường (~1366-1920px) mà
+   không cần cuộn ngang nhiều. Chỉ áp dụng khi bảng có thêm class
+   "cskh-compact" (hiện chỉ CampaignCskhWorkQueue dùng) — .data-table dùng
+   chung ở nơi khác (VD /khach-hang) hoàn toàn không bị ảnh hưởng vì selector
+   này đòi CẢ 2 class cùng lúc, và đặc trưng (specificity) 2-class luôn thắng
+   rule .data-table 1-class ở trên bất kể thứ tự khai báo.
+   Header được phép wrap (khác .data-table thead th mặc định white-space:
+   nowrap) để nhãn cột dài ("Mức độ tiềm năng", "Lịch tiếp theo") không ép cột
+   rộng ra theo chiều ngang — 2 dòng thay vì 1 dòng dài (giữ đúng tinh thần
+   "cho phép secondary text wrap 2 dòng thay vì kéo rộng column"). */
+.data-table.cskh-compact thead th {
+  padding: 8px 8px;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.data-table.cskh-compact tbody td {
+  padding: 8px 8px;
+}
+
 /* === Stacking Board Table (freeze header + first column) === */
 /*
  * Yêu cầu bắt buộc để freeze pane hoạt động trên mọi dự án:
