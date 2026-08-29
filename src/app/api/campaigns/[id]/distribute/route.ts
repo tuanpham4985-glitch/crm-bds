@@ -42,6 +42,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         search: typeof filterInput.search === 'string' ? filterInput.search : undefined,
         from: typeof filterInput.from === 'string' ? filterInput.from : undefined,
         to: typeof filterInput.to === 'string' ? filterInput.to : undefined,
+        datasetId: typeof filterInput.datasetId === 'string' ? filterInput.datasetId : undefined,
       });
     } else if (body?.customer_range && typeof body.customer_range === 'object') {
       // REMEDIATION — "Chọn khách: Từ [x] đến [y]" trên /khach-hang (Customer
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         search: typeof rangeInput.search === 'string' ? rangeInput.search : undefined,
         dateFrom: typeof rangeInput.dateFrom === 'string' ? rangeInput.dateFrom : undefined,
         dateTo: typeof rangeInput.dateTo === 'string' ? rangeInput.dateTo : undefined,
+        datasetId: typeof rangeInput.datasetId === 'string' ? rangeInput.datasetId : undefined,
       });
       if ('error' in resolvedRange) {
         return NextResponse.json({ success: false, error: resolvedRange.error }, { status: 400 });

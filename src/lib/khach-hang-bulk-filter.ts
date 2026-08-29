@@ -12,6 +12,11 @@ export interface CustomerBulkFilter {
   search?: string;
   from?: string;
   to?: string;
+  /** CUSTOMER DATASET — KHÔNG dùng trong matchesCustomerBulkFilter (pure, chỉ
+   * search/from/to đúng contract cũ). Áp dụng RIÊNG ở call site (campaign.ts
+   * resolveCustomerIdsByFilter/resolveCustomerIdsByRange) qua filterByDataset
+   * (dataset.ts) vì cần query DB — giữ hàm này thuần/đồng bộ. */
+  datasetId?: string;
 }
 
 export function matchesCustomerBulkFilter(

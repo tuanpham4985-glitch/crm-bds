@@ -151,6 +151,18 @@ export interface CrmImportBatch {
   duplicate_count: number;
   invalid_count: number;
   status: string;
+  /** CUSTOMER DATASET — null nếu batch chưa gán Dataset (legacy, hoặc PG CRM tắt lúc import). */
+  dataset_id?: string | null;
+  dataset?: { id: string; name: string } | null;
+}
+
+// === CUSTOMER DATASET ===
+export interface CrmDataset {
+  id: string;
+  name: string;
+  created_by_id: string;
+  created_by_name: string;
+  created_at: string;
 }
 
 // Campaign Foundation (M1A) — Campaign là lớp trung gian giữa Customer và

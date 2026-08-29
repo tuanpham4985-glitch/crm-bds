@@ -35,7 +35,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
    * để hiển thị — server tự resolve lại id thật theo search/from/to khi submit
    * (xem POST /api/campaigns/[id]/distribute), không tin count từ client.
    */
-  customerFilter?: { search?: string; from?: string; to?: string; count: number };
+  customerFilter?: { search?: string; from?: string; to?: string; datasetId?: string; count: number };
   /**
    * REMEDIATION — "Chọn khách: Từ [x] đến [y]" trên /khach-hang (Customer
    * range theo STT, KHÁC hẳn membership_range của CampaignCskhWorkQueue —
@@ -43,7 +43,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
    * KhachHang MỚI để đưa vào Campaign). from/to là vị trí (STT), 1-indexed.
    * `count` chỉ để hiển thị — server resolve lại thật khi submit.
    */
-  customerRange?: { from: number; to: number; search?: string; dateFrom?: string; dateTo?: string; count: number };
+  customerRange?: { from: number; to: number; search?: string; dateFrom?: string; dateTo?: string; datasetId?: string; count: number };
   employees: NhanVien[];
   projects: DuAn[];
   isAdmin: boolean;
@@ -151,9 +151,9 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(customerFilter
-            ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to } }
+            ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to, datasetId: customerFilter.datasetId } }
             : customerRange
-              ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo } }
+              ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo, datasetId: customerRange.datasetId } }
               : { customer_ids: customerIds }),
           telesale_names: selectedSales, mode, quantities,
         }),

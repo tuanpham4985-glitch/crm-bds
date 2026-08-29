@@ -20,7 +20,7 @@ import type { KhachHang } from '../types';
  * mãi mãi — không có đường nào khác set 'completed' — nên Lịch sử Import
  * không bao giờ hiện nhầm một batch dang dở thành đã hoàn tất.
  */
-export async function createImportBatch(input: { filename: string; importedBy: CrmSessionUser; totalRows?: number }) {
+export async function createImportBatch(input: { filename: string; importedBy: CrmSessionUser; totalRows?: number; datasetId?: string }) {
   return prisma.crmImportBatch.create({
     data: {
       filename: input.filename,
@@ -35,6 +35,10 @@ export async function createImportBatch(input: { filename: string; importedBy: C
       created_count: 0,
       duplicate_count: 0,
       invalid_count: 0,
+      // CUSTOMER DATASET — optional, Admin chọn/tạo Dataset lúc import (xem
+      // import-excel/route.ts). Batch không gắn Dataset (undefined) vẫn tạo
+      // được bình thường — giữ tương thích ngược cho mọi call site cũ.
+      dataset_id: input.datasetId,
     },
   });
 }
@@ -81,12 +85,21 @@ export async function completeImportBatch(id: string, counts: {
   });
 }
 
+// CUSTOMER DATASET — include tên Dataset (nếu có) để "Lịch sử Import" hiển
+// thị được ngay, không cần round-trip riêng cho từng batch (1 query, join
+// qua Prisma include — KHÔNG N+1 dù có nhiều batch).
 export async function listImportBatches() {
-  return prisma.crmImportBatch.findMany({ orderBy: { imported_at: 'desc' } });
+  return prisma.crmImportBatch.findMany({
+    orderBy: { imported_at: 'desc' },
+    include: { dataset: { select: { id: true, name: true } } },
+  });
 }
 
 export async function getImportBatch(id: string) {
-  return prisma.crmImportBatch.findUnique({ where: { id } });
+  return prisma.crmImportBatch.findUnique({
+    where: { id },
+    include: { dataset: { select: { id: true, name: true } } },
+  });
 }
 
 export async function getImportBatchCustomers(batchId: string): Promise<KhachHang[]> {

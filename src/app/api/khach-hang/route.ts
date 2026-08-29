@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/data-access';
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
 import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds } from '@/lib/crm-funnel/campaign';
+import { getDatasetMembershipCustomerRefs } from '@/lib/crm-funnel/dataset';
 import { matchesCampaignStatusFilter, summarizeCampaignMembership, type CampaignStatusFilter } from '@/lib/khach-hang-campaign-status';
 import type { KhachHang } from '@/lib/types';
 
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to') || '';
     const campaignStatusRaw = searchParams.get('campaignStatus') || 'all';
     const campaignStatus: CampaignStatusFilter = CAMPAIGN_STATUS_FILTERS.has(campaignStatusRaw) ? (campaignStatusRaw as CampaignStatusFilter) : 'all';
+    const datasetId = searchParams.get('datasetId') || '';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
 
@@ -32,6 +34,10 @@ export async function GET(request: NextRequest) {
       getDuAn(), getNhanVien(), getKhachHang(), getCampaignMembershipCustomerRefs(),
     ]);
     const membershipSet = new Set(membershipRefs.map(ref => ref.customer_id));
+    // CUSTOMER DATASET — query RIÊNG (không gộp vào Promise.all trên, giữ
+    // đúng shape khoá bởi test), chỉ chạy khi có datasetId.
+    const datasetMembershipRefs = datasetId ? await getDatasetMembershipCustomerRefs(datasetId) : [];
+    const datasetMembershipSet = new Set(datasetMembershipRefs.map(ref => ref.customer_id));
     let data = allCustomers.filter(customer => canViewCustomer(user, customer, projects) || isDirectManager(user, customer, employees));
 
     if (id) data = data.filter(kh => kh.id_khach_hang === id);
@@ -63,6 +69,9 @@ export async function GET(request: NextRequest) {
     // campaignStatus là filter MỚI, tách biệt hoàn toàn khỏi total/scope ở
     // trên — chỉ thu hẹp tập hiển thị + phân trang, không đụng "total".
     data = data.filter(kh => matchesCampaignStatusFilter(kh.id_khach_hang, membershipSet, campaignStatus));
+    // CUSTOMER DATASET — cùng tinh thần campaignStatus: filter MỚI, không đụng
+    // "total" (đã tính ở trên trước khi áp dụng cả 2 filter này).
+    if (datasetId) data = data.filter(kh => datasetMembershipSet.has(kh.id_khach_hang));
 
     const filteredTotal = data.length;
     const start = (page - 1) * limit;

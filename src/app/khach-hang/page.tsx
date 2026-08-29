@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import {
   Search, Plus, Edit3, Trash2, X, ChevronLeft, ChevronRight,
   Users, Phone, Mail, GitBranch, RefreshCw, CheckCircle, AlertCircle,
-  Database, Loader2, Copy, FileSpreadsheet, History, Eye, Layers,
+  Database, Loader2, Copy, FileSpreadsheet, History, Eye, Layers, Save,
 } from 'lucide-react';
-import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig, CrmImportBatch, Campaign } from '@/lib/types';
+import type { KhachHang, NhanVien, Pipeline, DuAn, PhanKhachConfig, CrmImportBatch, Campaign, CrmDataset } from '@/lib/types';
 import { formatDate, formatPhone } from '@/lib/utils';
 import { NGUON } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
@@ -46,6 +46,13 @@ export default function KhachHangPage() {
   const [campaignSummary, setCampaignSummary] = useState<{ inCampaign: number; notInCampaign: number }>({ inCampaign: 0, notInCampaign: 0 });
   const [campaignByCustomer, setCampaignByCustomer] = useState<Record<string, string[]>>({});
   const [rangeCampaignPreview, setRangeCampaignPreview] = useState<{ inCampaign: number; notInCampaign: number } | null>(null);
+
+  // CUSTOMER DATASET — Dataset (nguồn/lô data import) như MỘT filter nữa,
+  // cùng tinh thần campaignStatus (server-side, không đụng "total" — xem
+  // fetchData). datasets dùng chung cho: dropdown filter ở đây, chọn Dataset
+  // lúc Import Excel, và remediation gán Dataset cho batch cũ (Lịch sử Import).
+  const [datasets, setDatasets] = useState<CrmDataset[]>([]);
+  const [datasetFilter, setDatasetFilter] = useState('');
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -98,6 +105,21 @@ export default function KhachHangPage() {
     deleted: number; blocked: number;
     results: { id: string; ten_KH: string; status: string; reason?: string }[];
   } | null>(null);
+
+  // CUSTOMER DATASET — remediation: gán Dataset cho 1 đợt import CŨ (trước khi
+  // Dataset tồn tại, dataset_id=null) từ Lịch sử Import. preview-then-confirm
+  // (xem getDatasetBackfillPreflight/applyDatasetBackfill) — KHÔNG tự động,
+  // Admin phải xem số liệu preview rồi tự bấm xác nhận.
+  const [showBackfillModal, setShowBackfillModal] = useState<{ batchId: string; filename: string } | null>(null);
+  const [backfillDatasetChoice, setBackfillDatasetChoice] = useState('');
+  const [backfillNewDatasetName, setBackfillNewDatasetName] = useState('');
+  const [backfillPreflight, setBackfillPreflight] = useState<{
+    totalCustomersFromEligibleBatches: number; alreadyMember: number; willCreate: number;
+  } | null>(null);
+  const [loadingBackfillPreflight, setLoadingBackfillPreflight] = useState(false);
+  const [applyingBackfill, setApplyingBackfill] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ batchesAssigned: number; membershipsCreated: number } | null>(null);
+  const [backfillError, setBackfillError] = useState('');
 
   // Admin Test Data Cleanup (Campaign) — xóa Campaign + membership của nó an
   // toàn qua application, cùng UX pattern với Lịch sử Import (list -> chi
@@ -155,7 +177,14 @@ export default function KhachHangPage() {
     invalidList: { row: number; reason: string; sheet: string }[];
     errorList: { ten_KH: string; error: string }[];
     duplicateNameWarnings: string[];
+    datasetName: string | null;
+    datasetMembershipCount: number;
   } | null>(null);
+  // CUSTOMER DATASET — bắt buộc chọn/tạo Dataset TRƯỚC khi mở file picker
+  // (Admin chọn ở modal này, file input chỉ mở SAU khi đã chọn/tạo xong).
+  const [showImportDatasetModal, setShowImportDatasetModal] = useState(false);
+  const [importDatasetChoice, setImportDatasetChoice] = useState('');
+  const [importNewDatasetName, setImportNewDatasetName] = useState('');
 
   // Form
   const [form, setForm] = useState({
@@ -171,6 +200,7 @@ export default function KhachHangPage() {
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
       if (campaignStatus !== 'all') params.set('campaignStatus', campaignStatus);
+      if (datasetFilter) params.set('datasetId', datasetFilter);
       const res = await fetch(`/api/khach-hang?${params}`);
       const result = await res.json();
       if (result.success) {
@@ -187,7 +217,7 @@ export default function KhachHangPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, fromDate, toDate, campaignStatus]);
+  }, [page, search, fromDate, toDate, campaignStatus, datasetFilter]);
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -209,9 +239,23 @@ export default function KhachHangPage() {
     }
   }, []);
 
+  // CUSTOMER DATASET — dùng cho dropdown filter + chọn Dataset lúc Import
+  // Excel + remediation gán Dataset cho batch cũ. Refetch lại sau khi tạo mới
+  // Dataset ở bất kỳ chỗ nào trong 3 luồng trên để dropdown luôn cập nhật.
+  const fetchDatasets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/datasets');
+      const result = await res.json();
+      if (result.success) setDatasets(result.data);
+    } catch (err) {
+      console.error('Fetch datasets error:', err);
+    }
+  }, []);
+
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
   useEffect(() => { fetchDuAn(); }, [fetchDuAn]);
+  useEffect(() => { fetchDatasets(); }, [fetchDatasets]);
   // Range theo STT tham chiếu "total" của filter hiện tại (search/fromDate/
   // toDate) — KHÔNG phụ thuộc "page" (range không phải theo trang). Đổi filter
   // -> total đổi -> range cũ (nếu có) không còn chắc đúng nghĩa, phải reset.
@@ -296,11 +340,18 @@ export default function KhachHangPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      // CUSTOMER DATASET — bắt buộc chọn/tạo Dataset ở modal trước đó
+      // (showImportDatasetModal) rồi mới mở file picker này, xem openExcelPicker.
+      if (importDatasetChoice) formData.append('dataset_id', importDatasetChoice);
+      else if (importNewDatasetName.trim()) formData.append('new_dataset_name', importNewDatasetName.trim());
       const res = await fetch('/api/khach-hang/import-excel', { method: 'POST', body: formData });
       const result = await res.json();
       if (result.success) {
         setExcelResult(result);
         if (result.imported > 0) fetchData();
+        fetchDatasets(); // Dataset mới có thể vừa được tạo trong lần import này
+        setImportDatasetChoice('');
+        setImportNewDatasetName('');
       } else {
         alert('Import Excel thất bại: ' + result.error);
       }
@@ -310,6 +361,11 @@ export default function KhachHangPage() {
     } finally {
       setImportingExcel(false);
     }
+  };
+
+  const openExcelPicker = () => {
+    setShowImportDatasetModal(false);
+    excelInputRef.current?.click();
   };
 
   // ── ManagePanel handlers ──────────────────────────────────────
@@ -550,6 +606,90 @@ export default function KhachHangPage() {
     }
   };
 
+  // CUSTOMER DATASET — remediation cho batch import CŨ (dataset_id=null). Mở
+  // modal chọn/tạo Dataset; preview số liệu (getDatasetBackfillPreflight) chỉ
+  // chạy SAU khi đã có datasetId thật (resolveOrCreateBackfillDataset tạo mới
+  // nếu Admin gõ tên mới) — không tự động ghi gì cho tới khi Admin bấm xác nhận.
+  const openBackfillModal = (batchId: string, filename: string) => {
+    setShowBackfillModal({ batchId, filename });
+    setBackfillDatasetChoice('');
+    setBackfillNewDatasetName('');
+    setBackfillPreflight(null);
+    setBackfillResult(null);
+    setBackfillError('');
+  };
+
+  const resolveOrCreateBackfillDataset = async (): Promise<string | null> => {
+    if (backfillDatasetChoice) return backfillDatasetChoice;
+    if (!backfillNewDatasetName.trim()) { setBackfillError('Chọn hoặc tạo Dataset'); return null; }
+    try {
+      const res = await fetch('/api/datasets', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: backfillNewDatasetName.trim() }),
+      });
+      const result = await res.json();
+      if (!result.success) { setBackfillError(result.error || 'Không tạo được Dataset'); return null; }
+      setBackfillDatasetChoice(result.data.id);
+      setBackfillNewDatasetName('');
+      fetchDatasets();
+      return result.data.id as string;
+    } catch (err) {
+      console.error('Create backfill dataset error:', err);
+      setBackfillError('Lỗi kết nối khi tạo Dataset');
+      return null;
+    }
+  };
+
+  const runBackfillPreflight = async () => {
+    if (!showBackfillModal) return;
+    setBackfillError('');
+    const datasetId = await resolveOrCreateBackfillDataset();
+    if (!datasetId) return;
+    setLoadingBackfillPreflight(true);
+    try {
+      const res = await fetch(`/api/datasets/${datasetId}/backfill-preflight?batchIds=${showBackfillModal.batchId}`);
+      const result = await res.json();
+      if (result.success) {
+        setBackfillPreflight({
+          totalCustomersFromEligibleBatches: result.data.totalCustomersFromEligibleBatches,
+          alreadyMember: result.data.alreadyMember,
+          willCreate: result.data.willCreate,
+        });
+      } else {
+        setBackfillError(result.error || 'Không tải được preview backfill');
+      }
+    } catch (err) {
+      console.error('Backfill preflight error:', err);
+      setBackfillError('Lỗi kết nối khi tải preview backfill');
+    } finally {
+      setLoadingBackfillPreflight(false);
+    }
+  };
+
+  const applyBackfillConfirm = async () => {
+    if (!showBackfillModal || !backfillDatasetChoice) return;
+    setApplyingBackfill(true);
+    setBackfillError('');
+    try {
+      const res = await fetch(`/api/datasets/${backfillDatasetChoice}/backfill`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchIds: [showBackfillModal.batchId] }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setBackfillResult(result.data);
+        openImportHistory(); // refresh danh sách batch (Dataset vừa gán)
+      } else {
+        setBackfillError(result.error || 'Không thực thi được backfill');
+      }
+    } catch (err) {
+      console.error('Backfill apply error:', err);
+      setBackfillError('Lỗi kết nối khi thực thi backfill');
+    } finally {
+      setApplyingBackfill(false);
+    }
+  };
+
   const openCampaignManager = async () => {
     setShowCampaignManager(true);
     setCampaignManagerError('');
@@ -617,10 +757,11 @@ export default function KhachHangPage() {
     setSearchInput('');
     setFromDate('');
     setToDate('');
+    setDatasetFilter('');
     setPage(1);
   };
 
-  const hasFilters = searchInput || fromDate || toDate;
+  const hasFilters = searchInput || fromDate || toDate || datasetFilter;
 
   // REMEDIATION — "Chọn khách: Từ x đến y" (Customer range, Admin-only).
   // Preview client-side chỉ cần "total" (đã có sẵn từ fetchData, không cần
@@ -684,7 +825,7 @@ export default function KhachHangPage() {
               </button>
               <button
                 className="btn btn-secondary"
-                onClick={() => excelInputRef.current?.click()}
+                onClick={() => setShowImportDatasetModal(true)}
                 disabled={importingExcel}
               >
                 {importingExcel ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <FileSpreadsheet size={16} />}
@@ -775,6 +916,22 @@ export default function KhachHangPage() {
             Tổng {total} · Đã vào Campaign {campaignSummary.inCampaign} · Chưa vào Campaign {campaignSummary.notInCampaign}
           </span>
         </div>
+        {/* CUSTOMER DATASET — dropdown gọn (không phải tab), lọc theo Dataset
+            đã import (VD "Data HLX", "Data VCG"). Server-authoritative, cùng
+            tinh thần campaignStatus (không đụng "total"). */}
+        {datasets.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', whiteSpace: 'nowrap' }}>Dataset</span>
+            <select
+              className="form-input" style={{ width: 'auto', minWidth: 180 }}
+              value={datasetFilter}
+              onChange={(e) => { setDatasetFilter(e.target.value); setPage(1); }}
+            >
+              <option value="">Tất cả Dataset</option>
+              {datasets.map(ds => <option key={ds.id} value={ds.id}>{ds.name}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* REMEDIATION — Customer Range Selection: chọn khách theo STT để đưa
@@ -1150,6 +1307,12 @@ export default function KhachHangPage() {
               </button>
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {excelResult.datasetName && (
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-label)' }}>
+                  Dataset: <strong style={{ color: 'var(--text-title)' }}>{excelResult.datasetName}</strong>
+                  {' · '}Đã ghi nhận <strong style={{ color: 'var(--text-title)' }}>{excelResult.datasetMembershipCount}</strong> khách hàng thuộc Dataset này
+                </div>
+              )}
               <div style={{ fontSize: '0.8rem', color: 'var(--text-label)' }}>Tổng số dòng dữ liệu: <strong style={{ color: 'var(--text-title)' }}>{excelResult.totalRows}</strong></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(90px,1fr))', gap: 10 }}>
                 <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f0fdf4', borderRadius: 8 }}>
@@ -1397,6 +1560,56 @@ export default function KhachHangPage() {
         </>
       )}
 
+      {/* CUSTOMER DATASET — chọn/tạo Dataset TRƯỚC khi mở file picker Import
+          Excel. Mỗi Customer trong file (mới tạo lẫn đã tồn tại từ trước) sẽ
+          được ghi nhận thuộc Dataset này. */}
+      {showImportDatasetModal && (
+        <div className="modal-overlay" onClick={() => setShowImportDatasetModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Chọn Dataset cho lần Import này</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowImportDatasetModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: 0 }}>
+                Mọi khách hàng trong file (dù mới tạo hay đã tồn tại từ trước trong CRM) sẽ được ghi nhận thuộc Dataset này.
+              </p>
+              <div>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>Dataset có sẵn</label>
+                <select
+                  className="form-input"
+                  value={importDatasetChoice}
+                  onChange={(e) => { setImportDatasetChoice(e.target.value); if (e.target.value) setImportNewDatasetName(''); }}
+                >
+                  <option value="">— Chọn Dataset —</option>
+                  {datasets.map(ds => <option key={ds.id} value={ds.id}>{ds.name}</option>)}
+                </select>
+              </div>
+              <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>hoặc</div>
+              <div>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>Tạo Dataset mới</label>
+                <input
+                  className="form-input"
+                  placeholder="VD: Data HLX"
+                  value={importNewDatasetName}
+                  onChange={(e) => { setImportNewDatasetName(e.target.value); if (e.target.value) setImportDatasetChoice(''); }}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowImportDatasetModal(false)}>Hủy</button>
+              <button
+                className="btn btn-primary"
+                disabled={!importDatasetChoice && !importNewDatasetName.trim()}
+                onClick={openExcelPicker}
+              >
+                Tiếp tục — chọn file Excel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Import History Panel ── */}
       {showImportHistory && (
         <>
@@ -1444,9 +1657,24 @@ export default function KhachHangPage() {
                         <span style={{ color: '#d97706' }}>Trùng: <strong>{batch.duplicate_count}</strong></span>
                         <span style={{ color: '#c2410c' }}>Thiếu dữ liệu: <strong>{batch.invalid_count}</strong></span>
                       </div>
-                      <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={() => openBatchDetail(batch.id)}>
-                        <Eye size={13} /> Xem chi tiết &amp; Xóa
-                      </button>
+                      {/* CUSTOMER DATASET — batch cũ (trước khi Dataset tồn tại)
+                          có dataset=null, cho phép Admin gán bù (remediation),
+                          preview-then-confirm ở modal riêng bên dưới. */}
+                      <div style={{ marginTop: 8, fontSize: '0.78rem' }}>
+                        {batch.dataset
+                          ? <span style={{ color: 'var(--text-label)' }}>Dataset: <strong>{batch.dataset.name}</strong></span>
+                          : <span style={{ color: '#9a3412' }}>Chưa gán Dataset</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => openBatchDetail(batch.id)}>
+                          <Eye size={13} /> Xem chi tiết &amp; Xóa
+                        </button>
+                        {!batch.dataset && (
+                          <button className="btn btn-secondary btn-sm" onClick={() => openBackfillModal(batch.id, batch.filename)}>
+                            <Layers size={13} /> Gán Dataset
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1454,6 +1682,82 @@ export default function KhachHangPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* CUSTOMER DATASET — remediation: gán Dataset cho batch import CŨ.
+          preview-then-confirm, Admin-only (server-enforced), KHÔNG tự động. */}
+      {showBackfillModal && (
+        <div className="modal-overlay" onClick={() => setShowBackfillModal(null)}>
+          <div className="modal-content" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Gán Dataset cho đợt import: {showBackfillModal.filename}</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowBackfillModal(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {backfillError && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: 10, fontSize: '0.82rem' }}>{backfillError}</div>}
+              {backfillResult ? (
+                <div style={{ textAlign: 'center', padding: '16px 8px' }}>
+                  <CheckCircle size={32} style={{ color: '#16a34a', marginBottom: 8 }} />
+                  <p style={{ margin: 0, fontSize: '0.9rem' }}>
+                    Đã ghi nhận <strong>{backfillResult.membershipsCreated}</strong> khách hàng thuộc Dataset này.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Chỉ áp dụng cho khách hàng ĐƯỢC TẠO bởi đúng đợt import này (theo import_batch_id) — không suy diễn/gộp theo tên file.
+                  </p>
+                  <div>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>Dataset có sẵn</label>
+                    <select
+                      className="form-input"
+                      value={backfillDatasetChoice}
+                      onChange={(e) => { setBackfillDatasetChoice(e.target.value); if (e.target.value) setBackfillNewDatasetName(''); setBackfillPreflight(null); }}
+                    >
+                      <option value="">— Chọn Dataset —</option>
+                      {datasets.map(ds => <option key={ds.id} value={ds.id}>{ds.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>hoặc</div>
+                  <div>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>Tạo Dataset mới</label>
+                    <input
+                      className="form-input"
+                      placeholder="VD: Data HLX"
+                      value={backfillNewDatasetName}
+                      onChange={(e) => { setBackfillNewDatasetName(e.target.value); if (e.target.value) setBackfillDatasetChoice(''); setBackfillPreflight(null); }}
+                    />
+                  </div>
+                  {!backfillPreflight ? (
+                    <button
+                      className="btn btn-secondary"
+                      disabled={(!backfillDatasetChoice && !backfillNewDatasetName.trim()) || loadingBackfillPreflight}
+                      onClick={runBackfillPreflight}
+                    >
+                      {loadingBackfillPreflight ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Eye size={14} />}
+                      Xem trước
+                    </button>
+                  ) : (
+                    <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span>Tổng khách hàng của đợt import này: <strong>{backfillPreflight.totalCustomersFromEligibleBatches}</strong></span>
+                      <span>Đã thuộc Dataset từ trước: <strong>{backfillPreflight.alreadyMember}</strong></span>
+                      <span style={{ color: '#15803d' }}>Sẽ ghi nhận mới: <strong>{backfillPreflight.willCreate}</strong></span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowBackfillModal(null)}>{backfillResult ? 'Đóng' : 'Hủy'}</button>
+              {!backfillResult && backfillPreflight && (
+                <button className="btn btn-primary" disabled={applyingBackfill} onClick={applyBackfillConfirm}>
+                  {applyingBackfill ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={14} />}
+                  Xác nhận gán Dataset
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Import Batch Detail / Delete */}
@@ -1790,7 +2094,7 @@ export default function KhachHangPage() {
       {showCampaignModal && (
         <CampaignDistributeModal
           customerIds={selectAllMatching ? undefined : [...selectedIds]}
-          customerFilter={selectAllMatching ? { search, from: fromDate, to: toDate, count: total } : undefined}
+          customerFilter={selectAllMatching ? { search, from: fromDate, to: toDate, datasetId: datasetFilter || undefined, count: total } : undefined}
           employees={employees}
           projects={duAnList}
           isAdmin={isAdmin}
@@ -1801,7 +2105,7 @@ export default function KhachHangPage() {
 
       {showRangeCampaignModal && rangeValidation?.ok && (
         <CampaignDistributeModal
-          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, count: rangeValidation.count }}
+          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter || undefined, count: rangeValidation.count }}
           employees={employees}
           projects={duAnList}
           isAdmin={isAdmin}

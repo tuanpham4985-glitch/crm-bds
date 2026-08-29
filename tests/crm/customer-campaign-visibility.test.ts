@@ -161,7 +161,7 @@ test('page.tsx: summary "Tổng X · Đã vào Campaign Y · Chưa vào Campaign
 test('page.tsx: fetchData() gửi campaignStatus lên server khi khác "all" — filter phải server-side/authoritative, không tự lọc lại 20 dòng đã tải', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   const fetchStart = src.indexOf('const fetchData = useCallback');
-  const fetchEnd = src.indexOf('}, [page, search, fromDate, toDate, campaignStatus]);');
+  const fetchEnd = src.indexOf('}, [page, search, fromDate, toDate, campaignStatus, datasetFilter]);');
   assert.ok(fetchStart >= 0 && fetchEnd > fetchStart, 'fetchData phải refetch khi campaignStatus đổi (có trong dependency array)');
   const fetchBody = src.slice(fetchStart, fetchEnd);
   assert.match(fetchBody, /if \(campaignStatus !== 'all'\) params\.set\('campaignStatus', campaignStatus\);/);

@@ -139,8 +139,9 @@ test('khach-hang/page.tsx: fetchData() reset selectAllMatching mỗi khi filter/
   const fetchStart = src.indexOf('const fetchData = useCallback');
   // CUSTOMER USED-IN-CAMPAIGN VISIBILITY thêm campaignStatus vào dependency
   // array (filter mới, cũng phải reset selectAllMatching khi đổi tab) —
-  // KHÔNG bớt page/search/fromDate/toDate đã có.
-  const fetchEnd = src.indexOf('}, [page, search, fromDate, toDate, campaignStatus]);');
+  // KHÔNG bớt page/search/fromDate/toDate đã có. CUSTOMER DATASET thêm tiếp
+  // datasetFilter cùng tinh thần.
+  const fetchEnd = src.indexOf('}, [page, search, fromDate, toDate, campaignStatus, datasetFilter]);');
   assert.ok(fetchStart >= 0 && fetchEnd > fetchStart);
   const fetchBody = src.slice(fetchStart, fetchEnd);
   assert.match(fetchBody, /setSelectAllMatching\(false\)/);
@@ -153,7 +154,7 @@ test('khach-hang/page.tsx: nút "Tạo Campaign" hiện đúng số đã chọn 
   const modalCallEnd = src.indexOf('/>', modalCallStart);
   const modalCall = src.slice(modalCallStart, modalCallEnd);
   assert.match(modalCall, /customerIds=\{selectAllMatching \? undefined : \[\.\.\.selectedIds\]\}/);
-  assert.match(modalCall, /customerFilter=\{selectAllMatching \? \{ search, from: fromDate, to: toDate, count: total \} : undefined\}/);
+  assert.match(modalCall, /customerFilter=\{selectAllMatching \? \{ search, from: fromDate, to: toDate, datasetId: datasetFilter \|\| undefined, count: total \} : undefined\}/);
 });
 
 // --- E. UI: CampaignDistributeModal — customerFilter wiring + kết quả "Đã tạo Campaign" ---

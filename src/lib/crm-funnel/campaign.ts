@@ -7,6 +7,7 @@ import { prisma } from '../db/client';
 import { isPostgresEnabled } from '../db/feature-flags';
 import { assertTransactionalCrm } from './transactional-workflow';
 import { matchesCustomerBulkFilter, type CustomerBulkFilter } from '../khach-hang-bulk-filter';
+import { filterByDataset } from './dataset';
 import { matchesMembershipQueueFilter, resolveMembershipRange, type MembershipQueueFilter } from '../campaign-cskh-range';
 import { resolveListRange } from '../list-range';
 import type { CrmSessionUser } from '../crm-auth';
@@ -239,7 +240,9 @@ export async function resolveCustomerIdsByFilter(filter: CustomerBulkFilter): Pr
   const customers = await prisma.khachHang.findMany({
     select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true },
   });
-  return customers.filter(customer => matchesCustomerBulkFilter(customer, filter)).map(customer => customer.id_khach_hang);
+  const matched = customers.filter(customer => matchesCustomerBulkFilter(customer, filter));
+  const scoped = await filterByDataset(matched, filter.datasetId);
+  return scoped.map(customer => customer.id_khach_hang);
 }
 
 export interface CustomerRangeSelection {
@@ -251,6 +254,10 @@ export interface CustomerRangeSelection {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  /** CUSTOMER DATASET — thu hẹp range về ĐÚNG Customer thuộc Dataset này
+   * TRƯỚC KHI tính STT/range (xem filterByDataset) — "Từ x đến y" khi có
+   * Dataset là vị trí trong tập ĐÃ lọc theo Dataset, không phải toàn bộ. */
+  datasetId?: string;
 }
 
 /**
@@ -274,7 +281,7 @@ export async function resolveCustomerIdsByRange(selection: CustomerRangeSelectio
     select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true },
   });
   const filter: CustomerBulkFilter = { search: selection.search, from: selection.dateFrom, to: selection.dateTo };
-  const orderedFiltered = customers.filter(customer => matchesCustomerBulkFilter(customer, filter));
+  const orderedFiltered = await filterByDataset(customers.filter(customer => matchesCustomerBulkFilter(customer, filter)), selection.datasetId);
   const result = resolveListRange(orderedFiltered, { from: selection.from, to: selection.to });
   if (!result.ok) return { error: result.error };
   return { customerIds: result.ids.map(customer => customer.id_khach_hang) };

@@ -115,6 +115,12 @@ model KhachHang {
 // cả đợt an toàn. Không dùng Prisma @relation tới KhachHang (giống
 // CrmHandoff/CrmPipelineLink chỉ dùng customer_id dạng string) — tránh ràng
 // buộc cứng giữa hai bảng khi hệ thống còn chạy song song với Google Sheets.
+//
+// CUSTOMER DATASET (audit DATASET_ARCHITECTURE_NEEDS_AUTHORITY_DECISION,
+// business đã CHỐT Option B) — dataset_id optional: batch cũ (trước khi có
+// Dataset) vẫn đọc được nguyên vẹn, không migration/backfill tự động (xem
+// dataset.ts#getDatasetBackfillPreflight/applyDatasetBackfill cho remediation
+// path thủ công, Admin-only, có preview trước khi ghi).
 model CrmImportBatch {
   id                String   @id @default(uuid())
   filename          String
@@ -126,9 +132,63 @@ model CrmImportBatch {
   duplicate_count   Int
   invalid_count     Int
   status            String   @default("completed")
+  dataset_id        String?
+
+  dataset           Dataset? @relation(fields: [dataset_id], references: [id], onDelete: SetNull)
 
   @@index([imported_at])
+  @@index([dataset_id])
   @@map("crm_import_batches")
+}
+
+// Dataset = nguồn/lô data logic (VD "Data Vinhomes Hạ Long Xanh"), CÓ THỂ gồm
+// nhiều CrmImportBatch (1 lần bấm Import Excel = 1 batch; 1 Dataset = nhiều
+// đợt import của cùng 1 nguồn). Model tối giản — chỉ field identity/audit cần
+// cho capability này, không hierarchy/versioning/tags/permissions.
+//
+// KHÔNG đồng nhất với DuAn (Project) hay Campaign — 3 entity độc lập hoàn
+// toàn (xem CampaignCskhWorkQueue.tsx: Campaign đã có id_du_an riêng; Dataset
+// KHÔNG có field liên kết Project/Campaign nào — quyết định đã khoá, không
+// thêm Campaign.dataset_id).
+model Dataset {
+  id               String    @id @default(uuid())
+  name             String
+  created_by_id    String
+  created_by_name  String
+  created_at       DateTime  @default(now())
+
+  import_batches   CrmImportBatch[]
+  memberships      CustomerDatasetMembership[]
+
+  @@index([created_at])
+  @@map("datasets")
+}
+
+// Customer M:N Dataset — 1 Customer CÓ THỂ thuộc nhiều Dataset cùng lúc
+// (VD Customer A vừa ở "Data HLX" vừa ở "Data VCG") trong khi vẫn CHỈ 1 bản
+// ghi KhachHang duy nhất — KHÔNG duplicate Customer theo Dataset.
+//
+// customer_id KHÔNG dùng Prisma @relation tới KhachHang — cùng lý do với
+// CampaignMembership.customer_id/CrmHandoff.customer_id (tránh ràng buộc
+// cứng khi hệ thống còn chạy song song Google Sheets).
+//
+// KHÔNG thay thế/tái sử dụng KhachHang.import_batch_id — cột đó GIỮ NGUYÊN ý
+// nghĩa cũ (batch nào TẠO customer này lần đầu, provenance lịch sử/gốc).
+// CustomerDatasetMembership là authority RIÊNG cho "Customer này CÓ THUỘC
+// Dataset X hay không" — được ghi cho MỌI customer chạm tới 1 Dataset qua
+// import (kể cả customer đã tồn tại từ trước, không chỉ customer mới tạo).
+model CustomerDatasetMembership {
+  id            String    @id @default(uuid())
+  customer_id   String
+  dataset_id    String
+  created_at    DateTime  @default(now())
+
+  dataset       Dataset   @relation(fields: [dataset_id], references: [id], onDelete: Restrict)
+
+  @@unique([customer_id, dataset_id])
+  @@index([customer_id])
+  @@index([dataset_id])
+  @@map("customer_dataset_memberships")
 }
 
 model CrmHandoff {

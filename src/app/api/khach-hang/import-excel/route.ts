@@ -6,6 +6,7 @@ import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { classifyRow, detectDuplicateNameWarnings, findImportSheets, phoneKey, type ExcelColumnMap } from '@/lib/khach-hang-excel-import';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { checkpointImportBatchCounts, completeImportBatch, createImportBatch } from '@/lib/crm-funnel/import-batch';
+import { createDataset, ensureCustomerDatasetMemberships, getDataset } from '@/lib/crm-funnel/dataset';
 
 // Headroom cho file thật nhiều dòng (VD "446 Manhattan-VHGP.xlsx": 444 dòng,
 // "DATA MKT VIN HẠ LONG XANH.xlsx": 3387 dòng) để CÓ CƠ HỘI chạy xong trong 1
@@ -49,6 +50,13 @@ export interface ImportResult {
   duplicateNameWarnings: string[];
   /** null nếu Postgres CRM chưa bật (không có batch tracking) */
   batchId: string | null;
+  /** null nếu Postgres CRM chưa bật — Dataset là PG-CRM-only, giống batchId. */
+  datasetId: string | null;
+  datasetName: string | null;
+  /** Số Customer (mới tạo + đã tồn tại từ trước) vừa được ghi nhận thuộc Dataset này trong lần import này. */
+  datasetMembershipCount: number;
+  /** Set khi ensureCustomerDatasetMemberships lỗi — import Customer vẫn thành công, chỉ provenance Dataset của lần này chưa ghi đủ (không fail cả request vì đây). */
+  datasetMembershipWarning?: string;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -129,6 +137,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // "duplicate_in_file" (trùng trong cùng file, xem seenInFilePhoneKeys bên dưới).
     const existing = await getKhachHang();
     const existingDbPhoneKeys = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
+    // CUSTOMER DATASET — tra cứu id_khach_hang từ phoneKey cho nhánh
+    // "already_exists" bên dưới, để ghi CustomerDatasetMembership cho Customer
+    // đã tồn tại (không chỉ Customer mới tạo) — xem existingCustomerIdsForDataset.
+    const phoneKeyToCustomerId = new Map(existing.map(kh => [phoneKey(kh.so_dien_thoai), kh.id_khach_hang]));
     const seenInFilePhoneKeys = new Set<string>();
 
     // Import Batch: PG-CRM-only, giống mọi tính năng Qualified Lead Funnel khác.
@@ -137,16 +149,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // gì bị "swallow"). Provenance của từng customer sau đó được ghi ATOMIC tại
     // thời điểm tạo (addKhachHangWithBatch), không phải một bước update sau.
     const pgCrmEnabled = isPostgresEnabled('crm');
+
+    // CUSTOMER DATASET — bắt buộc chọn Dataset có sẵn (dataset_id) hoặc tạo mới
+    // (new_dataset_name) TRƯỚC khi import, khi Postgres CRM đang bật (Dataset
+    // là PG-CRM-only, giống batchId). KHÔNG tự suy diễn/mặc định ngầm Dataset
+    // từ tên file hay bất kỳ nguồn nào khác — Admin phải tự chọn/đặt tên.
+    let resolvedDatasetId: string | null = null;
+    let resolvedDatasetName: string | null = null;
+    if (!pgCrmEnabled) {
+      // Google Sheets fallback: Dataset là PG-CRM-only, giữ null giống batchId.
+    } else {
+      const datasetIdInput = ((formData.get('dataset_id') as string | null) ?? '').trim();
+      const newDatasetName = ((formData.get('new_dataset_name') as string | null) ?? '').trim();
+      if (datasetIdInput) {
+        const found = await getDataset(datasetIdInput);
+        if (!found) {
+          return NextResponse.json({ success: false, error: 'Dataset đã chọn không còn tồn tại' }, { status: 400 });
+        }
+        resolvedDatasetId = found.id;
+        resolvedDatasetName = found.name;
+      } else if (newDatasetName) {
+        const created = await createDataset({ name: newDatasetName, actor: user! });
+        resolvedDatasetId = created.id;
+        resolvedDatasetName = created.name;
+      } else {
+        return NextResponse.json({ success: false, error: 'Vui lòng chọn hoặc tạo Dataset trước khi import' }, { status: 400 });
+      }
+    }
+
     const batchId: string | null = pgCrmEnabled
-      ? (await createImportBatch({ filename: file.name || 'import.xlsx', importedBy: user!, totalRows: workRows.length })).id
+      ? (await createImportBatch({ filename: file.name || 'import.xlsx', importedBy: user!, totalRows: workRows.length, datasetId: resolvedDatasetId ?? undefined })).id
       : null;
 
     const importedList: string[] = [];
-    const readyRecords: { ten_KH: string; so_dien_thoai: string }[] = [];
+    const readyRecords: { ten_KH: string; so_dien_thoai: string; id_khach_hang: string }[] = [];
     const duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[] = [];
     const alreadyExistsList: { ten_KH: string; so_dien_thoai: string }[] = [];
     const invalidList: { row: number; reason: string; sheet: string }[] = [];
     const errorList: { ten_KH: string; error: string }[] = [];
+    // CUSTOMER DATASET — Customer ĐÃ TỒN TẠI (không phải customer mới của batch
+    // này) nhưng vẫn cần CustomerDatasetMembership riêng cho Dataset đang chọn.
+    const existingCustomerIdsForDataset = new Set<string>();
 
     // Nhánh Postgres: gom các dòng 'ready' vào đây, ghi thật theo chunk (xem
     // flushPgChunk) thay vì 1 round-trip DB/dòng — đây là fix cho timeout
@@ -162,7 +205,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         await addKhachHangBatchWithImportBatch(batch.map(p => p.kh), batchId!);
         for (const p of batch) {
           importedList.push(p.ten_KH);
-          readyRecords.push({ ten_KH: p.ten_KH, so_dien_thoai: p.so_dien_thoai });
+          readyRecords.push({ ten_KH: p.ten_KH, so_dien_thoai: p.so_dien_thoai, id_khach_hang: p.kh.id_khach_hang });
         }
       } catch {
         // Bulk insert lỗi (hiếm — VD DB blip giữa chừng) -> fallback per-row để
@@ -172,7 +215,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           try {
             await addKhachHangWithBatch(p.kh, batchId!);
             importedList.push(p.ten_KH);
-            readyRecords.push({ ten_KH: p.ten_KH, so_dien_thoai: p.so_dien_thoai });
+            readyRecords.push({ ten_KH: p.ten_KH, so_dien_thoai: p.so_dien_thoai, id_khach_hang: p.kh.id_khach_hang });
           } catch (rowError: unknown) {
             const msg = rowError instanceof Error ? rowError.message : String(rowError);
             errorList.push({ ten_KH: p.ten_KH, error: msg });
@@ -210,6 +253,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
       if (classification.status === 'already_exists') {
         alreadyExistsList.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
+        if (pgCrmEnabled && resolvedDatasetId) {
+          const existingId = phoneKeyToCustomerId.get(phoneKey(classification.so_dien_thoai));
+          if (existingId) existingCustomerIdsForDataset.add(existingId);
+        }
         continue;
       }
       if (classification.status === 'duplicate_in_file') {
@@ -257,7 +304,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         try {
           await addKhachHang(kh);
           importedList.push(classification.ten_KH);
-          readyRecords.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
+          readyRecords.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai, id_khach_hang: kh.id_khach_hang });
           // Rate-limit buffer cho nhánh ghi thẳng Google Sheets (giới hạn ~60
           // request/phút/user của Sheets API) — không đổi so với trước.
           await new Promise(r => setTimeout(r, 150));
@@ -271,6 +318,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Cảnh báo trùng tên (khác SĐT) — chỉ để cảnh báo, KHÔNG merge/xóa customer nào.
     const duplicateNameWarnings = detectDuplicateNameWarnings(readyRecords);
+
+    // CUSTOMER DATASET — ghi nhận MỌI Customer chạm tới trong lần import này
+    // (mới tạo qua readyRecords + đã tồn tại từ trước qua
+    // existingCustomerIdsForDataset) vào Dataset đã chọn. Idempotent (xem
+    // ensureCustomerDatasetMemberships) — không tạo dòng trùng nếu Customer đã
+    // thuộc Dataset từ trước (VD re-import cùng file). KHÔNG fail cả request
+    // nếu bước này lỗi — Customer đã import thành công, chỉ provenance Dataset
+    // của riêng lần này chưa ghi đủ (báo qua datasetMembershipWarning).
+    let datasetMembershipCount = 0;
+    let datasetMembershipWarning: string | undefined;
+    if (pgCrmEnabled && resolvedDatasetId) {
+      const membershipCustomerIds = [...readyRecords.map(r => r.id_khach_hang), ...existingCustomerIdsForDataset];
+      try {
+        const result = await ensureCustomerDatasetMemberships(membershipCustomerIds, resolvedDatasetId);
+        datasetMembershipCount = result.attempted;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        datasetMembershipWarning = 'Ghi Dataset membership thất bại: ' + msg;
+        console.error('[Import Excel] ensureCustomerDatasetMemberships failed:', e);
+      }
+    }
 
     // Đánh dấu batch HOÀN TẤT: ghi số liệu cuối cùng chính xác + chuyển status
     // sang 'completed' — CHỈ chạy được tới đây nếu vòng lặp xử lý dòng đã xong
@@ -306,6 +374,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       errorList,
       duplicateNameWarnings,
       batchId,
+      datasetId: resolvedDatasetId,
+      datasetName: resolvedDatasetName,
+      datasetMembershipCount,
+      datasetMembershipWarning,
     } satisfies ImportResult);
 
   } catch (error: unknown) {

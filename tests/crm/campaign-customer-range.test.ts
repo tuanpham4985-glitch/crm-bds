@@ -256,7 +256,7 @@ test('khach-hang/page.tsx: modal range dùng ĐÚNG CampaignDistributeModal có 
   assert.ok(modalCallStart >= 0);
   const modalCall = src.slice(modalCallStart, modalCallStart + 500);
   assert.match(modalCall, /<CampaignDistributeModal/);
-  assert.match(modalCall, /customerRange=\{\{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, count: rangeValidation\.count \}\}/);
+  assert.match(modalCall, /customerRange=\{\{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter \|\| undefined, count: rangeValidation\.count \}\}/);
 });
 
 test('khach-hang/page.tsx: range state (rangeFrom/rangeTo) reset khi search/fromDate/toDate đổi — KHÔNG reset khi chỉ đổi "page" (range không phải theo trang, không phụ thuộc pagination)', () => {
