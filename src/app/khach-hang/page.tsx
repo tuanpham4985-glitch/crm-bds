@@ -35,6 +35,18 @@ export default function KhachHangPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
+  // CUSTOMER USED-IN-CAMPAIGN VISIBILITY — filter mới, tách biệt hoàn toàn
+  // khỏi Customer Range (Locked authority) và "Chọn tất cả N phù hợp bộ lọc":
+  // KHÔNG truyền vào resolveCustomerIdsByRange/resolveCustomerIdsByFilter,
+  // chỉ thu hẹp tập HIỂN THỊ trên trang này. "total" (dùng cho Range) giữ
+  // nguyên ý nghĩa cũ; "filteredTotal" mới phản ánh đúng tập đang hiển thị
+  // (sau khi áp thêm campaignStatus) để phân trang đúng.
+  const [campaignStatus, setCampaignStatus] = useState<'all' | 'in_campaign' | 'not_in_campaign'>('all');
+  const [filteredTotal, setFilteredTotal] = useState(0);
+  const [campaignSummary, setCampaignSummary] = useState<{ inCampaign: number; notInCampaign: number }>({ inCampaign: 0, notInCampaign: 0 });
+  const [campaignByCustomer, setCampaignByCustomer] = useState<Record<string, string[]>>({});
+  const [rangeCampaignPreview, setRangeCampaignPreview] = useState<{ inCampaign: number; notInCampaign: number } | null>(null);
+
   // Modal
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<KhachHang | null>(null);
@@ -158,11 +170,15 @@ export default function KhachHangPage() {
       if (search) params.set('search', search);
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
+      if (campaignStatus !== 'all') params.set('campaignStatus', campaignStatus);
       const res = await fetch(`/api/khach-hang?${params}`);
       const result = await res.json();
       if (result.success) {
         setData(result.data);
         setTotal(result.total);
+        setFilteredTotal(typeof result.filteredTotal === 'number' ? result.filteredTotal : result.total);
+        setCampaignSummary(result.campaignSummary || { inCampaign: 0, notInCampaign: 0 });
+        setCampaignByCustomer(result.campaignByCustomer || {});
         setSelectedIds(new Set()); // danh sách hiển thị đổi -> reset lựa chọn cho khớp
         setSelectAllMatching(false); // filter/trang đổi -> "chọn tất cả" cũ không còn đúng nghĩa
       }
@@ -171,7 +187,7 @@ export default function KhachHangPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, fromDate, toDate]);
+  }, [page, search, fromDate, toDate, campaignStatus]);
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -200,6 +216,32 @@ export default function KhachHangPage() {
   // toDate) — KHÔNG phụ thuộc "page" (range không phải theo trang). Đổi filter
   // -> total đổi -> range cũ (nếu có) không còn chắc đúng nghĩa, phải reset.
   useEffect(() => { setRangeFrom(''); setRangeTo(''); }, [search, fromDate, toDate]);
+
+  // CUSTOMER USED-IN-CAMPAIGN VISIBILITY — preview "Đã vào Campaign X · Chưa
+  // vào Campaign Y" cho range đang nhập. CHỈ dùng from/to (vị trí) + search/
+  // fromDate/toDate — KHÔNG gửi campaignStatus (Customer Range không biết
+  // gì về filter này, giữ đúng authority hiện có của resolveCustomerIdsByRange).
+  const rangeFromNumForPreview = Number(rangeFrom);
+  const rangeToNumForPreview = Number(rangeTo);
+  const rangeReadyForPreview = rangeFrom.trim() !== '' && rangeTo.trim() !== ''
+    && Number.isInteger(rangeFromNumForPreview) && Number.isInteger(rangeToNumForPreview)
+    && rangeFromNumForPreview >= 1 && rangeToNumForPreview >= rangeFromNumForPreview;
+  useEffect(() => {
+    if (!isAdmin || !rangeReadyForPreview) { setRangeCampaignPreview(null); return; }
+    let cancelled = false;
+    const params = new URLSearchParams({ from: String(rangeFromNumForPreview), to: String(rangeToNumForPreview) });
+    if (search) params.set('search', search);
+    if (fromDate) params.set('dateFrom', fromDate);
+    if (toDate) params.set('dateTo', toDate);
+    fetch(`/api/khach-hang/range-campaign-status?${params}`)
+      .then(res => res.json())
+      .then(result => {
+        if (cancelled) return;
+        setRangeCampaignPreview(result.success ? { inCampaign: result.data.inCampaign, notInCampaign: result.data.notInCampaign } : null);
+      })
+      .catch(() => { if (!cancelled) setRangeCampaignPreview(null); });
+    return () => { cancelled = true; };
+  }, [isAdmin, rangeReadyForPreview, rangeFromNumForPreview, rangeToNumForPreview, search, fromDate, toDate]);
 
   // Load pipeline data in background để hiển thị trạng thái deal của mỗi KH
   useEffect(() => {
@@ -567,7 +609,9 @@ export default function KhachHangPage() {
     }
   };
 
-  const totalPages = Math.ceil(total / limit);
+  // filteredTotal (KHÔNG phải total) drive phân trang của BẢNG đang hiển thị —
+  // total giữ nguyên ý nghĩa cũ cho Customer Range (xem comment ở fetchData).
+  const totalPages = Math.ceil(filteredTotal / limit);
 
   const clearFilters = () => {
     setSearchInput('');
@@ -705,6 +749,32 @@ export default function KhachHangPage() {
             </button>
           )}
         </div>
+        {/* CUSTOMER USED-IN-CAMPAIGN VISIBILITY — filter tri-state Tất cả/Chưa
+            vào/Đã vào Campaign, server-side theo authority CampaignMembership
+            (KHÔNG dùng telesale_id — đó là authority của /phan-khach → Theo
+            Campaign, độc lập hoàn toàn). Summary luôn hiện đủ 3 số trên đúng
+            scope search/ngày hiện tại, không đổi theo tab đang chọn — tránh
+            hiểu nhầm giữa page 20 dòng và toàn tập. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {([
+              ['all', 'Tất cả'],
+              ['not_in_campaign', 'Chưa vào Campaign'],
+              ['in_campaign', 'Đã vào Campaign'],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                className={`btn btn-sm ${campaignStatus === key ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => { setCampaignStatus(key); setPage(1); }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)' }}>
+            Tổng {total} · Đã vào Campaign {campaignSummary.inCampaign} · Chưa vào Campaign {campaignSummary.notInCampaign}
+          </span>
+        </div>
       </div>
 
       {/* REMEDIATION — Customer Range Selection: chọn khách theo STT để đưa
@@ -721,6 +791,7 @@ export default function KhachHangPage() {
             rangeValidation.ok
               ? <span style={{ fontSize: 13, fontWeight: 650, color: 'var(--primary)' }}>
                   → Đã chọn {rangeValidation.count} khách hàng{rangeAppliedOnFilteredSet ? ` (trong ${rangeValidation.total} khách đang lọc theo bộ lọc/tìm kiếm hiện tại)` : ''}
+                  {rangeCampaignPreview && ` · Đã vào Campaign ${rangeCampaignPreview.inCampaign} · Chưa vào Campaign ${rangeCampaignPreview.notInCampaign}`}
                 </span>
               : <span style={{ fontSize: 12, color: '#b91c1c' }}>{rangeValidation.error}</span>
           )}
@@ -752,8 +823,13 @@ export default function KhachHangPage() {
                 theo filter là thao tác Admin-only, xem POST .../distribute).
                 Chỉ đề nghị khi đã tick hết trang HIỆN TẠI và còn nhiều hơn thế
                 (total > data.length) — tránh Admin tưởng nhầm "tick hết trang"
-                = "đã chọn hết toàn bộ kết quả lọc". */}
-            {isAdmin && allVisibleSelected && !selectAllMatching && total > data.length && (
+                = "đã chọn hết toàn bộ kết quả lọc". CHỈ hiện khi campaignStatus
+                === 'all' — resolveCustomerIdsByFilter (server) không biết gì về
+                campaignStatus nên "total" ở đây là scope search/ngày, KHÔNG
+                phải scope của tab đang xem; hiện banner này khi đang ở tab
+                Đã/Chưa vào Campaign sẽ khiến Admin tưởng nhầm đang chọn đúng
+                tập đang xem trong khi thực ra chọn rộng hơn. */}
+            {campaignStatus === 'all' && isAdmin && allVisibleSelected && !selectAllMatching && total > data.length && (
               <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#eff6ff', color: '#1d4ed8', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
                 <span>Đã chọn {selectedIds.size} khách hàng trên trang này.</span>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSelectAllMatching(true)}>
@@ -785,15 +861,33 @@ export default function KhachHangPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((kh, idx) => (
-                    <tr key={kh.id_khach_hang}>
+                  {data.map((kh, idx) => {
+                    // CUSTOMER USED-IN-CAMPAIGN VISIBILITY — authority DUY NHẤT
+                    // là "tồn tại >= 1 CampaignMembership với customer_id = Customer.id"
+                    // (campaignByCustomer, batch từ server) — KHÔNG dùng telesale_id.
+                    // Chỉ visibility/provenance warning, KHÔNG phải global lock:
+                    // Customer vẫn được thêm vào Campaign khác bình thường.
+                    const campaignNames = campaignByCustomer[kh.id_khach_hang];
+                    const inCampaign = Boolean(campaignNames && campaignNames.length > 0);
+                    return (
+                    <tr key={kh.id_khach_hang} style={inCampaign ? { opacity: 0.6 } : undefined}>
                       <td>
                         <input type="checkbox" checked={selectedIds.has(kh.id_khach_hang)} onChange={() => toggleSelect(kh.id_khach_hang)} aria-label={`Chọn ${kh.ten_KH}`} />
                       </td>
                       <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>
                         {(page - 1) * limit + idx + 1}
                       </td>
-                      <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>{kh.ten_KH}</td>
+                      <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
+                        {kh.ten_KH}
+                        {inCampaign && (
+                          <span
+                            title={`Đã vào Campaign: ${campaignNames!.join(', ')}`}
+                            style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#7c3aed', background: '#f5f3ff', padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}
+                          >
+                            Đã vào Campaign
+                          </span>
+                        )}
+                      </td>
                       <td>
                         <span className="flex items-center gap-2">
                           <Phone size={13} style={{ color: 'var(--text-label)' }} />
@@ -827,7 +921,8 @@ export default function KhachHangPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -836,7 +931,7 @@ export default function KhachHangPage() {
             {totalPages > 1 && (
               <div className="pagination" style={{ padding: '12px 20px' }}>
                 <span className="pagination-info">
-                  Hiển thị {(page - 1) * limit + 1}–{Math.min(page * limit, total)} / {total}
+                  Hiển thị {(page - 1) * limit + 1}–{Math.min(page * limit, filteredTotal)} / {filteredTotal}
                 </span>
                 <div className="pagination-buttons">
                   <button className="pagination-btn" disabled={page === 1} onClick={() => setPage(page - 1)}>

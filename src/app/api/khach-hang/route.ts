@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/data-access';
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
-import { getCampaignMembershipCustomerRefs } from '@/lib/crm-funnel/campaign';
+import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds } from '@/lib/crm-funnel/campaign';
+import { matchesCampaignStatusFilter, summarizeCampaignMembership, type CampaignStatusFilter } from '@/lib/khach-hang-campaign-status';
 import type { KhachHang } from '@/lib/types';
+
+const CAMPAIGN_STATUS_FILTERS = new Set<string>(['all', 'in_campaign', 'not_in_campaign']);
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,10 +19,19 @@ export async function GET(request: NextRequest) {
     const du_an = searchParams.get('du_an') || '';
     const from = searchParams.get('from') || '';
     const to = searchParams.get('to') || '';
+    const campaignStatusRaw = searchParams.get('campaignStatus') || 'all';
+    const campaignStatus: CampaignStatusFilter = CAMPAIGN_STATUS_FILTERS.has(campaignStatusRaw) ? (campaignStatusRaw as CampaignStatusFilter) : 'all';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
 
-    const [projects, employees, allCustomers] = await Promise.all([getDuAn(), getNhanVien(), getKhachHang()]);
+    // CUSTOMER USED-IN-CAMPAIGN VISIBILITY — getCampaignMembershipCustomerRefs()
+    // trả về distinct customer_id đã có >=1 CampaignMembership qua ĐÚNG 1 query
+    // (đã dùng sẵn cho delete-guard ở DELETE bên dưới) — KHÔNG query
+    // CampaignMembership theo từng customer (N+1) dù dataset có hàng nghìn dòng.
+    const [projects, employees, allCustomers, membershipRefs] = await Promise.all([
+      getDuAn(), getNhanVien(), getKhachHang(), getCampaignMembershipCustomerRefs(),
+    ]);
+    const membershipSet = new Set(membershipRefs.map(ref => ref.customer_id));
     let data = allCustomers.filter(customer => canViewCustomer(user, customer, projects) || isDirectManager(user, customer, employees));
 
     if (id) data = data.filter(kh => kh.id_khach_hang === id);
@@ -39,14 +51,36 @@ export async function GET(request: NextRequest) {
     if (from) data = data.filter(kh => new Date(kh.ngay_tao) >= new Date(from));
     if (to) data = data.filter(kh => new Date(kh.ngay_tao) <= new Date(to + 'T23:59:59'));
 
+    // "total" giữ NGUYÊN ý nghĩa cũ (khớp mọi filter phía trên, KHÔNG tính
+    // campaignStatus) — Customer Range trên client (validateListRangeAgainstTotal)
+    // và "Chọn tất cả N phù hợp bộ lọc" đều dựa vào đúng con số này, và
+    // resolveCustomerIdsByRange/resolveCustomerIdsByFilter (Locked authority)
+    // cũng KHÔNG biết gì về campaignStatus — đổi ý nghĩa "total" ở đây sẽ làm
+    // range/select-all lệch với dữ liệu server thật sự resolve khi submit.
     const total = data.length;
+    const campaignSummary = summarizeCampaignMembership(data.map(kh => kh.id_khach_hang), membershipSet);
+
+    // campaignStatus là filter MỚI, tách biệt hoàn toàn khỏi total/scope ở
+    // trên — chỉ thu hẹp tập hiển thị + phân trang, không đụng "total".
+    data = data.filter(kh => matchesCampaignStatusFilter(kh.id_khach_hang, membershipSet, campaignStatus));
+
+    const filteredTotal = data.length;
     const start = (page - 1) * limit;
     const paginatedData = data.slice(start, start + limit);
+    // Badge/tooltip "Đã vào Campaign": chỉ query tên Campaign cho id CỦA TRANG
+    // ĐANG HIỂN THỊ (tối đa `limit` dòng) đã có membership — 1 query duy nhất,
+    // không tải toàn bộ CampaignMembership/Customer object nào khác về.
+    const campaignByCustomer = await getCampaignNamesByCustomerIds(
+      paginatedData.filter(kh => membershipSet.has(kh.id_khach_hang)).map(kh => kh.id_khach_hang),
+    );
 
     return NextResponse.json({
       success: true,
       data: paginatedData,
       total,
+      filteredTotal,
+      campaignSummary,
+      campaignByCustomer,
       page,
       limit,
     });

@@ -137,7 +137,10 @@ test('khach-hang/page.tsx: hiển thị đúng "Đã chọn X khách hàng" — 
 test('khach-hang/page.tsx: fetchData() reset selectAllMatching mỗi khi filter/trang đổi — tránh giữ "chọn tất cả" lố sang 1 filter/trang khác', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   const fetchStart = src.indexOf('const fetchData = useCallback');
-  const fetchEnd = src.indexOf('}, [page, search, fromDate, toDate]);');
+  // CUSTOMER USED-IN-CAMPAIGN VISIBILITY thêm campaignStatus vào dependency
+  // array (filter mới, cũng phải reset selectAllMatching khi đổi tab) —
+  // KHÔNG bớt page/search/fromDate/toDate đã có.
+  const fetchEnd = src.indexOf('}, [page, search, fromDate, toDate, campaignStatus]);');
   assert.ok(fetchStart >= 0 && fetchEnd > fetchStart);
   const fetchBody = src.slice(fetchStart, fetchEnd);
   assert.match(fetchBody, /setSelectAllMatching\(false\)/);

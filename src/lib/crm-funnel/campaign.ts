@@ -177,6 +177,29 @@ export async function getCampaignMembershipCustomerRefs(): Promise<{ customer_id
 }
 
 /**
+ * CUSTOMER USED-IN-CAMPAIGN VISIBILITY — badge/tooltip "Đã vào Campaign" trên
+ * /khach-hang: tên các Campaign mà mỗi customer TRONG 1 TRANG đang hiển thị
+ * (tối đa `limit` dòng, KHÔNG BAO GIỜ gọi cho toàn bộ dataset) đã có
+ * CampaignMembership. Đúng 1 query cho cả trang — KHÔNG N+1 theo từng dòng,
+ * an toàn với dataset customer hàng nghìn dòng vì input luôn chỉ là id của
+ * trang hiện tại. KHÔNG throw khi Postgres CRM chưa bật (trang /khach-hang
+ * phải luôn render được, giống getCampaignMembershipCustomerRefs).
+ */
+export async function getCampaignNamesByCustomerIds(customerIds: readonly string[]): Promise<Record<string, string[]>> {
+  if (customerIds.length === 0 || !isPostgresEnabled('crm') || !process.env.DATABASE_URL) return {};
+  const memberships = await prisma.campaignMembership.findMany({
+    where: { customer_id: { in: [...customerIds] } },
+    select: { customer_id: true, campaign: { select: { name: true } } },
+  });
+  const result: Record<string, string[]> = {};
+  for (const m of memberships) {
+    const names = result[m.customer_id] ?? (result[m.customer_id] = []);
+    if (!names.includes(m.campaign.name)) names.push(m.campaign.name);
+  }
+  return result;
+}
+
+/**
  * Fix: Sidebar ẩn mục "CSKH" (canPhanKhach, /api/crm-access) với nhân viên
  * CHỈ có quyền qua Campaign CSKH (Sale CSKH ở CampaignMembership.telesale_id,
  * hoặc Leader ở Campaign.owner_id/owner_name) — /api/crm-access trước đây
@@ -248,6 +271,40 @@ export async function resolveCustomerIdsByRange(selection: CustomerRangeSelectio
   const result = resolveListRange(orderedFiltered, { from: selection.from, to: selection.to });
   if (!result.ok) return { error: result.error };
   return { customerIds: result.ids.map(customer => customer.id_khach_hang) };
+}
+
+export interface CustomerRangeCampaignStatusPreview {
+  count: number;
+  inCampaign: number;
+  notInCampaign: number;
+}
+
+/**
+ * CUSTOMER USED-IN-CAMPAIGN VISIBILITY — preview "Đã vào Campaign X · Chưa
+ * vào Campaign Y" cho Customer Range ("Chọn khách: Từ x đến y" trên
+ * /khach-hang). READ-ONLY, tái dùng NGUYÊN resolveCustomerIdsByRange (KHÔNG
+ * đổi filter/order/authority của hàm đó — Customer Range → Campaign là
+ * Locked authority, KHÔNG được sửa) rồi chỉ đối chiếu thêm với tập
+ * customer_id đã có CampaignMembership (getCampaignMembershipCustomerRefs,
+ * đã dùng sẵn cho delete-guard) để đếm — không thêm authority/DB nguồn mới,
+ * không đổi ý nghĩa "Từ x đến y" (vẫn chỉ theo search/dateFrom/dateTo, không
+ * theo campaignStatus).
+ */
+export async function previewCustomerRangeCampaignStatus(
+  selection: CustomerRangeSelection,
+): Promise<{ data: CustomerRangeCampaignStatusPreview } | { error: string }> {
+  const resolved = await resolveCustomerIdsByRange(selection);
+  if ('error' in resolved) return { error: resolved.error };
+  const membershipRefs = await getCampaignMembershipCustomerRefs();
+  const membershipSet = new Set(membershipRefs.map(ref => ref.customer_id));
+  const inCampaign = resolved.customerIds.filter(id => membershipSet.has(id)).length;
+  return {
+    data: {
+      count: resolved.customerIds.length,
+      inCampaign,
+      notInCampaign: resolved.customerIds.length - inCampaign,
+    },
+  };
 }
 
 export type DistributionMode = 'round_robin' | 'quantity' | 'none';
