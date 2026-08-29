@@ -118,10 +118,19 @@ for (const { file, label } of GATED_PAGES) {
   });
 }
 
-test('phan-khach/page.tsx: canAccessPage kết hợp CẢ module toggle VÀ business authority hiện có (vai_tro === "Sale") — không thay thế, chỉ gate thêm bên ngoài', () => {
+// REMEDIATION (Unify CSKH Access Authority): canAccessPage KHÔNG còn tự viết
+// công thức module+vai_tro riêng — giờ đọc thẳng canPhanKhach (useCrmAccess),
+// vốn đã resolve qua canAccessCskh() (crm-access-authority.ts) với ĐÚNG cùng
+// bất biến "module toggle CỘNG THÊM vào business authority, không thay thế"
+// (xem crm-access-authority.test.ts cho test trực tiếp trên pure function đó).
+// Test này giờ khoá invariant "canAccessPage đọc thẳng canPhanKhach, không tự
+// suy diễn công thức thứ 2" — chính là mục tiêu của remediation.
+test('phan-khach/page.tsx: canAccessPage đọc THẲNG canPhanKhach (useCrmAccess) — không tự viết lại công thức module+vai_tro riêng, tránh 2 nguồn thật lệch nhau', () => {
   const src = readFileSync(resolve('src/app/phan-khach/page.tsx'), 'utf8');
   assert.match(src, /import \{ useCrmModule \} from '@\/hooks\/useCrmModule';/);
-  assert.match(src, /const canAccessPage = isAdmin \|\| \(crmEnabled && user\?\.vai_tro === 'Sale'\);/, 'phải giữ nguyên điều kiện vai_tro Sale hiện có, chỉ AND thêm crmEnabled — không thay thế bằng canAccessCrmModule đơn thuần (sẽ làm MẤT giới hạn vai_tro Sale)');
+  assert.match(src, /const \{ phanKhachIds, canPhanKhach, isLoading: crmAccessLoading \} = useCrmAccess\(\);/);
+  assert.match(src, /const canAccessPage = canPhanKhach;/, 'canAccessPage phải đọc thẳng canPhanKhach — không tự tính lại isAdmin/crmEnabled/vai_tro ở đây (nguồn thật duy nhất là canAccessCskh(), resolve server-side)');
+  assert.doesNotMatch(src, /const canAccessPage = isAdmin/, 'không được còn công thức canAccessPage cũ tự viết riêng');
 });
 
 // --- 5. Sidebar: CRM group gate + Admin-only toggle control ----------------

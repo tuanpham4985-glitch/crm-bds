@@ -4,6 +4,8 @@ import { getDuAn, getKhachHang, getNhanVien } from '@/lib/data-access';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 import { buildCrmManagerScope } from '@/lib/crm-auth';
 import { hasCampaignCskhAccess } from '@/lib/crm-funnel/campaign';
+import { isCrmModuleEnabled } from '@/lib/crm-module';
+import { canAccessCskh } from '@/lib/crm-access-authority';
 
 export async function GET() {
   try {
@@ -54,18 +56,23 @@ export async function GET() {
     // Dự án" trên /phan-khach, xem accessibleProjects) — KHÔNG nhét id giả
     // vào đây.
     //
-    // canPhanKhach (Sidebar, mục "CSKH") giờ tính ĐẦY ĐỦ 3 tín hiệu, khớp
-    // ĐÚNG canAccessPage thật của /phan-khach/page.tsx (isAdmin ||
-    // vai_tro === 'Sale') — trước đây CHỈ có accessibleIds (Dự án cũ) nên
-    // 2 gate lệch nhau: (1) accessibleIds.length>0 (Dự án cũ), (2)
-    // hasCampaignCskhAccess (Sale CSKH/Leader qua Campaign), (3) vai_tro
-    // === 'Sale' (blanket, đúng với thực tế trang vẫn cho MỌI Sale vào dù
-    // họ chưa được gán data ở đâu — kể cả nhân viên mới, sẽ có Campaign
-    // gán sau). (3) tự nó đã bao trùm hầu hết Sale, nhưng vẫn giữ (1)/(2)
-    // vì Leader Campaign có thể KHÔNG có vai_tro 'Sale' (Leader picker
-    // không lọc theo vai_tro, xem CampaignDistributeModal/CampaignLeaderEditModal).
-    const hasCampaignAccess = await hasCampaignCskhAccess(userData);
-    const canPhanKhach = accessibleIds.length > 0 || hasCampaignAccess || userData.vai_tro === 'Sale';
+    // canPhanKhach: NGUỒN THẬT DUY NHẤT cho "được thấy mục CSKH ở Sidebar
+    // VÀ được vào /phan-khach" — resolve qua canAccessCskh() (crm-access-
+    // authority.ts, pure), KHÔNG tự viết công thức riêng ở đây nữa. Trang
+    // /phan-khach đọc thẳng giá trị này qua useCrmAccess() thay vì tự tính
+    // lại (trước đây 2 công thức tách biệt, có thể lệch nhau cho 1 Leader
+    // Campaign không có vai_tro 'Sale').
+    const [hasCampaignAccess, crmModuleEnabled] = await Promise.all([
+      hasCampaignCskhAccess(userData),
+      isCrmModuleEnabled(),
+    ]);
+    const canPhanKhach = canAccessCskh({
+      isAdmin: false,
+      crmModuleEnabled,
+      vaiTro: userData.vai_tro,
+      hasLegacyProjectAccess: accessibleIds.length > 0,
+      hasCampaignCskhAccess: hasCampaignAccess,
+    });
     return NextResponse.json({
       canKH: false, phanKhachIds: accessibleIds, handoffCount,
       canQualityDashboard: scope.canManageQuality, canPhanKhach,

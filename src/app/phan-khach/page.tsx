@@ -37,20 +37,19 @@ function isOverdue(value?: string): boolean { return Boolean(value && new Date(v
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
 function PhanKhachContent() {
-  const { phanKhachIds } = useCrmAccess();
+  const { phanKhachIds, canPhanKhach, isLoading: crmAccessLoading } = useCrmAccess();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
   const { enabled: crmEnabled, isLoading: crmModuleLoading } = useCrmModule();
   const searchParams = useSearchParams();
-  // Sale CSKH model: không có role "Telesale" riêng — Leader/Sale đều là
-  // nhân viên vai_tro 'Sale'. Trang này trước đây chỉ Admin vào được, khiến
-  // Leader/Sale không bao giờ tới được chế độ Campaign CSKH của chính họ dù
-  // đã có đủ quyền thao tác (canManageCampaign/canManageMembership, server-
-  // side). Mở trang cho Sale — KHÔNG đổi logic/quyền bên trong chế độ Project
-  // cũ (canManage ở đó vốn đã hỗ trợ non-admin từ đầu, chỉ chưa ai chạm tới).
-  // CRM Module Toggle là gate BỔ SUNG bên ngoài — Admin luôn bypass; Sale cần
-  // CẢ HAI: đúng vai_tro 'Sale' (business authority, không đổi) VÀ module
-  // đang BẬT (module availability, mới).
-  const canAccessPage = isAdmin || (crmEnabled && user?.vai_tro === 'Sale');
+  // REMEDIATION (Unify CSKH Access Authority) — canAccessPage trước đây tự
+  // tính riêng (isAdmin || (crmEnabled && vai_tro==='Sale')), tách biệt khỏi
+  // canPhanKhach của Sidebar (vốn còn OR thêm phạm vi Dự án cũ + Campaign
+  // CSKH) — 2 công thức có thể lệch nhau (VD 1 Leader Campaign không có
+  // vai_tro 'Sale': Sidebar cho thấy mục CSKH nhưng trang lại chặn). Giờ đọc
+  // THẲNG canPhanKhach — cả 2 nơi cùng derive từ đúng 1 nguồn
+  // (canAccessCskh(), crm-access-authority.ts, resolve server-side ở
+  // /api/crm-access) — không còn công thức thứ 2 nào ở đây.
+  const canAccessPage = canPhanKhach;
   // Campaign CSKH (M1B.1): chế độ CSKH THEO CAMPAIGN, cộng thêm vào chế độ
   // "Theo Dự án" cũ — giữ nguyên toàn bộ state/luồng cũ bên dưới không đổi.
   // Sale (không phải Admin) mặc định vào thẳng chế độ Campaign — đúng luồng
@@ -183,7 +182,7 @@ function PhanKhachContent() {
     } catch (error) { setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không thể lưu team.' }); } finally { setBusyId(''); }
   }
 
-  if (authLoading || crmModuleLoading) return null;
+  if (authLoading || crmModuleLoading || crmAccessLoading) return null;
 
   if (!canAccessPage) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
