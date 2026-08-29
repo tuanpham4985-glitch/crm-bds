@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { getDuAn, getKhachHang, getNhanVien } from '@/lib/data-access';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 import { buildCrmManagerScope } from '@/lib/crm-auth';
+import { hasCampaignCskhAccess } from '@/lib/crm-funnel/campaign';
 
 export async function GET() {
   try {
@@ -49,7 +50,17 @@ export async function GET() {
     const handoffCount = customers.filter(customer =>
       customer.sale_nhan_khach === userData.ho_ten && customer.trang_thai_ban_giao === 'Chờ xác nhận').length;
     const scope = buildCrmManagerScope(userData, projects, employees);
-    return NextResponse.json({ canKH: false, phanKhachIds: accessibleIds, handoffCount, canQualityDashboard: scope.canManageQuality });
+    // phanKhachIds vẫn CHỈ theo mô hình Dự án cũ (dùng để lọc dropdown "Theo
+    // Dự án" trên /phan-khach, xem accessibleProjects) — KHÔNG nhét id giả
+    // vào đây. Quyền qua Campaign CSKH (Sale CSKH ở CampaignMembership, hoặc
+    // Leader ở Campaign.owner_*) là 1 tín hiệu RIÊNG, cộng thêm vào
+    // hasCampaignCskhAccess để Sidebar (canPhanKhach, useCrmAccess.ts) biết
+    // hiện mục CSKH cho đúng người — không đè lên ý nghĩa phanKhachIds.
+    const hasCampaignAccess = await hasCampaignCskhAccess(userData);
+    return NextResponse.json({
+      canKH: false, phanKhachIds: accessibleIds, handoffCount,
+      canQualityDashboard: scope.canManageQuality, hasCampaignCskhAccess: hasCampaignAccess,
+    });
   } catch {
     return NextResponse.json({ canKH: false, phanKhachIds: [] });
   }

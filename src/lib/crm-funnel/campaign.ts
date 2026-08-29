@@ -176,6 +176,25 @@ export async function getCampaignMembershipCustomerRefs(): Promise<{ customer_id
   return prisma.campaignMembership.findMany({ select: { customer_id: true }, distinct: ['customer_id'] });
 }
 
+/**
+ * Fix: Sidebar ẩn mục "CSKH" (canPhanKhach, /api/crm-access) với nhân viên
+ * CHỈ có quyền qua Campaign CSKH (Sale CSKH ở CampaignMembership.telesale_id,
+ * hoặc Leader ở Campaign.owner_id/owner_name) — /api/crm-access trước đây
+ * chỉ tính phanKhachIds theo mô hình Dự án cũ (DuAn.truong_nhom/ds_sale,
+ * KhachHang.telesale_phu_trach/sale_nhan_khach/sale_phu_trach), không biết
+ * gì về Campaign. Hàm này bổ sung đúng 2 tín hiệu Campaign còn thiếu — KHÔNG
+ * throw khi Postgres CRM chưa bật (menu Sidebar phải luôn render được, kể cả
+ * khi tính năng Campaign chưa bật ở deployment đó).
+ */
+export async function hasCampaignCskhAccess(user: { id_nhan_vien: string; ho_ten: string }): Promise<boolean> {
+  if (!isPostgresEnabled('crm') || !process.env.DATABASE_URL) return false;
+  const [membershipCount, campaignCount] = await Promise.all([
+    prisma.campaignMembership.count({ where: { telesale_id: user.id_nhan_vien } }),
+    prisma.campaign.count({ where: { OR: [{ owner_id: user.id_nhan_vien }, { owner_name: user.ho_ten }] } }),
+  ]);
+  return membershipCount > 0 || campaignCount > 0;
+}
+
 // --- Bulk distribution ------------------------------------------------
 
 /**
