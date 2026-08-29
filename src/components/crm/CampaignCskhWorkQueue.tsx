@@ -473,10 +473,14 @@ function MembershipTable({
       const isReceiver = Boolean(currentUserName && member.handoff?.sale_name === currentUserName);
       // Addendum — Assigned Customer Visibility: authority là ĐÚNG
       // CampaignMembership.telesale_id (isMembershipAssigned), không phải
-      // assignment_status hay field riêng nào khác — khách đã có Sale mờ đi
-      // (opacity ~50%) để phân biệt trực quan với khách chưa chia.
+      // assignment_status hay field riêng nào khác — dùng để hiện badge "Đã
+      // chia"/"Chưa chia" ở cột Sale CSKH bên dưới. KHÔNG còn làm mờ
+      // (opacity) cả dòng nữa — REMEDIATION theo yêu cầu: khi phần lớn/toàn
+      // bộ Campaign đã được chia Sale, làm mờ mọi dòng khiến cả bảng khó đọc
+      // (chữ xám nhạt). Badge màu ở cột Sale CSKH đã đủ để phân biệt trực
+      // quan Đã chia/Chưa chia mà không cần giảm độ rõ của cả dòng.
       const assigned = isMembershipAssigned(member);
-      return <tr key={member.id} style={{ ...(isOverdue(member.ngay_lien_he_tiep) ? { background: '#fff7f7' } : {}), ...(assigned ? { opacity: 0.5 } : {}) }}>
+      return <tr key={member.id} style={isOverdue(member.ngay_lien_he_tiep) ? { background: '#fff7f7' } : undefined}>
         <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>{startIndex + idx + 1}</td>
         <td><div style={{ fontWeight: 700 }}>{member.customer?.ten_KH || member.customer_id}</div>{member.customer?.so_dien_thoai && <a href={`tel:${member.customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(member.customer.so_dien_thoai)}</a>}</td>
         <td>

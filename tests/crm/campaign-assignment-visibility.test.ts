@@ -119,11 +119,16 @@ test('range overlap (ví dụ đúng spec: đã chia 301–500, sau đó chọn 
 
 // --- E. UI wiring: opacity/badge, filter, preview, confirm/success message ---
 
-test('CampaignCskhWorkQueue.tsx: row style áp opacity 0.5 khi assigned (isMembershipAssigned), giữ nguyên background quá lịch — không thay thế logic overdue cũ', () => {
+// REMEDIATION (đọc bảng CSKH) — bỏ opacity làm mờ dòng "Đã chia": khi phần
+// lớn/toàn bộ Campaign đã được chia Sale, làm mờ mọi dòng khiến cả bảng khó
+// đọc. "assigned" (isMembershipAssigned) vẫn giữ nguyên, chỉ dùng để hiện
+// badge "Đã chia"/"Chưa chia" ở cột Sale CSKH — không còn tác động lên style
+// của <tr>. Background "quá lịch" (overdue) vẫn giữ nguyên, không bị đụng.
+test('CampaignCskhWorkQueue.tsx: row KHÔNG còn bị làm mờ (opacity) khi assigned — chỉ badge "Đã chia"/"Chưa chia" ở cột Sale CSKH phân biệt trạng thái, giữ nguyên background quá lịch', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
   assert.match(src, /const assigned = isMembershipAssigned\(member\);/);
-  assert.match(src, /\.\.\.\(assigned \? \{ opacity: 0\.5 \} : \{\}\)/);
-  assert.match(src, /isOverdue\(member\.ngay_lien_he_tiep\) \? \{ background: '#fff7f7' \} : \{\}/);
+  assert.doesNotMatch(src, /opacity:\s*0\.5/, 'không được còn bất kỳ chỗ nào làm mờ dòng CSKH theo assigned nữa');
+  assert.match(src, /style=\{isOverdue\(member\.ngay_lien_he_tiep\) \? \{ background: '#fff7f7' \} : undefined\}/);
 });
 
 test('CampaignCskhWorkQueue.tsx: badge "Đã chia" kèm tên Sale khi assigned, badge "Chưa chia" khi không — cột Sale CSKH', () => {
