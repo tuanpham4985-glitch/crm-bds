@@ -64,6 +64,13 @@ export interface UpdateCampaignPatch {
   description?: string | null;
   owner_id?: string | null;
   owner_name?: string | null;
+  // CAMPAIGN-FIRST CSKH — minimal Admin-only path để gán/sửa Dự án cho Campaign
+  // legacy (id_du_an=null, VD "Vinhomes HLX" trong production). Route
+  // (api/campaigns/[id]/route.ts) LUÔN resolve ten_du_an từ DuAn thật tìm được
+  // theo id_du_an — KHÔNG bao giờ truyền id_du_an mà thiếu ten_du_an tương ứng,
+  // tránh 2 field lệch nhau.
+  id_du_an?: string;
+  ten_du_an?: string;
 }
 
 export async function updateCampaign(id: string, patch: UpdateCampaignPatch) {

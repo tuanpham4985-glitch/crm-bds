@@ -134,6 +134,19 @@ export function campaignOwnerFieldsTouched(body: Record<string, unknown>): boole
 }
 
 /**
+ * CAMPAIGN-FIRST CSKH — cùng pattern presence-check với campaignOwnerFieldsTouched
+ * (không theo truthiness, để gửi null/rỗng không lách được gate). Gán/sửa Dự án
+ * cho 1 Campaign (Campaign.id_du_an) chỉ Admin được làm — Leader (canManageCampaign
+ * qua owner_name) không được tự đổi Project của Campaign mình phụ trách, vì
+ * id_du_an quyết định luôn phạm vi Sale (DuAn.ds_sale) mà chính Leader đó được
+ * dùng để phân data (eligibleCampaignSales) — tự đổi Project = tự mở/thu hẹp
+ * phạm vi quyền của chính mình.
+ */
+export function campaignProjectFieldTouched(body: Record<string, unknown>): boolean {
+  return Object.prototype.hasOwnProperty.call(body, 'id_du_an');
+}
+
+/**
  * Quyền thao tác (interaction/qualification) trên 1 CampaignMembership cụ thể
  * (M1B.1) — Admin, Campaign owner, hoặc ĐÚNG Telesale được gán cho membership
  * này. Dùng telesale_id (không phải tên) để so khớp — khác với pattern name-

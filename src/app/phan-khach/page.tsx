@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, Eye, History, Layers, Phone, RefreshCw, Save, Search, Send, Settings, UserCheck, Users, X } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, Eye, History, Phone, RefreshCw, Save, Search, Send, Settings, UserCheck, Users, X } from 'lucide-react';
 import type { CrmBanGiaoEntry, CrmChamSocEntry, DuAn, KhachHang, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useCrmAccess } from '@/hooks/useCrmAccess';
@@ -50,14 +50,18 @@ function PhanKhachContent() {
   // (canAccessCskh(), crm-access-authority.ts, resolve server-side ở
   // /api/crm-access) — không còn công thức thứ 2 nào ở đây.
   const canAccessPage = canPhanKhach;
-  // Campaign CSKH (M1B.1): chế độ CSKH THEO CAMPAIGN, cộng thêm vào chế độ
-  // "Theo Dự án" cũ — giữ nguyên toàn bộ state/luồng cũ bên dưới không đổi.
-  // Sale (không phải Admin) mặc định vào thẳng chế độ Campaign — đúng luồng
-  // của họ; Admin vẫn mặc định "Theo Dự án" như trước, không đổi hành vi cũ.
-  // ?mode=campaign (+ ?campaignId=…, tuỳ chọn) — link "đi thẳng sang CSKH →
-  // Theo Campaign" sau khi Admin tạo Campaign từ /khach-hang; không đổi mặc
-  // định khi không có query param.
-  const [mode, setMode] = useState<'project' | 'campaign'>(searchParams.get('mode') === 'campaign' ? 'campaign' : 'project');
+  // CAMPAIGN-FIRST CSKH — Campaign là operational flow DUY NHẤT trên UI (audit
+  // PROJECT_MODE_RETIREMENT_BLOCKED_BY_MIGRATION xác nhận 0 lượt dùng thực tế
+  // của chế độ "Theo Dự án" trong production, sau khi capability "Cấu hình
+  // team" đã được di chuyển sang /du-an — xem du-an/page.tsx). Mặc định LUÔN
+  // vào Campaign mode cho MỌI role (không còn phân biệt Admin/non-admin như
+  // trước) — tab "Theo Dự án" bị ẩn khỏi UI (không còn nút chuyển mode), CHỈ
+  // giữ lại đường vào ẩn qua `?mode=project` cho trường hợp cần truy cập khẩn
+  // cấp (KHÔNG xoá code/route/field Project-mode — chỉ retire khỏi UI vận
+  // hành, xem yêu cầu). ?mode=campaign&campaignId=… (deep link "đi thẳng sang
+  // CSKH → Theo Campaign" sau khi tạo Campaign từ /khach-hang) tiếp tục hoạt
+  // động bình thường vì đã là default.
+  const [mode, setMode] = useState<'project' | 'campaign'>(searchParams.get('mode') === 'project' ? 'project' : 'campaign');
   const initialCampaignId = searchParams.get('campaignId') || undefined;
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
@@ -106,7 +110,6 @@ function PhanKhachContent() {
 
   useEffect(() => { void loadBase(); }, [loadBase]);
   useEffect(() => { void loadCustomers(selectedProject); }, [selectedProjectId, selectedProject?.ten_du_an, loadCustomers]);
-  useEffect(() => { if (!authLoading && !isAdmin && user) setMode('campaign'); }, [authLoading, isAdmin, user]);
 
   const accessibleProjects = useMemo(() => projects.filter(project =>
     phanKhachIds === null || (Array.isArray(phanKhachIds) && phanKhachIds.includes(project.id_du_an))), [projects, phanKhachIds]);
@@ -195,10 +198,10 @@ function PhanKhachContent() {
   if (loading && projects.length === 0) return <div className="loading-spinner"><div className="spinner" /></div>;
   return <div>
     <div className="page-header"><div className="page-header-left"><h1>CSKH</h1><p>Phân data, theo dõi chăm sóc và bàn giao khách quan tâm cho Sale</p></div>{mode === 'project' && <button className="btn btn-secondary" onClick={() => loadCustomers(selectedProject)} disabled={!selectedProject || loading}><RefreshCw size={15} /> Làm mới</button>}</div>
-    <div className="card" style={{ padding: 10, marginBottom: 16, display: 'flex', gap: 8 }}>
-      <button className={mode === 'project' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setMode('project')}><Users size={13} /> Theo Dự án</button>
-      <button className={mode === 'campaign' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setMode('campaign')}><Layers size={13} /> Theo Campaign</button>
-    </div>
+    {/* CAMPAIGN-FIRST CSKH — tab "Theo Dự án" ẩn khỏi UI (không còn nút chuyển
+        mode). Toggle cũ ĐÃ XOÁ khỏi giao diện, KHÔNG xoá code/nhánh 'project'
+        bên dưới (chỉ còn truy cập được qua ?mode=project, xem khai báo state
+        mode ở trên) — đúng yêu cầu "chỉ retire khỏi operational UI". */}
 
     {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} projects={projects} initialCampaignId={initialCampaignId} /> : <>
     {notice && <div style={{ padding: '11px 14px', marginBottom: 16, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', background: notice.type === 'ok' ? '#ecfdf5' : notice.type === 'warn' ? '#fffbeb' : '#fef2f2', color: notice.type === 'ok' ? '#047857' : notice.type === 'warn' ? '#a16207' : '#b91c1c' }}>{notice.type === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}<span style={{ flex: 1 }}>{notice.text}</span><button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)}><X size={14} /></button></div>}

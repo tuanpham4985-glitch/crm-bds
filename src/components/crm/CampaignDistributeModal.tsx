@@ -111,6 +111,11 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
     setError('');
     if (!fixedCampaign) {
       if (creatingNew && !newName.trim()) { setError('Nhập tên Campaign.'); return; }
+      // CAMPAIGN-FIRST CSKH — Dự án KHÔNG còn optional cho Campaign MỚI (Campaign
+      // legacy id_du_an=null có từ trước vẫn đọc/dùng được nguyên vẹn, chỉ path
+      // TẠO MỚI này bị siết). Server (POST /api/campaigns) validate lại độc lập,
+      // không tin riêng check này.
+      if (creatingNew && !newProjectId) { setError('Chọn Dự án.'); return; }
       if (!creatingNew && !campaignId) { setError('Chọn một Campaign.'); return; }
     }
     if ((mode === 'round_robin' || mode === 'quantity') && eligibility.blocked) {
@@ -237,9 +242,9 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                     <input className="form-input" value={newName} onChange={event => setNewName(event.target.value)} placeholder="VD: Green Paradise - đợt 1" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Dự án (tuỳ chọn)</label>
+                    <label className="form-label">Dự án *</label>
                     <select className="form-select" value={newProjectId} onChange={event => setNewProjectId(event.target.value)}>
-                      <option value="">— Không gắn Dự án —</option>
+                      <option value="">— Chọn Dự án —</option>
                       {projects.filter(item => item.hien_thi !== 0).map(item => <option key={item.id_du_an} value={item.id_du_an}>{item.ten_du_an}</option>)}
                     </select>
                   </div>

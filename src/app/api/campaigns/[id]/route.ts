@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { campaignOwnerFieldsTouched, canManageCampaign, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
+import { getDuAn } from '@/lib/data-access';
+import { campaignOwnerFieldsTouched, campaignProjectFieldTouched, canManageCampaign, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { CampaignDeleteBlockedError, deleteCampaignWithMemberships, getCampaign, getCampaignDeletePreflight, getCampaignSummary, updateCampaign } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
@@ -38,6 +39,25 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     if (campaignOwnerFieldsTouched(body) && !isCrmAdmin(user)) {
       return NextResponse.json({ success: false, error: 'Chỉ Admin được gán/thay Leader phụ trách Campaign' }, { status: 403 });
     }
+    // CAMPAIGN-FIRST CSKH — minimal Admin-only path để gán/sửa Dự án cho
+    // Campaign legacy (id_du_an=null, VD "Vinhomes HLX" production). Cùng
+    // pattern presence-check + Admin gate với owner_id/owner_name ở trên —
+    // Leader (canManageCampaign qua owner_name) KHÔNG được tự đổi Project của
+    // Campaign mình phụ trách. KHÔNG cho phép "gỡ" Dự án (id_du_an rỗng/null) —
+    // mục tiêu kiến trúc là mọi Campaign cuối cùng đều có Dự án, chỉ hỗ trợ
+    // gán/đổi sang 1 Dự án hợp lệ. Validate Project tồn tại thật (không tin
+    // ten_du_an client gửi — luôn resolve lại từ record tìm thấy).
+    if (campaignProjectFieldTouched(body) && !isCrmAdmin(user)) {
+      return NextResponse.json({ success: false, error: 'Chỉ Admin được gán/sửa Dự án cho Campaign' }, { status: 403 });
+    }
+    let projectPatch: { id_du_an?: string; ten_du_an?: string } = {};
+    if (campaignProjectFieldTouched(body)) {
+      const id_du_an = body.id_du_an ? String(body.id_du_an) : '';
+      if (!id_du_an) return NextResponse.json({ success: false, error: 'Phải chọn Dự án' }, { status: 400 });
+      const project = (await getDuAn()).find(item => item.id_du_an === id_du_an);
+      if (!project) return NextResponse.json({ success: false, error: 'Dự án không tồn tại' }, { status: 400 });
+      projectPatch = { id_du_an: project.id_du_an, ten_du_an: project.ten_du_an };
+    }
     const updated = await updateCampaign(id, {
       name: body.name !== undefined ? String(body.name).trim() || undefined : undefined,
       status: body.status !== undefined ? String(body.status) : undefined,
@@ -46,6 +66,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       description: body.description !== undefined ? (body.description ? String(body.description) : null) : undefined,
       owner_id: body.owner_id !== undefined ? (body.owner_id ? String(body.owner_id) : null) : undefined,
       owner_name: body.owner_name !== undefined ? (body.owner_name ? String(body.owner_name) : null) : undefined,
+      ...projectPatch,
     });
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {

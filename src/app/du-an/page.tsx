@@ -4,17 +4,36 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Edit3, Trash2, X, Building2, Eye, EyeOff,
   ExternalLink, ChevronDown, ChevronRight, Layers,
-  SlidersHorizontal, LayoutGrid,
+  SlidersHorizontal, LayoutGrid, Settings, Save,
 } from 'lucide-react';
-import type { DuAn, Pipeline } from '@/lib/types';
+import type { DuAn, NhanVien, Pipeline } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 
+// PROJECT-TEAM MANAGEMENT (CAMPAIGN-FIRST CSKH remediation) — reuse NGUYÊN
+// authority/API/employee source hiện có (DuAn.truong_nhom/ds_sale, PUT
+// /api/du-an, /api/nhan-vien) — KHÔNG tạo Project-team authority thứ hai.
+// Đây là "Cấu hình team" vốn CHỈ có ở CSKH → Theo Dự án (phan-khach/page.tsx,
+// giữ nguyên, không đụng) — di chuyển capability sang /du-an để đây là UI
+// authority quản lý roster mà Campaign Leader dùng (eligibleCampaignSales ->
+// DuAn.ds_sale), độc lập khỏi việc CSKH → Theo Dự án bị ẩn khỏi UI.
+function parseSaleList(config?: string): string[] {
+  if (!config) return [];
+  try { const value: unknown = JSON.parse(config); return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []; } catch { return []; }
+}
+
 export default function DuAnPage() {
-  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [employees, setEmployees] = useState<NhanVien[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHidden, setShowHidden] = useState(false);
+
+  // ── Cấu hình team (Trưởng nhóm / ds_sale) ──────────────────────────────────
+  const [teamProject, setTeamProject] = useState<DuAn | null>(null);
+  const [teamForm, setTeamForm] = useState({ truong_nhom: '', ds_sale: [] as string[] });
+  const [savingTeam, setSavingTeam] = useState(false);
+  const activeEmployees = employees.filter(item => item.trang_thai !== 'Nghỉ việc');
 
   // Chủ đầu tư đang expand
   const [expandedCDT, setExpandedCDT] = useState<Set<string>>(new Set());
@@ -47,10 +66,10 @@ export default function DuAnPage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [daRes, plRes] = await Promise.all([
-        fetch('/api/du-an'), fetch('/api/pipeline'),
+      const [daRes, plRes, nvRes] = await Promise.all([
+        fetch('/api/du-an'), fetch('/api/pipeline'), fetch('/api/nhan-vien'),
       ]);
-      const [daData, plData] = await Promise.all([daRes.json(), plRes.json()]);
+      const [daData, plData, nvData] = await Promise.all([daRes.json(), plRes.json(), nvRes.json()]);
       if (daData.success) {
         setProjects(daData.data);
         // Tự động mở rộng tất cả CDT lần đầu
@@ -60,6 +79,7 @@ export default function DuAnPage() {
         setExpandedCDT(cdtSet);
       }
       if (plData.success) setPipelines(plData.data);
+      if (nvData.success) setEmployees(nvData.data);
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -191,6 +211,36 @@ export default function DuAnPage() {
       console.error('Save error:', err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // PROJECT-TEAM MANAGEMENT — reuse NGUYÊN authority PUT /api/du-an hiện có
+  // (Admin sửa được truong_nhom+ds_sale; Trưởng nhóm hiện tại chỉ sửa được
+  // ds_sale, server tự giữ nguyên truong_nhom nếu người gọi không phải Admin —
+  // xem api/du-an/route.ts PUT, không đổi). Gửi NGUYÊN object project hiện có
+  // + field team mới, đúng convention saveTeam() cũ ở phan-khach/page.tsx.
+  const canConfigureTeam = (da: DuAn) => Boolean(isAdmin || (user && da.truong_nhom === user.ho_ten));
+  const openTeam = (da: DuAn) => {
+    setTeamProject(da);
+    setTeamForm({ truong_nhom: da.truong_nhom || '', ds_sale: parseSaleList(da.ds_sale) });
+  };
+  const saveTeam = async () => {
+    if (!teamProject) return;
+    setSavingTeam(true);
+    try {
+      const response = await fetch('/api/du-an', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...teamProject, truong_nhom: teamForm.truong_nhom, ds_sale: JSON.stringify(teamForm.ds_sale) }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setProjects(current => current.map(item => item.id_du_an === teamProject.id_du_an ? data.data : item));
+        setTeamProject(null);
+      }
+    } catch (err) {
+      console.error('Save team error:', err);
+    } finally {
+      setSavingTeam(false);
     }
   };
 
@@ -416,6 +466,15 @@ export default function DuAnPage() {
                             </div>
                           )}
 
+                          {/* PROJECT-TEAM MANAGEMENT — roster hiện tại (Trưởng
+                              nhóm + số Sale trong ds_sale), nguồn thật để
+                              Campaign Leader (eligibleCampaignSales) dùng phân
+                              data theo Campaign gắn Dự án này. */}
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 10 }}>
+                            Trưởng nhóm: <strong style={{ color: 'var(--text-label)' }}>{da.truong_nhom || 'Chưa cấu hình'}</strong>
+                            {' · '}{parseSaleList(da.ds_sale).length} Sale
+                          </div>
+
                           {/* Actions */}
                           <div className="flex items-center gap-2" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                             {da.link_tai_lieu && (
@@ -425,6 +484,11 @@ export default function DuAnPage() {
                               >
                                 <ExternalLink size={13} />Tài liệu
                               </a>
+                            )}
+                            {canConfigureTeam(da) && (
+                              <button className="btn btn-secondary btn-sm" onClick={() => openTeam(da)}>
+                                <Settings size={13} />Cấu hình team
+                              </button>
                             )}
                             {isAdmin && (
                               <>
@@ -577,6 +641,54 @@ export default function DuAnPage() {
         </div>
       )}
 
+      {/* ── Cấu hình team (Trưởng nhóm / ds_sale) — CAMPAIGN-FIRST CSKH ── */}
+      {teamProject && (
+        <div className="modal-overlay" onClick={() => setTeamProject(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Cấu hình team — {teamProject.ten_du_an}</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setTeamProject(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Trưởng nhóm</label>
+                <select className="form-select" disabled={!isAdmin} value={teamForm.truong_nhom}
+                  onChange={(e) => setTeamForm(current => ({ ...current, truong_nhom: e.target.value }))}>
+                  <option value="">— Chọn trưởng nhóm —</option>
+                  {activeEmployees.map(item => <option key={item.id_nhan_vien} value={item.ho_ten}>{item.ho_ten} · {item.employee_type}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Danh sách Sale trong team (ds_sale)</label>
+                <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                  {activeEmployees.map(item => (
+                    <label key={item.id_nhan_vien} style={{ display: 'flex', padding: '9px 12px', gap: 9, alignItems: 'center', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={teamForm.ds_sale.includes(item.ho_ten)}
+                        onChange={() => setTeamForm(current => ({
+                          ...current,
+                          ds_sale: current.ds_sale.includes(item.ho_ten)
+                            ? current.ds_sale.filter(name => name !== item.ho_ten)
+                            : [...current.ds_sale, item.ho_ten],
+                        }))} />
+                      <span style={{ flex: 1 }}>{item.ho_ten}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.employee_type}</span>
+                    </label>
+                  ))}
+                </div>
+                <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 6 }}>
+                  Danh sách này là phạm vi Sale mà Leader Campaign gắn Dự án này được phép phân data khi chia CSKH theo Campaign.
+                </p>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setTeamProject(null)}>Hủy</button>
+              <button className="btn btn-primary" onClick={() => void saveTeam()} disabled={savingTeam}>
+                {savingTeam ? 'Đang lưu...' : <><Save size={15} /> Lưu cấu hình</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Confirm Delete ── */}
       {showConfirm && (

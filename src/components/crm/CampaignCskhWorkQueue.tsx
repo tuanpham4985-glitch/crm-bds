@@ -85,6 +85,9 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   const [showDistribute, setShowDistribute] = useState(false);
   const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '' });
   const [showLeaderEdit, setShowLeaderEdit] = useState(false);
+  // CAMPAIGN-FIRST CSKH — Admin-only "Gán Dự án"/"Sửa Dự án" cho Campaign
+  // legacy (id_du_an=null) hoặc đổi Dự án — cùng pattern với showLeaderEdit.
+  const [showProjectEdit, setShowProjectEdit] = useState(false);
   const [handoffMember, setHandoffMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [acceptRejectBusyId, setAcceptRejectBusyId] = useState('');
   // "Chọn khách: Từ [x] đến [y]" -> "Chia đều cho Sale" — string (không phải
@@ -278,10 +281,6 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
             <ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} />
           </div>
         </div>
-        {selectedCampaign && <div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9, display: 'flex', alignItems: 'center', gap: 8 }}>
-          Leader phụ trách: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.owner_name || 'Chưa cấu hình'}</strong>
-          {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setShowLeaderEdit(true)}>{selectedCampaign.owner_name ? 'Sửa Leader' : 'Gán Leader'}</button>}
-        </div>}
         {canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 && (
           <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setShowDistribute(true)}>
             <Users size={15} /> Phân Sale ({unassignedMembers.length} chưa phân)
@@ -289,6 +288,28 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         )}
         <button className="btn btn-secondary" style={canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 ? undefined : { marginLeft: 'auto' }} onClick={() => loadMembers(campaignId)} disabled={!campaignId || loading}><RefreshCw size={15} /> Làm mới</button>
       </div>
+      {/* CAMPAIGN-FIRST CSKH — hiển thị rõ Campaign/Dự án/Leader khi đã chọn
+          Campaign (không chỉ giấu Dự án trong text option của dropdown như
+          trước). Campaign legacy chưa gắn Dự án (id_du_an=null, VD "Vinhomes
+          HLX" production) hiện cảnh báo rõ + Admin có action "Gán Dự án" —
+          Leader chỉ thấy cảnh báo, không sửa được Project linkage của chính
+          Campaign mình phụ trách (canManageCampaign qua owner_name KHÔNG đủ
+          để đổi Dự án — xem campaignProjectFieldTouched, crm-auth.ts). */}
+      {selectedCampaign && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 18, fontSize: 13 }}>
+          <span style={{ color: 'var(--text-label)' }}>Campaign: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.name}</strong></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {selectedCampaign.ten_du_an
+              ? <span style={{ color: 'var(--text-label)' }}>Dự án: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.ten_du_an}</strong></span>
+              : <span style={{ color: '#b91c1c', fontWeight: 650 }}>Chưa gắn Dự án — Leader chưa thể chia Sale.</span>}
+            {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setShowProjectEdit(true)}>{selectedCampaign.id_du_an ? 'Sửa Dự án' : 'Gán Dự án'}</button>}
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            Leader phụ trách: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.owner_name || 'Chưa cấu hình'}</strong>
+            {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setShowLeaderEdit(true)}>{selectedCampaign.owner_name ? 'Sửa Leader' : 'Gán Leader'}</button>}
+          </span>
+        </div>
+      )}
       {canManageThisCampaign && selectedCampaign && members.length > 0 && (
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 10 }}>
@@ -397,6 +418,19 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
           setCampaigns(current => current.map(item => item.id === updated.id ? updated : item));
           setShowLeaderEdit(false);
           setNotice({ type: 'ok', text: 'Đã cập nhật Leader phụ trách.' });
+        }}
+      />
+    )}
+
+    {showProjectEdit && selectedCampaign && (
+      <CampaignProjectEditModal
+        campaign={selectedCampaign}
+        projects={projects}
+        onClose={() => setShowProjectEdit(false)}
+        onSaved={updated => {
+          setCampaigns(current => current.map(item => item.id === updated.id ? updated : item));
+          setShowProjectEdit(false);
+          setNotice({ type: 'ok', text: 'Đã cập nhật Dự án cho Campaign.' });
         }}
       />
     )}
@@ -605,6 +639,58 @@ function CampaignLeaderEditModal({ campaign, employees, onClose, onSaved }: {
     <div className="modal-footer">
       <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Hủy</button>
       <button className="btn btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />} Lưu</button>
+    </div>
+  </div></div>;
+}
+
+// CAMPAIGN-FIRST CSKH — Admin-only: gán/sửa Dự án cho Campaign (Campaign.id_du_an).
+// Chỉ render khi isAdmin ở nơi gọi; gate thật ở server (PUT /api/campaigns/[id]
+// chặn non-admin đụng id_du_an, xem crm-auth.ts#campaignProjectFieldTouched).
+// KHÔNG cho chọn "— Không gắn Dự án —" (bỏ trống) — mục tiêu kiến trúc là mọi
+// Campaign cuối cùng đều có Dự án, modal này chỉ hỗ trợ gán/đổi sang 1 Dự án
+// hợp lệ, không hỗ trợ gỡ Dự án đã gán.
+function CampaignProjectEditModal({ campaign, projects, onClose, onSaved }: {
+  campaign: CampaignType; projects: DuAn[]; onClose: () => void; onSaved: (updated: CampaignType) => void;
+}) {
+  const [projectId, setProjectId] = useState(campaign.id_du_an || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const visibleProjects = projects.filter(item => item.hien_thi !== 0);
+
+  async function save() {
+    if (!projectId) { setError('Chọn Dự án.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/campaigns/${campaign.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_du_an: projectId }),
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Không thể cập nhật Dự án.');
+      onSaved(data.data);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không thể cập nhật Dự án.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="modal-overlay" onClick={onClose}><div className="modal-content" style={{ maxWidth: 460 }} onClick={event => event.stopPropagation()}>
+    <div className="modal-header"><h3 className="modal-title">Dự án — {campaign.name}</h3><button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button></div>
+    <div style={{ padding: 20 }}>
+      {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
+      <div className="form-group">
+        <label className="form-label">Dự án *</label>
+        <select className="form-select" value={projectId} onChange={event => setProjectId(event.target.value)}>
+          <option value="">— Chọn Dự án —</option>
+          {visibleProjects.map(item => <option key={item.id_du_an} value={item.id_du_an}>{item.ten_du_an}</option>)}
+        </select>
+      </div>
+    </div>
+    <div className="modal-footer">
+      <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Hủy</button>
+      <button className="btn btn-primary" onClick={() => void save()} disabled={saving || !projectId}>{saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />} Lưu</button>
     </div>
   </div></div>;
 }

@@ -195,11 +195,17 @@ test('CampaignDistributeModal.tsx: kết quả hiện đúng câu "Đã tạo Ca
 
 // --- F. UI: /phan-khach — deep link ?mode=campaign&campaignId= ---
 
-test('phan-khach/page.tsx: dùng useSearchParams() trong Suspense boundary (bắt buộc theo Next.js App Router) — đọc ?mode=campaign để mở thẳng tab "Theo Campaign", ?campaignId= để truyền initialCampaignId', () => {
+// CAMPAIGN-FIRST CSKH remediation đổi default mode từ 'project' sang
+// 'campaign' cho MỌI role (trước đây chỉ non-admin) — tab "Theo Dự án" ẩn
+// khỏi UI, chỉ còn truy cập được qua `?mode=project` (không xoá code/nhánh
+// 'project', xem tests/crm/campaign-first-cskh.test.ts). `?mode=campaign`
+// vẫn resolve đúng 'campaign' (đã là default) nên deep link cũ không đổi
+// hành vi quan sát được.
+test('phan-khach/page.tsx: dùng useSearchParams() trong Suspense boundary (bắt buộc theo Next.js App Router) — mode default = campaign (chỉ ?mode=project mới vào lại "Theo Dự án"), ?campaignId= để truyền initialCampaignId', () => {
   const src = readFileSync(resolve(PHAN_KHACH_PATH), 'utf8');
   assert.match(src, /import \{ useSearchParams \} from 'next\/navigation';/);
   assert.match(src, /<Suspense fallback=\{[^}]*\}>\s*<PhanKhachContent \/>\s*<\/Suspense>/);
-  assert.match(src, /searchParams\.get\('mode'\) === 'campaign' \? 'campaign' : 'project'/);
+  assert.match(src, /searchParams\.get\('mode'\) === 'project' \? 'project' : 'campaign'/);
   assert.match(src, /const initialCampaignId = searchParams\.get\('campaignId'\) \|\| undefined;/);
   assert.match(src, /<CampaignCskhWorkQueue employees=\{employees\} projects=\{projects\} initialCampaignId=\{initialCampaignId\} \/>/);
 });
