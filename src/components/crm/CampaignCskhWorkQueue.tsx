@@ -14,7 +14,7 @@
 // Accept/Reject của Sale tái dùng nguyên POST /api/crm/telesale/handoff hiện
 // có — không tạo endpoint/API riêng.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, History, Layers, Loader2, Phone, RefreshCw, Save, Search, Send, UserCheck, Users, X } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, History, Layers, Loader2, Phone, RefreshCw, Save, Search, Send, UserCheck, Users, X } from 'lucide-react';
 import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamSocEntry, DuAn, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,8 +25,16 @@ import {
 } from '@/lib/campaign-cskh-range';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
+import { qualificationStatusLabel, leadQualityRankLabel } from '@/lib/crm-funnel/quality-labels';
+import { paginate } from '@/lib/table-pagination';
 import { CampaignDistributeModal } from './CampaignDistributeModal';
 import { MembershipQualificationModal } from './MembershipQualificationModal';
+
+// CSKH TABLE UX — 50 CampaignMembership/trang, thuần presentation (windowing
+// qua paginate(), xem table-pagination.ts). "filtered" (toàn tập đã lọc) VẪN
+// là nguồn cho stats/assignmentSummary/rangeResult/rangeBreakdown — pagination
+// KHÔNG được cắt bớt các tính toán đó, chỉ cắt bớt SỐ DÒNG RENDER.
+const MEMBERS_PAGE_SIZE = 50;
 
 const HANDOFF_CANDIDATE_STATUSES = new Set(['INTERESTED', 'QUALIFIED', 'HOT']);
 function isHandoffCandidate(member: CampaignMembershipWithCustomer): boolean {
@@ -123,6 +131,16 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
     () => members.filter(member => matchesMembershipQueueFilter(member, { search, bucket: bucketFilter, assignment: assignmentFilter })),
     [members, search, bucketFilter, assignmentFilter],
   );
+
+  // CSKH TABLE UX — 50/trang, reset về trang 1 khi Campaign/search/bucket/
+  // assignment đổi (tập filtered đổi -> trang cũ không còn chắc đúng nghĩa).
+  // KHÔNG reset theo "page" của chính nó (tránh vòng lặp) — chỉ theo các input
+  // làm đổi "filtered". pageWindow (paginate) chỉ cắt để RENDER, hoàn toàn
+  // tách biệt khỏi rangeResult/rangeBreakdown/stats/assignmentSummary bên dưới
+  // (những cái đó vẫn phải tính trên "members"/"filtered" toàn bộ).
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [campaignId, search, bucketFilter, assignmentFilter]);
+  const pageWindow = useMemo(() => paginate(filtered, page, MEMBERS_PAGE_SIZE), [filtered, page]);
 
   const stats = useMemo(() => {
     const counts = new Map<MembershipBucket, number>();
@@ -329,10 +347,14 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         </div>
       </div>
       <MembershipTable
-        members={filtered} loading={loading} canActOn={canActOn}
+        members={pageWindow.items} loading={loading} canActOn={canActOn}
         onInteraction={openInteraction} onQualification={setQualificationMember} onHistory={setHistoryMember}
         canManageThisCampaign={canManageThisCampaign} currentUserName={user?.ho_ten}
         onHandoff={setHandoffMember} onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
+        startIndex={pageWindow.startIndex} page={pageWindow.page} totalPages={pageWindow.totalPages}
+        totalCount={pageWindow.total} pageSize={MEMBERS_PAGE_SIZE}
+        onPrevPage={() => setPage(current => Math.max(1, current - 1))}
+        onNextPage={() => setPage(current => Math.min(pageWindow.totalPages, current + 1))}
       />
     </>}
 
@@ -406,17 +428,38 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   </div>;
 }
 
-function MembershipTable({ members, loading, canActOn, onInteraction, onQualification, onHistory, canManageThisCampaign, currentUserName, onHandoff, onAcceptReject, acceptRejectBusyId }: {
+function MembershipTable({
+  members, loading, canActOn, onInteraction, onQualification, onHistory, canManageThisCampaign, currentUserName, onHandoff, onAcceptReject, acceptRejectBusyId,
+  startIndex, page, totalPages, totalCount, pageSize, onPrevPage, onNextPage,
+}: {
   members: CampaignMembershipWithCustomer[]; loading: boolean; canActOn: (member: CampaignMembershipWithCustomer) => boolean;
   onInteraction: (member: CampaignMembershipWithCustomer) => void; onQualification: (member: CampaignMembershipWithCustomer) => void; onHistory: (member: CampaignMembershipWithCustomer) => void;
   canManageThisCampaign: boolean; currentUserName?: string;
   onHandoff: (member: CampaignMembershipWithCustomer) => void; onAcceptReject: (member: CampaignMembershipWithCustomer, action: 'accept' | 'reject') => void; acceptRejectBusyId: string;
+  // CSKH TABLE UX — "trang 50 dòng" thuần presentation (xem table-pagination.ts).
+  startIndex: number; page: number; totalPages: number; totalCount: number; pageSize: number;
+  onPrevPage: () => void; onNextPage: () => void;
 }) {
   if (loading) return <div className="card"><div className="loading-spinner"><div className="spinner" /></div></div>;
   if (members.length === 0) return <div className="card"><div className="empty-state"><Layers size={38} /><h3>Không có khách hàng phù hợp</h3></div></div>;
-  return <div className="card" style={{ padding: 0, overflow: 'hidden' }}><div className="table-wrapper" style={{ overflowX: 'auto' }}><table className="data-table" style={{ minWidth: 1450 }}>
-    <thead><tr><th>Khách hàng</th><th>Sale CSKH</th><th>Trạng thái</th><th>Qualification</th><th>Score/Rank</th><th>Lịch tiếp theo</th><th>Bàn giao</th><th style={{ textAlign: 'right' }}>Thao tác</th></tr></thead>
-    <tbody>{members.map(member => {
+  return <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+    {/* CSKH TABLE UX — bounded overflowY + maxHeight khiến horizontal
+        scrollbar (overflowX) luôn nằm ở đáy MỘT KHUNG cố định trong viewport
+        (~62% chiều cao màn hình), thay vì đáy của cả bảng (có thể cao hàng
+        nghìn px khi chưa phân trang) — không cần scroll xuống hết trang mới
+        thấy. Chỉ đổi inline style của riêng bảng này, KHÔNG đụng class dùng
+        chung .table-wrapper/.data-table (nơi khác trong app không bị ảnh
+        hưởng). thead th đã sẵn position:sticky;top:0 (globals.css) — trong
+        khung bounded này nó tự dính vào đúng khung, không cần đổi CSS. */}
+    <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table" style={{ minWidth: 1500 }}>
+    <thead><tr>
+      <th style={{ width: 56 }}>STT</th>
+      <th>Khách hàng</th><th style={{ width: 160 }}>Sale CSKH</th><th style={{ width: 170 }}>Trạng thái</th>
+      <th style={{ width: 140 }}>Mức độ tiềm năng</th><th style={{ width: 130 }}>Điểm / Xếp hạng</th>
+      <th style={{ width: 170 }}>Lịch tiếp theo</th><th style={{ width: 170 }}>Bàn giao</th>
+      <th style={{ textAlign: 'right', width: 230 }}>Thao tác</th>
+    </tr></thead>
+    <tbody>{members.map((member, idx) => {
       const status = member.trang_thai_cham_soc || 'Chưa gọi'; const palette = statusColors[status] || statusColors['Chưa gọi'];
       const actionable = canActOn(member);
       const isReceiver = Boolean(currentUserName && member.handoff?.sale_name === currentUserName);
@@ -426,6 +469,7 @@ function MembershipTable({ members, loading, canActOn, onInteraction, onQualific
       // (opacity ~50%) để phân biệt trực quan với khách chưa chia.
       const assigned = isMembershipAssigned(member);
       return <tr key={member.id} style={{ ...(isOverdue(member.ngay_lien_he_tiep) ? { background: '#fff7f7' } : {}), ...(assigned ? { opacity: 0.5 } : {}) }}>
+        <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>{startIndex + idx + 1}</td>
         <td><div style={{ fontWeight: 700 }}>{member.customer?.ten_KH || member.customer_id}</div>{member.customer?.so_dien_thoai && <a href={`tel:${member.customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(member.customer.so_dien_thoai)}</a>}</td>
         <td>
           {assigned
@@ -436,8 +480,8 @@ function MembershipTable({ members, loading, canActOn, onInteraction, onQualific
             : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '3px 8px', fontSize: 11, fontWeight: 650 }}>Chưa chia</span>}
         </td>
         <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '4px 9px', fontSize: 12, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 7 }}>{member.so_lan_lien_he || 0} lần · {member.muc_do_quan_tam || 'Chưa xác định'}</div></td>
-        <td><span style={{ fontSize: 12, fontWeight: 600 }}>{member.qualification_status}</span></td>
-        <td><span style={{ fontSize: 12 }}>{member.lead_quality_score}/100 · {member.lead_quality_rank}</span></td>
+        <td><span style={{ fontSize: 12, fontWeight: 600 }}>{qualificationStatusLabel(member.qualification_status)}</span></td>
+        <td><span style={{ fontSize: 12 }}>{member.lead_quality_score}/100 · {leadQualityRankLabel(member.lead_quality_rank)}</span></td>
         <td><div style={{ display: 'flex', gap: 5, alignItems: 'center', color: isOverdue(member.ngay_lien_he_tiep) ? '#dc2626' : 'var(--text-body)', fontSize: 12 }}><CalendarClock size={14} />{localDate(member.ngay_lien_he_tiep)}</div>{member.ngay_lien_he_cuoi && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>Gần nhất: {localDate(member.ngay_lien_he_cuoi)}</div>}</td>
         <td>
           {member.outcome === 'HANDOFF_ACCEPTED' && <span style={{ background: '#ecfdf5', color: '#047857', borderRadius: 20, padding: '4px 9px', fontSize: 11, fontWeight: 650 }}>Đã nhận · {member.handoff?.sale_name}</span>}
@@ -459,7 +503,20 @@ function MembershipTable({ members, loading, canActOn, onInteraction, onQualific
         </div></td>
       </tr>;
     })}</tbody>
-  </table></div></div>;
+  </table></div>
+    {/* CSKH TABLE UX — 50 CampaignMembership/trang. totalCount/totalPages đến
+        từ pageWindow (paginate trên "filtered" toàn tập, KHÔNG phải trên
+        "members" — vốn đã là 1 trang — nên số liệu này luôn đúng bức tranh
+        toàn filtered dataset, không lệch theo trang đang xem). */}
+    {totalCount > 0 && <div className="pagination" style={{ padding: '12px 20px' }}>
+      <span className="pagination-info">{startIndex + 1}–{Math.min(startIndex + pageSize, totalCount)} / {totalCount} khách</span>
+      <div className="pagination-buttons" style={{ alignItems: 'center', gap: 10 }}>
+        <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={onPrevPage}><ChevronLeft size={14} /> Trước</button>
+        <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Trang {page} / {totalPages}</span>
+        <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={onNextPage}>Sau <ChevronRight size={14} /></button>
+      </div>
+    </div>}
+  </div>;
 }
 
 function MembershipHistoryModal({ member, onClose }: { member: CampaignMembershipWithCustomer; onClose: () => void }) {
@@ -577,7 +634,7 @@ function MembershipHandoffModal({ campaignId, campaign, membership, employees, p
       {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
       <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, marginBottom: 14, fontSize: 13 }}>
         <div><strong>{membership.customer?.ten_KH}</strong> · {formatPhone(membership.customer?.so_dien_thoai || '')}</div>
-        <div style={{ marginTop: 4, color: 'var(--text-label)' }}>Qualification: <strong>{membership.qualification_status}</strong> · {membership.lead_quality_score}/100</div>
+        <div style={{ marginTop: 4, color: 'var(--text-label)' }}>Mức độ tiềm năng: <strong>{qualificationStatusLabel(membership.qualification_status)}</strong> · {membership.lead_quality_score}/100</div>
       </div>
       {eligibility.blocked && <div style={{ padding: 12, background: '#fff7ed', color: '#9a3412', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{eligibility.reason}</div>}
       {!eligibility.blocked && (
