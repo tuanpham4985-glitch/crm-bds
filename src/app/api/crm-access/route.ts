@@ -52,14 +52,23 @@ export async function GET() {
     const scope = buildCrmManagerScope(userData, projects, employees);
     // phanKhachIds vẫn CHỈ theo mô hình Dự án cũ (dùng để lọc dropdown "Theo
     // Dự án" trên /phan-khach, xem accessibleProjects) — KHÔNG nhét id giả
-    // vào đây. Quyền qua Campaign CSKH (Sale CSKH ở CampaignMembership, hoặc
-    // Leader ở Campaign.owner_*) là 1 tín hiệu RIÊNG, cộng thêm vào
-    // hasCampaignCskhAccess để Sidebar (canPhanKhach, useCrmAccess.ts) biết
-    // hiện mục CSKH cho đúng người — không đè lên ý nghĩa phanKhachIds.
+    // vào đây.
+    //
+    // canPhanKhach (Sidebar, mục "CSKH") giờ tính ĐẦY ĐỦ 3 tín hiệu, khớp
+    // ĐÚNG canAccessPage thật của /phan-khach/page.tsx (isAdmin ||
+    // vai_tro === 'Sale') — trước đây CHỈ có accessibleIds (Dự án cũ) nên
+    // 2 gate lệch nhau: (1) accessibleIds.length>0 (Dự án cũ), (2)
+    // hasCampaignCskhAccess (Sale CSKH/Leader qua Campaign), (3) vai_tro
+    // === 'Sale' (blanket, đúng với thực tế trang vẫn cho MỌI Sale vào dù
+    // họ chưa được gán data ở đâu — kể cả nhân viên mới, sẽ có Campaign
+    // gán sau). (3) tự nó đã bao trùm hầu hết Sale, nhưng vẫn giữ (1)/(2)
+    // vì Leader Campaign có thể KHÔNG có vai_tro 'Sale' (Leader picker
+    // không lọc theo vai_tro, xem CampaignDistributeModal/CampaignLeaderEditModal).
     const hasCampaignAccess = await hasCampaignCskhAccess(userData);
+    const canPhanKhach = accessibleIds.length > 0 || hasCampaignAccess || userData.vai_tro === 'Sale';
     return NextResponse.json({
       canKH: false, phanKhachIds: accessibleIds, handoffCount,
-      canQualityDashboard: scope.canManageQuality, hasCampaignCskhAccess: hasCampaignAccess,
+      canQualityDashboard: scope.canManageQuality, canPhanKhach,
     });
   } catch {
     return NextResponse.json({ canKH: false, phanKhachIds: [] });

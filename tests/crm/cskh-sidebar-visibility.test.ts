@@ -3,14 +3,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// FIX — Sidebar ẩn mục "CSKH" với nhân viên CHỈ có quyền qua Campaign CSKH
-// (Sale CSKH ở CampaignMembership.telesale_id, hoặc Leader ở
-// Campaign.owner_id/owner_name), vì canPhanKhach (/api/crm-access) trước đây
-// CHỈ tính theo mô hình Dự án cũ (DuAn.truong_nhom/ds_sale, KhachHang.
-// telesale_phu_trach/sale_nhan_khach/sale_phu_trach) — không biết gì về
-// Campaign. Root cause: Sidebar dùng canPhanKhach làm gate cho mục con
-// "crm.cskh" (menu-registry.ts), trong khi /phan-khach/page.tsx tự nó chỉ
-// cần vai_tro === 'Sale' — 2 gate lệch nhau.
+// FIX — Sidebar ẩn mục "CSKH" với nhiều nhân viên vai_tro 'Sale' thật sự,
+// vì canPhanKhach (/api/crm-access) trước đây CHỈ tính theo mô hình Dự án cũ
+// (DuAn.truong_nhom/ds_sale, KhachHang.telesale_phu_trach/sale_nhan_khach/
+// sale_phu_trach). Root cause có 2 lớp:
+//  1. Không biết gì về Campaign CSKH (CampaignMembership.telesale_id,
+//     Campaign.owner_id/owner_name).
+//  2. Kể cả sau khi thêm (1), 1 Sale CHƯA được gán bất kỳ data nào (Dự án
+//     lẫn Campaign — VD nhân viên mới) vẫn bị ẩn menu, dù /phan-khach tự nó
+//     (canAccessPage) đã cho MỌI vai_tro==='Sale' vào thẳng không điều kiện.
+// Diagnostic thực tế (production) xác nhận đúng case (2): nhân viên vai_tro
+// 'Sale', 0 CampaignMembership, 0 Campaign ownership, không có Dự án nào —
+// vẫn phải thấy menu vì trang đã cho họ vào.
+//
+// Fix cuối: canPhanKhach (non-admin) server tính ĐỦ 3 tín hiệu, khớp ĐÚNG
+// canAccessPage thật của /phan-khach/page.tsx.
 
 const CAMPAIGN_LIB_PATH = 'src/lib/crm-funnel/campaign.ts';
 const CRM_ACCESS_ROUTE_PATH = 'src/app/api/crm-access/route.ts';
@@ -39,35 +46,32 @@ test('hasCampaignCskhAccess: KHÔNG throw khi Postgres CRM chưa bật — trả
 
 // --- B. /api/crm-access/route.ts wiring ---
 
-test('crm-access route: nhánh non-admin gọi hasCampaignCskhAccess(userData) và trả về trong response — KHÔNG nhét id giả vào phanKhachIds (vẫn giữ nguyên ý nghĩa Dự án cũ, dùng lọc dropdown "Theo Dự án")', () => {
+test('crm-access route: nhánh non-admin tính canPhanKhach = accessibleIds (Dự án) > 0 HOẶC hasCampaignCskhAccess (Campaign) HOẶC vai_tro === \'Sale\' (blanket, khớp canAccessPage thật của trang) — gửi thẳng field "canPhanKhach" cho client, không để client tự suy diễn lại', () => {
   const src = readFileSync(resolve(CRM_ACCESS_ROUTE_PATH), 'utf8');
   assert.match(src, /import \{ hasCampaignCskhAccess \} from '@\/lib\/crm-funnel\/campaign';/);
   assert.match(src, /const hasCampaignAccess = await hasCampaignCskhAccess\(userData\);/);
+  assert.match(src, /const canPhanKhach = accessibleIds\.length > 0 \|\| hasCampaignAccess \|\| userData\.vai_tro === 'Sale';/);
   const responseStart = src.indexOf('return NextResponse.json({\n      canKH: false, phanKhachIds: accessibleIds');
   assert.ok(responseStart >= 0, 'phanKhachIds phải vẫn = accessibleIds (project-based), không đổi');
-  const responseBody = src.slice(responseStart, responseStart + 300);
-  assert.match(responseBody, /hasCampaignCskhAccess:\s*hasCampaignAccess/);
+  const responseBody = src.slice(responseStart, responseStart + 200);
+  assert.match(responseBody, /canQualityDashboard:\s*scope\.canManageQuality,\s*canPhanKhach/);
 });
 
-test('crm-access route: nhánh Admin (phanKhachIds: null) không cần gọi hasCampaignCskhAccess — Admin đã bypass hoàn toàn, không đổi hành vi cũ', () => {
+test('crm-access route: nhánh Admin (phanKhachIds: null) không đổi — vẫn bypass hoàn toàn qua hook (phanKhachIds === null), không cần trả canPhanKhach riêng', () => {
   const src = readFileSync(resolve(CRM_ACCESS_ROUTE_PATH), 'utf8');
   const adminBranchStart = src.indexOf('if (isAdmin) {');
   const adminBranchEnd = src.indexOf('// Find projects this user is involved in', adminBranchStart);
   assert.ok(adminBranchStart >= 0 && adminBranchEnd > adminBranchStart);
   const adminBranch = src.slice(adminBranchStart, adminBranchEnd);
-  assert.doesNotMatch(adminBranch, /hasCampaignCskhAccess/, 'nhánh Admin không cần đổi — vẫn bypass qua phanKhachIds: null như cũ');
+  assert.match(adminBranch, /phanKhachIds:\s*null/);
+  assert.doesNotMatch(adminBranch, /hasCampaignCskhAccess|canPhanKhach/, 'nhánh Admin không cần đổi — vẫn bypass qua phanKhachIds: null như cũ');
 });
 
-// --- C. useCrmAccess.ts: canPhanKhach OR thêm hasCampaignCskhAccess ---
+// --- C. useCrmAccess.ts: canPhanKhach dùng thẳng field server đã tính đủ (non-admin) ---
 
-test('useCrmAccess.ts: canPhanKhach = (phanKhachIds null/không rỗng) HOẶC hasCampaignCskhAccess — Sidebar (canPhanKhach) giờ công nhận cả quyền qua Campaign, không chỉ Dự án cũ', () => {
+test('useCrmAccess.ts: canPhanKhach = (phanKhachIds === null, Admin) HOẶC data.canPhanKhach (server đã tính đủ 3 tín hiệu cho non-admin) — không tự suy diễn lại logic ở client', () => {
   const src = readFileSync(resolve(USE_CRM_ACCESS_PATH), 'utf8');
-  const fnStart = src.indexOf('const canPhanKhach =');
-  assert.ok(fnStart >= 0);
-  const fnBody = src.slice(fnStart, fnStart + 300);
-  assert.match(fnBody, /phanKhachIds === null/);
-  assert.match(fnBody, /Array\.isArray\(phanKhachIds\) && phanKhachIds\.length > 0/);
-  assert.match(fnBody, /Boolean\(data\?\.hasCampaignCskhAccess\)/);
+  assert.match(src, /const canPhanKhach = phanKhachIds === null \|\| Boolean\(data\?\.canPhanKhach\);/);
 });
 
 // --- D. Regression: phanKhachIds vẫn dùng ĐÚNG như cũ để lọc dropdown "Theo Dự án" ---
@@ -77,7 +81,7 @@ test('regression: /phan-khach/page.tsx accessibleProjects vẫn lọc theo ĐÚN
   assert.match(src, /phanKhachIds === null \|\| \(Array\.isArray\(phanKhachIds\) && phanKhachIds\.includes\(project\.id_du_an\)\)/);
 });
 
-test('regression: /phan-khach/page.tsx canAccessPage (gate truy cập trang thật) không đổi — vẫn chỉ cần isAdmin || (crmEnabled && vai_tro Sale), KHÔNG phụ thuộc phanKhachIds/canPhanKhach (2 gate khác nhau, fix này không trộn lẫn)', () => {
+test('regression: /phan-khach/page.tsx canAccessPage (gate truy cập trang thật) không đổi — vẫn chỉ cần isAdmin || (crmEnabled && vai_tro Sale); fix này chỉ làm Sidebar KHỚP ĐÚNG gate có sẵn này, không nới/siết gì thêm ở trang', () => {
   const src = readFileSync(resolve(PHAN_KHACH_PATH), 'utf8');
   assert.match(src, /const canAccessPage = isAdmin \|\| \(crmEnabled && user\?\.vai_tro === 'Sale'\);/);
 });

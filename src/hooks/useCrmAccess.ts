@@ -11,16 +11,13 @@ export function useCrmAccess() {
   // phanKhachIds: null = admin (all projects), [] = no access, [...] = specific project IDs
   const phanKhachIds: string[] | null | undefined = data?.phanKhachIds;
   // Fix: mục "CSKH" ở Sidebar trước đây chỉ hiện cho ai có dấu vết trong mô
-  // hình Dự án cũ (phanKhachIds) — nhân viên CHỈ tham gia qua Campaign CSKH
-  // (Sale CSKH/Leader) không có dấu vết đó nên bị ẩn hẳn, dù /phan-khach tự
-  // nó vẫn cho họ vào (canAccessPage chỉ cần vai_tro === 'Sale'). Cộng thêm
-  // hasCampaignCskhAccess (server tính từ CampaignMembership/Campaign.owner_*)
-  // — không đổi ý nghĩa phanKhachIds (vẫn dùng riêng để lọc dropdown "Theo
-  // Dự án", xem /phan-khach/page.tsx).
-  const canPhanKhach =
-    phanKhachIds === null
-    || (Array.isArray(phanKhachIds) && phanKhachIds.length > 0)
-    || Boolean(data?.hasCampaignCskhAccess);
+  // hình Dự án cũ (phanKhachIds) — Sale CHỈ tham gia qua Campaign (kể cả
+  // chưa được gán data nào) bị ẩn hẳn, dù /phan-khach tự nó vẫn cho MỌI
+  // vai_tro==='Sale' vào (canAccessPage). Với Admin (phanKhachIds === null)
+  // giữ nguyên bypass cũ; với non-admin, server (route.ts) đã tự tính đủ 3
+  // tín hiệu (Dự án cũ / Campaign CSKH / vai_tro Sale) vào field
+  // "canPhanKhach" — dùng thẳng, không tự suy diễn lại ở client.
+  const canPhanKhach = phanKhachIds === null || Boolean(data?.canPhanKhach);
 
   return {
     isLoading,
