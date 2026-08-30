@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
         email: devEmail,
         vai_tro: 'Admin',
         employee_type: 'Admin',
+        avatar_url: '',
       });
       const devBase64 = btoa(unescape(encodeURIComponent(devSessionData)));
       const isProd = process.env.NODE_ENV === 'production';
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({
         success: true,
-        data: { id_nhan_vien: 'DEV_ADMIN', ho_ten: devName, email: devEmail, vai_tro: 'Admin', employee_type: 'Admin' },
+        data: { id_nhan_vien: 'DEV_ADMIN', ho_ten: devName, email: devEmail, vai_tro: 'Admin', employee_type: 'Admin', avatar_url: '' },
       });
     }
 
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
       email: nv.email,
       vai_tro: nv.vai_tro,
       employee_type: nv.employee_type,
+      avatar_url: nv.avatar_url || '',
     });
 
     // Use btoa for Edge compatibility (Note: handle UTF-8 if needed)
@@ -100,6 +102,7 @@ export async function POST(request: NextRequest) {
         email: nv.email,
         vai_tro: nv.vai_tro,
         employee_type: nv.employee_type,
+        avatar_url: nv.avatar_url || '',
       },
     });
   } catch (error: unknown) {
@@ -146,6 +149,7 @@ export async function GET() {
         userData.email        = nv.email;
         userData.vai_tro      = nv.vai_tro || userData.vai_tro;
         userData.employee_type = nv.employee_type || userData.employee_type;
+        userData.avatar_url   = nv.avatar_url || '';
       } catch (refreshErr) {
         // Auth phải fail-closed: không dùng cookie cũ khi không xác thực được NHAN_VIEN.
         cookieStore.delete('crm_session');

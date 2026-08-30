@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import useSWR from 'swr';
 import styles from './Sidebar.module.css';
+import UserAvatar from './UserAvatar';
 import { useAuth } from '@/hooks/useAuth';
 import { useTmStore } from '@/stores/tmStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -424,9 +425,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         {/* Current user info */}
         {user && (
           <div className={styles.userInfo}>
-            <div className={styles.userAvatar}>
-              {user.ho_ten?.split(' ').pop()?.charAt(0).toUpperCase() || '?'}
-            </div>
+            <UserAvatar className={styles.userAvatar} name={user.ho_ten} src={user.avatar_url} />
             <div className={styles.userMeta}>
               <div className={styles.userName}>{user.ho_ten}</div>
               <div className={styles.userRole}>

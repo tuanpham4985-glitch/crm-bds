@@ -7,12 +7,11 @@ import Sidebar from '@/components/layout/Sidebar';
 import AppIconBadge from '@/components/AppIconBadge';
 import { useTmStore } from '@/stores/tmStore';
 import { useAuth } from '@/hooks/useAuth';
-import { useSettingsStore } from '@/stores/settingsStore';
+import UserAvatar from './UserAvatar';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const logo = useSettingsStore(s => s.logo);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -69,14 +68,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
         {user && (
-          <div style={{
-            width: 34, height: 34, borderRadius: '50%',
-            background: 'var(--primary)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.875rem', fontWeight: 700, flexShrink: 0,
-          }}>
-            {user.ho_ten?.split(' ').pop()?.charAt(0).toUpperCase() || '?'}
-          </div>
+          <UserAvatar
+            name={user.ho_ten}
+            src={user.avatar_url}
+            size={34}
+            style={{
+              background: 'var(--primary)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.875rem', fontWeight: 700, flexShrink: 0,
+            }}
+          />
         )}
       </div>
 
