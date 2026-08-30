@@ -422,8 +422,8 @@
 }
 
 .userAvatar {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   overflow: hidden;
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
@@ -431,9 +431,12 @@
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 600;
   flex-shrink: 0;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-sizing: border-box;
 }
 
 .userMeta {

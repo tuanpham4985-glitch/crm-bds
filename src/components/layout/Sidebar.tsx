@@ -425,7 +425,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         {/* Current user info */}
         {user && (
           <div className={styles.userInfo}>
-            <UserAvatar className={styles.userAvatar} name={user.ho_ten} src={user.avatar_url} />
+            <UserAvatar className={styles.userAvatar} name={user.ho_ten} src={user.avatar_url} size={40} />
             <div className={styles.userMeta}>
               <div className={styles.userName}>{user.ho_ten}</div>
               <div className={styles.userRole}>

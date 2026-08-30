@@ -9,13 +9,14 @@ interface UserAvatarProps {
   className?: string;
   size?: number;
   style?: CSSProperties;
+  objectPosition?: CSSProperties['objectPosition'];
 }
 
 function getInitial(name?: string | null): string {
   return name?.trim().split(/\s+/).pop()?.charAt(0).toUpperCase() || '?';
 }
 
-export default function UserAvatar({ name, src, className, size = 32, style }: UserAvatarProps) {
+export default function UserAvatar({ name, src, className, size = 32, style, objectPosition = 'center top' }: UserAvatarProps) {
   const cleanSrc = (src || '').trim();
   const [failedSrc, setFailedSrc] = useState('');
   const showImage = cleanSrc && cleanSrc !== failedSrc;
@@ -42,7 +43,7 @@ export default function UserAvatar({ name, src, className, size = 32, style }: U
           src={cleanSrc}
           alt={name ? `Ảnh đại diện ${name}` : 'Ảnh đại diện'}
           onError={() => setFailedSrc(cleanSrc)}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition, display: 'block' }}
         />
       ) : (
         getInitial(name)
