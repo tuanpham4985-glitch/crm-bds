@@ -15,6 +15,7 @@ import { useCrmModule } from '@/hooks/useCrmModule';
 import { canAccessCrmModule } from '@/lib/crm-module-access';
 import { isAllVisibleSelected, toggleSelectAllVisible, toggleSelection } from '@/lib/khach-hang-selection';
 import { validateListRangeAgainstTotal } from '@/lib/list-range';
+import { deriveImportBatchDisplayStatus } from '@/lib/import-batch-display-status';
 import { CampaignDistributeModal } from '@/components/crm/CampaignDistributeModal';
 
 export default function KhachHangPage() {
@@ -930,6 +931,16 @@ export default function KhachHangPage() {
               <option value="">Tất cả Dataset</option>
               {datasets.map(ds => <option key={ds.id} value={ds.id}>{ds.name}</option>)}
             </select>
+            {/* DATASET COUNT UX — filteredTotal đã kết hợp ĐÚNG mọi filter
+                đang bật (search/ngày/campaignStatus/dataset — xem fetchData),
+                lấy từ authority server, KHÔNG đếm số dòng đang render trên
+                trang. Khi "Tất cả Dataset" (datasetFilter rỗng), header phía
+                trên đã hiện tổng Customer master ({total}) — không lặp lại. */}
+            {datasetFilter && (
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                · {filteredTotal} khách
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -1638,19 +1649,28 @@ export default function KhachHangPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {importBatches.map(batch => (
                     <div key={batch.id} style={{ border: '1.5px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 650, fontSize: '0.9rem', color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{batch.filename}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 3 }}>{formatDate(batch.imported_at)} · {batch.imported_by_name}</div>
-                        </div>
-                        <span className="badge" style={{
-                          background: batch.status === 'completed' ? '#f0fdf4' : batch.status === 'processing' ? '#fffbeb' : '#f1f5f9',
-                          color: batch.status === 'completed' ? '#16a34a' : batch.status === 'processing' ? '#b45309' : '#475569',
-                          fontSize: '0.68rem', flexShrink: 0,
-                        }}>
-                          {batch.status === 'completed' ? 'Hoàn tất' : batch.status === 'processing' ? 'Đang xử lý…' : batch.status}
-                        </span>
-                      </div>
+                      {/* IMPORT HISTORY STALE STATUS — displayStatus CHỈ đổi
+                          nhãn hiển thị (deriveImportBatchDisplayStatus, pure,
+                          không đụng DB) — batch.status thật trong DB giữ
+                          nguyên 'processing', không tự chuyển 'completed'. */}
+                      {(() => {
+                        const displayStatus = deriveImportBatchDisplayStatus(batch);
+                        return (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 650, fontSize: '0.9rem', color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{batch.filename}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 3 }}>{formatDate(batch.imported_at)} · {batch.imported_by_name}</div>
+                            </div>
+                            <span className="badge" style={{
+                              background: displayStatus === 'completed' ? '#f0fdf4' : displayStatus === 'processing' ? '#fffbeb' : '#fef2f2',
+                              color: displayStatus === 'completed' ? '#16a34a' : displayStatus === 'processing' ? '#b45309' : '#b91c1c',
+                              fontSize: '0.68rem', flexShrink: 0,
+                            }}>
+                              {displayStatus === 'completed' ? 'Hoàn tất' : displayStatus === 'processing' ? 'Đang xử lý…' : 'Bị gián đoạn'}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       <div style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: '0.78rem' }}>
                         <span>Tổng: <strong>{batch.total_rows}</strong></span>
                         <span style={{ color: '#16a34a' }}>Tạo mới: <strong>{batch.created_count}</strong></span>
