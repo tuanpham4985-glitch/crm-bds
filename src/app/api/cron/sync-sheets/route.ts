@@ -1,10 +1,12 @@
 // Cron job: tự động sync Google Sheets → PostgreSQL
 // Chạy hàng ngày lúc 01:00 UTC (08:00 giờ VN)
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { prisma } from '@/lib/db/client';
 import { getKhachHang, getPipeline } from '@/lib/google-sheets';
 import { syncTmUsersFromNhanVien } from '@/lib/task-management/sync-users';
 import { syncNhanVienToPostgres } from '@/lib/sync/nhan-vien-to-pg';
+import { syncDuAnToPostgres } from '@/lib/sync/du-an-to-pg';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -137,11 +139,16 @@ export async function GET(req: NextRequest) {
 
   const startMs = Date.now();
   try {
-    const [hrm, khachHang, pipeline] = await Promise.all([
+    const [hrm, khachHang, pipeline, duAn] = await Promise.all([
       syncNhanVienToPostgres(),
       syncKhachHang(),
       syncPipeline(),
+      syncDuAnToPostgres(),
     ]);
+
+    // getDuAn() dùng Vercel Data Cache khi CRM đọc từ PostgreSQL. Xóa tag
+    // ngay sau sync để dự án mới xuất hiện ở lần tải kế tiếp, không chờ TTL.
+    revalidateTag('da', {});
 
     // NHAN_VIEN → TM_Users: nhân viên mới xuất hiện trong Task Management
     // mà không cần chờ họ tự đăng nhập lần đầu.
@@ -151,8 +158,8 @@ export async function GET(req: NextRequest) {
     });
 
     const elapsed = Math.round((Date.now() - startMs) / 1000);
-    console.log(`[cron:sync-sheets] done in ${elapsed}s`, { hrm, khachHang, pipeline, tmUsers });
-    return NextResponse.json({ ok: true, elapsed_s: elapsed, hrm, khachHang, pipeline, tmUsers });
+    console.log(`[cron:sync-sheets] done in ${elapsed}s`, { hrm, khachHang, pipeline, duAn, tmUsers });
+    return NextResponse.json({ ok: true, elapsed_s: elapsed, hrm, khachHang, pipeline, duAn, tmUsers });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[cron:sync-sheets] failed:', msg);
