@@ -3157,6 +3157,11 @@ export async function getStackingListColumns(sheetId: string, tabName: string): 
   return columns;
 }
 
+// Đỏ thuần = quy ước "Đã bán" của Sale trong Sheet gốc (xem chú thích ở nơi
+// dùng, getStackingListRows) — căn này bị loại HẲN khỏi Bảng hàng, không chỉ
+// tô màu tham khảo như các màu đánh dấu khác (VD "Check admin" vàng).
+const SOLD_ROW_COLOR = '#ff0000';
+
 // Sheets API trả màu 0..1 (float) — quy đổi sang hex "#rrggbb". Trắng/không có
 // format -> null (không phải màu đánh dấu, không tô gì trên UI).
 function backgroundColorToHex(bg: { red?: number; green?: number; blue?: number } | undefined): string | null {
@@ -3191,11 +3196,26 @@ export async function getStackingListRows(
         .map(name => allColumnDefs.find(c => c.header === name))
         .filter((c): c is { colIdx: number; header: string } => Boolean(c))
     : allColumnDefs;
+  // Cột "Căn" (loại căn viết tắt: LK, SL, SLHT...) rỗng -> dòng chưa hoàn
+  // chỉnh/không phải hàng thật, ẨN khỏi Bảng hàng — kiểm tra độc lập với
+  // visibleColumns (dù Admin có chọn hiện cột này hay không, quy tắc lọc vẫn
+  // áp dụng như nhau). Không tồn tại cột "Căn" trong Sheet -> bỏ qua bộ lọc này.
+  const canColDef = allColumnDefs.find(c => c.header === 'Căn');
 
   const rows: import('./types').StackingListRow[] = [];
   for (let r = headerRowIdx + 1; r < rowLimit; r++) {
     const maCan = str(sheet.getCell(r, maCanColIdx).value).trim();
     if (!maCan) continue; // dòng trống hoặc dòng section-note khác — bỏ qua, không suy diễn
+
+    if (canColDef && !str(sheet.getCell(r, canColDef.colIdx).value).trim()) continue;
+
+    // Màu dòng lấy đại diện từ cell "Mã căn" (luôn có dữ liệu thật, khác các ô
+    // trống có thể giữ nguyên nền mặc định). Đỏ thuần (#ff0000) đúng theo chú
+    // thích "Đã bán" mà Sale tự đánh dấu ngay trong Sheet (VD legend D2/E2 của
+    // file VHSGP) — căn đã bán KHÔNG hiện trên Bảng hàng nữa, loại bỏ HẲN khỏi
+    // kết quả (không phải chỉ tô màu để tham khảo như các màu khác).
+    const rowColor = backgroundColorToHex(sheet.getCell(r, maCanColIdx).effectiveFormat?.backgroundColor) ?? undefined;
+    if (rowColor === SOLD_ROW_COLOR) continue;
 
     const values: Record<string, string | number | null> = {};
     let hyperlinks: Record<string, string> | undefined;
@@ -3209,11 +3229,6 @@ export async function getStackingListRows(
       // PTG trỏ Drive) — CHỈ set khi cell đó thật sự có, không suy đoán từ text.
       if (cell.hyperlink) (hyperlinks ??= {})[header] = cell.hyperlink;
     }
-
-    // Màu dòng lấy đại diện từ cell "Mã căn" (luôn có dữ liệu thật, khác các ô
-    // trống có thể giữ nguyên nền mặc định) — CHỈ để hiển thị lại đúng màu Sale
-    // đã đánh dấu thủ công, KHÔNG phải authority trạng thái (xem trangThai).
-    const rowColor = backgroundColorToHex(sheet.getCell(r, maCanColIdx).effectiveFormat?.backgroundColor) ?? undefined;
 
     rows.push({ maCan, values, hyperlinks, rowColor, trangThai: 'con_hang' });
   }
