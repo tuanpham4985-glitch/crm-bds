@@ -3232,14 +3232,13 @@ export async function getStackingListColumns(sheetId: string, tabName: string): 
   return columns;
 }
 
-// Đỏ thuần = quy ước "Đã bán" của Sale trong Sheet gốc (xem chú thích ở nơi
-// dùng, getStackingListRows) — căn này bị loại HẲN khỏi Bảng hàng, không chỉ
-// tô màu tham khảo như các màu đánh dấu khác (VD "Check admin" vàng).
-const SOLD_ROW_COLOR = '#ff0000';
-// Vàng thuần = quy ước "Check Admin" — VẪN hiện trên Bảng hàng (khác đỏ),
-// chỉ gắn thêm marker để UI hiện rõ nhãn "Check Admin" thay vì tô màu chung
-// chung không rõ nghĩa.
-const CHECK_ADMIN_ROW_COLOR = '#ffff00';
+// 2 quy ước màu Sale tự đánh dấu trong Sheet gốc — CẢ HAI vẫn hiện trên Bảng
+// hàng (không loại căn nào), chỉ gắn marker để UI ra nhãn rõ ràng thay vì tô
+// màu chung chung không rõ nghĩa. Độc lập hoàn toàn với trangThai (authority
+// CRM Pipeline) — 1 căn có thể vừa "Đã bán" theo màu Sheet vừa "Còn hàng"
+// theo Pipeline nếu chưa cập nhật CRM, 2 tín hiệu KHÔNG được gộp làm một.
+const SOLD_ROW_COLOR = '#ff0000';        // "Đã bán"
+const CHECK_ADMIN_ROW_COLOR = '#ffff00'; // "Check Admin"
 
 // Sheets API trả màu 0..1 (float) — quy đổi sang hex "#rrggbb". Trắng/không có
 // format -> null (không phải màu đánh dấu, không tô gì trên UI).
@@ -3294,14 +3293,13 @@ export async function getStackingListRows(
     if (canColDef && !str(sheet.getCell(r, canColDef.colIdx).value).trim()) continue;
 
     // Màu dòng lấy đại diện từ cell "Mã căn" (luôn có dữ liệu thật, khác các ô
-    // trống có thể giữ nguyên nền mặc định). Đỏ thuần (#ff0000) đúng theo chú
-    // thích "Đã bán" mà Sale tự đánh dấu ngay trong Sheet (VD legend D2/E2 của
-    // file VHSGP) — căn đã bán KHÔNG hiện trên Bảng hàng nữa, loại bỏ HẲN khỏi
-    // kết quả (không phải chỉ tô màu để tham khảo như các màu khác). Vàng
-    // thuần = "Check Admin" — VẪN hiện, chỉ gắn marker để UI ra nhãn rõ ràng.
+    // trống có thể giữ nguyên nền mặc định). CẢ đỏ ("Đã bán") lẫn vàng ("Check
+    // Admin") đều VẪN hiện trên Bảng hàng — chỉ gắn marker để UI ra nhãn, không
+    // loại căn nào khỏi kết quả (khác quy tắc cột "Căn"/dòng ẨN ở trên).
     const rowColor = backgroundColorToHex(sheet.getCell(r, maCanColIdx).effectiveFormat?.backgroundColor) ?? undefined;
-    if (rowColor === SOLD_ROW_COLOR) continue;
-    const marker = rowColor === CHECK_ADMIN_ROW_COLOR ? 'check_admin' as const : undefined;
+    const marker = rowColor === SOLD_ROW_COLOR ? 'da_ban' as const
+      : rowColor === CHECK_ADMIN_ROW_COLOR ? 'check_admin' as const
+      : undefined;
 
     const values: Record<string, string | number | null> = {};
     let hyperlinks: Record<string, string> | undefined;

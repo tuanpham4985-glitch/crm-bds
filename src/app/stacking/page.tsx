@@ -47,6 +47,14 @@ const STATUS_COLOR = { con_hang: '#22c55e', dang_xem: '#f59e0b', da_ban: '#ef444
 // chế độ Lưới, nếu Sheet có cột này (VD "IVY PARK" / "GLOBAL PARK" của VHSGP).
 const GROUP_FILTER_COLUMN = 'Phân khu';
 
+// Nhãn màu Sale tự đánh dấu trong Sheet gốc (KHÁC hẳn STATUS_LABEL/STATUS_COLOR
+// ở trên — đó là authority CRM Pipeline, 2 tín hiệu độc lập hoàn toàn).
+const MARKER_LABEL = { check_admin: 'Check Admin', da_ban: 'Đã bán' } as const;
+const MARKER_BADGE_STYLE: Record<'check_admin' | 'da_ban', React.CSSProperties> = {
+  check_admin: { fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef08a', color: '#111827', border: '1px solid #000', whiteSpace: 'nowrap' },
+  da_ban:      { fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#ef4444', color: '#111827', border: '1px solid #000', whiteSpace: 'nowrap' },
+};
+
 function naturalCompare(a: string, b: string) {
   return a.localeCompare(b, 'vi', { numeric: true, sensitivity: 'base' });
 }
@@ -949,6 +957,15 @@ export default function StackingPage() {
           )}
         </div>
 
+        {/* Chú thích màu Sheet gốc — CHỈ hiển thị, không phải authority trạng
+            thái (xem chấm trạng thái + comment ở nơi render nhãn). */}
+        {listRows.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
+            <span style={{ ...MARKER_BADGE_STYLE.check_admin, fontSize: '0.72rem', padding: '3px 10px' }}>Check admin</span>
+            <span style={{ ...MARKER_BADGE_STYLE.da_ban, fontSize: '0.72rem', padding: '3px 10px' }}>Đã bán</span>
+          </div>
+        )}
+
         {/* Body */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           <div className="stacking-scroll" style={{ height: '100%', overflow: 'auto', padding: 14 }}>
@@ -994,12 +1011,14 @@ export default function StackingPage() {
                           <td style={{ padding: '6px 10px', position: 'sticky', left: 0, background: rowBg ?? 'var(--bg-card)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <span title={STATUS_LABEL[row.trangThai]} style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block', flexShrink: 0 }} />
-                              {/* Nhãn "Check Admin" — quy ước màu vàng của Sale trong
-                                  Sheet gốc, KHÁC hẳn chấm trạng thái bên cạnh (đó là
-                                  authority CRM Pipeline, không liên quan tới nhãn này). */}
-                              {row.marker === 'check_admin' && (
-                                <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', whiteSpace: 'nowrap' }}>
-                                  Check Admin
+                              {/* Nhãn "Check Admin"/"Đã bán" — quy ước màu Sale tự đánh
+                                  dấu trong Sheet gốc, KHÁC hẳn chấm trạng thái bên cạnh
+                                  (đó là authority CRM Pipeline, độc lập hoàn toàn — 1 căn
+                                  có thể vừa "Đã bán" theo Sheet vừa hiện chấm xanh nếu
+                                  CRM chưa cập nhật, đây là 2 tín hiệu KHÔNG gộp làm một). */}
+                              {row.marker && (
+                                <span style={MARKER_BADGE_STYLE[row.marker]}>
+                                  {MARKER_LABEL[row.marker]}
                                 </span>
                               )}
                             </div>

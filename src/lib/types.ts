@@ -584,10 +584,11 @@ export interface StackingListRow {
    * Sheet, KHÔNG phải authority trạng thái (trangThai bên dưới mới là authority
    * thật, lấy từ CRM Pipeline). undefined nếu ô không có màu nền/màu trắng mặc định. */
   rowColor?: string;
-  /** Ý nghĩa MÀU cụ thể mà Sale quy ước trong Sheet gốc (KHÁC trangThai —
-   * đó là authority CRM Pipeline). Hiện chỉ có 'check_admin' (vàng) — "Đã
-   * bán" (đỏ) đã bị loại khỏi kết quả từ trước, không cần đại diện ở đây. */
-  marker?: 'check_admin';
+  /** Ý nghĩa MÀU cụ thể mà Sale quy ước trong Sheet gốc (KHÁC trangThai — đó
+   * là authority CRM Pipeline, đến từ CRM Pipeline độc lập hoàn toàn với màu
+   * Sheet). 'check_admin' (vàng), 'da_ban' (đỏ) — CẢ HAI vẫn hiện trên Bảng
+   * hàng, chỉ gắn thêm nhãn để phân biệt, KHÔNG loại căn nào khỏi kết quả. */
+  marker?: 'check_admin' | 'da_ban';
   trangThai: 'con_hang' | 'dang_xem' | 'da_ban';
 }
 
