@@ -3107,6 +3107,70 @@ async function getMauDataColors(
 // khớp "Mã căn" (dùng lại normHeader() đã có, cùng logic detectListCols()).
 const HEADER_SCAN_ROWS = 10;
 
+/**
+ * Đọc link kiểu "Smart chip" (Insert > Smart chips > File trong Sheets —
+ * KHÁC hẳn hyperlink cổ điển Insert > Link mà GoogleSpreadsheetCell.hyperlink
+ * đọc được). Sheets API v4 trả loại link này qua field `chipRuns`, không phải
+ * `hyperlink` — thư viện google-spreadsheet KHÔNG expose field này (không có
+ * getter tương ứng trên GoogleSpreadsheetCell), nên phải tự gọi REST trực
+ * tiếp, cùng pattern với fetchSheetColors() ở trên.
+ *
+ * Trả về Map key "{rowIndex}_{colIndex}" -> URL (chỉ những cell thật sự có
+ * chip file/folder — richLinkProperties.uri).
+ */
+async function fetchChipHyperlinks(
+  spreadsheetId: string,
+  sheetName: string,
+  rowLimit: number,
+  colLimit: number,
+): Promise<Map<string, string>> {
+  const linkMap = new Map<string, string>();
+  try {
+    const jwt = getJWT();
+    const tokenResp = await jwt.getAccessToken();
+    const token = tokenResp?.token;
+    if (!token) { console.error('[fetchChipHyperlinks] No access token'); return linkMap; }
+
+    const cleanId  = extractSheetId(spreadsheetId);
+    const rangeStr = `${sheetName}!A1:${colLetter(colLimit)}${rowLimit}`;
+    const url      = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${cleanId}`);
+    url.searchParams.set('ranges', rangeStr);
+    url.searchParams.set('includeGridData', 'true');
+    url.searchParams.set(
+      'fields',
+      'sheets(properties(title),data(rowData(values(chipRuns))))',
+    );
+
+    const resp = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) {
+      console.error(`[fetchChipHyperlinks] HTTP ${resp.status}`, await resp.text());
+      return linkMap;
+    }
+
+    type ChipRun = { chip?: { richLinkProperties?: { uri?: string } } };
+    const data = await resp.json() as {
+      sheets?: Array<{
+        properties?: { title?: string };
+        data?: Array<{ rowData?: Array<{ values?: Array<{ chipRuns?: ChipRun[] }> }> }>;
+      }>;
+    };
+
+    const targetSheet = data.sheets?.find(s => s.properties?.title === sheetName);
+    const rowData = targetSheet?.data?.[0]?.rowData;
+    if (!rowData) return linkMap;
+
+    rowData.forEach((row, rowIdx) => {
+      row.values?.forEach((cell, colIdx) => {
+        const uri = cell.chipRuns?.[0]?.chip?.richLinkProperties?.uri;
+        if (uri) linkMap.set(`${rowIdx}_${colIdx}`, uri);
+      });
+    });
+  } catch (e) {
+    console.error('[fetchChipHyperlinks] error:', e);
+  }
+  return linkMap;
+}
+
 async function loadListTabAndFindHeader(sheetId: string, tabName: string) {
   const doc = await getDocBySheetId(sheetId);
   const sheet = doc.sheetsByTitle[tabName];
@@ -3180,6 +3244,10 @@ export async function getStackingListRows(
   visibleColumns?: readonly string[],
 ): Promise<{ columns: string[]; rows: import('./types').StackingListRow[] }> {
   const { sheet, rowLimit, colLimit, headerRowIdx, maCanColIdx } = await loadListTabAndFindHeader(sheetId, tabName);
+  // Link "Smart chip" (Insert > Smart chips > File) — cell.hyperlink của
+  // google-spreadsheet KHÔNG đọc được loại này (khác hyperlink cổ điển Insert
+  // > Link), phải gọi REST riêng (xem fetchChipHyperlinks).
+  const chipLinks = await fetchChipHyperlinks(sheetId, tabName, rowLimit, colLimit);
 
   // Mọi cột có tiêu đề không rỗng trên header row → giữ NGUYÊN text gốc làm
   // cả key lẫn label hiển thị (không ánh xạ sang field cứng nào). Nếu Admin
@@ -3225,9 +3293,13 @@ export async function getStackingListRows(
       values[header] = raw === null || raw === undefined || raw === ''
         ? null
         : (typeof raw === 'number' ? raw : str(raw));
-      // Hyperlink thật gắn trên cell (Insert > Link trong Sheets, VD cột LINK
-      // PTG trỏ Drive) — CHỈ set khi cell đó thật sự có, không suy đoán từ text.
-      if (cell.hyperlink) (hyperlinks ??= {})[header] = cell.hyperlink;
+      // Link thật gắn trên cell — CHỈ set khi cell đó thật sự có, không suy
+      // đoán từ text. 2 cơ chế gắn link khác nhau trong Sheets: hyperlink cổ
+      // điển (Insert > Link, VD cột LINK PTG của VHSGP) và smart chip (Insert
+      // > Smart chips > File, VD cột PTG+CHỈ CĂN của Global Gate) — ưu tiên
+      // hyperlink cổ điển nếu cả 2 cùng tồn tại (hiếm, không rõ cell nào mới hơn).
+      const link = cell.hyperlink || chipLinks.get(`${r}_${colIdx}`);
+      if (link) (hyperlinks ??= {})[header] = link;
     }
 
     rows.push({ maCan, values, hyperlinks, rowColor, trangThai: 'con_hang' });
