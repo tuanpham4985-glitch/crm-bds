@@ -321,12 +321,22 @@ export function deleteKhachHang(id: string): Promise<boolean> {
 
 // ── CRM: Pipeline ─────────────────────────────────────────────
 
-export function getPipeline(): Promise<Pipeline[]> {
+export async function getPipeline(): Promise<Pipeline[]> {
   if (!isPostgresEnabled('crm')) return cached('gs:pl', 30_000, () => GS.getPipeline());
-  return _pgPipeline().catch(e => {
+
+  try {
+    const rows = await _pgPipeline();
+    if (rows.length > 0) return rows;
+
+    // PostgreSQL is a read replica of Google Sheets. An empty replica can occur
+    // before the first sync (or after switching databases), while PIPELINE in
+    // Sheets still contains the signed deals needed by the Dashboard.
+    console.warn('[PG:crm:getPipeline] empty replica, falling back to GS');
+    return cached('gs:pl', 30_000, () => GS.getPipeline());
+  } catch (e) {
     console.error('[PG:crm:getPipeline] error, falling back to GS:', e instanceof Error ? e.message : e);
-    return GS.getPipeline();
-  });
+    return cached('gs:pl', 30_000, () => GS.getPipeline());
+  }
 }
 
 export function addPipeline(data: Pipeline): Promise<void> {
