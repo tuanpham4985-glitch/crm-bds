@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
+import { filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE } from '@/lib/stacking-list';
 
 // Mirror của extractSheetId() phía server (google-sheets.ts) — Admin có thể
 // dán nguyên link đầy đủ ("https://docs.google.com/spreadsheets/d/{id}/edit?...")
@@ -662,6 +663,7 @@ export default function StackingPage() {
   const [loadingList, setLoadingList]       = useState(false);
   const [listSearch, setListSearch]         = useState('');
   const [listGroupFilter, setListGroupFilter] = useState('');
+  const [listPage, setListPage]             = useState(1);
   // Tracks which configId has finished loading towers — prevents stale fetchUnits
   // firing with old project/tower when config switches (race condition guard)
   const towersReadyForRef = useRef<string | null>(null);
@@ -864,18 +866,21 @@ export default function StackingPage() {
     return [...set].sort((a, b) => a.localeCompare(b, 'vi'));
   }, [listRows, listColumns]);
 
-  const filteredListRows = useMemo(() => {
-    let rows = listRows;
-    if (listGroupFilter) rows = rows.filter(r => String(r.values[GROUP_FILTER_COLUMN] ?? '') === listGroupFilter);
-    const q = listSearch.trim().toLowerCase();
-    if (q) {
-      rows = rows.filter(r =>
-        r.maCan.toLowerCase().includes(q) ||
-        Object.values(r.values).some(v => v !== null && String(v).toLowerCase().includes(q))
-      );
-    }
-    return rows;
-  }, [listRows, listSearch, listGroupFilter]);
+  const filteredListRows = useMemo(
+    () => filterStackingListRows(listRows, { groupColumn: GROUP_FILTER_COLUMN, groupFilter: listGroupFilter, search: listSearch }),
+    [listRows, listSearch, listGroupFilter]
+  );
+
+  // Reset về trang 1 mỗi khi đổi nguồn/dự án, Phân khu, hoặc tìm kiếm —
+  // không reset khi chỉ "Làm mới" (refetch cùng bộ lọc).
+  useEffect(() => { setListPage(1); }, [selectedConfig?.id, listGroupFilter, listSearch]);
+
+  const listTotalPages = totalStackingListPages(filteredListRows.length);
+  const listPageSafe   = clampStackingListPage(listPage, filteredListRows.length);
+  const pagedListRows  = useMemo(
+    () => paginateStackingListRows(filteredListRows, listPageSafe),
+    [filteredListRows, listPageSafe]
+  );
 
   // ── Crosshair highlight ───────────────────────────────────────────────────
   // Hover có ưu tiên hơn click — khi chuột rời bảng thì fallback về selectedUnit
@@ -993,14 +998,14 @@ export default function StackingPage() {
                 <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-secondary, #f9fafb)' }}>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', position: 'sticky', left: 0, background: 'var(--bg-secondary, #f9fafb)', zIndex: 1 }} />
+                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }} />
                       {listColumns.map(col => (
                         <th key={col} style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>{col}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredListRows.map((row, i) => {
+                    {pagedListRows.map((row, i) => {
                       // Màu nền dòng lấy TỪ CHÍNH Sheet gốc (Sale đánh dấu thủ
                       // công, VD "Đã bán" đỏ) — CHỈ để tham khảo trực quan, KHÔNG
                       // phải authority trạng thái (chấm màu Còn hàng/Đang xem/Đã
@@ -1008,7 +1013,7 @@ export default function StackingPage() {
                       const rowBg = row.rowColor ? hexToRgba(row.rowColor, 0.22) : undefined;
                       return (
                         <tr key={row.maCan + i} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
-                          <td style={{ padding: '6px 10px', position: 'sticky', left: 0, background: rowBg ?? 'var(--bg-card)' }}>
+                          <td style={{ padding: '6px 10px', background: rowBg ?? 'var(--bg-card)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <span title={STATUS_LABEL[row.trangThai]} style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block', flexShrink: 0 }} />
                               {/* Nhãn "Check Admin"/"Đã bán" — quy ước màu Sale tự đánh
@@ -1040,6 +1045,25 @@ export default function StackingPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {!loadingList && listColumns.length > 0 && filteredListRows.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  {(listPageSafe - 1) * STACKING_LIST_PAGE_SIZE + 1}–{Math.min(listPageSafe * STACKING_LIST_PAGE_SIZE, filteredListRows.length)} / {filteredListRows.length} căn
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button onClick={() => setListPage(p => Math.max(1, p - 1))} disabled={listPageSafe <= 1} style={pagerBtnStyle(listPageSafe <= 1)}>
+                    Trước
+                  </button>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Trang {listPageSafe} / {listTotalPages}
+                  </span>
+                  <button onClick={() => setListPage(p => Math.min(listTotalPages, p + 1))} disabled={listPageSafe >= listTotalPages} style={pagerBtnStyle(listPageSafe >= listTotalPages)}>
+                    Sau
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1464,6 +1488,15 @@ function zoomFloatBtn(disabled: boolean): React.CSSProperties {
     color: disabled ? 'var(--text-muted)' : 'var(--text-body)',
     opacity: disabled ? 0.35 : 1,
     transition: 'background 0.1s',
+  };
+}
+
+function pagerBtnStyle(disabled: boolean): React.CSSProperties {
+  return {
+    padding: '5px 12px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600,
+    border: '1px solid var(--border)', background: 'var(--bg-card)',
+    color: disabled ? 'var(--text-muted)' : 'var(--text-body)',
+    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
   };
 }
 
