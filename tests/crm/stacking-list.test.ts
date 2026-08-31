@@ -7,7 +7,7 @@ import {
   clampStackingListPage,
   paginateStackingListRows,
   STACKING_LIST_PAGE_SIZE,
-  pickSummaryColumns,
+  splitStackingListColumns,
   groupStackingListColumnsForDetail,
   classifyStackingListColumn,
 } from '../../src/lib/stacking-list';
@@ -96,7 +96,14 @@ test('marker Đã bán / Check Admin vẫn đi kèm đúng dòng sau khi paginat
   assert.equal(page2[0].marker, 'check_admin');
 });
 
-// ─── Popup chi tiết căn — phân loại cột động (Sheet header) ────────────────
+// ─── Bảng chính vs popup — chia đôi cột ĐÚNG thứ tự Sheet ──────────────────
+
+// Bộ cột thật (theo đúng thứ tự) từ 2 screenshot production user gửi: nửa
+// đầu (STT...Giá gồm VAT+KPBT) hiện trên bảng, nửa sau (TTC...Hướng) vào popup.
+const REAL_COLUMN_SET = [
+  'STT', 'Phân khu', 'Mã căn', 'Đặc điểm', 'TCBG', 'Loại hình', 'DT Đất (m2)', 'DTXD (m2)', 'Giá gồm VAT+KPBT',
+  'TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Hướng',
+];
 
 const FULL_COLUMN_SET = [
   'Mã căn', 'Đặc điểm', 'TCBG', 'Loại căn', 'DT Đất', 'DTXD', 'Giá',
@@ -104,27 +111,39 @@ const FULL_COLUMN_SET = [
   'LINK PTG', 'Hướng', 'View', 'Quỹ', 'Giỏ bank',
 ];
 
-test('bảng chính không còn render các cột đã chuyển hoàn toàn sang popup (TTC/TTS/Vay/Link PTG/Quỹ/Giỏ bank)', () => {
-  const summary = pickSummaryColumns(FULL_COLUMN_SET);
-  for (const moved of ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Quỹ', 'Giỏ bank', 'TCBG']) {
-    assert.equal(summary.includes(moved), false, `"${moved}" phải bị loại khỏi bảng tóm tắt`);
+test('bảng chính giữ đúng nửa ĐẦU, đúng thứ tự Sheet — khớp screenshot thật (17 cột → 9 cột đầu ở lại bảng)', () => {
+  const { tableColumns } = splitStackingListColumns(REAL_COLUMN_SET);
+  assert.deepEqual(tableColumns, [
+    'STT', 'Phân khu', 'Mã căn', 'Đặc điểm', 'TCBG', 'Loại hình', 'DT Đất (m2)', 'DTXD (m2)', 'Giá gồm VAT+KPBT',
+  ]);
+});
+
+test('popup nhận đúng nửa SAU, đúng thứ tự Sheet — khớp screenshot thật (8 cột: TTC...Hướng)', () => {
+  const { detailColumns } = splitStackingListColumns(REAL_COLUMN_SET);
+  assert.deepEqual(detailColumns, ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Hướng']);
+});
+
+test('bảng chính không còn render các cột đã chuyển hoàn toàn sang popup (TTC/TTS/Vay/Link PTG)', () => {
+  const { tableColumns } = splitStackingListColumns(REAL_COLUMN_SET);
+  for (const moved of ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG']) {
+    assert.equal(tableColumns.includes(moved), false, `"${moved}" phải bị loại khỏi bảng chính`);
   }
 });
 
-test('bảng chính giữ đúng cột tóm tắt: Đặc điểm, Loại căn, 1 cột diện tích chính, Giá, Hướng', () => {
-  const summary = pickSummaryColumns(FULL_COLUMN_SET);
-  assert.deepEqual(summary, ['Đặc điểm', 'Loại căn', 'DT Đất', 'Giá', 'Hướng']);
+test('chia đôi không mất/không lặp cột nào — gộp lại đúng bằng danh sách gốc theo thứ tự', () => {
+  const { tableColumns, detailColumns } = splitStackingListColumns(REAL_COLUMN_SET);
+  assert.deepEqual([...tableColumns, ...detailColumns], REAL_COLUMN_SET);
 });
 
-test('Phân khu được giữ trên bảng tóm tắt nếu nguồn có cột này', () => {
-  const summary = pickSummaryColumns([...FULL_COLUMN_SET, 'Phân khu']);
-  assert.ok(summary.includes('Phân khu'));
+test('số cột lẻ → nửa đầu (bảng chính) nhận thêm 1 cột (ceil)', () => {
+  const { tableColumns, detailColumns } = splitStackingListColumns(['A', 'B', 'C', 'D', 'E']);
+  assert.deepEqual(tableColumns, ['A', 'B', 'C']);
+  assert.deepEqual(detailColumns, ['D', 'E']);
 });
 
-test('diện tích chính: DTXD được chọn khi không có DT Đất', () => {
-  const summary = pickSummaryColumns(['Mã căn', 'DTXD', 'DT Tim tường']);
-  assert.ok(summary.includes('DTXD'));
-  assert.equal(summary.includes('DT Tim tường'), false);
+test('danh sách cột rỗng hoặc chỉ 1 cột không lỗi', () => {
+  assert.deepEqual(splitStackingListColumns([]), { tableColumns: [], detailColumns: [] });
+  assert.deepEqual(splitStackingListColumns(['Mã căn']), { tableColumns: ['Mã căn'], detailColumns: [] });
 });
 
 test('classifyStackingListColumn phân đúng nhóm cho từng field trong task', () => {

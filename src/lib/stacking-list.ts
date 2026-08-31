@@ -38,13 +38,12 @@ export function paginateStackingListRows<T>(rows: T[], page: number, pageSize = 
   return rows.slice((safePage - 1) * pageSize, safePage * pageSize);
 }
 
-// ─── Popup chi tiết căn: gom cột động (Sheet header) theo nhóm hiển thị ────
+// ─── Popup chi tiết căn: chia đôi cột động (Sheet header) ──────────────────
 // Chế độ Danh sách KHÔNG có schema cứng — mọi cột đến từ header thật trong
-// Sheet (xem getStackingListRows ở google-sheets.ts, values keyed by chính
-// text header đó). Phân loại dưới đây dựa THUẦN vào tên cột (không phân biệt
-// hoa/thường, không đổi/không suy diễn dữ liệu) để: (1) bảng chính chỉ hiện
-// cột tóm tắt, (2) popup hiện đầy đủ mọi cột theo đúng nhóm — không cột nào
-// bị rơi mất khỏi cả 2 nơi.
+// Sheet, ĐÚNG thứ tự Sheet (xem getStackingListRows ở google-sheets.ts,
+// values keyed by chính text header đó). Yêu cầu: nửa ĐẦU giữ nguyên thứ tự
+// hiện tại trên bảng chính, nửa SAU (TTC/TTS/Vay.../Link PTG/Hướng...) chuyển
+// vào popup — KHÔNG xáo trộn thứ tự, không tự chọn field theo tên.
 
 export const MA_CAN_HEADER = 'Mã căn';
 
@@ -66,45 +65,13 @@ export function isMiscColumn(header: string): boolean {
   return n.includes('link') || n.includes('ptg') || n === 'quỹ' || n === 'giỏ bank';
 }
 
-export function isAreaColumn(header: string): boolean {
-  const n = normHeader(header);
-  return n.startsWith('dt') || n.includes('diện tích');
-}
-
-// Ưu tiên diện tích "chính" hiển thị trên bảng tóm tắt — biệt thự/liền kề
-// dùng DT Đất/DTXD, các nguồn kiểu căn hộ dùng DT Tim tường/DT Thông thủy.
-const AREA_PRIORITY = ['dt đất', 'dtxd', 'dt tim tường', 'dt thông thủy'];
-
-/** Cột tóm tắt cho bảng chính — subset của `columns`, giữ nguyên text gốc,
- * chỉ những cột THẬT SỰ tồn tại trong Sheet (không invent field mới). */
-export function pickSummaryColumns(columns: string[]): string[] {
-  const norm = columns.map(normHeader);
-  const summary: string[] = [];
-
-  const pickFirst = (matcher: (n: string) => boolean) => {
-    const idx = norm.findIndex(matcher);
-    if (idx >= 0 && !summary.includes(columns[idx])) summary.push(columns[idx]);
-  };
-
-  pickFirst(n => n === 'đặc điểm');
-  pickFirst(n => n === 'loại hình' || n === 'loại căn');
-
-  let areaHeader: string | undefined;
-  for (const p of AREA_PRIORITY) {
-    const idx = norm.indexOf(p);
-    if (idx >= 0) { areaHeader = columns[idx]; break; }
-  }
-  if (!areaHeader) {
-    const idx = columns.findIndex(c => isAreaColumn(c));
-    if (idx >= 0) areaHeader = columns[idx];
-  }
-  if (areaHeader) summary.push(areaHeader);
-
-  pickFirst(n => n.includes('giá'));
-  pickFirst(n => n === 'hướng');
-  pickFirst(n => n === 'phân khu');
-
-  return summary;
+/** Chia `columns` (đúng thứ tự Sheet) làm đôi: nửa đầu ở lại bảng chính
+ * (giữ NGUYÊN thứ tự, không sắp lại), nửa sau chuyển vào popup chi tiết.
+ * Số lẻ → nửa đầu nhận thêm 1 cột (ceil), khớp ví dụ thật: 17 cột → bảng
+ * giữ 9 cột đầu (STT...Giá gồm VAT+KPBT), popup nhận 8 cột sau (TTC...Hướng). */
+export function splitStackingListColumns(columns: string[]): { tableColumns: string[]; detailColumns: string[] } {
+  const half = Math.ceil(columns.length / 2);
+  return { tableColumns: columns.slice(0, half), detailColumns: columns.slice(half) };
 }
 
 export type StackingListDetailGroup = 'gia' | 'financial' | 'misc' | 'basic';

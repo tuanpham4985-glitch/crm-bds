@@ -10,7 +10,7 @@ import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow }
 import { useAuth } from '@/hooks/useAuth';
 import {
   filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
-  pickSummaryColumns, groupStackingListColumnsForDetail,
+  splitStackingListColumns, groupStackingListColumnsForDetail,
 } from '@/lib/stacking-list';
 
 // Mirror của extractSheetId() phía server (google-sheets.ts) — Admin có thể
@@ -1001,10 +1001,11 @@ export default function StackingPage() {
     [filteredListRows, listPageSafe]
   );
 
-  // Bảng chính chỉ hiện cột tóm tắt — toàn bộ cột (kể cả TTC/TTS/Vay.../Link
-  // PTG/Quỹ/Giỏ bank) vẫn còn nguyên trong listColumns/row.values, hiện đầy
-  // đủ trong popup chi tiết (ListUnitDetailModal) khi click Mã căn.
-  const summaryColumns = useMemo(() => pickSummaryColumns(listColumns), [listColumns]);
+  // Bảng chính chỉ hiện NỬA ĐẦU cột (đúng thứ tự Sheet) — nửa sau (TTC/TTS/
+  // Vay.../Link PTG/Hướng...) vẫn còn nguyên trong listColumns/row.values,
+  // chuyển hẳn vào popup chi tiết (ListUnitDetailModal) khi click Mã căn.
+  const { tableColumns, detailColumns } = useMemo(() => splitStackingListColumns(listColumns), [listColumns]);
+  const maCanInTable = useMemo(() => tableColumns.some(c => c.trim().toLowerCase() === 'mã căn'), [tableColumns]);
 
   // ── Crosshair highlight ───────────────────────────────────────────────────
   // Hover có ưu tiên hơn click — khi chuột rời bảng thì fallback về selectedUnit
@@ -1123,8 +1124,13 @@ export default function StackingPage() {
                   <thead>
                     <tr style={{ background: 'var(--bg-secondary, #f9fafb)' }}>
                       <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }} />
-                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>Mã căn</th>
-                      {summaryColumns.map(col => (
+                      {/* Fallback — chỉ thêm cột Mã căn riêng nếu nguồn này (hiếm)
+                          không có "Mã căn" trong nửa cột đầu; bình thường "Mã căn"
+                          đã nằm sẵn trong tableColumns, giữ ĐÚNG vị trí như Sheet gốc. */}
+                      {!maCanInTable && (
+                        <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>Mã căn</th>
+                      )}
+                      {tableColumns.map(col => (
                         <th key={col} style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>{col}</th>
                       ))}
                     </tr>
@@ -1153,16 +1159,33 @@ export default function StackingPage() {
                               )}
                             </div>
                           </td>
-                          <td style={{ padding: '6px 10px' }}>
-                            <button onClick={() => setSelectedListRow(row)} style={{
-                              background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
-                              color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline',
-                              fontSize: 'inherit', fontFamily: 'inherit',
-                            }}>
-                              {row.maCan}
-                            </button>
-                          </td>
-                          {summaryColumns.map(col => {
+                          {!maCanInTable && (
+                            <td style={{ padding: '6px 10px' }}>
+                              <button onClick={() => setSelectedListRow(row)} style={{
+                                background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
+                                color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline',
+                                fontSize: 'inherit', fontFamily: 'inherit',
+                              }}>
+                                {row.maCan}
+                              </button>
+                            </td>
+                          )}
+                          {tableColumns.map(col => {
+                            // Cột "Mã căn" giữ ĐÚNG vị trí như Sheet gốc, chỉ đổi thành
+                            // clickable để mở popup chi tiết — không thêm/xoá cột nào.
+                            if (col.trim().toLowerCase() === 'mã căn') {
+                              return (
+                                <td key={col} style={{ padding: '6px 10px' }}>
+                                  <button onClick={() => setSelectedListRow(row)} style={{
+                                    background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
+                                    color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline',
+                                    fontSize: 'inherit', fontFamily: 'inherit',
+                                  }}>
+                                    {row.maCan}
+                                  </button>
+                                </td>
+                              );
+                            }
                             const v = row.values[col];
                             const link = row.hyperlinks?.[col];
                             const display = v === null ? '—' : typeof v === 'number' ? v.toLocaleString('vi-VN') : v;
@@ -1212,7 +1235,7 @@ export default function StackingPage() {
         {selectedListRow && (
           <ListUnitDetailModal
             row={selectedListRow}
-            columns={listColumns}
+            columns={detailColumns}
             onClose={() => setSelectedListRow(null)}
           />
         )}
