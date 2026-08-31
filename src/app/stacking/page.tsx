@@ -63,11 +63,13 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   onClose: () => void;
   onAdd: (c: StackingConfig) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string }) => void;
+  onUpdate: (id: string, updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string; visible_columns?: string[] }) => void;
 }) {
-  const [form, setForm] = useState<{ ten_hien_thi: string; sheet_id: string; loai: 'grid' | 'list'; sheet_tab: string }>({
-    ten_hien_thi: '', sheet_id: '', loai: 'grid', sheet_tab: '',
+  const [form, setForm] = useState<{ ten_hien_thi: string; sheet_id: string; loai: 'grid' | 'list'; sheet_tab: string; visible_columns: string[] }>({
+    ten_hien_thi: '', sheet_id: '', loai: 'grid', sheet_tab: '', visible_columns: [],
   });
+  const [tabColumns, setTabColumns] = useState<string[]>([]); // cột thật của tab đã chọn (bước "chọn cột hiển thị")
+  const [loadingColumns, setLoadingColumns] = useState(false);
   const [probeResult, setProbeResult] = useState<{
     ok: boolean; msg: string;
     sheets?: StackingSheetMeta[]; allTabs?: string[];
@@ -79,6 +81,9 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   const [editCode, setEditCode]   = useState('');
   const [editName, setEditName]   = useState('');
   const [editTab, setEditTab]     = useState('');
+  const [editColumns, setEditColumns] = useState<string[]>([]); // cột thật của tab đang sửa
+  const [editVisibleColumns, setEditVisibleColumns] = useState<string[]>([]);
+  const [loadingEditColumns, setLoadingEditColumns] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [saEmail, setSaEmail]   = useState('');
   const [copied, setCopied]     = useState(false);
@@ -114,9 +119,34 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
     }
   }
 
+  // Tải danh sách cột THẬT của tab vừa chọn — bước "chọn cột hiển thị", mặc
+  // định check hết (không cắt bớt gì cho tới khi Admin tự bỏ chọn).
+  async function handleSelectTab(tab: string) {
+    setForm(f => ({ ...f, sheet_tab: tab, visible_columns: [] }));
+    setTabColumns([]);
+    if (!tab) return;
+    setLoadingColumns(true);
+    try {
+      const r = await fetch(`/api/stacking?mode=list-columns&sheet_id=${encodeURIComponent(form.sheet_id)}&tab=${encodeURIComponent(tab)}`);
+      const d = await r.json();
+      if (d.success) {
+        setTabColumns(d.data);
+        setForm(f => ({ ...f, visible_columns: d.data }));
+      }
+    } catch { /* giữ tabColumns rỗng — canAdd sẽ chặn submit cho tới khi thử lại */ }
+    finally { setLoadingColumns(false); }
+  }
+
+  function toggleColumn(col: string, allColumns: string[], current: string[], setter: (next: string[]) => void) {
+    const included = current.includes(col);
+    const next = included ? current.filter(c => c !== col) : [...current, col];
+    // Luôn sắp lại theo ĐÚNG thứ tự cột thật trong Sheet — không phụ thuộc thứ tự bấm chọn.
+    setter(allColumns.filter(c => next.includes(c)));
+  }
+
   async function handleAdd() {
     if (!form.ten_hien_thi.trim() || !form.sheet_id.trim()) return;
-    if (form.loai === 'list' && !form.sheet_tab) return;
+    if (form.loai === 'list' && (!form.sheet_tab || form.visible_columns.length === 0)) return;
     setSaving(true);
     try {
       const r = await fetch('/api/stacking/configs', {
@@ -126,20 +156,44 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
       const d = await r.json();
       if (d.success) {
         onAdd(d.data);
-        setForm({ ten_hien_thi: '', sheet_id: '', loai: 'grid', sheet_tab: '' });
+        setForm({ ten_hien_thi: '', sheet_id: '', loai: 'grid', sheet_tab: '', visible_columns: [] });
+        setTabColumns([]);
         setProbeResult(null);
       } else { alert(d.error || 'Lỗi thêm nguồn'); }
     } finally { setSaving(false); }
   }
 
+  // Mở panel sửa cho 1 nguồn Danh sách — tải sẵn cột thật của tab đang gán để
+  // Admin có thể chọn lại (VD sau khi Sheet gốc thêm/bớt cột).
+  async function openEditColumns(c: StackingConfig) {
+    if (!c.sheet_tab) return;
+    setLoadingEditColumns(true);
+    setEditColumns([]);
+    try {
+      const r = await fetch(`/api/stacking?mode=list-columns&sheet_id=${encodeURIComponent(c.sheet_id)}&tab=${encodeURIComponent(c.sheet_tab)}`);
+      const d = await r.json();
+      if (d.success) {
+        setEditColumns(d.data);
+        // Giữ đúng lựa chọn hiện có của config (nếu có), lọc theo cột THẬT vừa
+        // tải (phòng trường hợp Sheet đã đổi tên/xóa bớt cột từ lúc tạo nguồn).
+        const existing = c.visible_columns && c.visible_columns.length > 0 ? c.visible_columns : d.data;
+        setEditVisibleColumns((d.data as string[]).filter(col => existing.includes(col)));
+      }
+    } catch { /* giữ editColumns rỗng — Admin có thể bấm lại "Sửa" để thử tải lại */ }
+    finally { setLoadingEditColumns(false); }
+  }
+
   async function handleUpdate(id: string) {
-    if (!editName.trim() && !editCode.trim() && !editTab.trim()) return;
+    const config = configs.find(c => c.id === id);
+    if (!editName.trim() && !editCode.trim() && !editTab.trim() && editColumns.length === 0) return;
+    if (config?.loai === 'list' && editColumns.length > 0 && editVisibleColumns.length === 0) return; // không cho lưu "0 cột"
     setUpdatingId(id);
     try {
-      const updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string } = {};
+      const updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string; visible_columns?: string[] } = {};
       if (editCode.trim()) updates.project_code = editCode.trim().toUpperCase();
       if (editName.trim()) updates.ten_hien_thi = editName.trim();
       if (editTab.trim()) updates.sheet_tab = editTab.trim();
+      if (editColumns.length > 0) updates.visible_columns = editVisibleColumns;
       const r = await fetch('/api/stacking/configs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -166,7 +220,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
-  const canAdd = Boolean(form.ten_hien_thi.trim() && form.sheet_id.trim() && (form.loai !== 'list' || form.sheet_tab));
+  const canAdd = Boolean(form.ten_hien_thi.trim() && form.sheet_id.trim() && (form.loai !== 'list' || (form.sheet_tab && form.visible_columns.length > 0)));
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end' }} onClick={onClose}>
@@ -264,12 +318,53 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                   </p>
                   <select
                     value={form.sheet_tab}
-                    onChange={e => setForm(f => ({ ...f, sheet_tab: e.target.value }))}
+                    onChange={e => handleSelectTab(e.target.value)}
                     style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 10px' }}
                   >
                     <option value="">— Chọn tab —</option>
                     {probeResult.allTabs.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
+
+                  {loadingColumns && (
+                    <p style={{ fontSize: '0.72rem', color: '#166534', marginTop: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Đang tải danh sách cột...
+                    </p>
+                  )}
+
+                  {/* Chọn cột hiển thị — mặc định check hết, Admin tự bỏ bớt
+                      cột không cần (VD chỉ giữ Dãy/Mã căn/Giá..., bỏ các cột
+                      phân rã VAT/KPBT chi tiết). */}
+                  {!loadingColumns && tabColumns.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <p style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 600, margin: 0 }}>
+                          Chọn cột hiển thị ({form.visible_columns.length}/{tabColumns.length})
+                        </p>
+                        <button
+                          onClick={() => setForm(f => ({ ...f, visible_columns: f.visible_columns.length === tabColumns.length ? [] : tabColumns }))}
+                          style={{ fontSize: '0.68rem', color: '#166534', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                          {form.visible_columns.length === tabColumns.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 160, overflowY: 'auto', padding: 2 }}>
+                        {tabColumns.map(col => (
+                          <label key={col} style={{
+                            display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', padding: '2px 7px', borderRadius: 4,
+                            border: '1px solid #86efac', cursor: 'pointer',
+                            background: form.visible_columns.includes(col) ? '#dcfce7' : '#fff', color: '#166534',
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={form.visible_columns.includes(col)}
+                              onChange={() => toggleColumn(col, tabColumns, form.visible_columns, next => setForm(f => ({ ...f, visible_columns: next })))}
+                              style={{ margin: 0 }}
+                            />
+                            {col}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {/* Chế độ Chung cư: show tất cả tab khi không tìm thấy tower nào — giúp hiểu file có gì */}
@@ -335,6 +430,8 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                         setEditCode(c.project_code ?? '');
                         setEditName(c.ten_hien_thi);
                         setEditTab(c.sheet_tab ?? '');
+                        setEditColumns([]); setEditVisibleColumns([]);
+                        if (c.loai === 'list') openEditColumns(c);
                       }}
                       title="Sửa thông tin"
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: editingId === c.id ? 'var(--primary)' : 'var(--text-muted)', flexShrink: 0, fontSize: '0.7rem', fontWeight: 600 }}>
@@ -388,12 +485,54 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                         )}
                         <button
                           onClick={() => handleUpdate(c.id)}
-                          disabled={updatingId === c.id || (!editName.trim() && !editCode.trim() && !editTab.trim())}
-                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: (!editName.trim() && !editCode.trim() && !editTab.trim()) ? 0.6 : 1 }}>
+                          disabled={updatingId === c.id || (!editName.trim() && !editCode.trim() && !editTab.trim() && editColumns.length === 0) || (c.loai === 'list' && editColumns.length > 0 && editVisibleColumns.length === 0)}
+                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: (!editName.trim() && !editCode.trim() && !editTab.trim() && editColumns.length === 0) ? 0.6 : 1 }}>
                           {updatingId === c.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : 'Lưu'}
                         </button>
                         <button onClick={() => setEditingId(null)} style={{ padding: '6px 10px', borderRadius: 8, fontSize: '0.8rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}>Hủy</button>
                       </div>
+
+                      {/* Chọn lại cột hiển thị — chỉ chế độ Danh sách */}
+                      {c.loai === 'list' && (
+                        <div style={{ marginTop: 10 }}>
+                          {loadingEditColumns && (
+                            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Đang tải danh sách cột...
+                            </p>
+                          )}
+                          {!loadingEditColumns && editColumns.length > 0 && (
+                            <>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, margin: 0 }}>
+                                  Cột hiển thị ({editVisibleColumns.length}/{editColumns.length})
+                                </p>
+                                <button
+                                  onClick={() => setEditVisibleColumns(v => v.length === editColumns.length ? [] : editColumns)}
+                                  style={{ fontSize: '0.68rem', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                                  {editVisibleColumns.length === editColumns.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                                </button>
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 160, overflowY: 'auto', padding: 2 }}>
+                                {editColumns.map(col => (
+                                  <label key={col} style={{
+                                    display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', padding: '2px 7px', borderRadius: 4,
+                                    border: '1px solid var(--border)', cursor: 'pointer',
+                                    background: editVisibleColumns.includes(col) ? 'var(--bg-card)' : 'transparent', color: 'var(--text-body)',
+                                  }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={editVisibleColumns.includes(col)}
+                                      onChange={() => toggleColumn(col, editColumns, editVisibleColumns, setEditVisibleColumns)}
+                                      style={{ margin: 0 }}
+                                    />
+                                    {col}
+                                  </label>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -560,6 +699,9 @@ export default function StackingPage() {
     setLoadingList(true); setListError(''); setListSearch('');
     const params = new URLSearchParams({ mode: 'list', sheet_id: selectedConfig.sheet_id, tab: selectedConfig.sheet_tab });
     if (selectedConfig.project_code) params.set('project_code', selectedConfig.project_code);
+    if (selectedConfig.visible_columns && selectedConfig.visible_columns.length > 0) {
+      params.set('columns', selectedConfig.visible_columns.join('|'));
+    }
     fetch(`/api/stacking?${params}`)
       .then(r => r.json())
       .then(d => {
@@ -792,21 +934,32 @@ export default function StackingPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredListRows.map((row, i) => (
-                      <tr key={row.maCan + i} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '6px 10px', position: 'sticky', left: 0, background: 'var(--bg-card)' }} title={STATUS_LABEL[row.trangThai]}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block' }} />
-                        </td>
-                        {listColumns.map(col => {
-                          const v = row.values[col];
-                          return (
-                            <td key={col} style={{ padding: '6px 10px', color: 'var(--text-body)' }}>
-                              {v === null ? '—' : typeof v === 'number' ? v.toLocaleString('vi-VN') : v}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                    {filteredListRows.map((row, i) => {
+                      // Màu nền dòng lấy TỪ CHÍNH Sheet gốc (Sale đánh dấu thủ
+                      // công, VD "Đã bán" đỏ) — CHỈ để tham khảo trực quan, KHÔNG
+                      // phải authority trạng thái (chấm màu Còn hàng/Đang xem/Đã
+                      // bán bên trái vẫn tính từ CRM Pipeline, độc lập hoàn toàn).
+                      const rowBg = row.rowColor ? hexToRgba(row.rowColor, 0.22) : undefined;
+                      return (
+                        <tr key={row.maCan + i} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
+                          <td style={{ padding: '6px 10px', position: 'sticky', left: 0, background: rowBg ?? 'var(--bg-card)' }} title={STATUS_LABEL[row.trangThai]}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block' }} />
+                          </td>
+                          {listColumns.map(col => {
+                            const v = row.values[col];
+                            const link = row.hyperlinks?.[col];
+                            const display = v === null ? '—' : typeof v === 'number' ? v.toLocaleString('vi-VN') : v;
+                            return (
+                              <td key={col} style={{ padding: '6px 10px', color: 'var(--text-body)' }}>
+                                {link
+                                  ? <a href={link} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>{display}</a>
+                                  : display}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -2441,7 +2441,7 @@ function extractSheetId(input: string): string {
 
 // --- STACKING_CONFIG: stored as a tab in the main CRM spreadsheet ---
 
-const STACKING_CONFIG_HEADERS = ['id', 'ten_hien_thi', 'sheet_id', 'project_code', 'trang_thai', 'ngay_tao', 'loai', 'sheet_tab'];
+const STACKING_CONFIG_HEADERS = ['id', 'ten_hien_thi', 'sheet_id', 'project_code', 'trang_thai', 'ngay_tao', 'loai', 'sheet_tab', 'visible_columns'];
 
 async function getOrCreateStackingConfigSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
   let sheet = doc.sheetsByTitle['STACKING_CONFIG'];
@@ -2450,13 +2450,26 @@ async function getOrCreateStackingConfigSheet(doc: GoogleSpreadsheet): Promise<G
   } else {
     await sheet.loadHeaderRow();
     // Sheet đã tồn tại từ trước milestone "Danh sách" (biệt thự/liền kề) —
-    // thêm 2 cột mới nếu thiếu, KHÔNG đụng dữ liệu/cột cũ (mirror pattern
+    // thêm cột mới nếu thiếu, KHÔNG đụng dữ liệu/cột cũ (mirror pattern
     // missingKHCols của getKhachHang()).
     const h = sheet.headerValues;
-    const missingCols = ['loai', 'sheet_tab'].filter(c => !h.includes(c));
+    const missingCols = ['loai', 'sheet_tab', 'visible_columns'].filter(c => !h.includes(c));
     if (missingCols.length > 0) await sheet.setHeaderRow([...h, ...missingCols]);
   }
   return sheet;
+}
+
+// visible_columns lưu dạng JSON array trong 1 cell (VD '["STT","Dãy","Mã căn"]')
+// — parse phòng thủ, rỗng/lỗi -> [] (nghĩa là "hiện tất cả cột", xem StackingConfig.visible_columns).
+function parseVisibleColumns(raw: unknown): string[] {
+  const s = str(raw);
+  if (!s) return [];
+  try {
+    const parsed = JSON.parse(s);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function getStackingConfigs(): Promise<import('./types').StackingConfig[]> {
@@ -2477,13 +2490,17 @@ export async function getStackingConfigs(): Promise<import('./types').StackingCo
         // mặc định 'grid' để giữ NGUYÊN hành vi lưới tầng hiện tại.
         loai:          (str(v['loai']) || 'grid') as 'grid' | 'list',
         sheet_tab:     str(v['sheet_tab']),
+        visible_columns: parseVisibleColumns(v['visible_columns']),
       };
     })
     .filter(c => c.id && c.sheet_id);
 }
 
 export async function addStackingConfig(
-  payload: { ten_hien_thi: string; sheet_id: string; project_code?: string; loai?: 'grid' | 'list'; sheet_tab?: string }
+  payload: {
+    ten_hien_thi: string; sheet_id: string; project_code?: string;
+    loai?: 'grid' | 'list'; sheet_tab?: string; visible_columns?: string[];
+  }
 ): Promise<import('./types').StackingConfig> {
   const doc = await getDoc();
   const sheet = await getOrCreateStackingConfigSheet(doc);
@@ -2497,14 +2514,15 @@ export async function addStackingConfig(
     ngay_tao:      new Date().toISOString(),
     loai:          (payload.loai === 'list' ? 'list' : 'grid') as 'grid' | 'list',
     sheet_tab:     payload.sheet_tab?.trim() || '',
+    visible_columns: payload.visible_columns && payload.visible_columns.length > 0 ? JSON.stringify(payload.visible_columns) : '',
   };
   await sheet.addRow(newRow);
-  return { ...newRow, trang_thai: 'active' };
+  return { ...newRow, trang_thai: 'active', visible_columns: payload.visible_columns ?? [] };
 }
 
 export async function updateStackingConfig(
   id: string,
-  updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string }
+  updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string; visible_columns?: string[] }
 ): Promise<boolean> {
   const doc = await getDoc();
   const sheet = await getOrCreateStackingConfigSheet(doc);
@@ -2514,6 +2532,7 @@ export async function updateStackingConfig(
   if (updates.project_code !== undefined) row.set('project_code', updates.project_code.trim().toUpperCase());
   if (updates.ten_hien_thi !== undefined && updates.ten_hien_thi.trim()) row.set('ten_hien_thi', updates.ten_hien_thi.trim());
   if (updates.sheet_tab !== undefined && updates.sheet_tab.trim()) row.set('sheet_tab', updates.sheet_tab.trim());
+  if (updates.visible_columns !== undefined) row.set('visible_columns', updates.visible_columns.length > 0 ? JSON.stringify(updates.visible_columns) : '');
   await row.save();
   return true;
 }
@@ -3088,10 +3107,7 @@ async function getMauDataColors(
 // khớp "Mã căn" (dùng lại normHeader() đã có, cùng logic detectListCols()).
 const HEADER_SCAN_ROWS = 10;
 
-export async function getStackingListRows(
-  sheetId: string,
-  tabName: string,
-): Promise<{ columns: string[]; rows: { maCan: string; values: Record<string, string | number | null> }[] }> {
+async function loadListTabAndFindHeader(sheetId: string, tabName: string) {
   const doc = await getDocBySheetId(sheetId);
   const sheet = doc.sheetsByTitle[tabName];
   if (!sheet) {
@@ -3125,26 +3141,81 @@ export async function getStackingListRows(
     );
   }
 
-  // Mọi cột có tiêu đề không rỗng trên header row → giữ NGUYÊN text gốc làm
-  // cả key lẫn label hiển thị (không ánh xạ sang field cứng nào).
-  const columnDefs: { colIdx: number; header: string }[] = [];
+  return { sheet, rowLimit, colLimit, headerRowIdx, maCanColIdx };
+}
+
+/** Chỉ đọc header row (không đọc dữ liệu) — dùng cho bước "chọn cột hiển thị"
+ * lúc Admin thêm/sửa nguồn Danh sách, tách riêng khỏi getStackingListRows để
+ * không phải quét hết mọi dòng dữ liệu chỉ để lấy tên cột. */
+export async function getStackingListColumns(sheetId: string, tabName: string): Promise<string[]> {
+  const { sheet, colLimit, headerRowIdx } = await loadListTabAndFindHeader(sheetId, tabName);
+  const columns: string[] = [];
   for (let c = 0; c < colLimit; c++) {
     const header = str(sheet.getCell(headerRowIdx, c).value).trim();
-    if (header) columnDefs.push({ colIdx: c, header });
+    if (header) columns.push(header);
   }
+  return columns;
+}
 
-  const rows: { maCan: string; values: Record<string, string | number | null> }[] = [];
+// Sheets API trả màu 0..1 (float) — quy đổi sang hex "#rrggbb". Trắng/không có
+// format -> null (không phải màu đánh dấu, không tô gì trên UI).
+function backgroundColorToHex(bg: { red?: number; green?: number; blue?: number } | undefined): string | null {
+  if (!bg) return null;
+  const r = Math.round((bg.red ?? 0) * 255);
+  const g = Math.round((bg.green ?? 0) * 255);
+  const b = Math.round((bg.blue ?? 0) * 255);
+  if (r === 255 && g === 255 && b === 255) return null; // trắng = không đánh dấu
+  const hex = (n: number) => n.toString(16).padStart(2, '0');
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+export async function getStackingListRows(
+  sheetId: string,
+  tabName: string,
+  visibleColumns?: readonly string[],
+): Promise<{ columns: string[]; rows: import('./types').StackingListRow[] }> {
+  const { sheet, rowLimit, colLimit, headerRowIdx, maCanColIdx } = await loadListTabAndFindHeader(sheetId, tabName);
+
+  // Mọi cột có tiêu đề không rỗng trên header row → giữ NGUYÊN text gốc làm
+  // cả key lẫn label hiển thị (không ánh xạ sang field cứng nào). Nếu Admin
+  // đã chọn visibleColumns, chỉ giữ đúng các cột đó, ĐÚNG thứ tự đã chọn —
+  // cột nào không còn tồn tại trong Sheet (VD đổi tên header) bị bỏ qua âm
+  // thầm thay vì lỗi, để 1 header đổi tên không sập cả bảng.
+  const allColumnDefs: { colIdx: number; header: string }[] = [];
+  for (let c = 0; c < colLimit; c++) {
+    const header = str(sheet.getCell(headerRowIdx, c).value).trim();
+    if (header) allColumnDefs.push({ colIdx: c, header });
+  }
+  const columnDefs = visibleColumns && visibleColumns.length > 0
+    ? visibleColumns
+        .map(name => allColumnDefs.find(c => c.header === name))
+        .filter((c): c is { colIdx: number; header: string } => Boolean(c))
+    : allColumnDefs;
+
+  const rows: import('./types').StackingListRow[] = [];
   for (let r = headerRowIdx + 1; r < rowLimit; r++) {
     const maCan = str(sheet.getCell(r, maCanColIdx).value).trim();
     if (!maCan) continue; // dòng trống hoặc dòng section-note khác — bỏ qua, không suy diễn
+
     const values: Record<string, string | number | null> = {};
+    let hyperlinks: Record<string, string> | undefined;
     for (const { colIdx, header } of columnDefs) {
-      const raw = sheet.getCell(r, colIdx).value;
+      const cell = sheet.getCell(r, colIdx);
+      const raw = cell.value;
       values[header] = raw === null || raw === undefined || raw === ''
         ? null
         : (typeof raw === 'number' ? raw : str(raw));
+      // Hyperlink thật gắn trên cell (Insert > Link trong Sheets, VD cột LINK
+      // PTG trỏ Drive) — CHỈ set khi cell đó thật sự có, không suy đoán từ text.
+      if (cell.hyperlink) (hyperlinks ??= {})[header] = cell.hyperlink;
     }
-    rows.push({ maCan, values });
+
+    // Màu dòng lấy đại diện từ cell "Mã căn" (luôn có dữ liệu thật, khác các ô
+    // trống có thể giữ nguyên nền mặc định) — CHỈ để hiển thị lại đúng màu Sale
+    // đã đánh dấu thủ công, KHÔNG phải authority trạng thái (xem trangThai).
+    const rowColor = backgroundColorToHex(sheet.getCell(r, maCanColIdx).effectiveFormat?.backgroundColor) ?? undefined;
+
+    rows.push({ maCan, values, hyperlinks, rowColor, trangThai: 'con_hang' });
   }
 
   return { columns: columnDefs.map(c => c.header), rows };

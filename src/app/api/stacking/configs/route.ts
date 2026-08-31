@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { ten_hien_thi, sheet_id, project_code, loai, sheet_tab } = body;
+    const { ten_hien_thi, sheet_id, project_code, loai, sheet_tab, visible_columns } = body;
 
     if (!ten_hien_thi || !sheet_id) {
       return NextResponse.json(
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const created = await addStackingConfig({ ten_hien_thi, sheet_id, project_code, loai, sheet_tab });
+    const created = await addStackingConfig({ ten_hien_thi, sheet_id, project_code, loai, sheet_tab, visible_columns });
     return NextResponse.json({ success: true, data: created });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -44,14 +44,14 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, project_code, ten_hien_thi, sheet_tab } = await req.json();
+    const { id, project_code, ten_hien_thi, sheet_tab, visible_columns } = await req.json();
     if (!id) {
       return NextResponse.json({ success: false, error: 'Thiếu id' }, { status: 400 });
     }
-    if (!project_code && !ten_hien_thi && !sheet_tab) {
-      return NextResponse.json({ success: false, error: 'Cần ít nhất project_code, ten_hien_thi hoặc sheet_tab' }, { status: 400 });
+    if (!project_code && !ten_hien_thi && !sheet_tab && visible_columns === undefined) {
+      return NextResponse.json({ success: false, error: 'Cần ít nhất project_code, ten_hien_thi, sheet_tab hoặc visible_columns' }, { status: 400 });
     }
-    const ok = await updateStackingConfig(id, { project_code, ten_hien_thi, sheet_tab });
+    const ok = await updateStackingConfig(id, { project_code, ten_hien_thi, sheet_tab, visible_columns });
     return NextResponse.json({ success: ok });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

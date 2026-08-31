@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStackingSheetList, getStackingUnits, getStackingListRows, getPipeline, getDuAn, probeStackingSheet } from '@/lib/data-access';
+import { getStackingSheetList, getStackingUnits, getStackingListRows, getStackingListColumns, getPipeline, getDuAn, probeStackingSheet } from '@/lib/data-access';
 import type { DuAn, Pipeline } from '@/lib/types';
 
 // Trạng thái Còn hàng/Đang xem/Đã bán LUÔN đến từ CRM Pipeline (match theo
@@ -45,6 +45,7 @@ function stageToTrangThai(stage: string | undefined): 'con_hang' | 'dang_xem' | 
 // GET /api/stacking?config_id=...&sheets=1                     — list towers từ 1 config
 // GET /api/stacking?sheet_id=...&project=...&tower=...         — unit data (chế độ Lưới)
 // GET /api/stacking?mode=list&sheet_id=...&tab=...             — unit data (chế độ Danh sách, biệt thự/liền kề)
+// GET /api/stacking?mode=list-columns&sheet_id=...&tab=...     — chỉ lấy tên cột (bước "chọn cột hiển thị" lúc thêm/sửa nguồn)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
@@ -71,14 +72,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: sheets });
     }
 
+    // --- Chỉ lấy tên cột (bước "chọn cột hiển thị" khi thêm/sửa nguồn) ---
+    if (searchParams.get('mode') === 'list-columns') {
+      const tab = searchParams.get('tab')?.trim();
+      if (!tab) return NextResponse.json({ success: false, error: 'Thiếu tab' }, { status: 400 });
+      const columns = await getStackingListColumns(sheetId, tab);
+      return NextResponse.json({ success: true, data: columns });
+    }
+
     // --- Unit data (chế độ Danh sách — biệt thự/liền kề) ---
     if (searchParams.get('mode') === 'list') {
       const tab = searchParams.get('tab')?.trim();
       if (!tab) return NextResponse.json({ success: false, error: 'Thiếu tab' }, { status: 400 });
       const projectCode = searchParams.get('project_code')?.trim() || undefined;
+      // Cột hiển thị Admin đã chọn lúc thêm/sửa nguồn — join bằng "|" (header
+      // cột không chứa ký tự này) để gói gọn trong 1 query param, rỗng = hiện
+      // tất cả cột (xem StackingConfig.visible_columns).
+      const visibleColumnsParam = searchParams.get('columns');
+      const visibleColumns = visibleColumnsParam ? visibleColumnsParam.split('|').filter(Boolean) : undefined;
 
       const [{ columns, rows }, pipelines, duAnList] = await Promise.all([
-        getStackingListRows(sheetId, tab),
+        getStackingListRows(sheetId, tab, visibleColumns),
         getPipeline(),
         getDuAn(),
       ]);

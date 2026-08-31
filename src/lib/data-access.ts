@@ -73,6 +73,7 @@ export const getManagerForEmployee    = GS.getManagerForEmployee;
 export const getStackingSheetList      = GS.getStackingSheetList;
 export const getStackingUnits          = GS.getStackingUnits;
 export const getStackingListRows       = GS.getStackingListRows;
+export const getStackingListColumns    = GS.getStackingListColumns;
 export const probeStackingSheet        = GS.probeStackingSheet;
 export const getStackingConfigs        = GS.getStackingConfigs;
 export const addStackingConfig         = GS.addStackingConfig;

@@ -565,6 +565,10 @@ export interface StackingConfig {
   /** Tên tab chứa bảng hàng thật — bắt buộc khi loai === 'list' (1 file có thể
    * có nhiều tab khác không phải bảng hàng, VD "Giỏ Bank", "Danh sách cọc"). */
   sheet_tab?: string;
+  /** Danh sách tên cột (đúng text header thật của Sheet) muốn hiển thị, ĐÚNG
+   * thứ tự — chỉ áp dụng khi loai === 'list'. Rỗng/undefined = hiện TẤT CẢ cột
+   * (backward compat cho config tạo trước khi có tính năng chọn cột). */
+  visible_columns?: string[];
 }
 
 /** Chế độ 'list' (StackingConfig.loai === 'list') — 1 dòng = 1 căn, cột động
@@ -572,6 +576,14 @@ export interface StackingConfig {
 export interface StackingListRow {
   maCan: string;
   values: Record<string, string | number | null>;
+  /** header cột -> URL, CHỈ khi cell đó thật sự có hyperlink trong Sheet gốc
+   * (VD cột "LINK PTG" trỏ tới Phiếu tính giá trên Drive). */
+  hyperlinks?: Record<string, string>;
+  /** Màu nền dòng lấy TỪ CHÍNH Sheet gốc (đại diện qua cell "Mã căn"), dạng
+   * "#rrggbb" — CHỈ để hiển thị lại đúng màu Sale đã đánh dấu thủ công trong
+   * Sheet, KHÔNG phải authority trạng thái (trangThai bên dưới mới là authority
+   * thật, lấy từ CRM Pipeline). undefined nếu ô không có màu nền/màu trắng mặc định. */
+  rowColor?: string;
   trangThai: 'con_hang' | 'dang_xem' | 'da_ban';
 }
 
