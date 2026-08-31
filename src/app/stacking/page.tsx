@@ -43,6 +43,10 @@ function typeColor(loaiCan: string) {
 const STATUS_LABEL = { con_hang: 'Còn hàng', dang_xem: 'Đang xem', da_ban: 'Đã bán' };
 const STATUS_COLOR = { con_hang: '#22c55e', dang_xem: '#f59e0b', da_ban: '#ef4444' };
 
+// Chế độ Danh sách (biệt thự/liền kề) — cột đóng vai trò dropdown "Dự án" của
+// chế độ Lưới, nếu Sheet có cột này (VD "IVY PARK" / "GLOBAL PARK" của VHSGP).
+const GROUP_FILTER_COLUMN = 'Phân khu';
+
 function naturalCompare(a: string, b: string) {
   return a.localeCompare(b, 'vi', { numeric: true, sensitivity: 'base' });
 }
@@ -649,6 +653,7 @@ export default function StackingPage() {
   const [listError, setListError]           = useState('');
   const [loadingList, setLoadingList]       = useState(false);
   const [listSearch, setListSearch]         = useState('');
+  const [listGroupFilter, setListGroupFilter] = useState('');
   // Tracks which configId has finished loading towers — prevents stale fetchUnits
   // firing with old project/tower when config switches (race condition guard)
   const towersReadyForRef = useRef<string | null>(null);
@@ -710,7 +715,7 @@ export default function StackingPage() {
   const fetchListRows = useCallback(() => {
     if (!selectedConfig || selectedConfig.loai !== 'list') return;
     if (!selectedConfig.sheet_tab) { setListError('Nguồn này chưa gán tab bảng hàng — vào "Quản lý Sheet" → "Sửa" để chọn tab.'); return; }
-    setLoadingList(true); setListError(''); setListSearch('');
+    setLoadingList(true); setListError(''); setListSearch(''); setListGroupFilter('');
     const params = new URLSearchParams({ mode: 'list', sheet_id: selectedConfig.sheet_id, tab: selectedConfig.sheet_tab });
     if (selectedConfig.project_code) params.set('project_code', selectedConfig.project_code);
     if (selectedConfig.visible_columns && selectedConfig.visible_columns.length > 0) {
@@ -837,14 +842,32 @@ export default function StackingPage() {
     return c;
   }, [listRows]);
 
+  // Cột "Phân khu" (nếu Sheet có) đóng vai trò như dropdown Dự án của chế độ
+  // Lưới — lọc theo đúng giá trị thật tìm thấy trong dữ liệu đã tải (không
+  // cần query riêng, listRows đã có sẵn toàn bộ). Không tồn tại cột này trong
+  // Sheet -> listGroupValues rỗng -> dropdown tự ẩn, không ảnh hưởng dự án khác.
+  const listGroupValues = useMemo(() => {
+    if (!listColumns.includes(GROUP_FILTER_COLUMN)) return [];
+    const set = new Set<string>();
+    for (const r of listRows) {
+      const v = r.values[GROUP_FILTER_COLUMN];
+      if (v !== null && v !== undefined && String(v).trim()) set.add(String(v));
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [listRows, listColumns]);
+
   const filteredListRows = useMemo(() => {
+    let rows = listRows;
+    if (listGroupFilter) rows = rows.filter(r => String(r.values[GROUP_FILTER_COLUMN] ?? '') === listGroupFilter);
     const q = listSearch.trim().toLowerCase();
-    if (!q) return listRows;
-    return listRows.filter(r =>
-      r.maCan.toLowerCase().includes(q) ||
-      Object.values(r.values).some(v => v !== null && String(v).toLowerCase().includes(q))
-    );
-  }, [listRows, listSearch]);
+    if (q) {
+      rows = rows.filter(r =>
+        r.maCan.toLowerCase().includes(q) ||
+        Object.values(r.values).some(v => v !== null && String(v).toLowerCase().includes(q))
+      );
+    }
+    return rows;
+  }, [listRows, listSearch, listGroupFilter]);
 
   // ── Crosshair highlight ───────────────────────────────────────────────────
   // Hover có ưu tiên hơn click — khi chuột rời bảng thì fallback về selectedUnit
@@ -875,6 +898,18 @@ export default function StackingPage() {
             </select>
             <ChevronDown size={13} style={chevronStyle} />
           </div>
+
+          {/* Cột "Phân khu" (nếu Sheet có) — dropdown lọc, cùng vai trò với
+              dropdown Dự án của chế độ Lưới (VD "IVY PARK" / "GLOBAL PARK"). */}
+          {listGroupValues.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <select value={listGroupFilter} onChange={e => setListGroupFilter(e.target.value)} style={selectStyle}>
+                <option value="">Tất cả {GROUP_FILTER_COLUMN}</option>
+                {listGroupValues.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <ChevronDown size={13} style={chevronStyle} />
+            </div>
+          )}
 
           <div className="search-wrapper" style={{ position: 'relative', minWidth: 220 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -956,8 +991,18 @@ export default function StackingPage() {
                       const rowBg = row.rowColor ? hexToRgba(row.rowColor, 0.22) : undefined;
                       return (
                         <tr key={row.maCan + i} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
-                          <td style={{ padding: '6px 10px', position: 'sticky', left: 0, background: rowBg ?? 'var(--bg-card)' }} title={STATUS_LABEL[row.trangThai]}>
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block' }} />
+                          <td style={{ padding: '6px 10px', position: 'sticky', left: 0, background: rowBg ?? 'var(--bg-card)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <span title={STATUS_LABEL[row.trangThai]} style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block', flexShrink: 0 }} />
+                              {/* Nhãn "Check Admin" — quy ước màu vàng của Sale trong
+                                  Sheet gốc, KHÁC hẳn chấm trạng thái bên cạnh (đó là
+                                  authority CRM Pipeline, không liên quan tới nhãn này). */}
+                              {row.marker === 'check_admin' && (
+                                <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', whiteSpace: 'nowrap' }}>
+                                  Check Admin
+                                </span>
+                              )}
+                            </div>
                           </td>
                           {listColumns.map(col => {
                             const v = row.values[col];

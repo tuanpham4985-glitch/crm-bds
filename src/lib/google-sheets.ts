@@ -3108,28 +3108,33 @@ async function getMauDataColors(
 const HEADER_SCAN_ROWS = 10;
 
 /**
- * Đọc link kiểu "Smart chip" (Insert > Smart chips > File trong Sheets —
- * KHÁC hẳn hyperlink cổ điển Insert > Link mà GoogleSpreadsheetCell.hyperlink
- * đọc được). Sheets API v4 trả loại link này qua field `chipRuns`, không phải
- * `hyperlink` — thư viện google-spreadsheet KHÔNG expose field này (không có
- * getter tương ứng trên GoogleSpreadsheetCell), nên phải tự gọi REST trực
- * tiếp, cùng pattern với fetchSheetColors() ở trên.
+ * 1 lệnh REST duy nhất lấy 2 thứ mà thư viện google-spreadsheet KHÔNG expose
+ * qua GoogleSpreadsheetCell/GoogleSpreadsheetWorksheet (không có getter
+ * tương ứng nào, kể cả field private _rowMetadata) — cùng pattern raw-REST-
+ * với-fields-tường-minh của fetchSheetColors() ở trên, gộp chung 1 round-trip
+ * thay vì gọi 2 lần riêng:
  *
- * Trả về Map key "{rowIndex}_{colIndex}" -> URL (chỉ những cell thật sự có
- * chip file/folder — richLinkProperties.uri).
+ * 1. chipLinks — link kiểu "Smart chip" (Insert > Smart chips > File trong
+ *    Sheets, KHÁC hyperlink cổ điển Insert > Link mà cell.hyperlink đọc
+ *    được). API trả qua field `chipRuns`, không phải `hyperlink`.
+ * 2. hiddenRows — dòng đang bị ẨN thủ công (chuột phải > Ẩn hàng) hoặc bị bộ
+ *    lọc Sheet ẩn (`hiddenByUser`/`hiddenByFilter` trên rowMetadata) — những
+ *    dòng này Admin/Sale không muốn thấy trong chính Sheet, nên cũng không
+ *    được hiện trên Bảng hàng.
  */
-async function fetchChipHyperlinks(
+async function fetchListTabExtras(
   spreadsheetId: string,
   sheetName: string,
   rowLimit: number,
   colLimit: number,
-): Promise<Map<string, string>> {
-  const linkMap = new Map<string, string>();
+): Promise<{ chipLinks: Map<string, string>; hiddenRows: Set<number> }> {
+  const chipLinks = new Map<string, string>();
+  const hiddenRows = new Set<number>();
   try {
     const jwt = getJWT();
     const tokenResp = await jwt.getAccessToken();
     const token = tokenResp?.token;
-    if (!token) { console.error('[fetchChipHyperlinks] No access token'); return linkMap; }
+    if (!token) { console.error('[fetchListTabExtras] No access token'); return { chipLinks, hiddenRows }; }
 
     const cleanId  = extractSheetId(spreadsheetId);
     const rangeStr = `${sheetName}!A1:${colLetter(colLimit)}${rowLimit}`;
@@ -3138,37 +3143,43 @@ async function fetchChipHyperlinks(
     url.searchParams.set('includeGridData', 'true');
     url.searchParams.set(
       'fields',
-      'sheets(properties(title),data(rowData(values(chipRuns))))',
+      'sheets(properties(title),data(rowMetadata(hiddenByUser,hiddenByFilter),rowData(values(chipRuns))))',
     );
 
     const resp = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
     if (!resp.ok) {
-      console.error(`[fetchChipHyperlinks] HTTP ${resp.status}`, await resp.text());
-      return linkMap;
+      console.error(`[fetchListTabExtras] HTTP ${resp.status}`, await resp.text());
+      return { chipLinks, hiddenRows };
     }
 
     type ChipRun = { chip?: { richLinkProperties?: { uri?: string } } };
     const data = await resp.json() as {
       sheets?: Array<{
         properties?: { title?: string };
-        data?: Array<{ rowData?: Array<{ values?: Array<{ chipRuns?: ChipRun[] }> }> }>;
+        data?: Array<{
+          rowMetadata?: Array<{ hiddenByUser?: boolean; hiddenByFilter?: boolean }>;
+          rowData?: Array<{ values?: Array<{ chipRuns?: ChipRun[] }> }>;
+        }>;
       }>;
     };
 
     const targetSheet = data.sheets?.find(s => s.properties?.title === sheetName);
-    const rowData = targetSheet?.data?.[0]?.rowData;
-    if (!rowData) return linkMap;
+    const gridData = targetSheet?.data?.[0];
+    if (!gridData) return { chipLinks, hiddenRows };
 
-    rowData.forEach((row, rowIdx) => {
+    gridData.rowData?.forEach((row, rowIdx) => {
       row.values?.forEach((cell, colIdx) => {
         const uri = cell.chipRuns?.[0]?.chip?.richLinkProperties?.uri;
-        if (uri) linkMap.set(`${rowIdx}_${colIdx}`, uri);
+        if (uri) chipLinks.set(`${rowIdx}_${colIdx}`, uri);
       });
     });
+    gridData.rowMetadata?.forEach((meta, rowIdx) => {
+      if (meta.hiddenByUser || meta.hiddenByFilter) hiddenRows.add(rowIdx);
+    });
   } catch (e) {
-    console.error('[fetchChipHyperlinks] error:', e);
+    console.error('[fetchListTabExtras] error:', e);
   }
-  return linkMap;
+  return { chipLinks, hiddenRows };
 }
 
 async function loadListTabAndFindHeader(sheetId: string, tabName: string) {
@@ -3225,6 +3236,10 @@ export async function getStackingListColumns(sheetId: string, tabName: string): 
 // dùng, getStackingListRows) — căn này bị loại HẲN khỏi Bảng hàng, không chỉ
 // tô màu tham khảo như các màu đánh dấu khác (VD "Check admin" vàng).
 const SOLD_ROW_COLOR = '#ff0000';
+// Vàng thuần = quy ước "Check Admin" — VẪN hiện trên Bảng hàng (khác đỏ),
+// chỉ gắn thêm marker để UI hiện rõ nhãn "Check Admin" thay vì tô màu chung
+// chung không rõ nghĩa.
+const CHECK_ADMIN_ROW_COLOR = '#ffff00';
 
 // Sheets API trả màu 0..1 (float) — quy đổi sang hex "#rrggbb". Trắng/không có
 // format -> null (không phải màu đánh dấu, không tô gì trên UI).
@@ -3244,10 +3259,9 @@ export async function getStackingListRows(
   visibleColumns?: readonly string[],
 ): Promise<{ columns: string[]; rows: import('./types').StackingListRow[] }> {
   const { sheet, rowLimit, colLimit, headerRowIdx, maCanColIdx } = await loadListTabAndFindHeader(sheetId, tabName);
-  // Link "Smart chip" (Insert > Smart chips > File) — cell.hyperlink của
-  // google-spreadsheet KHÔNG đọc được loại này (khác hyperlink cổ điển Insert
-  // > Link), phải gọi REST riêng (xem fetchChipHyperlinks).
-  const chipLinks = await fetchChipHyperlinks(sheetId, tabName, rowLimit, colLimit);
+  // Link "Smart chip" + dòng đang bị ẨN trong Sheet — cả 2 field này thư viện
+  // google-spreadsheet KHÔNG expose, phải gọi REST riêng (xem fetchListTabExtras).
+  const { chipLinks, hiddenRows } = await fetchListTabExtras(sheetId, tabName, rowLimit, colLimit);
 
   // Mọi cột có tiêu đề không rỗng trên header row → giữ NGUYÊN text gốc làm
   // cả key lẫn label hiển thị (không ánh xạ sang field cứng nào). Nếu Admin
@@ -3272,6 +3286,8 @@ export async function getStackingListRows(
 
   const rows: import('./types').StackingListRow[] = [];
   for (let r = headerRowIdx + 1; r < rowLimit; r++) {
+    if (hiddenRows.has(r)) continue; // dòng bị ẨN thủ công/bởi filter trong Sheet — không hiện lên Bảng hàng
+
     const maCan = str(sheet.getCell(r, maCanColIdx).value).trim();
     if (!maCan) continue; // dòng trống hoặc dòng section-note khác — bỏ qua, không suy diễn
 
@@ -3281,9 +3297,11 @@ export async function getStackingListRows(
     // trống có thể giữ nguyên nền mặc định). Đỏ thuần (#ff0000) đúng theo chú
     // thích "Đã bán" mà Sale tự đánh dấu ngay trong Sheet (VD legend D2/E2 của
     // file VHSGP) — căn đã bán KHÔNG hiện trên Bảng hàng nữa, loại bỏ HẲN khỏi
-    // kết quả (không phải chỉ tô màu để tham khảo như các màu khác).
+    // kết quả (không phải chỉ tô màu để tham khảo như các màu khác). Vàng
+    // thuần = "Check Admin" — VẪN hiện, chỉ gắn marker để UI ra nhãn rõ ràng.
     const rowColor = backgroundColorToHex(sheet.getCell(r, maCanColIdx).effectiveFormat?.backgroundColor) ?? undefined;
     if (rowColor === SOLD_ROW_COLOR) continue;
+    const marker = rowColor === CHECK_ADMIN_ROW_COLOR ? 'check_admin' as const : undefined;
 
     const values: Record<string, string | number | null> = {};
     let hyperlinks: Record<string, string> | undefined;
@@ -3302,7 +3320,7 @@ export async function getStackingListRows(
       if (link) (hyperlinks ??= {})[header] = link;
     }
 
-    rows.push({ maCan, values, hyperlinks, rowColor, trangThai: 'con_hang' });
+    rows.push({ maCan, values, hyperlinks, rowColor, marker, trangThai: 'con_hang' });
   }
 
   return { columns: columnDefs.map(c => c.header), rows };
