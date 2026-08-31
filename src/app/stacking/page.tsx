@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Grid3x3, RefreshCw, X, Settings, Plus, Trash2,
   CheckCircle, AlertCircle, ChevronDown, Loader2, Copy,
-  Minus, Maximize2,
+  Minus, Maximize2, Search,
 } from 'lucide-react';
-import type { StackingUnit, StackingSheetMeta, StackingConfig } from '@/lib/types';
+import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 
 // ─── Color map by loaiCan ────────────────────────────────────────────────────
@@ -63,9 +63,11 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   onClose: () => void;
   onAdd: (c: StackingConfig) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: { project_code?: string; ten_hien_thi?: string }) => void;
+  onUpdate: (id: string, updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string }) => void;
 }) {
-  const [form, setForm] = useState({ ten_hien_thi: '', sheet_id: '' });
+  const [form, setForm] = useState<{ ten_hien_thi: string; sheet_id: string; loai: 'grid' | 'list'; sheet_tab: string }>({
+    ten_hien_thi: '', sheet_id: '', loai: 'grid', sheet_tab: '',
+  });
   const [probeResult, setProbeResult] = useState<{
     ok: boolean; msg: string;
     sheets?: StackingSheetMeta[]; allTabs?: string[];
@@ -76,6 +78,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCode, setEditCode]   = useState('');
   const [editName, setEditName]   = useState('');
+  const [editTab, setEditTab]     = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [saEmail, setSaEmail]   = useState('');
   const [copied, setCopied]     = useState(false);
@@ -113,6 +116,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
 
   async function handleAdd() {
     if (!form.ten_hien_thi.trim() || !form.sheet_id.trim()) return;
+    if (form.loai === 'list' && !form.sheet_tab) return;
     setSaving(true);
     try {
       const r = await fetch('/api/stacking/configs', {
@@ -122,19 +126,20 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
       const d = await r.json();
       if (d.success) {
         onAdd(d.data);
-        setForm({ ten_hien_thi: '', sheet_id: '' });
+        setForm({ ten_hien_thi: '', sheet_id: '', loai: 'grid', sheet_tab: '' });
         setProbeResult(null);
       } else { alert(d.error || 'Lỗi thêm nguồn'); }
     } finally { setSaving(false); }
   }
 
   async function handleUpdate(id: string) {
-    if (!editName.trim() && !editCode.trim()) return;
+    if (!editName.trim() && !editCode.trim() && !editTab.trim()) return;
     setUpdatingId(id);
     try {
-      const updates: { project_code?: string; ten_hien_thi?: string } = {};
+      const updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string } = {};
       if (editCode.trim()) updates.project_code = editCode.trim().toUpperCase();
       if (editName.trim()) updates.ten_hien_thi = editName.trim();
+      if (editTab.trim()) updates.sheet_tab = editTab.trim();
       const r = await fetch('/api/stacking/configs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -161,7 +166,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
-  const canAdd = form.ten_hien_thi.trim() && form.sheet_id.trim();
+  const canAdd = Boolean(form.ten_hien_thi.trim() && form.sheet_id.trim() && (form.loai !== 'list' || form.sheet_tab));
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end' }} onClick={onClose}>
@@ -204,6 +209,26 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
               onChange={e => setForm(f => ({ ...f, ten_hien_thi: e.target.value }))} style={inputStyle} />
           </div>
 
+          {/* Loại bảng hàng — Chung cư (lưới tầng, mặc định) vs Biệt thự/liền
+              kề (danh sách, cột động theo Sheet, không có khái niệm tầng). */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            {([
+              ['grid', 'Chung cư (lưới tầng)'],
+              ['list', 'Biệt thự, liền kề (danh sách)'],
+            ] as const).map(([val, label]) => (
+              <button key={val}
+                onClick={() => { setForm(f => ({ ...f, loai: val, sheet_tab: '' })); setProbeResult(null); }}
+                style={{
+                  flex: 1, padding: '7px 8px', borderRadius: 8, fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
+                  border: `1.5px solid ${form.loai === val ? 'var(--primary)' : 'var(--border)'}`,
+                  background: form.loai === val ? 'var(--primary)' : 'var(--bg-card)',
+                  color: form.loai === val ? '#fff' : 'var(--text-muted)',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
             <input
               placeholder="Dán link hoặc Sheet ID Google Sheets"
@@ -230,8 +255,25 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                 {probeResult.ok ? <CheckCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} /> : <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />}
                 <span>{probeResult.msg}</span>
               </div>
-              {/* Show all tabs when no towers found — help user understand what's in the file */}
-              {probeResult.ok && probeResult.allTabs && probeResult.sheets?.length === 0 && (
+              {/* Chế độ Danh sách: bắt buộc chọn ĐÚNG tab chứa bảng hàng thật
+                  (1 file có thể có nhiều tab khác không liên quan). */}
+              {probeResult.ok && form.loai === 'list' && probeResult.allTabs && probeResult.allTabs.length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #86efac' }}>
+                  <p style={{ fontSize: '0.72rem', color: '#166534', marginBottom: 4, fontWeight: 600 }}>
+                    Chọn tab chứa bảng hàng thật (file có {probeResult.allTabs.length} tab):
+                  </p>
+                  <select
+                    value={form.sheet_tab}
+                    onChange={e => setForm(f => ({ ...f, sheet_tab: e.target.value }))}
+                    style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 10px' }}
+                  >
+                    <option value="">— Chọn tab —</option>
+                    {probeResult.allTabs.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              )}
+              {/* Chế độ Chung cư: show tất cả tab khi không tìm thấy tower nào — giúp hiểu file có gì */}
+              {probeResult.ok && form.loai === 'grid' && probeResult.allTabs && probeResult.sheets?.length === 0 && (
                 <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #86efac' }}>
                   <p style={{ fontSize: '0.72rem', color: '#166534', marginBottom: 4 }}>
                     Tất cả tab trong file ({probeResult.allTabs.length}). Tab stacking cần dạng "KÝ_TỰ TÊN" (chữ hoa + khoảng trắng + tên, vd: "MPP A1"):
@@ -272,8 +314,17 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.ten_hien_thi}</div>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', gap: 6, marginTop: 3, alignItems: 'center' }}>
-                        <span style={{ background: 'var(--primary)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.65rem' }}>{c.project_code}</span>
-                        <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sheet_id.substring(0, 24)}…</span>
+                        {c.loai === 'list' ? (
+                          <>
+                            <span style={{ background: '#8b5cf6', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.65rem' }}>Danh sách</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sheet_tab || '(chưa chọn tab)'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ background: 'var(--primary)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.65rem' }}>{c.project_code}</span>
+                            <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sheet_id.substring(0, 24)}…</span>
+                          </>
+                        )}
                       </div>
                     </div>
                     {/* Edit button */}
@@ -283,6 +334,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                         setEditingId(c.id);
                         setEditCode(c.project_code ?? '');
                         setEditName(c.ten_hien_thi);
+                        setEditTab(c.sheet_tab ?? '');
                       }}
                       title="Sửa thông tin"
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: editingId === c.id ? 'var(--primary)' : 'var(--text-muted)', flexShrink: 0, fontSize: '0.7rem', fontWeight: 600 }}>
@@ -306,22 +358,38 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                         style={{ ...inputStyle, padding: '6px 10px', fontSize: '0.82rem', marginBottom: 8 }}
                         autoFocus
                       />
-                      {/* Mã dự án */}
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>
-                        Mã dự án (tùy chọn — chỉ nhập phần mã, vd: <strong>MPP</strong>, để trống = tự nhận diện)
-                      </p>
+                      {/* Mã dự án (chỉ chế độ Lưới) / Tên tab (chỉ chế độ Danh sách) */}
+                      {c.loai === 'list' ? (
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>
+                          Tên tab chứa bảng hàng (nếu chọn nhầm lúc thêm nguồn)
+                        </p>
+                      ) : (
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>
+                          Mã dự án (tùy chọn — chỉ nhập phần mã, vd: <strong>MPP</strong>, để trống = tự nhận diện)
+                        </p>
+                      )}
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <input
-                          value={editCode}
-                          onChange={e => setEditCode(e.target.value.toUpperCase())}
-                          placeholder="VD: MPP  (để trống = auto)"
-                          style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: '0.82rem' }}
-                          onKeyDown={e => { if (e.key === 'Enter') handleUpdate(c.id); if (e.key === 'Escape') setEditingId(null); }}
-                        />
+                        {c.loai === 'list' ? (
+                          <input
+                            value={editTab}
+                            onChange={e => setEditTab(e.target.value)}
+                            placeholder="Tên tab chính xác, VD: Bảng hàng độc quyền"
+                            style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: '0.82rem' }}
+                            onKeyDown={e => { if (e.key === 'Enter') handleUpdate(c.id); if (e.key === 'Escape') setEditingId(null); }}
+                          />
+                        ) : (
+                          <input
+                            value={editCode}
+                            onChange={e => setEditCode(e.target.value.toUpperCase())}
+                            placeholder="VD: MPP  (để trống = auto)"
+                            style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: '0.82rem' }}
+                            onKeyDown={e => { if (e.key === 'Enter') handleUpdate(c.id); if (e.key === 'Escape') setEditingId(null); }}
+                          />
+                        )}
                         <button
                           onClick={() => handleUpdate(c.id)}
-                          disabled={updatingId === c.id || (!editName.trim() && !editCode.trim())}
-                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: (!editName.trim() && !editCode.trim()) ? 0.6 : 1 }}>
+                          disabled={updatingId === c.id || (!editName.trim() && !editCode.trim() && !editTab.trim())}
+                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: (!editName.trim() && !editCode.trim() && !editTab.trim()) ? 0.6 : 1 }}>
                           {updatingId === c.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : 'Lưu'}
                         </button>
                         <button onClick={() => setEditingId(null)} style={{ padding: '6px 10px', borderRadius: 8, fontSize: '0.8rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}>Hủy</button>
@@ -420,6 +488,14 @@ export default function StackingPage() {
   const [loadingTowers, setLoadingTowers]   = useState(false);
   const [loadingUnits, setLoadingUnits]     = useState(false);
   const [unitsError, setUnitsError]         = useState('');
+
+  // Chế độ Danh sách (biệt thự/liền kề, selectedConfig.loai === 'list') —
+  // hoàn toàn tách khỏi state lưới tầng ở trên (không dùng chung units/towers).
+  const [listColumns, setListColumns]       = useState<string[]>([]);
+  const [listRows, setListRows]             = useState<StackingListRow[]>([]);
+  const [listError, setListError]           = useState('');
+  const [loadingList, setLoadingList]       = useState(false);
+  const [listSearch, setListSearch]         = useState('');
   // Tracks which configId has finished loading towers — prevents stale fetchUnits
   // firing with old project/tower when config switches (race condition guard)
   const towersReadyForRef = useRef<string | null>(null);
@@ -440,9 +516,10 @@ export default function StackingPage() {
       .finally(() => setLoadingConfigs(false));
   }, []);
 
-  // 2. Load towers when selected config changes
+  // 2. Load towers when selected config changes (CHỈ chế độ Lưới — chế độ
+  // Danh sách không có khái niệm tower, xem effect riêng bên dưới)
   useEffect(() => {
-    if (!selectedConfig) { setTowers([]); setTowersError(''); towersReadyForRef.current = null; return; }
+    if (!selectedConfig || selectedConfig.loai === 'list') { setTowers([]); setTowersError(''); towersReadyForRef.current = null; return; }
     towersReadyForRef.current = null; // invalidate gate until towers are loaded
     setLoadingTowers(true);
     setTowers([]); setProject(''); setTower(''); setUnits([]); setSelectedUnit(null); setTowersError(''); setFilterType(null);
@@ -475,6 +552,28 @@ export default function StackingPage() {
       .catch(() => setTowersError('Lỗi kết nối server'))
       .finally(() => setLoadingTowers(false));
   }, [selectedConfig]);
+
+  // 2b. Load rows when selected config is chế độ Danh sách (biệt thự/liền kề)
+  const fetchListRows = useCallback(() => {
+    if (!selectedConfig || selectedConfig.loai !== 'list') return;
+    if (!selectedConfig.sheet_tab) { setListError('Nguồn này chưa gán tab bảng hàng — vào "Quản lý Sheet" → "Sửa" để chọn tab.'); return; }
+    setLoadingList(true); setListError(''); setListSearch('');
+    const params = new URLSearchParams({ mode: 'list', sheet_id: selectedConfig.sheet_id, tab: selectedConfig.sheet_tab });
+    if (selectedConfig.project_code) params.set('project_code', selectedConfig.project_code);
+    fetch(`/api/stacking?${params}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) { setListColumns(d.data.columns); setListRows(d.data.rows); }
+        else { setListError(d.error || 'Lỗi tải dữ liệu bảng hàng'); setListColumns([]); setListRows([]); }
+      })
+      .catch(() => { setListError('Lỗi kết nối server'); setListColumns([]); setListRows([]); })
+      .finally(() => setLoadingList(false));
+  }, [selectedConfig]);
+
+  useEffect(() => {
+    if (!selectedConfig || selectedConfig.loai !== 'list') { setListColumns([]); setListRows([]); setListError(''); return; }
+    fetchListRows();
+  }, [selectedConfig, fetchListRows]);
 
   // 3. Load units when tower changes
   const fetchUnits = useCallback(() => {
@@ -575,6 +674,22 @@ export default function StackingPage() {
   const projects = useMemo(() => [...new Set(towers.map(t => t.project))].sort(), [towers]);
   const towersForProject = useMemo(() => towers.filter(t => t.project === project).map(t => t.tower), [towers, project]);
 
+  // ── Chế độ Danh sách (biệt thự/liền kề) ────────────────────────────────────
+  const listStatusCount = useMemo(() => {
+    const c = { con_hang: 0, dang_xem: 0, da_ban: 0 };
+    for (const r of listRows) c[r.trangThai]++;
+    return c;
+  }, [listRows]);
+
+  const filteredListRows = useMemo(() => {
+    const q = listSearch.trim().toLowerCase();
+    if (!q) return listRows;
+    return listRows.filter(r =>
+      r.maCan.toLowerCase().includes(q) ||
+      Object.values(r.values).some(v => v !== null && String(v).toLowerCase().includes(q))
+    );
+  }, [listRows, listSearch]);
+
   // ── Crosshair highlight ───────────────────────────────────────────────────
   // Hover có ưu tiên hơn click — khi chuột rời bảng thì fallback về selectedUnit
   const xFloorIdx = hoverPos ? hoverPos.fi : (selectedUnit ? floors.indexOf(selectedUnit.tang)   : -1);
@@ -587,6 +702,143 @@ export default function StackingPage() {
   const hlAxisSticky   = xFloorIdx >= 0 ? '#64748b' : undefined;
 
   if (loadingConfigs) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Đang khởi tạo...</div>;
+
+  // ── Chế độ Danh sách (biệt thự/liền kề) — nhánh render HOÀN TOÀN riêng,
+  // không đụng bất kỳ state/JSX nào của chế độ Lưới bên dưới. ─────────────────
+  if (selectedConfig?.loai === 'list') {
+    return (
+      <div className="stacking-root" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden' }}>
+        {/* Top bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
+          <Grid3x3 size={18} color="var(--primary)" />
+          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-title)' }}>Bảng hàng</span>
+
+          <div style={{ position: 'relative' }}>
+            <select value={selectedConfig.id} onChange={e => setSelectedConfig(configs.find(c => c.id === e.target.value) || null)} style={selectStyle}>
+              {configs.map(c => <option key={c.id} value={c.id}>{c.ten_hien_thi}</option>)}
+            </select>
+            <ChevronDown size={13} style={chevronStyle} />
+          </div>
+
+          <div className="search-wrapper" style={{ position: 'relative', minWidth: 220 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              placeholder="Tìm mã căn, dãy..."
+              value={listSearch}
+              onChange={e => setListSearch(e.target.value)}
+              style={{ ...selectStyle, width: '100%', paddingLeft: 30 }}
+            />
+          </div>
+
+          <button onClick={fetchListRows} disabled={loadingList}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 6, fontSize: '0.78rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}>
+            <RefreshCw size={13} style={{ animation: loadingList ? 'spin 1s linear infinite' : 'none' }} />
+            Làm mới
+          </button>
+
+          {listRows.length > 0 && (
+            <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', flexWrap: 'wrap' }}>
+              {(['con_hang', 'dang_xem', 'da_ban'] as const).map(s => (
+                <span key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[s], display: 'inline-block' }} />
+                  {STATUS_LABEL[s]}: <strong style={{ color: 'var(--text-body)' }}>{listStatusCount[s]}</strong>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {isAdmin && (
+            <button onClick={() => setShowManage(true)} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
+              fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
+              background: 'transparent', color: 'var(--primary)', cursor: 'pointer', marginLeft: listRows.length > 0 ? 0 : 'auto',
+            }}>
+              <Settings size={14} /> Quản lý Sheet
+            </button>
+          )}
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          <div className="stacking-scroll" style={{ height: '100%', overflow: 'auto', padding: 14 }}>
+            {listError && (
+              <div style={{ padding: '10px 14px', borderRadius: 6, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '0.875rem', marginBottom: 12 }}>
+                {listError}
+              </div>
+            )}
+
+            {loadingList && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', padding: 16 }}>
+                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                Đang tải dữ liệu bảng hàng...
+              </div>
+            )}
+
+            {!loadingList && !listError && listRows.length === 0 && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center', padding: '30px 0' }}>
+                Không có căn nào trong bảng hàng này.
+              </p>
+            )}
+
+            {!loadingList && listColumns.length > 0 && filteredListRows.length > 0 && (
+              <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-secondary, #f9fafb)' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', position: 'sticky', left: 0, background: 'var(--bg-secondary, #f9fafb)', zIndex: 1 }} />
+                      {listColumns.map(col => (
+                        <th key={col} style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>{col}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredListRows.map((row, i) => (
+                      <tr key={row.maCan + i} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '6px 10px', position: 'sticky', left: 0, background: 'var(--bg-card)' }} title={STATUS_LABEL[row.trangThai]}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block' }} />
+                        </td>
+                        {listColumns.map(col => {
+                          const v = row.values[col];
+                          return (
+                            <td key={col} style={{ padding: '6px 10px', color: 'var(--text-body)' }}>
+                              {v === null ? '—' : typeof v === 'number' ? v.toLocaleString('vi-VN') : v}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {!loadingList && !listError && listRows.length > 0 && filteredListRows.length === 0 && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center', padding: '30px 0' }}>
+                Không tìm thấy căn nào khớp "{listSearch}".
+              </p>
+            )}
+          </div>
+        </div>
+
+        {showManage && isAdmin && (
+          <ManagePanel
+            configs={configs}
+            onClose={() => setShowManage(false)}
+            onAdd={c => { setConfigs(prev => [...prev, c]); if (!selectedConfig) setSelectedConfig(c); }}
+            onDelete={id => {
+              setConfigs(prev => prev.filter(c => c.id !== id));
+              if (selectedConfig?.id === id) setSelectedConfig(null);
+            }}
+            onUpdate={(id, updates) => {
+              setConfigs(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+              if (selectedConfig?.id === id) setSelectedConfig(sc => sc ? { ...sc, ...updates } : sc);
+            }}
+          />
+        )}
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="stacking-root" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden' }}>

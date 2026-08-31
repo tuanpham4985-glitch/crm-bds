@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { ten_hien_thi, sheet_id, project_code } = body;
+    const { ten_hien_thi, sheet_id, project_code, loai, sheet_tab } = body;
 
     if (!ten_hien_thi || !sheet_id) {
       return NextResponse.json(
@@ -26,8 +26,14 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (loai === 'list' && !sheet_tab) {
+      return NextResponse.json(
+        { success: false, error: 'Chế độ Danh sách cần chọn tab chứa bảng hàng' },
+        { status: 400 }
+      );
+    }
 
-    const created = await addStackingConfig({ ten_hien_thi, sheet_id, project_code });
+    const created = await addStackingConfig({ ten_hien_thi, sheet_id, project_code, loai, sheet_tab });
     return NextResponse.json({ success: true, data: created });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -38,14 +44,14 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, project_code, ten_hien_thi } = await req.json();
+    const { id, project_code, ten_hien_thi, sheet_tab } = await req.json();
     if (!id) {
       return NextResponse.json({ success: false, error: 'Thiếu id' }, { status: 400 });
     }
-    if (!project_code && !ten_hien_thi) {
-      return NextResponse.json({ success: false, error: 'Cần ít nhất project_code hoặc ten_hien_thi' }, { status: 400 });
+    if (!project_code && !ten_hien_thi && !sheet_tab) {
+      return NextResponse.json({ success: false, error: 'Cần ít nhất project_code, ten_hien_thi hoặc sheet_tab' }, { status: 400 });
     }
-    const ok = await updateStackingConfig(id, { project_code, ten_hien_thi });
+    const ok = await updateStackingConfig(id, { project_code, ten_hien_thi, sheet_tab });
     return NextResponse.json({ success: ok });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

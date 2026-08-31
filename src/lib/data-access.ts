@@ -72,6 +72,7 @@ export const getManagerForEmployee    = GS.getManagerForEmployee;
 // CRM — stacking (chưa có PG model)
 export const getStackingSheetList      = GS.getStackingSheetList;
 export const getStackingUnits          = GS.getStackingUnits;
+export const getStackingListRows       = GS.getStackingListRows;
 export const probeStackingSheet        = GS.probeStackingSheet;
 export const getStackingConfigs        = GS.getStackingConfigs;
 export const addStackingConfig         = GS.addStackingConfig;

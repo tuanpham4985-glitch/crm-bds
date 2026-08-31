@@ -2441,7 +2441,7 @@ function extractSheetId(input: string): string {
 
 // --- STACKING_CONFIG: stored as a tab in the main CRM spreadsheet ---
 
-const STACKING_CONFIG_HEADERS = ['id', 'ten_hien_thi', 'sheet_id', 'project_code', 'trang_thai', 'ngay_tao'];
+const STACKING_CONFIG_HEADERS = ['id', 'ten_hien_thi', 'sheet_id', 'project_code', 'trang_thai', 'ngay_tao', 'loai', 'sheet_tab'];
 
 async function getOrCreateStackingConfigSheet(doc: GoogleSpreadsheet): Promise<GoogleSpreadsheetWorksheet> {
   let sheet = doc.sheetsByTitle['STACKING_CONFIG'];
@@ -2449,6 +2449,12 @@ async function getOrCreateStackingConfigSheet(doc: GoogleSpreadsheet): Promise<G
     sheet = await doc.addSheet({ title: 'STACKING_CONFIG', headerValues: STACKING_CONFIG_HEADERS });
   } else {
     await sheet.loadHeaderRow();
+    // Sheet đã tồn tại từ trước milestone "Danh sách" (biệt thự/liền kề) —
+    // thêm 2 cột mới nếu thiếu, KHÔNG đụng dữ liệu/cột cũ (mirror pattern
+    // missingKHCols của getKhachHang()).
+    const h = sheet.headerValues;
+    const missingCols = ['loai', 'sheet_tab'].filter(c => !h.includes(c));
+    if (missingCols.length > 0) await sheet.setHeaderRow([...h, ...missingCols]);
   }
   return sheet;
 }
@@ -2467,13 +2473,17 @@ export async function getStackingConfigs(): Promise<import('./types').StackingCo
         project_code:  str(v['project_code']),
         trang_thai:    (str(v['trang_thai']) || 'active') as 'active' | 'inactive',
         ngay_tao:      str(v['ngay_tao']),
+        // Config cũ (tạo trước milestone "Danh sách") không có cột này —
+        // mặc định 'grid' để giữ NGUYÊN hành vi lưới tầng hiện tại.
+        loai:          (str(v['loai']) || 'grid') as 'grid' | 'list',
+        sheet_tab:     str(v['sheet_tab']),
       };
     })
     .filter(c => c.id && c.sheet_id);
 }
 
 export async function addStackingConfig(
-  payload: { ten_hien_thi: string; sheet_id: string; project_code?: string }
+  payload: { ten_hien_thi: string; sheet_id: string; project_code?: string; loai?: 'grid' | 'list'; sheet_tab?: string }
 ): Promise<import('./types').StackingConfig> {
   const doc = await getDoc();
   const sheet = await getOrCreateStackingConfigSheet(doc);
@@ -2485,6 +2495,8 @@ export async function addStackingConfig(
     project_code:  payload.project_code?.trim().toUpperCase() || '',
     trang_thai:    'active',
     ngay_tao:      new Date().toISOString(),
+    loai:          (payload.loai === 'list' ? 'list' : 'grid') as 'grid' | 'list',
+    sheet_tab:     payload.sheet_tab?.trim() || '',
   };
   await sheet.addRow(newRow);
   return { ...newRow, trang_thai: 'active' };
@@ -2492,7 +2504,7 @@ export async function addStackingConfig(
 
 export async function updateStackingConfig(
   id: string,
-  updates: { project_code?: string; ten_hien_thi?: string }
+  updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string }
 ): Promise<boolean> {
   const doc = await getDoc();
   const sheet = await getOrCreateStackingConfigSheet(doc);
@@ -2501,6 +2513,7 @@ export async function updateStackingConfig(
   if (!row) return false;
   if (updates.project_code !== undefined) row.set('project_code', updates.project_code.trim().toUpperCase());
   if (updates.ten_hien_thi !== undefined && updates.ten_hien_thi.trim()) row.set('ten_hien_thi', updates.ten_hien_thi.trim());
+  if (updates.sheet_tab !== undefined && updates.sheet_tab.trim()) row.set('sheet_tab', updates.sheet_tab.trim());
   await row.save();
   return true;
 }
@@ -3062,6 +3075,79 @@ async function getMauDataColors(
     // Tab MÀU_DATA chưa được tạo hoặc có lỗi → tiếp tục không có màu
   }
   return colorMap;
+}
+
+// ─── STACKING "DANH SÁCH" (biệt thự/liền kề) ───────────────────────────────
+// Khác hẳn parseListTab/StackingUnit ở trên (schema cố định, mã căn dạng
+// "{tower}-{tầng}-{căn}") — nhà liền kề/biệt thự không có khái niệm tầng, và
+// mỗi dự án có bộ cột tài chính khác nhau (VD file VHSGP có 34 cột). Đọc HOÀN
+// TOÀN ĐỘNG theo header row thật của Sheet, không ép về field cứng nào.
+//
+// Header row KHÔNG cố định ở dòng 1 (file mẫu VHSGP có header ở dòng 3, sau 2
+// dòng tiêu đề/chú thích màu) — tự dò bằng cách tìm dòng có 1 cell chuẩn hoá
+// khớp "Mã căn" (dùng lại normHeader() đã có, cùng logic detectListCols()).
+const HEADER_SCAN_ROWS = 10;
+
+export async function getStackingListRows(
+  sheetId: string,
+  tabName: string,
+): Promise<{ columns: string[]; rows: { maCan: string; values: Record<string, string | number | null> }[] }> {
+  const doc = await getDocBySheetId(sheetId);
+  const sheet = doc.sheetsByTitle[tabName];
+  if (!sheet) {
+    throw new Error(
+      `[Stacking] Tab "${tabName}" không tồn tại trong file (sheetId: ${sheetId}). ` +
+      `Tab có thể đã bị đổi tên — vào "Quản lý Sheet" chọn lại đúng tab cho nguồn này.`
+    );
+  }
+
+  const rowLimit = Math.min(sheet.rowCount, MAX_LIST_ROWS);
+  const colLimit = Math.min(sheet.columnCount, MAX_STACKING_COLS);
+  await sheet.loadCells(`A1:${colLetter(colLimit)}${rowLimit}`);
+
+  const scanRows = Math.min(HEADER_SCAN_ROWS, rowLimit);
+  let headerRowIdx = -1;
+  let maCanColIdx = -1;
+  for (let r = 0; r < scanRows && headerRowIdx < 0; r++) {
+    for (let c = 0; c < colLimit; c++) {
+      const h = normHeader(sheet.getCell(r, c).value);
+      if (h.includes('MA CAN') || h === 'MACAN' || h === 'MA_CAN') {
+        headerRowIdx = r;
+        maCanColIdx = c;
+        break;
+      }
+    }
+  }
+  if (headerRowIdx < 0) {
+    throw new Error(
+      `[Stacking] Không tìm thấy cột "Mã căn" trong ${scanRows} dòng đầu của tab "${tabName}". ` +
+      `Kiểm tra lại đây có đúng là tab bảng hàng không (mỗi dòng 1 căn, có cột "Mã căn").`
+    );
+  }
+
+  // Mọi cột có tiêu đề không rỗng trên header row → giữ NGUYÊN text gốc làm
+  // cả key lẫn label hiển thị (không ánh xạ sang field cứng nào).
+  const columnDefs: { colIdx: number; header: string }[] = [];
+  for (let c = 0; c < colLimit; c++) {
+    const header = str(sheet.getCell(headerRowIdx, c).value).trim();
+    if (header) columnDefs.push({ colIdx: c, header });
+  }
+
+  const rows: { maCan: string; values: Record<string, string | number | null> }[] = [];
+  for (let r = headerRowIdx + 1; r < rowLimit; r++) {
+    const maCan = str(sheet.getCell(r, maCanColIdx).value).trim();
+    if (!maCan) continue; // dòng trống hoặc dòng section-note khác — bỏ qua, không suy diễn
+    const values: Record<string, string | number | null> = {};
+    for (const { colIdx, header } of columnDefs) {
+      const raw = sheet.getCell(r, colIdx).value;
+      values[header] = raw === null || raw === undefined || raw === ''
+        ? null
+        : (typeof raw === 'number' ? raw : str(raw));
+    }
+    rows.push({ maCan, values });
+  }
+
+  return { columns: columnDefs.map(c => c.header), rows };
 }
 
 export async function getStackingUnits(sheetId: string, project: string, tower: string): Promise<StackingUnit[]> {

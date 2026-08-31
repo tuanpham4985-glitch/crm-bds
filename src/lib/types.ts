@@ -559,6 +559,20 @@ export interface StackingConfig {
   project_code?: string;   // optional filter prefix, e.g. "MPP" — empty = auto-detect all
   trang_thai: 'active' | 'inactive';
   ngay_tao: string;
+  /** 'grid' (mặc định, chung cư — lưới tầng/tòa) | 'list' (biệt thự/liền kề —
+   * bảng phẳng, cột động theo header row thật của Sheet, không có khái niệm tầng). */
+  loai?: 'grid' | 'list';
+  /** Tên tab chứa bảng hàng thật — bắt buộc khi loai === 'list' (1 file có thể
+   * có nhiều tab khác không phải bảng hàng, VD "Giỏ Bank", "Danh sách cọc"). */
+  sheet_tab?: string;
+}
+
+/** Chế độ 'list' (StackingConfig.loai === 'list') — 1 dòng = 1 căn, cột động
+ * theo header row thật của Sheet (không ép về schema StackingUnit cố định). */
+export interface StackingListRow {
+  maCan: string;
+  values: Record<string, string | number | null>;
+  trangThai: 'con_hang' | 'dang_xem' | 'da_ban';
 }
 
 export interface PhanKhachConfig {
