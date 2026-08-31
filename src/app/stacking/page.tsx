@@ -9,6 +9,16 @@ import {
 import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 
+// Mirror của extractSheetId() phía server (google-sheets.ts) — Admin có thể
+// dán nguyên link đầy đủ ("https://docs.google.com/spreadsheets/d/{id}/edit?...")
+// vào ô sheet_id; các API cần spreadsheetId SẠCH (VD mode=list-columns) phải
+// tự bóc ở phía client TRƯỚC khi gọi, vì lúc đó config chưa được lưu qua
+// addStackingConfig (nơi DUY NHẤT tự extract phía server).
+function extractSheetId(input: string): string {
+  const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : input.trim();
+}
+
 // ─── Color map by loaiCan ────────────────────────────────────────────────────
 
 const TYPE_COLOR: Record<string, { bg: string; text: string; border: string }> = {
@@ -120,14 +130,18 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   }
 
   // Tải danh sách cột THẬT của tab vừa chọn — bước "chọn cột hiển thị", mặc
-  // định check hết (không cắt bớt gì cho tới khi Admin tự bỏ chọn).
+  // định check hết (không cắt bớt gì cho tới khi Admin tự bỏ chọn). form.sheet_id
+  // có thể vẫn là link đầy đủ Admin vừa dán (chưa qua extractSheetId phía
+  // server, việc đó chỉ xảy ra lúc addStackingConfig lưu xuống) — phải tự bóc
+  // ID ở đây, nếu không GoogleSpreadsheet sẽ nhận nguyên link làm spreadsheetId
+  // và lỗi 500 ("Requested entity was not found").
   async function handleSelectTab(tab: string) {
     setForm(f => ({ ...f, sheet_tab: tab, visible_columns: [] }));
     setTabColumns([]);
     if (!tab) return;
     setLoadingColumns(true);
     try {
-      const r = await fetch(`/api/stacking?mode=list-columns&sheet_id=${encodeURIComponent(form.sheet_id)}&tab=${encodeURIComponent(tab)}`);
+      const r = await fetch(`/api/stacking?mode=list-columns&sheet_id=${encodeURIComponent(extractSheetId(form.sheet_id))}&tab=${encodeURIComponent(tab)}`);
       const d = await r.json();
       if (d.success) {
         setTabColumns(d.data);
