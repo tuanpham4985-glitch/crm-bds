@@ -96,10 +96,10 @@ test('marker Đã bán / Check Admin vẫn đi kèm đúng dòng sau khi paginat
   assert.equal(page2[0].marker, 'check_admin');
 });
 
-// ─── Bảng chính vs popup — chia đôi cột ĐÚNG thứ tự Sheet ──────────────────
+// ─── Bảng chính vs popup — chia cột ĐÚNG thứ tự Sheet, cắt ngay sau Giá ────
 
-// Bộ cột thật (theo đúng thứ tự) từ 2 screenshot production user gửi: nửa
-// đầu (STT...Giá gồm VAT+KPBT) hiện trên bảng, nửa sau (TTC...Hướng) vào popup.
+// Bộ cột thật (theo đúng thứ tự) từ 2 screenshot production user gửi: cột
+// đầu tới hết Giá gồm VAT+KPBT hiện trên bảng, phần sau (TTC...Hướng) vào popup.
 const REAL_COLUMN_SET = [
   'STT', 'Phân khu', 'Mã căn', 'Đặc điểm', 'TCBG', 'Loại hình', 'DT Đất (m2)', 'DTXD (m2)', 'Giá gồm VAT+KPBT',
   'TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Hướng',
@@ -135,7 +135,26 @@ test('chia đôi không mất/không lặp cột nào — gộp lại đúng b�
   assert.deepEqual([...tableColumns, ...detailColumns], REAL_COLUMN_SET);
 });
 
-test('số cột lẻ → nửa đầu (bảng chính) nhận thêm 1 cột (ceil)', () => {
+test('không phụ thuộc số cột chẵn/lẻ hay tổng số cột — nguồn có NHIỀU cột hơn (thêm View, Quỹ, Giỏ bank) vẫn cắt đúng ngay sau Giá, TTC vẫn về popup', () => {
+  // Bug thật: nguồn "Vinhomes Sài Gòn Park" có 19 cột (nhiều hơn ví dụ 17 cột ở
+  // trên) — chia đôi thô (ceil(19/2)=10) từng khiến TTC lọt vào bảng chính.
+  // Cắt ngay sau cột Giá đảm bảo TTC luôn về popup bất kể tổng số cột.
+  const columns = [...REAL_COLUMN_SET, 'View', 'Quỹ'];
+  const { tableColumns, detailColumns } = splitStackingListColumns(columns);
+  assert.deepEqual(tableColumns, [
+    'STT', 'Phân khu', 'Mã căn', 'Đặc điểm', 'TCBG', 'Loại hình', 'DT Đất (m2)', 'DTXD (m2)', 'Giá gồm VAT+KPBT',
+  ]);
+  assert.equal(tableColumns.includes('TTC'), false);
+  assert.deepEqual(detailColumns, ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Hướng', 'View', 'Quỹ']);
+});
+
+test('nhiều cột Giá (VD "Giá KS" và "Giá bán") → bảng chính giữ tới cột Giá CUỐI CÙNG', () => {
+  const { tableColumns, detailColumns } = splitStackingListColumns(['Mã căn', 'Giá KS', 'Giá bán', 'TTC']);
+  assert.deepEqual(tableColumns, ['Mã căn', 'Giá KS', 'Giá bán']);
+  assert.deepEqual(detailColumns, ['TTC']);
+});
+
+test('không có cột Giá nào → fallback chia đôi (ceil ở nửa đầu), vẫn thu gọn được bảng', () => {
   const { tableColumns, detailColumns } = splitStackingListColumns(['A', 'B', 'C', 'D', 'E']);
   assert.deepEqual(tableColumns, ['A', 'B', 'C']);
   assert.deepEqual(detailColumns, ['D', 'E']);

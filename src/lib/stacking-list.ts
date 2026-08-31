@@ -38,12 +38,13 @@ export function paginateStackingListRows<T>(rows: T[], page: number, pageSize = 
   return rows.slice((safePage - 1) * pageSize, safePage * pageSize);
 }
 
-// ─── Popup chi tiết căn: chia đôi cột động (Sheet header) ──────────────────
+// ─── Popup chi tiết căn: chia cột động (Sheet header) ──────────────────────
 // Chế độ Danh sách KHÔNG có schema cứng — mọi cột đến từ header thật trong
 // Sheet, ĐÚNG thứ tự Sheet (xem getStackingListRows ở google-sheets.ts,
-// values keyed by chính text header đó). Yêu cầu: nửa ĐẦU giữ nguyên thứ tự
-// hiện tại trên bảng chính, nửa SAU (TTC/TTS/Vay.../Link PTG/Hướng...) chuyển
-// vào popup — KHÔNG xáo trộn thứ tự, không tự chọn field theo tên.
+// values keyed by chính text header đó). Bảng chính giữ các cột thông tin cơ
+// bản + Giá (đúng thứ tự, không xáo trộn); mọi cột SAU cột Giá (TTC/TTS/
+// Vay.../Link PTG/Hướng...) chuyển hẳn vào popup — không phụ thuộc số cột
+// chẵn/lẻ hay tổng số cột của từng nguồn (mỗi nguồn Sheet có thể khác nhau).
 
 export const MA_CAN_HEADER = 'Mã căn';
 
@@ -65,13 +66,19 @@ export function isMiscColumn(header: string): boolean {
   return n.includes('link') || n.includes('ptg') || n === 'quỹ' || n === 'giỏ bank';
 }
 
-/** Chia `columns` (đúng thứ tự Sheet) làm đôi: nửa đầu ở lại bảng chính
- * (giữ NGUYÊN thứ tự, không sắp lại), nửa sau chuyển vào popup chi tiết.
- * Số lẻ → nửa đầu nhận thêm 1 cột (ceil), khớp ví dụ thật: 17 cột → bảng
- * giữ 9 cột đầu (STT...Giá gồm VAT+KPBT), popup nhận 8 cột sau (TTC...Hướng). */
+/** Chia `columns` (đúng thứ tự Sheet): bảng chính giữ mọi cột từ đầu tới hết
+ * cột Giá cuối cùng tìm thấy (không xáo trộn thứ tự); mọi cột sau đó — VD
+ * TTC/TTS/Vay 18-36T/Link PTG/Hướng... — chuyển vào popup, bất kể tổng số
+ * cột của nguồn (mỗi Sheet nguồn khác nhau có thể có nhiều/ít cột hơn).
+ * Không tìm thấy cột Giá nào (hiếm) → fallback chia đôi (ceil ở nửa đầu) để
+ * vẫn thu gọn được bảng thay vì hiện hết. */
 export function splitStackingListColumns(columns: string[]): { tableColumns: string[]; detailColumns: string[] } {
-  const half = Math.ceil(columns.length / 2);
-  return { tableColumns: columns.slice(0, half), detailColumns: columns.slice(half) };
+  let lastPriceIdx = -1;
+  for (let i = 0; i < columns.length; i++) {
+    if (isPriceColumn(columns[i])) lastPriceIdx = i;
+  }
+  const boundary = lastPriceIdx >= 0 ? lastPriceIdx + 1 : Math.ceil(columns.length / 2);
+  return { tableColumns: columns.slice(0, boundary), detailColumns: columns.slice(boundary) };
 }
 
 export type StackingListDetailGroup = 'gia' | 'financial' | 'misc' | 'basic';

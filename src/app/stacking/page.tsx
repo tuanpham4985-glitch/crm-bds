@@ -1087,15 +1087,6 @@ export default function StackingPage() {
           )}
         </div>
 
-        {/* Chú thích màu Sheet gốc — CHỈ hiển thị, không phải authority trạng
-            thái (xem chấm trạng thái + comment ở nơi render nhãn). */}
-        {listRows.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
-            <span style={{ ...MARKER_BADGE_STYLE.check_admin, fontSize: '0.72rem', padding: '3px 10px' }}>Check admin</span>
-            <span style={{ ...MARKER_BADGE_STYLE.da_ban, fontSize: '0.72rem', padding: '3px 10px' }}>Đã bán</span>
-          </div>
-        )}
-
         {/* Body */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           <div className="stacking-scroll" style={{ height: '100%', overflow: 'auto', padding: 14 }}>
@@ -1123,7 +1114,7 @@ export default function StackingPage() {
                 <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-secondary, #f9fafb)' }}>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }} />
+                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)', width: '1%', whiteSpace: 'nowrap' }} />
                       {/* Fallback — chỉ thêm cột Mã căn riêng nếu nguồn này (hiếm)
                           không có "Mã căn" trong nửa cột đầu; bình thường "Mã căn"
                           đã nằm sẵn trong tableColumns, giữ ĐÚNG vị trí như Sheet gốc. */}
@@ -1144,7 +1135,7 @@ export default function StackingPage() {
                       const rowBg = row.rowColor ? hexToRgba(row.rowColor, 0.22) : undefined;
                       return (
                         <tr key={row.maCan + i} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
-                          <td style={{ padding: '6px 10px', background: rowBg ?? 'var(--bg-card)' }}>
+                          <td style={{ padding: '6px 10px', background: rowBg ?? 'var(--bg-card)', width: '1%', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <span title={STATUS_LABEL[row.trangThai]} style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block', flexShrink: 0 }} />
                               {/* Nhãn "Check Admin"/"Đã bán" — quy ước màu Sale tự đánh
