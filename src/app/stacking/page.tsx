@@ -8,7 +8,10 @@ import {
 } from 'lucide-react';
 import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
-import { filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE } from '@/lib/stacking-list';
+import {
+  filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
+  pickSummaryColumns, groupStackingListColumnsForDetail,
+} from '@/lib/stacking-list';
 
 // Mirror của extractSheetId() phía server (google-sheets.ts) — Admin có thể
 // dán nguyên link đầy đủ ("https://docs.google.com/spreadsheets/d/{id}/edit?...")
@@ -633,6 +636,121 @@ function UnitCell({ unit, onClick, onMouseEnter, isSelected, hlBg, dimmed }: {
   );
 }
 
+// ─── Chế độ Danh sách: popup chi tiết căn ──────────────────────────────────
+
+// 1 dòng label bên trái / value bên phải — reuse hyperlink nếu cột đó có
+// (không giới hạn riêng cho Link PTG, cột nào có hyperlink thật cũng giữ
+// nguyên hành vi click-through như trên bảng chính).
+function ListDetailRow({ label, row, col }: { label: string; row: StackingListRow; col: string }) {
+  const v = row.values[col];
+  const link = row.hyperlinks?.[col];
+  const display = v === null || v === undefined || v === '' ? '—' : typeof v === 'number' ? v.toLocaleString('vi-VN') : v;
+  const isLinkLike = /link|ptg/i.test(col);
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)', fontSize: '0.875rem' }}>
+      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+      {link ? (
+        <a href={link} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {isLinkLike ? 'Mở PTG ↗' : display}
+        </a>
+      ) : (
+        <span style={{ fontWeight: 600, color: 'var(--text-body)', textAlign: 'right' }}>{display}</span>
+      )}
+    </div>
+  );
+}
+
+function ListUnitDetailModal({ row, columns, onClose }: {
+  row: StackingListRow;
+  columns: string[];
+  onClose: () => void;
+}) {
+  const groups = useMemo(() => groupStackingListColumnsForDetail(columns), [columns]);
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ width: '100%', maxWidth: 460, maxHeight: 'calc(100vh - 32px)', background: 'var(--bg-card)', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.28)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mã căn</div>
+            <div style={{ fontWeight: 800, fontSize: '1.3rem', color: 'var(--text-title)', letterSpacing: '-0.01em' }}>{row.maCan}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: 'var(--text-muted)', borderRadius: 8, display: 'flex' }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+
+          {/* Status badges — cùng authority với bảng chính (dot = CRM Pipeline,
+              marker = quy ước màu Sheet), popup chỉ là presentation layer. */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 600, background: row.trangThai === 'con_hang' ? '#dcfce7' : row.trangThai === 'da_ban' ? '#fee2e2' : '#fef3c7', color: row.trangThai === 'con_hang' ? '#15803d' : row.trangThai === 'da_ban' ? '#dc2626' : '#92400e' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], flexShrink: 0 }} />
+              {STATUS_LABEL[row.trangThai]}
+            </span>
+            {row.marker && (
+              <span style={MARKER_BADGE_STYLE[row.marker]}>{MARKER_LABEL[row.marker]}</span>
+            )}
+          </div>
+
+          {/* Thông tin cơ bản */}
+          {groups.basic.length > 0 && (
+            <div style={{ padding: '4px 20px' }}>
+              {groups.basic.map(col => <ListDetailRow key={col} label={col} row={row} col={col} />)}
+            </div>
+          )}
+
+          {/* Giá — block nổi bật, reuse fmtGia/fmtGiaFull hiện có */}
+          {groups.gia.length > 0 && (
+            <div style={{ margin: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {groups.gia.map(col => {
+                const v = row.values[col];
+                const isNum = typeof v === 'number';
+                return (
+                  <div key={col} style={{ padding: '14px 16px', borderRadius: 12, background: 'linear-gradient(135deg,#fefce8,#fef3c7)', border: '1px solid #fcd34d' }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#92400e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{col}</div>
+                    {isNum ? (
+                      <>
+                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#78350f', lineHeight: 1 }}>{fmtGiaFull(v as number)}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#b45309', marginTop: 4 }}>≈ {fmtGia(v as number)} tỷ</div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#78350f' }}>{v === null || v === undefined || v === '' ? '—' : v}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Tài chính / chính sách */}
+          {groups.financial.length > 0 && (
+            <div style={{ padding: '4px 20px' }}>
+              {groups.financial.map(col => <ListDetailRow key={col} label={col} row={row} col={col} />)}
+            </div>
+          )}
+
+          {/* Thông tin khác — Link PTG (action), Quỹ, Giỏ bank... */}
+          {groups.misc.length > 0 && (
+            <div style={{ padding: '4px 20px 20px' }}>
+              {groups.misc.map(col => <ListDetailRow key={col} label={col} row={row} col={col} />)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function StackingPage() {
@@ -664,6 +782,7 @@ export default function StackingPage() {
   const [listSearch, setListSearch]         = useState('');
   const [listGroupFilter, setListGroupFilter] = useState('');
   const [listPage, setListPage]             = useState(1);
+  const [selectedListRow, setSelectedListRow] = useState<StackingListRow | null>(null);
   // Tracks which configId has finished loading towers — prevents stale fetchUnits
   // firing with old project/tower when config switches (race condition guard)
   const towersReadyForRef = useRef<string | null>(null);
@@ -882,6 +1001,11 @@ export default function StackingPage() {
     [filteredListRows, listPageSafe]
   );
 
+  // Bảng chính chỉ hiện cột tóm tắt — toàn bộ cột (kể cả TTC/TTS/Vay.../Link
+  // PTG/Quỹ/Giỏ bank) vẫn còn nguyên trong listColumns/row.values, hiện đầy
+  // đủ trong popup chi tiết (ListUnitDetailModal) khi click Mã căn.
+  const summaryColumns = useMemo(() => pickSummaryColumns(listColumns), [listColumns]);
+
   // ── Crosshair highlight ───────────────────────────────────────────────────
   // Hover có ưu tiên hơn click — khi chuột rời bảng thì fallback về selectedUnit
   const xFloorIdx = hoverPos ? hoverPos.fi : (selectedUnit ? floors.indexOf(selectedUnit.tang)   : -1);
@@ -999,7 +1123,8 @@ export default function StackingPage() {
                   <thead>
                     <tr style={{ background: 'var(--bg-secondary, #f9fafb)' }}>
                       <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }} />
-                      {listColumns.map(col => (
+                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>Mã căn</th>
+                      {summaryColumns.map(col => (
                         <th key={col} style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>{col}</th>
                       ))}
                     </tr>
@@ -1028,7 +1153,16 @@ export default function StackingPage() {
                               )}
                             </div>
                           </td>
-                          {listColumns.map(col => {
+                          <td style={{ padding: '6px 10px' }}>
+                            <button onClick={() => setSelectedListRow(row)} style={{
+                              background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
+                              color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline',
+                              fontSize: 'inherit', fontFamily: 'inherit',
+                            }}>
+                              {row.maCan}
+                            </button>
+                          </td>
+                          {summaryColumns.map(col => {
                             const v = row.values[col];
                             const link = row.hyperlinks?.[col];
                             const display = v === null ? '—' : typeof v === 'number' ? v.toLocaleString('vi-VN') : v;
@@ -1074,6 +1208,14 @@ export default function StackingPage() {
             )}
           </div>
         </div>
+
+        {selectedListRow && (
+          <ListUnitDetailModal
+            row={selectedListRow}
+            columns={listColumns}
+            onClose={() => setSelectedListRow(null)}
+          />
+        )}
 
         {showManage && isAdmin && (
           <ManagePanel

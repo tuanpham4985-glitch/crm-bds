@@ -7,6 +7,9 @@ import {
   clampStackingListPage,
   paginateStackingListRows,
   STACKING_LIST_PAGE_SIZE,
+  pickSummaryColumns,
+  groupStackingListColumnsForDetail,
+  classifyStackingListColumn,
 } from '../../src/lib/stacking-list';
 
 function makeRows(n: number, opts: Partial<{ phanKhu: string; marker: 'check_admin' | 'da_ban'; prefix: string }> = {}): StackingListRow[] {
@@ -91,4 +94,78 @@ test('marker Đã bán / Check Admin vẫn đi kèm đúng dòng sau khi paginat
   const page2 = paginateStackingListRows(rows, 2);
   assert.equal(page1[19].marker, 'da_ban');
   assert.equal(page2[0].marker, 'check_admin');
+});
+
+// ─── Popup chi tiết căn — phân loại cột động (Sheet header) ────────────────
+
+const FULL_COLUMN_SET = [
+  'Mã căn', 'Đặc điểm', 'TCBG', 'Loại căn', 'DT Đất', 'DTXD', 'Giá',
+  'TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T',
+  'LINK PTG', 'Hướng', 'View', 'Quỹ', 'Giỏ bank',
+];
+
+test('bảng chính không còn render các cột đã chuyển hoàn toàn sang popup (TTC/TTS/Vay/Link PTG/Quỹ/Giỏ bank)', () => {
+  const summary = pickSummaryColumns(FULL_COLUMN_SET);
+  for (const moved of ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Quỹ', 'Giỏ bank', 'TCBG']) {
+    assert.equal(summary.includes(moved), false, `"${moved}" phải bị loại khỏi bảng tóm tắt`);
+  }
+});
+
+test('bảng chính giữ đúng cột tóm tắt: Đặc điểm, Loại căn, 1 cột diện tích chính, Giá, Hướng', () => {
+  const summary = pickSummaryColumns(FULL_COLUMN_SET);
+  assert.deepEqual(summary, ['Đặc điểm', 'Loại căn', 'DT Đất', 'Giá', 'Hướng']);
+});
+
+test('Phân khu được giữ trên bảng tóm tắt nếu nguồn có cột này', () => {
+  const summary = pickSummaryColumns([...FULL_COLUMN_SET, 'Phân khu']);
+  assert.ok(summary.includes('Phân khu'));
+});
+
+test('diện tích chính: DTXD được chọn khi không có DT Đất', () => {
+  const summary = pickSummaryColumns(['Mã căn', 'DTXD', 'DT Tim tường']);
+  assert.ok(summary.includes('DTXD'));
+  assert.equal(summary.includes('DT Tim tường'), false);
+});
+
+test('classifyStackingListColumn phân đúng nhóm cho từng field trong task', () => {
+  assert.equal(classifyStackingListColumn('Giá'), 'gia');
+  assert.equal(classifyStackingListColumn('TTC'), 'financial');
+  assert.equal(classifyStackingListColumn('TTS'), 'financial');
+  assert.equal(classifyStackingListColumn('Vay 18T'), 'financial');
+  assert.equal(classifyStackingListColumn('Vay 36T'), 'financial');
+  assert.equal(classifyStackingListColumn('LINK PTG'), 'misc');
+  assert.equal(classifyStackingListColumn('Quỹ'), 'misc');
+  assert.equal(classifyStackingListColumn('Giỏ bank'), 'misc');
+  assert.equal(classifyStackingListColumn('Hướng'), 'basic');
+  assert.equal(classifyStackingListColumn('View'), 'basic');
+  assert.equal(classifyStackingListColumn('TCBG'), 'basic');
+});
+
+test('popup: gom nhóm đầy đủ — mọi field TTC/TTS/Vay/Link PTG/Quỹ/Giỏ bank vẫn xuất hiện (không hide, không mất data)', () => {
+  const groups = groupStackingListColumnsForDetail(FULL_COLUMN_SET);
+  assert.deepEqual(groups.gia, ['Giá']);
+  assert.deepEqual(groups.financial, ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T']);
+  assert.deepEqual(groups.misc, ['LINK PTG', 'Quỹ', 'Giỏ bank']);
+  assert.deepEqual(groups.basic, ['Đặc điểm', 'TCBG', 'Loại căn', 'DT Đất', 'DTXD', 'Hướng', 'View']);
+});
+
+test('popup: "Mã căn" không lặp lại trong nhóm nào (đã hiện riêng ở header popup)', () => {
+  const groups = groupStackingListColumnsForDetail(FULL_COLUMN_SET);
+  const all = [...groups.gia, ...groups.financial, ...groups.misc, ...groups.basic];
+  assert.equal(all.includes('Mã căn'), false);
+});
+
+test('popup: gộp toàn bộ nhóm lại đúng bằng toàn bộ cột trừ Mã căn — không cột nào bị rơi mất', () => {
+  const groups = groupStackingListColumnsForDetail(FULL_COLUMN_SET);
+  const all = [...groups.gia, ...groups.financial, ...groups.misc, ...groups.basic];
+  const expected = FULL_COLUMN_SET.filter(c => c !== 'Mã căn');
+  assert.deepEqual([...all].sort(), [...expected].sort());
+});
+
+test('field thiếu dữ liệu (null) hiển thị "—" — quy ước hiện có của bảng, giữ nguyên cho popup', () => {
+  const row: StackingListRow = {
+    maCan: 'A-03A-02', trangThai: 'con_hang',
+    values: { 'Hướng': null, 'Giá': 14_369_000_000 },
+  };
+  assert.equal(row.values['Hướng'], null); // popup renderer map null -> '—' ở UI layer, giá trị gốc giữ nguyên null (không suy diễn)
 });
