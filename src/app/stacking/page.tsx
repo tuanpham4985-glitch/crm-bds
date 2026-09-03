@@ -4,10 +4,13 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Grid3x3, RefreshCw, X, Settings, Plus, Trash2,
   CheckCircle, AlertCircle, ChevronDown, Loader2, Copy,
-  Minus, Maximize2, Search,
+  Minus, Maximize2, Search, Map as MapIcon,
 } from 'lucide-react';
 import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
+import TmbMap from './TmbMap';
+import { TMB_MAP_SHEET_ID } from './tmb-map-data';
+import { fmtGia, fmtArea, fmtGiaFull } from './format';
 import {
   filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
   splitStackingListColumns, groupStackingListColumnsForDetail, effectiveDotStatus, countStackingListRowsByDotStatus,
@@ -78,9 +81,6 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function fmtGia(gia: number) { return gia ? (gia / 1e9).toFixed(3).replace(/\.?0+$/, '') : '—'; }
-function fmtArea(area: number) { return area ? area.toFixed(1) + ' m²' : '—'; }
-function fmtGiaFull(gia: number) { return gia ? gia.toLocaleString('vi-VN') + ' đ' : '—'; }
 
 // ─── Manage panel ─────────────────────────────────────────────────────────────
 
@@ -669,7 +669,9 @@ function ListUnitDetailModal({ row, columns, onClose }: {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      // zIndex 750 > TmbMap (700) — popup này có thể mở TỪ BÊN TRONG Tổng mặt
+      // bằng (click marker), phải nổi lên trên TmbMap thay vì bị che khuất.
+      style={{ position: 'fixed', inset: 0, zIndex: 750, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       onClick={onClose}
     >
       <div
@@ -783,6 +785,7 @@ export default function StackingPage() {
   const [listGroupFilter, setListGroupFilter] = useState('');
   const [listPage, setListPage]             = useState(1);
   const [selectedListRow, setSelectedListRow] = useState<StackingListRow | null>(null);
+  const [showTmbMap, setShowTmbMap]           = useState(false); // Tổng mặt bằng — chỉ áp dụng nguồn có TMB_MAP_SHEET_ID tương ứng
   // Tracks which configId has finished loading towers — prevents stale fetchUnits
   // firing with old project/tower when config switches (race condition guard)
   const towersReadyForRef = useRef<string | null>(null);
@@ -1072,11 +1075,26 @@ export default function StackingPage() {
             </div>
           )}
 
+          {/* Chỉ hiện khi nguồn đang chọn CÓ spatial map tương ứng — không giả
+              vờ generic cho nguồn khác chưa có TMB mapping (v1 chỉ phủ Vinhomes
+              Sài Gòn Park). Xem inventory trên bản đồ là tính năng xem, không
+              phải quản trị -> không gate theo isAdmin như "Quản lý Sheet". */}
+          {selectedConfig?.sheet_id === TMB_MAP_SHEET_ID && (
+            <button onClick={() => setShowTmbMap(true)} title="Xem vị trí các căn Còn hàng trên Tổng mặt bằng" style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
+              fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
+              background: 'transparent', color: 'var(--primary)', cursor: 'pointer', marginLeft: listRows.length > 0 ? 0 : 'auto',
+            }}>
+              <MapIcon size={14} /> Tổng mặt bằng
+            </button>
+          )}
+
           {isAdmin && (
             <button onClick={() => setShowManage(true)} style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
               fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
-              background: 'transparent', color: 'var(--primary)', cursor: 'pointer', marginLeft: listRows.length > 0 ? 0 : 'auto',
+              background: 'transparent', color: 'var(--primary)', cursor: 'pointer',
+              marginLeft: (listRows.length > 0 || selectedConfig?.sheet_id === TMB_MAP_SHEET_ID) ? 0 : 'auto',
             }}>
               <Settings size={14} /> Quản lý Sheet
             </button>
@@ -1229,6 +1247,21 @@ export default function StackingPage() {
             row={selectedListRow}
             columns={detailColumns}
             onClose={() => setSelectedListRow(null)}
+          />
+        )}
+
+        {/* Tổng mặt bằng — click marker Còn hàng -> lookup Mã căn trong
+            listRows hiện có -> mở CHÍNH ListUnitDetailModal, không tạo popup
+            business thứ hai. QUAN TRỌNG: onOpenUnit CHỈ set selectedListRow —
+            KHÔNG đóng TMB (showTmbMap) — để TmbMap giữ nguyên mount, giữ
+            nguyên zoom/pan/scroll nội bộ. Đóng detail (onClose bên trên,
+            setSelectedListRow(null)) không đụng showTmbMap nên quay lại đúng
+            TMB đang mở. Chỉ nút X của TmbMap mới gọi setShowTmbMap(false). */}
+        {showTmbMap && selectedConfig?.sheet_id === TMB_MAP_SHEET_ID && (
+          <TmbMap
+            listRows={listRows}
+            onOpenUnit={row => setSelectedListRow(row)}
+            onClose={() => setShowTmbMap(false)}
           />
         )}
 

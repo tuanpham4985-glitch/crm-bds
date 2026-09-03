@@ -31,5 +31,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icons).*)'],
+  // tmb-poc: asset tĩnh cho POC TMB (PDF + pdf.js worker) — không phải route
+  // cần đăng nhập, phải bypass hoàn toàn để pdf.js fetch được kể cả khi
+  // không có session (đúng như icons/favicon.ico/manifest.json đã bypass).
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icons|tmb-poc).*)'],
 };
