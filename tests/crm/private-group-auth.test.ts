@@ -4,7 +4,7 @@ import {
   isPrivateGroupLeader, isPrivateGroupMember, canViewPrivateGroup, canManagePrivateGroupMembers,
   canRenamePrivateGroup, canChangePrivateGroupLeader, canCreatePrivateGroup, canViewAllGroupCustomers,
   canReassignGroupCustomer, canViewGroupCustomer, filterGroupCustomersForUser, filterPrivateGroupsForUser,
-  resolveAutoLinkGroup,
+  resolveManualCustomerGroup,
 } from '../../src/lib/private-group-auth';
 import type { CrmSessionUser } from '../../src/lib/crm-auth';
 
@@ -169,28 +169,58 @@ test('filterPrivateGroupsForUser: outsider không thuộc nhóm nào -> mảng r
   assert.deepEqual(filterPrivateGroupsForUser(OUTSIDER, groups, MEMBERS), []);
 });
 
-// ─── resolveAutoLinkGroup — Flow D bước 3+4 (test bắt buộc #4) ──────────────
+// ─── resolveManualCustomerGroup — Flow D bước 0 (multi-group, test bắt buộc #1-#6) ─
+// Locked business model: 1 Sale/Leader CÓ THỂ thuộc nhiều Nhóm riêng cùng lúc
+// (khác v1 — xem resolveAutoLinkGroup cũ đã bị thay thế: >=2 nhóm không còn
+// âm thầm bỏ qua group-link mà BẮT BUỘC actor chọn tường minh qua groupId).
 
-test('resolveAutoLinkGroup: actor không thuộc nhóm nào -> null (customer thường, không có gì sai)', () => {
-  assert.equal(resolveAutoLinkGroup([], []), null);
+test('resolveManualCustomerGroup: 0 nhóm, không groupId -> "none" (test bắt buộc #2 — manual create bình thường)', () => {
+  assert.deepEqual(resolveManualCustomerGroup([], []), { status: 'none' });
 });
 
-test('resolveAutoLinkGroup: actor là Leader của ĐÚNG 1 nhóm -> auto-link nhóm đó', () => {
-  const result = resolveAutoLinkGroup([{ id: 'G1', name: 'Nhóm A' }], []);
-  assert.deepEqual(result, { id: 'G1', name: 'Nhóm A' });
+test('resolveManualCustomerGroup: 0 nhóm nhưng CÓ groupId gửi lên (data lạ/tấn công) -> "forbidden", không có nhóm nào để khớp', () => {
+  assert.deepEqual(resolveManualCustomerGroup([], [], 'G1'), { status: 'forbidden' });
 });
 
-test('resolveAutoLinkGroup: actor là Sale member của ĐÚNG 1 nhóm -> auto-link nhóm đó (test bắt buộc #4)', () => {
-  const result = resolveAutoLinkGroup([], [{ id: 'G1', name: 'Nhóm A' }]);
-  assert.deepEqual(result, { id: 'G1', name: 'Nhóm A' });
+test('resolveManualCustomerGroup: Leader của ĐÚNG 1 nhóm, không groupId -> auto-select nhóm đó (test bắt buộc #3)', () => {
+  const result = resolveManualCustomerGroup([{ id: 'G1', name: 'Nhóm A' }], []);
+  assert.deepEqual(result, { status: 'ok', group: { id: 'G1', name: 'Nhóm A' } });
 });
 
-test('resolveAutoLinkGroup: actor thuộc 2+ nhóm (Leader 1 nhóm + member 1 nhóm khác) -> null, KHÔNG đoán bừa', () => {
-  const result = resolveAutoLinkGroup([{ id: 'G1', name: 'Nhóm A' }], [{ id: 'G2', name: 'Nhóm B' }]);
-  assert.equal(result, null);
+test('resolveManualCustomerGroup: Sale member của ĐÚNG 1 nhóm, không groupId -> auto-select nhóm đó (test bắt buộc #3)', () => {
+  const result = resolveManualCustomerGroup([], [{ id: 'G1', name: 'Nhóm A' }]);
+  assert.deepEqual(result, { status: 'ok', group: { id: 'G1', name: 'Nhóm A' } });
 });
 
-test('resolveAutoLinkGroup: cùng 1 nhóm xuất hiện ở CẢ leaderOf lẫn memberOf (data lỗi giả định) -> vẫn coi là 1 nhóm, không tính nhầm thành ambiguous', () => {
-  const result = resolveAutoLinkGroup([{ id: 'G1', name: 'Nhóm A' }], [{ id: 'G1', name: 'Nhóm A' }]);
-  assert.deepEqual(result, { id: 'G1', name: 'Nhóm A' });
+test('resolveManualCustomerGroup: ĐÚNG 1 nhóm nhưng groupId gửi lên KHÁC nhóm đó -> "forbidden", không auto-select thay thế', () => {
+  const result = resolveManualCustomerGroup([{ id: 'G1', name: 'Nhóm A' }], [], 'G2');
+  assert.deepEqual(result, { status: 'forbidden' });
+});
+
+test('resolveManualCustomerGroup: ĐÚNG 1 nhóm và groupId gửi lên KHỚP đúng nhóm đó -> "ok"', () => {
+  const result = resolveManualCustomerGroup([{ id: 'G1', name: 'Nhóm A' }], [], 'G1');
+  assert.deepEqual(result, { status: 'ok', group: { id: 'G1', name: 'Nhóm A' } });
+});
+
+test('resolveManualCustomerGroup: actor thuộc 2 nhóm (Leader 1 nhóm + member 1 nhóm khác), KHÔNG gửi groupId -> "required" (test bắt buộc #1 + #4)', () => {
+  const result = resolveManualCustomerGroup([{ id: 'G1', name: 'Nhóm A' }], [{ id: 'G2', name: 'Nhóm B' }]);
+  assert.deepEqual(result, { status: 'required' });
+});
+
+test('resolveManualCustomerGroup: cùng 1 nhóm xuất hiện ở CẢ leaderOf lẫn memberOf (data lỗi giả định) -> vẫn coi là 1 nhóm (không tính nhầm thành 2 nhóm -> required)', () => {
+  const result = resolveManualCustomerGroup([{ id: 'G1', name: 'Nhóm A' }], [{ id: 'G1', name: 'Nhóm A' }]);
+  assert.deepEqual(result, { status: 'ok', group: { id: 'G1', name: 'Nhóm A' } });
+});
+
+test('resolveManualCustomerGroup: actor thuộc >=2 nhóm + groupId hợp lệ (1 trong 2 nhóm) -> "ok", link đúng nhóm được chọn (test bắt buộc #5)', () => {
+  const leaderOf = [{ id: 'G1', name: 'Nhóm A' }];
+  const memberOf = [{ id: 'G2', name: 'Nhóm B' }];
+  assert.deepEqual(resolveManualCustomerGroup(leaderOf, memberOf, 'G1'), { status: 'ok', group: { id: 'G1', name: 'Nhóm A' } });
+  assert.deepEqual(resolveManualCustomerGroup(leaderOf, memberOf, 'G2'), { status: 'ok', group: { id: 'G2', name: 'Nhóm B' } });
+});
+
+test('resolveManualCustomerGroup: actor thuộc >=2 nhóm + groupId KHÔNG thuộc actor (nhóm lạ) -> "forbidden" (test bắt buộc #6)', () => {
+  const leaderOf = [{ id: 'G1', name: 'Nhóm A' }];
+  const memberOf = [{ id: 'G2', name: 'Nhóm B' }];
+  assert.deepEqual(resolveManualCustomerGroup(leaderOf, memberOf, 'G999'), { status: 'forbidden' });
 });

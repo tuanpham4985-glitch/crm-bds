@@ -8,12 +8,16 @@
 // định ai thấy gì (mọi API đều tự check lại quyền, xem private-group-auth.ts).
 import { useEffect, useState } from 'react';
 import { Loader2, Plus, Trash2, Users, X } from 'lucide-react';
-import type { NhanVien, PrivateGroup, PrivateGroupMember, PrivateGroupCustomer } from '@/lib/types';
+import type { NhanVien, PrivateGroup, PrivateGroupMember, PrivateGroupCustomer, DuAn } from '@/lib/types';
+import { NGUON } from '@/lib/constants';
 
-export function PrivateGroupPanel({ employees, currentUser, isAdmin, onClose }: {
+export function PrivateGroupPanel({ employees, currentUser, isAdmin, duAnList = [], onClose }: {
   employees: NhanVien[];
   currentUser: NhanVien | null;
   isAdmin: boolean;
+  /** Optional — chỉ cần cho "+ Thêm khách hàng" trong group detail (chọn Dự
+   * án). Không truyền vẫn hoạt động (dropdown Dự án rỗng, KHÔNG chặn tạo). */
+  duAnList?: DuAn[];
   onClose: () => void;
 }) {
   const [view, setView] = useState<'list' | 'create'>('list');
@@ -43,6 +47,7 @@ export function PrivateGroupPanel({ employees, currentUser, isAdmin, onClose }: 
         employees={salesForSelect}
         currentUser={currentUser}
         isAdmin={isAdmin}
+        duAnList={duAnList}
         onBack={() => { setSelectedGroupId(null); fetchGroups(); }}
         onClose={onClose}
       />
@@ -194,12 +199,13 @@ function CreateGroupForm({ employees, onCancel, onCreated }: {
   );
 }
 
-function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, isAdmin, onBack, onClose }: {
+function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, isAdmin, duAnList, onBack, onClose }: {
   groupId: string;
   groupFallback?: PrivateGroup;
   employees: NhanVien[];
   currentUser: NhanVien | null;
   isAdmin: boolean;
+  duAnList: DuAn[];
   onBack: () => void;
   onClose: () => void;
 }) {
@@ -209,6 +215,7 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [addMemberId, setAddMemberId] = useState('');
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
 
   const isLeader = Boolean(currentUser && group && group.leader_id === currentUser.id_nhan_vien);
   const canManage = isAdmin || isLeader;
@@ -308,9 +315,32 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
               </div>
 
               <div>
-                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 8 }}>
-                  Khách hàng của nhóm ({customers.length}){!canManage && <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}> — chỉ khách bạn nhập/được giao</span>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+                    Khách hàng của nhóm ({customers.length}){!canManage && <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}> — chỉ khách bạn nhập/được giao</span>}
+                  </div>
+                  {/* "+ Thêm khách hàng" từ group detail — group ĐÃ xác định
+                      sẵn (groupId), không bắt user chọn lại (xem section 5).
+                      Hiển thị cho mọi người xem được group detail này (đã qua
+                      gate canViewPrivateGroup ở trang cha) — cùng nguyên tắc
+                      "Thêm khách hàng" mở cho mọi user CRM hợp lệ ở /khach-hang. */}
+                  {!showAddCustomer && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowAddCustomer(true)}>
+                      <Plus size={14} /> Thêm khách hàng
+                    </button>
+                  )}
                 </div>
+                {showAddCustomer && group && (
+                  <AddCustomerToGroupForm
+                    groupId={group.id}
+                    groupName={group.name}
+                    isAdmin={isAdmin}
+                    employees={employees}
+                    duAnList={duAnList}
+                    onCancel={() => setShowAddCustomer(false)}
+                    onCreated={() => { setShowAddCustomer(false); load(); }}
+                  />
+                )}
                 {customers.length === 0 ? (
                   <p style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>Chưa có khách hàng nào.</p>
                 ) : (
@@ -347,6 +377,92 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** "+ Thêm khách hàng" từ group detail (section 5) — group ĐÃ xác định sẵn
+ * (groupId cố định, không cho chọn lại). POST thẳng tới /api/khach-hang
+ * (CÙNG engine với trang /khach-hang, xem createManualCustomerWithGroupLink)
+ * — chỉ là 1 form UI gọn hơn, KHÔNG phải customer-create engine thứ 2. Server
+ * tự validate lại actor thực sự thuộc groupId này (resolveManualCustomerGroup)
+ * — form này KHÔNG PHẢI security boundary, chỉ tiện dụng cho UI. */
+function AddCustomerToGroupForm({ groupId, groupName, isAdmin, employees, duAnList, onCancel, onCreated }: {
+  groupId: string;
+  groupName: string;
+  isAdmin: boolean;
+  employees: NhanVien[];
+  duAnList: DuAn[];
+  onCancel: () => void;
+  onCreated: () => void;
+}) {
+  const [ten_KH, setTenKH] = useState('');
+  const [so_dien_thoai, setSdt] = useState('');
+  const [email, setEmail] = useState('');
+  const [du_an, setDuAn] = useState('');
+  const [nguon, setNguon] = useState('');
+  const [nhu_cau, setNhuCau] = useState('');
+  const [salePhuTrach, setSalePhuTrach] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleCreate = async () => {
+    if (!ten_KH.trim()) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/khach-hang', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ten_KH: ten_KH.trim(), so_dien_thoai, email, du_an, nguon, nhu_cau,
+          ...(isAdmin && salePhuTrach ? { sale_phu_trach: salePhuTrach } : {}),
+          groupId,
+        }),
+      });
+      const result = await res.json();
+      if (!result.success) { setError(result.error || 'Không thể thêm khách hàng'); return; }
+      onCreated();
+    } catch {
+      setError('Lỗi kết nối server');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 14, background: 'var(--bg-card)' }}>
+      <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        Khách hàng mới sẽ vào Nhóm riêng <strong style={{ color: 'var(--text-primary)' }}>{groupName}</strong>
+      </div>
+      {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 10, fontSize: 12.5 }}>{error}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+        <input className="form-input" value={ten_KH} onChange={e => setTenKH(e.target.value)} placeholder="Tên khách hàng *" />
+        <input className="form-input" value={so_dien_thoai} onChange={e => setSdt(e.target.value)} placeholder="Số điện thoại" />
+        <input className="form-input" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" />
+        <select className="form-select" value={du_an} onChange={e => setDuAn(e.target.value)}>
+          <option value="">Chọn dự án</option>
+          {duAnList.filter(d => d.hien_thi !== 0).map(d => <option key={d.id_du_an} value={d.ten_du_an}>{d.ten_du_an}</option>)}
+        </select>
+        <select className="form-select" value={nguon} onChange={e => setNguon(e.target.value)}>
+          <option value="">Chọn nguồn</option>
+          {NGUON.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        {/* Sale phụ trách CHỈ Admin chọn được — cùng rule với POST /api/khach-hang
+            (non-admin luôn tự gán chính mình, server không tin field này). */}
+        {isAdmin && (
+          <select className="form-select" value={salePhuTrach} onChange={e => setSalePhuTrach(e.target.value)}>
+            <option value="">Sale phụ trách (tự động nếu để trống)</option>
+            {employees.map(e => <option key={e.id_nhan_vien} value={e.ho_ten}>{e.ho_ten}</option>)}
+          </select>
+        )}
+      </div>
+      <textarea className="form-textarea" value={nhu_cau} onChange={e => setNhuCau(e.target.value)} placeholder="Nhu cầu" style={{ marginBottom: 8 }} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn btn-primary btn-sm" disabled={!ten_KH.trim() || saving} onClick={handleCreate}>
+          {saving ? <Loader2 size={14} className="spin" /> : 'Thêm khách hàng'}
+        </button>
+        <button className="btn btn-secondary btn-sm" onClick={onCancel}>Hủy</button>
       </div>
     </div>
   );

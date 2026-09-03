@@ -17,6 +17,9 @@ const GROUP_DETAIL_ROUTE_PATH = 'src/app/api/private-groups/[id]/route.ts';
 const MEMBERS_ROUTE_PATH = 'src/app/api/private-groups/[id]/members/route.ts';
 const CUSTOMERS_ROUTE_PATH = 'src/app/api/private-groups/[id]/customers/route.ts';
 const REASSIGN_ROUTE_PATH = 'src/app/api/private-groups/[id]/customers/[relationId]/route.ts';
+const MINE_ROUTE_PATH = 'src/app/api/private-groups/mine/route.ts';
+const PRIVATE_GROUP_PANEL_PATH = 'src/components/crm/PrivateGroupPanel.tsx';
+const KHACH_HANG_PAGE_PATH = 'src/app/khach-hang/page.tsx';
 
 function read(path: string): string {
   return readFileSync(resolve(path), 'utf8');
@@ -164,4 +167,86 @@ test('PATCH /api/private-groups/[id]/customers/[relationId]: gate canReassignGro
   const src = read(REASSIGN_ROUTE_PATH);
   assert.match(src, /if\s*\(!canReassignGroupCustomer\(user, group\)\)/);
   assert.match(src, /assigned_to_id === group\.leader_id \|\| members\.some\(m => m\.employee_id === assigned_to_id\)/);
+});
+
+// ─── Multi-group manual customer entry (task hiện tại) ──────────────────────
+// Employee CÓ THỂ thuộc nhiều Nhóm riêng cùng lúc — resolveManualCustomerGroup
+// (unit-tested đầy đủ trong private-group-auth.test.ts) là authority THUẦN;
+// các test dưới đây khoá lại cách createManualCustomerWithGroupLink/route SỬ
+// DỤNG đúng authority đó (order, error mapping, atomicity, reuse).
+
+test('private-group.ts: group resolution (resolveManualCustomerGroup) chạy TRƯỚC dedupe SĐT và TRƯỚC create Customer — fail-fast, không ghi DB nếu actor chưa hợp lệ về group (test bắt buộc #4/#6/#10)', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function createManualCustomerWithGroupLink');
+  const fnBody = src.slice(fnStart, fnStart + 2500);
+  const resolveIdx = fnBody.indexOf('resolveManualCustomerGroup(');
+  const dedupeIdx = fnBody.indexOf('throw new DuplicatePhoneError()');
+  const createIdx = fnBody.indexOf('tx.khachHang.create(');
+  assert.ok(resolveIdx > -1 && dedupeIdx > -1 && createIdx > -1, 'phải tìm thấy cả 3 mốc trong function body');
+  assert.ok(resolveIdx < dedupeIdx && dedupeIdx < createIdx, 'thứ tự PHẢI là: resolve group -> dedupe SĐT -> create Customer');
+});
+
+test('private-group.ts: "required" (thiếu groupId khi >=2 nhóm) và "forbidden" (groupId không thuộc actor) đều throw TRƯỚC dòng dedupe — không tạo Customer khi group không hợp lệ (test bắt buộc #4/#6)', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function createManualCustomerWithGroupLink');
+  const fnBody = src.slice(fnStart, fnStart + 2500);
+  const requiredIdx = fnBody.indexOf("resolution.status === 'required'");
+  const forbiddenIdx = fnBody.indexOf("resolution.status === 'forbidden'");
+  const dedupeIdx = fnBody.indexOf('throw new DuplicatePhoneError()');
+  assert.ok(requiredIdx > -1 && forbiddenIdx > -1 && dedupeIdx > -1);
+  assert.ok(requiredIdx < dedupeIdx && forbiddenIdx < dedupeIdx);
+});
+
+test('private-group.ts: group-link ("ok") tạo trong CÙNG transaction/tx với Customer — không có code path nào tạo Customer rồi return sớm trước khi xét resolution.status === \'ok\' (test bắt buộc #10, atomic)', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function createManualCustomerWithGroupLink');
+  const fnBody = src.slice(fnStart, fnStart + 3000);
+  assert.match(fnBody, /tx\.privateGroupCustomer\.create\(/);
+  const createCustomerIdx = fnBody.indexOf('tx.khachHang.create(');
+  const createLinkIdx = fnBody.indexOf('tx.privateGroupCustomer.create(');
+  assert.ok(createCustomerIdx > -1 && createLinkIdx > createCustomerIdx, 'group-link phải tạo SAU customer, cùng transaction tx');
+});
+
+test('POST /api/khach-hang: groupId đọc từ body (string) và truyền vào createManualCustomerWithGroupLink — KHÔNG tin field khác (VD group_id snake_case) làm authority', () => {
+  const src = read(KHACH_HANG_ROUTE_PATH);
+  assert.match(src, /groupId:\s*typeof body\.groupId === 'string' && body\.groupId \? body\.groupId : undefined/);
+});
+
+test('POST /api/khach-hang: GroupSelectionRequiredError -> 400 (test bắt buộc #4)', () => {
+  const src = read(KHACH_HANG_ROUTE_PATH);
+  const idx = src.indexOf('if (err instanceof GroupSelectionRequiredError)');
+  assert.ok(idx > -1);
+  assert.match(src.slice(idx, idx + 200), /status:\s*400/);
+});
+
+test('POST /api/khach-hang: GroupNotAllowedError -> 403 (test bắt buộc #6)', () => {
+  const src = read(KHACH_HANG_ROUTE_PATH);
+  const idx = src.indexOf('if (err instanceof GroupNotAllowedError)');
+  assert.ok(idx > -1);
+  assert.match(src.slice(idx, idx + 200), /status:\s*403/);
+});
+
+test('GET /api/private-groups/mine: dùng resolvePrivateGroupsForEmployee(user.id_nhan_vien) — KHÔNG dùng filterPrivateGroupsForUser (đó là "nhóm được XEM", Admin thấy hết; endpoint này phải là "nhóm actor THỰC SỰ thuộc về", test bắt buộc #1)', () => {
+  const src = read(MINE_ROUTE_PATH);
+  assert.match(src, /resolvePrivateGroupsForEmployee\(user\.id_nhan_vien\)/);
+  assert.doesNotMatch(src, /filterPrivateGroupsForUser/);
+});
+
+test('GET /api/private-groups/mine: TransactionalCrmRequiredError -> success:true, data:[] (Postgres CRM tắt = coi như 0 nhóm, KHÔNG lỗi cứng UI "Thêm khách hàng")', () => {
+  const src = read(MINE_ROUTE_PATH);
+  const idx = src.indexOf('if (error instanceof TransactionalCrmRequiredError)');
+  assert.ok(idx > -1);
+  assert.match(src.slice(idx, idx + 150), /success:\s*true,\s*data:\s*\[\]/);
+});
+
+test('PrivateGroupPanel: "Thêm khách hàng" từ group detail POST tới /api/khach-hang (CÙNG engine với trang Khách hàng) — KHÔNG tạo API tạo-khách thứ 2 (test bắt buộc #11)', () => {
+  const src = read(PRIVATE_GROUP_PANEL_PATH);
+  assert.match(src, /fetch\('\/api\/khach-hang', \{/);
+  const idx = src.indexOf("fetch('/api/khach-hang', {");
+  assert.match(src.slice(idx, idx + 400), /groupId/, 'phải gửi kèm groupId đã biết sẵn của group detail');
+});
+
+test('khach-hang/page.tsx: modal "Thêm khách hàng" fetch /api/private-groups/mine để quyết định 0/1/nhiều nhóm', () => {
+  const src = read(KHACH_HANG_PAGE_PATH);
+  assert.match(src, /\/api\/private-groups\/mine/);
 });

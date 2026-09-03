@@ -10,7 +10,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { prisma } from '../db/client';
 import { assertTransactionalCrm } from './transactional-workflow';
 import { normalizePhone, phoneKey } from '../khach-hang-excel-import';
-import { resolveAutoLinkGroup } from '../private-group-auth';
+import { resolveManualCustomerGroup } from '../private-group-auth';
 import type { CrmSessionUser } from '../crm-auth';
 import type { KhachHang } from '../types';
 
@@ -40,6 +40,19 @@ async function serializable<T>(operation: (tx: Tx) => Promise<T>): Promise<T> {
 
 export class DuplicatePhoneError extends Error {
   constructor() { super('Số điện thoại đã tồn tại trong CRM'); }
+}
+
+/** Actor thuộc >=2 Nhóm riêng nhưng không gửi groupId — BẮT BUỘC chọn nhóm
+ * trước khi tạo (xem resolveManualCustomerGroup 'required'). */
+export class GroupSelectionRequiredError extends Error {
+  constructor() { super('Bạn thuộc nhiều Nhóm riêng — phải chọn 1 nhóm trước khi thêm khách hàng'); }
+}
+
+/** groupId gửi lên không thuộc danh sách Leader/member của actor (xem
+ * resolveManualCustomerGroup 'forbidden') — server tự validate, KHÔNG tin
+ * groupId client gửi. */
+export class GroupNotAllowedError extends Error {
+  constructor() { super('Bạn không thuộc Nhóm riêng này'); }
 }
 
 // ─── CRUD nhóm ──────────────────────────────────────────────────────────────
@@ -214,6 +227,12 @@ export interface CreateManualCustomerInput {
   /** CHỈ Admin được set khác actor — route phải tự chặn trước khi gọi hàm
    * này (xem POST /api/khach-hang). Non-admin luôn tự gán actor.ho_ten. */
   sale_phu_trach?: string;
+  /** Nhóm riêng actor muốn gắn Customer mới vào — optional khi actor thuộc
+   * 0/1 nhóm (0 nhóm bị bỏ qua nếu có gửi; 1 nhóm auto-select nhưng vẫn được
+   * validate nếu client gửi), BẮT BUỘC khi actor thuộc >=2 nhóm (xem
+   * resolveManualCustomerGroup). Cũng CHÍNH LÀ tham số route
+   * "Thêm khách từ group detail" dùng để gắn cứng vào 1 group đã biết trước. */
+  groupId?: string;
 }
 
 export interface CreateManualCustomerResult {
@@ -225,15 +244,21 @@ export interface CreateManualCustomerResult {
 }
 
 /**
- * Flow D (locked business decision):
+ * Flow D (locked business decision, mở rộng cho multi-group — xem
+ * resolveManualCustomerGroup):
+ * 0. Resolve Nhóm riêng actor thuộc về + validate input.groupId TRƯỚC khi
+ *    đụng DB ghi gì — actor thuộc >=2 nhóm mà không gửi groupId hợp lệ (hoặc
+ *    gửi groupId không thuộc actor) -> throw ngay, KHÔNG tạo Customer (tránh
+ *    trạng thái nửa vời "Customer đã tạo nhưng group link thất bại/bị bỏ qua
+ *    silently" — atomic với bước 2).
  * 1. Validate + normalize/dedupe theo authority hiện tại (phoneKey — GIỐNG HỆT
  *    /api/khach-hang cũ) — trùng SĐT -> DuplicatePhoneError, KHÔNG tạo Customer
  *    thứ 2, KHÔNG đụng Customer cũ (silently steal/reassign) — an toàn tuyệt
  *    đối vì hàm này KHÔNG BAO GIỜ ghi vào 1 Customer đã tồn tại, chỉ tạo mới.
  * 2. Create Customer master (KhachHang) — id cùng format `KH_<ts>_<rand>` với
  *    route cũ.
- * 3+4. Nếu actor thuộc ĐÚNG 1 Nhóm riêng (Leader hoặc Sale member) -> tạo
- *    PrivateGroupCustomer (entered_by = actor).
+ * 3+4. Nếu bước 0 resolve ra 1 group ('ok') -> tạo PrivateGroupCustomer
+ *    (entered_by = actor) trong CÙNG transaction — atomic với bước 2.
  * 5. assigned_to mặc định = entered_by (actor tự động được quyền chăm sóc —
  *    canViewGroupCustomer trong private-group-auth.ts check đúng field này).
  *
@@ -248,6 +273,13 @@ export async function createManualCustomerWithGroupLink(
   const key = phoneKey(so_dien_thoai);
 
   return serializable(async tx => {
+    // Bước 0 — group resolution TRƯỚC dedupe/create: fail-fast, không ghi gì
+    // vào DB nếu actor chưa hợp lệ về group (xem resolveManualCustomerGroup).
+    const groups = await resolvePrivateGroupsForEmployee(input.actor.id_nhan_vien, tx);
+    const resolution = resolveManualCustomerGroup(groups.leaderOf, groups.memberOf, input.groupId);
+    if (resolution.status === 'required') throw new GroupSelectionRequiredError();
+    if (resolution.status === 'forbidden') throw new GroupNotAllowedError();
+
     const existing = await tx.khachHang.findMany({ select: { so_dien_thoai: true } });
     if (existing.some(c => phoneKey(c.so_dien_thoai || '') === key)) {
       throw new DuplicatePhoneError();
@@ -276,12 +308,9 @@ export async function createManualCustomerWithGroupLink(
       },
     });
 
-    const groups = await resolvePrivateGroupsForEmployee(input.actor.id_nhan_vien, tx);
-    const autoLink = resolveAutoLinkGroup(groups.leaderOf, groups.memberOf);
-
     let groupLink: CreateManualCustomerResult['groupLink'] = null;
-    if (autoLink) {
-      const { id: group_id, name: group_name } = autoLink;
+    if (resolution.status === 'ok') {
+      const { id: group_id, name: group_name } = resolution.group;
       const relation = await tx.privateGroupCustomer.create({
         data: {
           group_id,

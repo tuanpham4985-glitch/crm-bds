@@ -23,6 +23,12 @@ export default function KhachHangPage() {
   const router = useRouter();
   const { user: currentUser, isAdmin, isLoading: authLoading } = useAuth();
   const [showPrivateGroupPanel, setShowPrivateGroupPanel] = useState(false);
+  // Nhóm riêng CỦA CHÍNH actor (Leader/member) — dùng để quyết định nhánh UI
+  // 0/1/nhiều nhóm trong modal "Thêm khách hàng" (xem section 4/11 spec).
+  // KHÁC filterPrivateGroupsForUser (đó là "nhóm ĐƯỢC XEM", Admin thấy hết) —
+  // /api/private-groups/mine trả đúng "nhóm actor THỰC SỰ thuộc về".
+  const [myPrivateGroups, setMyPrivateGroups] = useState<{ id: string; name: string }[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const { enabled: crmEnabled, isLoading: crmModuleLoading } = useCrmModule();
   const [data, setData] = useState<KhachHang[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
@@ -259,6 +265,13 @@ export default function KhachHangPage() {
   useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
   useEffect(() => { fetchDuAn(); }, [fetchDuAn]);
   useEffect(() => { fetchDatasets(); }, [fetchDatasets]);
+  // Nhóm riêng của actor — fetch 1 lần lúc vào trang, đủ dùng cho modal "Thêm
+  // khách hàng" (openCreate) mở/đóng nhiều lần sau đó không cần fetch lại.
+  useEffect(() => {
+    fetch('/api/private-groups/mine').then(r => r.json()).then(d => {
+      if (d.success) setMyPrivateGroups(d.data);
+    }).catch(err => console.error('Fetch my private groups error:', err));
+  }, []);
   // Range theo STT tham chiếu "total" của filter hiện tại (search/fromDate/
   // toDate) — KHÔNG phụ thuộc "page" (range không phải theo trang). Đổi filter
   // -> total đổi -> range cũ (nếu có) không còn chắc đúng nghĩa, phải reset.
@@ -467,6 +480,10 @@ export default function KhachHangPage() {
   const openCreate = () => {
     setEditingItem(null);
     setForm({ ten_KH: '', so_dien_thoai: '', email: '', nguon: '', nhu_cau: '', ghi_chu: '', sale_phu_trach: '', du_an: '' });
+    // Đúng 1 Nhóm riêng -> auto-select ngay (vẫn hiện tag cho user biết khách
+    // vào đâu); >=1 nhóm khác -> để trống, BẮT BUỘC user tự chọn trước khi Save
+    // (xem nút Save disabled bên dưới khi nhiều nhóm mà chưa chọn).
+    setSelectedGroupId(myPrivateGroups.length === 1 ? myPrivateGroups[0].id : '');
     setShowModal(true);
   };
 
@@ -487,10 +504,14 @@ export default function KhachHangPage() {
 
   const handleSave = async () => {
     if (!form.ten_KH.trim()) return;
+    // Nhiều Nhóm riêng mà chưa chọn -> chặn Save ở client (server cũng tự
+    // chặn lại — xem GroupSelectionRequiredError, đây chỉ là UX fail-fast,
+    // KHÔNG phải security boundary duy nhất).
+    if (!editingItem && myPrivateGroups.length >= 2 && !selectedGroupId) return;
     setSaving(true);
     try {
       const method = editingItem ? 'PUT' : 'POST';
-      const body = editingItem ? { ...editingItem, ...form } : form;
+      const body = editingItem ? { ...editingItem, ...form } : { ...form, groupId: selectedGroupId || undefined };
       const res = await fetch('/api/khach-hang', {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -1161,6 +1182,43 @@ export default function KhachHangPage() {
                 <input className="form-input" value={form.ten_KH}
                   onChange={(e) => setForm({ ...form, ten_KH: e.target.value })} placeholder="Nhập tên khách hàng" />
               </div>
+              {/* Nhóm riêng — CHỈ hiện lúc tạo mới (không đổi group khi sửa
+                  khách đã tồn tại — PUT không nhận groupId). 0 nhóm: ẩn hẳn,
+                  hành vi y hệt trước đây. Đúng 1 nhóm: tag tĩnh, đã auto-select
+                  ở openCreate. >=2 nhóm: BẮT BUỘC bấm chọn 1 tag trước khi Save
+                  (xem disabled ở nút Thêm mới) — identity theo group.id, tên
+                  chỉ để hiển thị. */}
+              {!editingItem && myPrivateGroups.length > 0 && (
+                <div className="form-group">
+                  <label className="form-label">Nhóm riêng{myPrivateGroups.length > 1 ? ' * (chọn 1 nhóm)' : ''}</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {myPrivateGroups.map(g => {
+                      const active = selectedGroupId === g.id;
+                      const singleGroup = myPrivateGroups.length === 1;
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          disabled={singleGroup}
+                          onClick={() => setSelectedGroupId(g.id)}
+                          style={{
+                            fontSize: 12.5, padding: '4px 10px', borderRadius: 999,
+                            border: `1px solid ${active ? 'var(--primary)' : 'var(--border)'}`,
+                            background: active ? 'var(--primary-light, #eff6ff)' : 'transparent',
+                            color: active ? 'var(--primary)' : 'var(--text-primary)',
+                            cursor: singleGroup ? 'default' : 'pointer', fontWeight: active ? 600 : 400,
+                          }}
+                        >
+                          {g.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {myPrivateGroups.length > 1 && !selectedGroupId && (
+                    <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 4 }}>Bạn thuộc nhiều Nhóm riêng — phải chọn 1 nhóm trước khi lưu.</div>
+                  )}
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">Số điện thoại</label>
@@ -1221,7 +1279,8 @@ export default function KhachHangPage() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Hủy</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.ten_KH.trim()}>
+              <button className="btn btn-primary" onClick={handleSave}
+                disabled={saving || !form.ten_KH.trim() || (!editingItem && myPrivateGroups.length >= 2 && !selectedGroupId)}>
                 {saving ? 'Đang lưu...' : (editingItem ? 'Cập nhật' : 'Thêm mới')}
               </button>
             </div>
@@ -2133,6 +2192,7 @@ export default function KhachHangPage() {
           employees={employees}
           currentUser={currentUser}
           isAdmin={isAdmin}
+          duAnList={duAnList}
           onClose={() => setShowPrivateGroupPanel(false)}
         />
       )}

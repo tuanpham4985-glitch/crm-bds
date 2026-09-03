@@ -3,7 +3,7 @@ import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKh
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
 import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds } from '@/lib/crm-funnel/campaign';
 import { getDatasetMembershipCustomerRefs } from '@/lib/crm-funnel/dataset';
-import { createManualCustomerWithGroupLink, DuplicatePhoneError } from '@/lib/crm-funnel/private-group';
+import { createManualCustomerWithGroupLink, DuplicatePhoneError, GroupNotAllowedError, GroupSelectionRequiredError } from '@/lib/crm-funnel/private-group';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { matchesCampaignStatusFilter, summarizeCampaignMembership, type CampaignStatusFilter } from '@/lib/khach-hang-campaign-status';
@@ -148,6 +148,11 @@ export async function POST(request: NextRequest) {
           ghi_chu: body.ghi_chu,
           du_an: body.du_an,
           sale_phu_trach,
+          // Nhóm riêng (multi-group support) — string | undefined, server tự
+          // validate lại actor có thực sự thuộc group này không (xem
+          // resolveManualCustomerGroup trong createManualCustomerWithGroupLink),
+          // KHÔNG tin groupId client gửi lên.
+          groupId: typeof body.groupId === 'string' && body.groupId ? body.groupId : undefined,
         });
         return NextResponse.json({
           success: true,
@@ -157,6 +162,12 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         if (err instanceof DuplicatePhoneError) {
           return NextResponse.json({ success: false, error: err.message }, { status: 409 });
+        }
+        if (err instanceof GroupSelectionRequiredError) {
+          return NextResponse.json({ success: false, error: err.message, code: 'GROUP_SELECTION_REQUIRED' }, { status: 400 });
+        }
+        if (err instanceof GroupNotAllowedError) {
+          return NextResponse.json({ success: false, error: err.message }, { status: 403 });
         }
         if (err instanceof TransactionalCrmRequiredError) {
           // Rơi xuống nhánh legacy bên dưới thay vì lỗi cứng — Postgres CRM

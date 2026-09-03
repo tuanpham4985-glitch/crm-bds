@@ -123,24 +123,53 @@ export function filterPrivateGroupsForUser<G extends PrivateGroupLike>(
 
 export interface PrivateGroupRef { id: string; name: string }
 
+/** Union kết quả của resolveManualCustomerGroup — status thay vì throw ngay ở
+ * đây (hàm này THUẦN, không phải nơi quyết định HTTP status) để caller
+ * (createManualCustomerWithGroupLink) tự map sang lỗi phù hợp. */
+export type ManualCustomerGroupResolution =
+  /** Actor không thuộc Nhóm riêng nào -> customer thường, không group-link
+   * (không phải mọi Customer đều cần thuộc 1 Private Group). */
+  | { status: 'none' }
+  /** Group đã xác định (auto-select duy nhất 1 nhóm, hoặc groupId hợp lệ đã
+   * gửi lên khớp đúng 1 nhóm actor thuộc về). */
+  | { status: 'ok'; group: PrivateGroupRef }
+  /** Actor thuộc >=2 Nhóm riêng nhưng KHÔNG gửi groupId -> BẮT BUỘC chọn
+   * trước khi tạo, KHÔNG đoán (locked business decision). */
+  | { status: 'required' }
+  /** groupId gửi lên KHÔNG thuộc danh sách Leader/member của actor (nhóm lạ,
+   * gõ tay id, hoặc actor chỉ có 1 nhóm nhưng gửi groupId khác nhóm đó) ->
+   * chặn, KHÔNG tạo Customer (tránh actor tự ý nhét khách vào nhóm không có
+   * quyền qua gọi API trực tiếp — UI ẩn/hiện không phải security boundary). */
+  | { status: 'forbidden' };
+
 /**
  * Quyết định THUẦN (Flow D bước 3+4, xem crm-funnel/private-group.ts#
- * createManualCustomerWithGroupLink): actor thuộc ĐÚNG 1 Nhóm riêng (gộp cả
- * vai trò Leader lẫn Sale member, loại trùng theo id) -> tự động gắn Customer
- * mới nhập vào ĐÚNG nhóm đó.
- *   - 0 nhóm -> null (customer thường, không có gì sai — không phải mọi
- *     Customer đều cần thuộc 1 Private Group).
- *   - ĐÚNG 1 nhóm -> group đó.
- *   - >1 nhóm (hiếm, VD vừa Leader nhóm A vừa Sale member nhóm B) -> KHÔNG
- *     đoán, trả về null (ambiguous) — v1 chưa xây UI chọn nhóm thủ công cho
- *     case hiếm này, an toàn hơn là tự ý chọn 1 trong nhiều nhóm.
+ * createManualCustomerWithGroupLink) — actor CÓ THỂ thuộc nhiều Nhóm riêng
+ * cùng lúc (locked business model: 1 Sale có thể vừa ở nhóm A vừa ở nhóm B):
+ *   - 0 nhóm -> 'none' (bỏ qua groupId nếu có gửi lên — actor không có nhóm
+ *     nào để mà chọn, coi như không gửi).
+ *   - ĐÚNG 1 nhóm -> auto-select nhóm đó; nếu client CÓ gửi groupId thì vẫn
+ *     phải khớp đúng nhóm này (validate lại, không tin mù client).
+ *   - >=2 nhóm -> groupId BẮT BUỘC và phải là 1 trong các nhóm actor thuộc về
+ *     (Leader hoặc Sale member) -> 'required' nếu thiếu, 'forbidden' nếu sai.
+ * Cùng 1 rule "groupId phải thuộc danh sách actor" áp dụng cho MỌI case khi
+ * groupId có gửi lên — đây cũng CHÍNH LÀ đường dùng chung cho "Thêm khách từ
+ * group detail" (groupId luôn được gửi tường minh, group đã xác định sẵn).
  */
-export function resolveAutoLinkGroup(
-  leaderOf: readonly PrivateGroupRef[], memberOf: readonly PrivateGroupRef[]
-): PrivateGroupRef | null {
+export function resolveManualCustomerGroup(
+  leaderOf: readonly PrivateGroupRef[],
+  memberOf: readonly PrivateGroupRef[],
+  requestedGroupId?: string | null,
+): ManualCustomerGroupResolution {
   const distinct = new Map<string, string>();
   for (const g of [...leaderOf, ...memberOf]) distinct.set(g.id, g.name);
-  if (distinct.size !== 1) return null;
-  const [id, name] = [...distinct.entries()][0];
-  return { id, name };
+  const groups = [...distinct.entries()].map(([id, name]) => ({ id, name }));
+
+  if (requestedGroupId) {
+    const match = groups.find(g => g.id === requestedGroupId);
+    return match ? { status: 'ok', group: match } : { status: 'forbidden' };
+  }
+  if (groups.length === 0) return { status: 'none' };
+  if (groups.length === 1) return { status: 'ok', group: groups[0] };
+  return { status: 'required' };
 }
