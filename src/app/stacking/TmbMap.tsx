@@ -83,7 +83,7 @@ const MAX_ZOOM_MULT = 20;
 const ZOOM_STEP = 0.25;        // bước nút +/- (giữ nguyên hành vi cũ)
 const WHEEL_ZOOM_FACTOR = 0.08; // bước wheel — nhân, nhỏ/mượt hơn nút +/-
 const DEFAULT_ZOOM_MULT = 1; // mở TMB = fit-to-view mặc định, KHÔNG auto-zoom vào khu Còn hàng
-const MARKER_SIZE_PX = 18;   // marker cố định theo pixel màn hình (không theo scale) — luôn thấy/click được ở mọi mức zoom
+const MARKER_SIZE_PX = 12;   // marker cố định theo pixel màn hình (không theo scale) — gọn để không đè lên căn sát cạnh
 // Chỉ hiện label Mã căn thường trực khi đã zoom đủ gần — tránh chữ chồng
 // chéo che bản đồ lúc xem toàn cảnh (yêu cầu "không che quá nhiều bản đồ").
 // Ở zoom thấp hơn, vẫn xem được mã căn qua hover/focus (preview card).
@@ -823,9 +823,9 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                       title={u.available ? u.unitCode : `${u.unitCode} — ${debugLabel}`}
                       style={{
                         position: 'absolute', left, top, width: MARKER_SIZE_PX, height: MARKER_SIZE_PX, borderRadius: '50%',
-                        border: `2.5px solid ${u.available ? '#16a34a' : '#9ca3af'}`,
+                        border: `2px solid ${u.available ? '#16a34a' : '#9ca3af'}`,
                         background: u.available ? '#22c55e' : 'rgba(156,163,175,0.32)',
-                        boxShadow: u.available ? (isHovered ? '0 0 0 5px rgba(34,197,94,0.35), 0 2px 6px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.3)') : 'none',
+                        boxShadow: u.available ? (isHovered ? '0 0 0 3px rgba(34,197,94,0.28), 0 2px 5px rgba(0,0,0,0.24)' : '0 2px 5px rgba(0,0,0,0.24)') : 'none',
                         opacity: u.available ? 1 : 0.5,
                         cursor: u.available ? 'pointer' : 'not-allowed',
                         padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
