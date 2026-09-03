@@ -165,6 +165,44 @@ export interface CrmDataset {
   created_at: string;
 }
 
+// === PRIVATE GROUP ("Nhóm riêng") — mô hình Sale tự khai thác data, KHÔNG
+// phải Dataset/Campaign/DuAn.ds_sale (xem prisma/schema.prisma) ===
+export interface PrivateGroup {
+  id: string;
+  name: string;
+  leader_id: string;
+  leader_name: string;
+  created_by_id: string;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
+  /** Chỉ có ở GET /api/private-groups (list) — số Sale thành viên, không tính Leader. */
+  memberCount?: number;
+}
+
+export interface PrivateGroupMember {
+  id: string;
+  group_id: string;
+  employee_id: string;
+  employee_name: string;
+  added_by_id: string;
+  added_by_name: string;
+  created_at: string;
+}
+
+export interface PrivateGroupCustomer {
+  id: string;
+  group_id: string;
+  customer_id: string;
+  entered_by_id: string;
+  entered_by_name: string;
+  assigned_to_id: string;
+  assigned_to_name: string;
+  created_at: string;
+  updated_at: string;
+  customer: { ten_KH: string; so_dien_thoai: string; email: string } | null;
+}
+
 // Campaign Foundation (M1A) — Campaign là lớp trung gian giữa Customer và
 // Telesale (không phải bản sao customer). Xem CampaignMembership trong schema
 // cho field chăm sóc/qualification theo từng campaign (M1B sẽ dùng tới).

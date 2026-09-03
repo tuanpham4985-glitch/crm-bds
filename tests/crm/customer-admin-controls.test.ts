@@ -33,16 +33,21 @@ test('khach-hang/page.tsx: action bar header có đúng 1 khối {isAdmin && (<>
   assert.match(block, /ref=\{excelInputRef\}/);
 });
 
-test('khach-hang/page.tsx: nút "Thêm khách hàng" (tạo mới, header) nằm trong khối {isAdmin && (...)} RIÊNG — không lẫn với nút "Sửa" (openEdit, business authority hiện có của mỗi dòng, không đổi)', () => {
+// ĐÃ CẬP NHẬT (Private Sales Group task, locked business decision section A):
+// "Thêm khách hàng" giờ hiển thị cho MỌI user CRM hợp lệ, KHÔNG còn Admin-only
+// — đây là thay đổi CHỦ ĐÍCH, ghi đè quyết định "Admin-only" cũ của chính test
+// này (xem tests/crm/private-group-api.test.ts cho test khoá hành vi mới đầy
+// đủ hơn: server-side gate + self-assign sale_phu_trach cho non-admin).
+test('khach-hang/page.tsx: nút "Thêm khách hàng" (tạo mới, header) KHÔNG còn bọc bởi {isAdmin && (...)} — hiện cho mọi user hợp lệ; nút "Sửa" theo dòng vẫn giữ nguyên authority cũ (canManageCustomer/isDirectManager, không đổi)', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   const createBtnIdx = src.indexOf('openCreate}');
   assert.ok(createBtnIdx >= 0, 'phải tìm được nút gọi openCreate');
   const before = src.slice(Math.max(0, createBtnIdx - 200), createBtnIdx);
-  assert.match(before, /\{isAdmin && \(/, 'nút "Thêm khách hàng" phải được bọc trực tiếp bởi {isAdmin && (...)}');
+  assert.doesNotMatch(before, /\{isAdmin && \(/, 'nút "Thêm khách hàng" không còn được gate bởi isAdmin (locked business decision mới)');
 
   // Nút "Sửa" ở mỗi dòng (openEdit) KHÔNG được đụng tới — đây là business
   // authority hiện có (canManageCustomer/isDirectManager ở server), không nằm
-  // trong 6 control bị task này ẩn.
+  // trong phạm vi thay đổi của task này.
   const editBtnIdx = src.indexOf('openEdit(kh)');
   assert.ok(editBtnIdx >= 0);
   const editBefore = src.slice(Math.max(0, editBtnIdx - 300), editBtnIdx);
@@ -70,21 +75,29 @@ test('khach-hang/page.tsx: 2 nút bulk-action theo lựa chọn ("Tạo Campaign
 
 // --- 2. UI: empty-state không hướng dẫn non-admin bấm nút họ không thấy ---
 
-test('khach-hang/page.tsx: empty-state luôn hiện "Chưa có khách hàng" (h3, không gate) — dòng hướng dẫn bấm "Thêm khách hàng" CHỈ hiện khi isAdmin', () => {
+// ĐÃ CẬP NHẬT — gợi ý bấm nút giờ hiện cho MỌI user (nút "Thêm khách hàng"
+// không còn Admin-only, xem test phía trên) — không còn lý do ẩn gợi ý này
+// với non-admin vì họ giờ CÓ thấy + bấm được nút đó.
+test('khach-hang/page.tsx: empty-state luôn hiện "Chưa có khách hàng" VÀ gợi ý bấm "Thêm khách hàng" cho MỌI user (không gate isAdmin nữa)', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   const emptyStateIdx = src.indexOf('className="empty-state"');
   assert.ok(emptyStateIdx >= 0);
-  const emptyStateBlock = src.slice(emptyStateIdx, emptyStateIdx + 300);
+  const emptyStateBlock = src.slice(emptyStateIdx, emptyStateIdx + 400);
   assert.match(emptyStateBlock, /<h3>Chưa có khách hàng<\/h3>/, 'tiêu đề trung tính phải luôn hiện, không phụ thuộc isAdmin');
-  assert.match(emptyStateBlock, /\{isAdmin && <p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới<\/p>\}/, 'gợi ý bấm nút chỉ hiện cho Admin — non-admin không được hướng dẫn dùng 1 nút họ không thấy');
+  assert.match(emptyStateBlock, /<p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới<\/p>/, 'gợi ý bấm nút phải hiện cho mọi user (nút đã hiện cho mọi user)');
+  assert.doesNotMatch(emptyStateBlock, /\{isAdmin && <p>Nhấn/, 'gợi ý không còn được gate bởi isAdmin');
 });
 
 // --- 3. Server: audit Admin-only enforcement cho từng operation quản trị ---
 // Mỗi route dưới đây phải tự enforce isCrmAdmin — KHÔNG được phép chỉ dựa vào
 // việc ẩn nút ở FE (xem comment tương tự tại import-batches/[id]/delete/route.ts).
 
+// POST /api/khach-hang (Thêm khách hàng) ĐÃ RỜI khỏi danh sách Admin-only này
+// (locked business decision mới, section A) — xem
+// tests/crm/private-group-api.test.ts cho test khoá hành vi mới đầy đủ
+// (không còn isCrmAdmin-only, nhưng vẫn 401 nếu chưa đăng nhập + non-admin
+// tự động self-assign sale_phu_trach, không tin client).
 const ADMIN_ONLY_ROUTES: { file: string; label: string; guardCount: number }[] = [
-  { file: 'src/app/api/khach-hang/route.ts', label: 'POST /api/khach-hang (Thêm khách hàng)', guardCount: 1 },
   { file: 'src/app/api/khach-hang/sync-leads/route.ts', label: 'POST /api/khach-hang/sync-leads (Sync từ phễu)', guardCount: 1 },
   { file: 'src/app/api/khach-hang/import-excel/route.ts', label: 'POST /api/khach-hang/import-excel (Import Excel)', guardCount: 1 },
   { file: 'src/app/api/khach-hang/import-batches/route.ts', label: 'GET /api/khach-hang/import-batches (Lịch sử Import — list)', guardCount: 1 },

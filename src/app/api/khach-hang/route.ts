@@ -3,6 +3,9 @@ import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKh
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
 import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds } from '@/lib/crm-funnel/campaign';
 import { getDatasetMembershipCustomerRefs } from '@/lib/crm-funnel/dataset';
+import { createManualCustomerWithGroupLink, DuplicatePhoneError } from '@/lib/crm-funnel/private-group';
+import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
+import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { matchesCampaignStatusFilter, summarizeCampaignMembership, type CampaignStatusFilter } from '@/lib/khach-hang-campaign-status';
 import type { KhachHang } from '@/lib/types';
 
@@ -99,12 +102,15 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// "Thêm khách hàng" mở cho MỌI user CRM hợp lệ (không chỉ Admin — locked
+// business decision) — mọi user đã đăng nhập (getCrmSessionUser() non-null)
+// đều là "user CRM hợp lệ"; việc vào được trang /khach-hang đã có gate riêng
+// ở tầng trang, đây là authority SERVER cho chính hành động tạo khách, không
+// chỉ bỏ UI gate mà quên server gate.
 export async function POST(request: NextRequest) {
   try {
     const user = await getCrmSessionUser();
-    if (!isCrmAdmin(user)) {
-      return NextResponse.json({ success: false, error: 'Không có quyền thêm khách hàng' }, { status: 403 });
-    }
+    if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     const body = await request.json();
 
     // ✅ Validate
@@ -115,7 +121,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ Fix số điện thoại
+    // Non-admin tự nhập -> LUÔN tự gán chính mình làm sale_phu_trach (không
+    // tin sale_phu_trach client gửi lên — tránh 1 Sale gán khách cho đồng
+    // nghiệp khác mà không có quyền). Đây CHÍNH LÀ cách "Sale tự nhập mặc
+    // định được quyền chăm sóc" hoạt động — canViewCustomer (crm-auth.ts) đã
+    // cho phép xem theo đúng sale_phu_trach === tên mình, không cần thêm
+    // authority mới cho /khach-hang. Admin giữ nguyên hành vi cũ (tự chọn
+    // hoặc để trống).
+    const sale_phu_trach = isCrmAdmin(user) ? (body.sale_phu_trach || '') : user.ho_ten;
+
+    // Nhóm riêng (Flow D) CHỈ hoạt động khi Postgres CRM đã bật — cùng
+    // ràng buộc với Campaign/Dataset (Private Group là model Postgres-only,
+    // xem prisma/schema.prisma). Postgres tắt -> fallback đúng hành vi CŨ
+    // (dedupe + tạo qua Google Sheets/PG non-transactional), KHÔNG có group-
+    // link — trang /khach-hang vẫn phải luôn dùng được (cùng nguyên tắc với
+    // getDatasetMembershipCustomerRefs/getCampaignMembershipCustomerRefs).
+    if (isPostgresEnabled('crm') && process.env.DATABASE_URL) {
+      try {
+        const result = await createManualCustomerWithGroupLink({
+          actor: user,
+          ten_KH: body.ten_KH,
+          so_dien_thoai: body.so_dien_thoai,
+          email: body.email,
+          nguon: body.nguon,
+          nhu_cau: body.nhu_cau,
+          ghi_chu: body.ghi_chu,
+          du_an: body.du_an,
+          sale_phu_trach,
+        });
+        return NextResponse.json({
+          success: true,
+          data: result.customer,
+          privateGroup: result.groupLink ? { id: result.groupLink.group_id, name: result.groupLink.group_name } : null,
+        });
+      } catch (err) {
+        if (err instanceof DuplicatePhoneError) {
+          return NextResponse.json({ success: false, error: err.message }, { status: 409 });
+        }
+        if (err instanceof TransactionalCrmRequiredError) {
+          // Rơi xuống nhánh legacy bên dưới thay vì lỗi cứng — Postgres CRM
+          // báo bật nhưng thật ra chưa migrate xong (hiếm, phòng thủ).
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    // ─── Legacy path (Postgres CRM chưa bật) — hành vi GIỮ NGUYÊN như cũ,
+    // chỉ bỏ gate Admin-only (đã chuyển lên trên) và dùng sale_phu_trach đã
+    // tự gán ở trên. KHÔNG có group-link (Private Group cần Postgres). ────
     const rawSdt = body.so_dien_thoai ?? '';
     const sdt = rawSdt.startsWith('0')
       ? rawSdt
@@ -125,7 +179,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Số điện thoại đã tồn tại trong CRM' }, { status: 409 });
     }
 
-    // ✅ Tạo object chuẩn
     const kh: KhachHang = {
       id_khach_hang: `KH_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       ngay_tao: new Date().toISOString(),
@@ -135,7 +188,7 @@ export async function POST(request: NextRequest) {
       nguon: body.nguon || '',
       nhu_cau: body.nhu_cau || '',
       ghi_chu: body.ghi_chu || '',
-      sale_phu_trach: body.sale_phu_trach || '',
+      sale_phu_trach,
       label_khach: `${body.ten_KH} - ${sdt}`,
       du_an: body.du_an || '',
       telesale_phu_trach: body.telesale_phu_trach || '',
@@ -150,7 +203,7 @@ export async function POST(request: NextRequest) {
 
     await addKhachHang(kh);
 
-    return NextResponse.json({ success: true, data: kh });
+    return NextResponse.json({ success: true, data: kh, privateGroup: null });
 
   } catch (error) {
     console.error('KhachHang POST error:', error);

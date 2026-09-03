@@ -17,10 +17,12 @@ import { isAllVisibleSelected, toggleSelectAllVisible, toggleSelection } from '@
 import { validateListRangeAgainstTotal } from '@/lib/list-range';
 import { deriveImportBatchDisplayStatus } from '@/lib/import-batch-display-status';
 import { CampaignDistributeModal } from '@/components/crm/CampaignDistributeModal';
+import { PrivateGroupPanel } from '@/components/crm/PrivateGroupPanel';
 
 export default function KhachHangPage() {
   const router = useRouter();
-  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { user: currentUser, isAdmin, isLoading: authLoading } = useAuth();
+  const [showPrivateGroupPanel, setShowPrivateGroupPanel] = useState(false);
   const { enabled: crmEnabled, isLoading: crmModuleLoading } = useCrmModule();
   const [data, setData] = useState<KhachHang[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
@@ -853,12 +855,18 @@ export default function KhachHangPage() {
               Xóa đã chọn ({selectedIds.size})
             </button>
           )}
-          {isAdmin && (
-            <button className="btn btn-primary" onClick={openCreate}>
-              <Plus size={18} />
-              Thêm khách hàng
-            </button>
-          )}
+          {/* "Thêm khách hàng" hiển thị cho MỌI user CRM hợp lệ (không chỉ
+              Admin — locked business decision, section A). Server-side gate
+              tương ứng: POST /api/khach-hang chỉ còn yêu cầu đăng nhập, không
+              còn isCrmAdmin-only — xem route đó. */}
+          <button className="btn btn-secondary" onClick={() => setShowPrivateGroupPanel(true)}>
+            <Users size={16} />
+            Nhóm riêng
+          </button>
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Plus size={18} />
+            Thêm khách hàng
+          </button>
         </div>
       </div>
 
@@ -983,7 +991,9 @@ export default function KhachHangPage() {
           <div className="empty-state">
             <Users size={40} />
             <h3>Chưa có khách hàng</h3>
-            {isAdmin && <p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới</p>}
+            {/* Nút "Thêm khách hàng" giờ hiện cho MỌI user hợp lệ (section A)
+                — gợi ý này cũng bỏ gate isAdmin theo đúng thực tế đó. */}
+            <p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới</p>
           </div>
         ) : (
           <>
@@ -1182,14 +1192,21 @@ export default function KhachHangPage() {
                     {NGUON.map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Sale phụ trách</label>
-                  <select className="form-select" value={form.sale_phu_trach}
-                    onChange={(e) => setForm({ ...form, sale_phu_trach: e.target.value })}>
-                    <option value="">Chọn sale</option>
-                    {employees.map(nv => <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>)}
-                  </select>
-                </div>
+                {/* Chỉ Admin chọn được Sale phụ trách — non-admin tự nhập
+                    khách LUÔN được server tự gán làm sale_phu_trach của chính
+                    họ (xem POST /api/khach-hang), không cho chọn người khác
+                    (tránh gán khách cho đồng nghiệp không có quyền); PUT cũng
+                    không đổi field này qua form nên ẩn luôn khi sửa. */}
+                {isAdmin && (
+                  <div className="form-group">
+                    <label className="form-label">Sale phụ trách</label>
+                    <select className="form-select" value={form.sale_phu_trach}
+                      onChange={(e) => setForm({ ...form, sale_phu_trach: e.target.value })}>
+                      <option value="">Chọn sale</option>
+                      {employees.map(nv => <option key={nv.id_nhan_vien} value={nv.ho_ten}>{nv.ho_ten}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">Nhu cầu</label>
@@ -2109,6 +2126,15 @@ export default function KhachHangPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showPrivateGroupPanel && (
+        <PrivateGroupPanel
+          employees={employees}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+          onClose={() => setShowPrivateGroupPanel(false)}
+        />
       )}
 
       {showCampaignModal && (

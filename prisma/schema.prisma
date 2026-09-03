@@ -316,6 +316,86 @@ model CampaignMembership {
   @@map("campaign_memberships")
 }
 
+// ─── PRIVATE GROUP (Nhóm riêng) ──────────────────────────────
+// Mô hình Sale tự khai thác data — KHÔNG phải Dataset (nguồn/lô data logic),
+// KHÔNG phải Campaign (đợt CSKH giữa Customer và Telesale), KHÔNG phải
+// DuAn.ds_sale (phạm vi Sale của 1 Dự án). 3 model dưới đây là persistence
+// TỐI THIỂU riêng cho capability này — không overload các entity trên.
+//
+// customer_id/leader_id/employee_id đều là STRING REF THUẦN (giống
+// CampaignMembership.customer_id/telesale_id, CrmHandoff.customer_id,
+// CustomerDatasetMembership.customer_id) — KHÔNG Prisma @relation tới
+// KhachHang/NhanVien, vì cả 2 model đó có thể sống ở Google Sheets thay vì
+// Postgres tuỳ feature flag (isPostgresEnabled), một FK cứng sẽ vỡ khi
+// KhachHang/NhanVien không nằm trong cùng Postgres. Private Group tự nó CHỈ
+// tồn tại khi Postgres CRM bật (assertTransactionalCrm) — giống Campaign/Dataset.
+model PrivateGroup {
+  id               String   @id @default(uuid())
+  name             String
+  // Đúng 1 Leader/nhóm — field ĐƠN (không phải bảng members) nên "không cho
+  // group có >1 Leader" đúng ĐƯƠNG NHIÊN bởi schema, không cần validate riêng.
+  leader_id        String
+  leader_name      String
+  created_by_id    String
+  created_by_name  String
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  members          PrivateGroupMember[]
+  customers        PrivateGroupCustomer[]
+
+  @@index([leader_id])
+  @@map("private_groups")
+}
+
+// Sale THÀNH VIÊN của nhóm — Leader KHÔNG có row ở đây (xác định qua
+// PrivateGroup.leader_id), tránh 2 nguồn sự thật cho "ai là Leader".
+model PrivateGroupMember {
+  id             String   @id @default(uuid())
+  group_id       String
+  employee_id    String
+  employee_name  String
+  added_by_id    String
+  added_by_name  String
+  created_at     DateTime @default(now())
+
+  group          PrivateGroup @relation(fields: [group_id], references: [id], onDelete: Cascade)
+
+  @@unique([group_id, employee_id])
+  @@index([group_id])
+  @@index([employee_id])
+  @@map("private_group_members")
+}
+
+// Customer liên quan tới 1 Nhóm riêng — customer_id UNIQUE TOÀN CỤC (không
+// chỉ unique trong 1 group): 1 Customer chỉ thuộc ĐÚNG 1 Private Group tại 1
+// thời điểm — tránh đúng conflict "Customer đã thuộc 1 Nhóm riêng khác" mà
+// audit yêu cầu chặn, tại tầng DB thay vì chỉ ở application.
+//
+// entered_by = Sale tự nhập (origin actor, KHÔNG đổi sau khi tạo — provenance).
+// assigned_to = Sale hiện đang được giao chăm sóc TRONG PHẠM VI NHÓM NÀY, mặc
+// định = entered_by lúc tạo, Leader/Admin có thể giao lại cho Sale khác trong
+// nhóm (xem PATCH .../customers/[relationId]). Đây là authority RIÊNG cho
+// "ai chăm sóc customer này trong nhóm" — ĐỘC LẬP với KhachHang.sale_phu_trach
+// (authority chung cho /khach-hang, KHÔNG bị đổi khi reassign trong nhóm).
+model PrivateGroupCustomer {
+  id                String   @id @default(uuid())
+  group_id          String
+  customer_id       String   @unique
+  entered_by_id     String
+  entered_by_name   String
+  assigned_to_id    String
+  assigned_to_name  String
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  group             PrivateGroup @relation(fields: [group_id], references: [id], onDelete: Cascade)
+
+  @@index([group_id])
+  @@index([assigned_to_id])
+  @@map("private_group_customers")
+}
+
 model CrmPipelineLink {
   id           String   @id @default(uuid())
   customer_id  String   @unique
