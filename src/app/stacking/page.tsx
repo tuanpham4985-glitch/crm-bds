@@ -823,6 +823,7 @@ function ListUnitDetailModal({ row, columns, onClose }: {
   onClose: () => void;
 }) {
   const groups = useMemo(() => groupStackingListColumnsForDetail(columns), [columns]);
+  const displayStatus = effectiveDotStatus(row);
 
   return (
     <div
@@ -849,14 +850,14 @@ function ListUnitDetailModal({ row, columns, onClose }: {
         {/* Scrollable body */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
 
-          {/* Status badges — cùng authority với bảng chính (dot = CRM Pipeline,
-              marker = quy ước màu Sheet), popup chỉ là presentation layer. */}
+          {/* Đồng bộ trạng thái hiển thị với bảng chính; căn đã bán chỉ có
+              một tag đỏ bo tròn, không lặp marker hoặc hiện "Còn hàng". */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary, #f9fafb)' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 600, background: row.trangThai === 'con_hang' ? '#dcfce7' : row.trangThai === 'da_ban' ? '#fee2e2' : '#fef3c7', color: row.trangThai === 'con_hang' ? '#15803d' : row.trangThai === 'da_ban' ? '#dc2626' : '#92400e' }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], flexShrink: 0 }} />
-              {STATUS_LABEL[row.trangThai]}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 600, background: displayStatus === 'con_hang' ? '#dcfce7' : displayStatus === 'da_ban' ? '#fee2e2' : '#fef3c7', color: displayStatus === 'con_hang' ? '#15803d' : displayStatus === 'da_ban' ? '#dc2626' : '#92400e' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[displayStatus], flexShrink: 0 }} />
+              {STATUS_LABEL[displayStatus]}
             </span>
-            {row.marker && (
+            {displayStatus !== 'da_ban' && row.marker === 'check_admin' && (
               <span style={MARKER_BADGE_STYLE[row.marker]}>{MARKER_LABEL[row.marker]}</span>
             )}
           </div>
