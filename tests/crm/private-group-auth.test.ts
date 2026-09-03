@@ -4,7 +4,8 @@ import {
   isPrivateGroupLeader, isPrivateGroupMember, canViewPrivateGroup, canManagePrivateGroupMembers,
   canRenamePrivateGroup, canChangePrivateGroupLeader, canCreatePrivateGroup, canViewAllGroupCustomers,
   canReassignGroupCustomer, canViewGroupCustomer, filterGroupCustomersForUser, filterPrivateGroupsForUser,
-  resolveManualCustomerGroup,
+  resolveManualCustomerGroup, buildCustomerGroupBadges,
+  type PrivateGroupCustomerLinkLike, type PrivateGroupBadgeSource,
 } from '../../src/lib/private-group-auth';
 import type { CrmSessionUser } from '../../src/lib/crm-auth';
 
@@ -223,4 +224,83 @@ test('resolveManualCustomerGroup: actor thuộc >=2 nhóm + groupId KHÔNG thu�
   const leaderOf = [{ id: 'G1', name: 'Nhóm A' }];
   const memberOf = [{ id: 'G2', name: 'Nhóm B' }];
   assert.deepEqual(resolveManualCustomerGroup(leaderOf, memberOf, 'G999'), { status: 'forbidden' });
+});
+
+// ─── buildCustomerGroupBadges — badge Nhóm riêng trên /khach-hang ───────────
+// (task hiện tại — test bắt buộc #1-#5 của final report)
+
+const GROUP_A: PrivateGroupBadgeSource = { id: 'G1', leader_id: LEADER.id_nhan_vien, name: 'Thu - Yến - Thanh' };
+const GROUP_B: PrivateGroupBadgeSource = { id: 'G2', leader_id: 'U_OTHER_LEADER', name: 'Nhóm VIP' };
+
+function link(customer_id: string, group_id: string, entered_by_id: string, assigned_to_id: string): PrivateGroupCustomerLinkLike {
+  return { customer_id, group_id, entered_by_id, assigned_to_id };
+}
+
+test('buildCustomerGroupBadges: customer có group + actor được phép biết (Leader của group đó) -> trả đúng {id, name} (test bắt buộc #1)', () => {
+  const links = [link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
+  const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
+  const result = buildCustomerGroupBadges(LEADER, links, groupsById);
+  assert.deepEqual(result, { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
+});
+
+test('buildCustomerGroupBadges: customer KHÔNG có link nào trong input -> không có key trong result (test bắt buộc #2, không phải "—"/placeholder)', () => {
+  const result = buildCustomerGroupBadges(ADMIN, [], new Map());
+  assert.deepEqual(result, {});
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'KH_KHONG_GROUP'), false);
+});
+
+test('buildCustomerGroupBadges: actor (Leader) thuộc nhiều group nhưng customer chỉ có link tới ĐÚNG 1 group -> badge CHỈ group đó, không lộ group khác actor cũng quản lý (test bắt buộc #3)', () => {
+  // LEADER là leader_id của GROUP_A; giả lập LEADER cũng liên quan GROUP_B
+  // (VD từng là leader) nhưng KHÔNG có trong groupsById vì không được truyền
+  // vào (route chỉ query group THỰC SỰ được tham chiếu bởi link của trang).
+  const links = [link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
+  const groupsById = new Map([[GROUP_A.id, GROUP_A], [GROUP_B.id, GROUP_B]]);
+  const result = buildCustomerGroupBadges(LEADER, links, groupsById);
+  assert.deepEqual(result, { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
+  assert.equal(Object.keys(result).length, 1);
+});
+
+test('buildCustomerGroupBadges: Admin luôn thấy badge (authority hiện tại)', () => {
+  const links = [link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
+  const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
+  assert.deepEqual(buildCustomerGroupBadges(ADMIN, links, groupsById), { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
+});
+
+test('buildCustomerGroupBadges: Sale là entered_by/assigned_to của chính quan hệ đó -> thấy badge', () => {
+  const links = [link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
+  const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
+  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, groupsById), { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
+});
+
+test('buildCustomerGroupBadges: Sale KHÔNG phải entered_by/assigned_to, KHÔNG phải Leader/Admin -> KHÔNG có key trong result (test bắt buộc #4 — không leak tên group)', () => {
+  const links = [link('KH1', GROUP_A.id, SALE_B.id_nhan_vien, SALE_B.id_nhan_vien)];
+  const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
+  const result = buildCustomerGroupBadges(SALE_A, links, groupsById);
+  assert.deepEqual(result, {});
+});
+
+test('buildCustomerGroupBadges: Sale là member hợp lệ của group nhưng customer là của đồng đội khác trong CÙNG group -> vẫn KHÔNG thấy (đúng rule "Sale không xem toàn bộ customer nhóm", test bắt buộc #4)', () => {
+  const links = [link('KH1', GROUP_A.id, SALE_B.id_nhan_vien, SALE_B.id_nhan_vien)];
+  const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
+  // SALE_A không phải leader_id của GROUP_A (LEADER mới là) và không phải
+  // entered_by/assigned_to của KH1 -> false dù cùng nhóm với SALE_B.
+  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, groupsById), {});
+});
+
+test('buildCustomerGroupBadges: link.group_id không có trong groupsById (group lạ/dữ liệu thiếu) -> bỏ qua, KHÔNG throw, KHÔNG hiện badge sai', () => {
+  const links = [link('KH1', 'G_UNKNOWN', SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
+  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, new Map()), {});
+});
+
+test('buildCustomerGroupBadges: nhiều customer, mỗi customer badge độc lập theo đúng link/group của chính nó', () => {
+  const links = [
+    link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien),
+    link('KH2', GROUP_B.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien),
+  ];
+  const groupsById = new Map([[GROUP_A.id, GROUP_A], [GROUP_B.id, GROUP_B]]);
+  const result = buildCustomerGroupBadges(SALE_A, links, groupsById);
+  assert.deepEqual(result, {
+    KH1: { id: 'G1', name: 'Thu - Yến - Thanh' },
+    KH2: { id: 'G2', name: 'Nhóm VIP' },
+  });
 });

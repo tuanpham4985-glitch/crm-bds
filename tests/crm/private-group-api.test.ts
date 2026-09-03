@@ -250,3 +250,65 @@ test('khach-hang/page.tsx: modal "Thêm khách hàng" fetch /api/private-groups/
   const src = read(KHACH_HANG_PAGE_PATH);
   assert.match(src, /\/api\/private-groups\/mine/);
 });
+
+// ─── Badge "Nhóm riêng" trên bảng /khach-hang (task hiện tại) ───────────────
+
+test('private-group.ts: getPrivateGroupLinksForCustomers/getPrivateGroupsByIds KHÔNG dùng assertTransactionalCrm (throw) — dùng isPostgresEnabled-guard-trả-rỗng, GET /khach-hang phải luôn chạy được kể cả Postgres CRM tắt', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const linksStart = src.indexOf('export async function getPrivateGroupLinksForCustomers');
+  const linksBody = src.slice(linksStart, linksStart + 400);
+  assert.match(linksBody, /!isPostgresEnabled\('crm'\) \|\| !process\.env\.DATABASE_URL\) return \[\]/);
+  assert.doesNotMatch(linksBody, /assertTransactionalCrm/);
+
+  const groupsStart = src.indexOf('export async function getPrivateGroupsByIds');
+  const groupsBody = src.slice(groupsStart, groupsStart + 400);
+  assert.match(groupsBody, /!isPostgresEnabled\('crm'\) \|\| !process\.env\.DATABASE_URL\) return \[\]/);
+  assert.doesNotMatch(groupsBody, /assertTransactionalCrm/);
+});
+
+test('private-group.ts: getPrivateGroupLinksForCustomers là ĐÚNG 1 query customer_id IN (...) — KHÔNG N+1 theo từng dòng (test bắt buộc #5)', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function getPrivateGroupLinksForCustomers');
+  const fnBody = src.slice(fnStart, fnStart + 400);
+  assert.match(fnBody, /prisma\.privateGroupCustomer\.findMany\(\{/);
+  assert.match(fnBody, /customer_id:\s*\{\s*in:/);
+  // Đúng 1 lời gọi findMany trong function này (không loop gọi lại).
+  const matches = fnBody.match(/\.findMany\(/g) || [];
+  assert.equal(matches.length, 1);
+});
+
+test('GET /api/khach-hang: badge Nhóm riêng chỉ query cho customer_id CỦA TRANG ĐANG HIỂN THỊ (paginatedData/pageCustomerIds), KHÔNG cho toàn bộ "data" trước phân trang (test bắt buộc #5, cùng tinh thần campaignByCustomer)', () => {
+  const src = read(KHACH_HANG_ROUTE_PATH);
+  const idx = src.indexOf('getPrivateGroupLinksForCustomers(');
+  assert.ok(idx > -1);
+  const before = src.slice(Math.max(0, idx - 300), idx);
+  assert.match(before, /pageCustomerIds\s*=\s*paginatedData\.map/);
+});
+
+test('GET /api/khach-hang: badge tính qua buildCustomerGroupBadges(user, ...) — permission filtering CHẠY Ở SERVER trước khi trả response, không trả link thô rồi tin client tự lọc (test bắt buộc #4)', () => {
+  const src = read(KHACH_HANG_ROUTE_PATH);
+  assert.match(src, /buildCustomerGroupBadges\(user, privateGroupLinks, privateGroupsById\)/);
+});
+
+test('GET /api/khach-hang: response trả privateGroupByCustomer (cùng shape pattern campaignByCustomer) — KHÔNG gắn field group thẳng vào từng customer object (giữ nguyên shape KhachHang hiện có)', () => {
+  const src = read(KHACH_HANG_ROUTE_PATH);
+  assert.match(src, /privateGroupByCustomer,/);
+});
+
+test('khach-hang/page.tsx: badge Nhóm riêng render TRONG cùng <td> Tên KH, dòng RIÊNG bên dưới (flexDirection column) — không phải cột bảng mới, không phải cùng dòng với tên', () => {
+  const src = read(KHACH_HANG_PAGE_PATH);
+  const renderIdx = src.indexOf('{privateGroup.name}');
+  assert.ok(renderIdx > -1);
+  const before = src.slice(Math.max(0, renderIdx - 1000), renderIdx);
+  assert.match(before, /flexDirection:\s*'column'/, 'badge phải nằm trong khối column cùng ô Tên KH, không phải cột mới');
+  assert.match(before, /\{kh\.ten_KH\}/, 'badge phải nằm trong CÙNG <td> với Tên KH, không phải <td> mới');
+});
+
+test('khach-hang/page.tsx: KHÔNG có customer nào bị render "—"/"Không có nhóm" khi thiếu badge — chỉ render có điều kiện (privateGroup &&)', () => {
+  const src = read(KHACH_HANG_PAGE_PATH);
+  const idx = src.indexOf('const privateGroup = privateGroupByCustomer');
+  assert.ok(idx > -1);
+  const after = src.slice(idx, idx + 1600);
+  assert.match(after, /\{privateGroup && \(/);
+  assert.doesNotMatch(after, /Không có nhóm/);
+});

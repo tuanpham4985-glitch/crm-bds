@@ -173,3 +173,47 @@ export function resolveManualCustomerGroup(
   if (groups.length === 1) return { status: 'ok', group: groups[0] };
   return { status: 'required' };
 }
+
+// ─── Badge "Nhóm riêng" trên bảng /khach-hang ───────────────────────────────
+
+/** 1 dòng PrivateGroupCustomer thô (chưa join tên group) — customer_id thêm
+ * vào so với PrivateGroupCustomerLike vì badge cần biết gắn cho khách nào. */
+export interface PrivateGroupCustomerLinkLike extends PrivateGroupCustomerLike {
+  customer_id: string;
+}
+
+/** Group tối thiểu cần để: (a) check quyền qua canViewGroupCustomer (cần
+ * leader_id), (b) hiển thị tên thật (cần name) — KHÔNG hard-code label. */
+export interface PrivateGroupBadgeSource extends PrivateGroupLike {
+  name: string;
+}
+
+/**
+ * Tính badge {id, name} cho từng customer_id theo ĐÚNG quyền actor — dùng để
+ * enrich GET /api/khach-hang (badge Nhóm riêng dưới Tên KH), mirror pattern
+ * campaignByCustomer (getCampaignNamesByCustomerIds trong campaign.ts):
+ * page-scoped, 1 lần build cho cả trang, KHÔNG N+1 theo từng dòng.
+ *
+ * Authority tái dùng NGUYÊN VẸN canViewGroupCustomer (đã khoá bởi
+ * private-group-auth.test.ts) — KHÔNG tạo rule mới cho riêng badge:
+ *   - Admin, hoặc Leader của ĐÚNG group đó -> luôn thấy.
+ *   - Sale -> CHỈ thấy nếu chính mình là entered_by/assigned_to của ĐÚNG
+ *     quan hệ đó (dù là member hợp lệ của group, không tự suy ra được thấy
+ *     TẤT CẢ badge của group mình).
+ * link.group_id không khớp group nào trong `groupsById` (dữ liệu hiếm/lỗi
+ * tham chiếu) -> bỏ qua, KHÔNG throw, KHÔNG hiện badge sai.
+ */
+export function buildCustomerGroupBadges(
+  user: CrmSessionUser,
+  links: readonly PrivateGroupCustomerLinkLike[],
+  groupsById: ReadonlyMap<string, PrivateGroupBadgeSource>,
+): Record<string, { id: string; name: string }> {
+  const result: Record<string, { id: string; name: string }> = {};
+  for (const link of links) {
+    const group = groupsById.get(link.group_id);
+    if (!group) continue;
+    if (!canViewGroupCustomer(user, group, link)) continue;
+    result[link.customer_id] = { id: group.id, name: group.name };
+  }
+  return result;
+}

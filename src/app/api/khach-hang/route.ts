@@ -3,7 +3,8 @@ import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKh
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
 import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds } from '@/lib/crm-funnel/campaign';
 import { getDatasetMembershipCustomerRefs } from '@/lib/crm-funnel/dataset';
-import { createManualCustomerWithGroupLink, DuplicatePhoneError, GroupNotAllowedError, GroupSelectionRequiredError } from '@/lib/crm-funnel/private-group';
+import { createManualCustomerWithGroupLink, DuplicatePhoneError, getPrivateGroupLinksForCustomers, getPrivateGroupsByIds, GroupNotAllowedError, GroupSelectionRequiredError } from '@/lib/crm-funnel/private-group';
+import { buildCustomerGroupBadges } from '@/lib/private-group-auth';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { matchesCampaignStatusFilter, summarizeCampaignMembership, type CampaignStatusFilter } from '@/lib/khach-hang-campaign-status';
@@ -86,6 +87,18 @@ export async function GET(request: NextRequest) {
       paginatedData.filter(kh => membershipSet.has(kh.id_khach_hang)).map(kh => kh.id_khach_hang),
     );
 
+    // BADGE NHÓM RIÊNG — cùng tinh thần campaignByCustomer: chỉ query cho
+    // customer_id CỦA TRANG ĐANG HIỂN THỊ (paginatedData), KHÔNG N+1. Permission
+    // filtering (actor có được biết tên group này không) nằm ở
+    // buildCustomerGroupBadges (tái dùng canViewGroupCustomer — KHÔNG duplicate
+    // rule ở đây/frontend) — response CHỈ chứa badge actor thực sự được phép
+    // biết, không trả nguyên rồi tin client tự ẩn.
+    const pageCustomerIds = paginatedData.map(kh => kh.id_khach_hang);
+    const privateGroupLinks = await getPrivateGroupLinksForCustomers(pageCustomerIds);
+    const privateGroups = await getPrivateGroupsByIds([...new Set(privateGroupLinks.map(l => l.group_id))]);
+    const privateGroupsById = new Map(privateGroups.map(g => [g.id, g]));
+    const privateGroupByCustomer = buildCustomerGroupBadges(user, privateGroupLinks, privateGroupsById);
+
     return NextResponse.json({
       success: true,
       data: paginatedData,
@@ -93,6 +106,7 @@ export async function GET(request: NextRequest) {
       filteredTotal,
       campaignSummary,
       campaignByCustomer,
+      privateGroupByCustomer,
       page,
       limit,
     });

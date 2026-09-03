@@ -9,8 +9,10 @@
 import { Prisma } from '../../generated/prisma/client';
 import { prisma } from '../db/client';
 import { assertTransactionalCrm } from './transactional-workflow';
+import { isPostgresEnabled } from '../db/feature-flags';
 import { normalizePhone, phoneKey } from '../khach-hang-excel-import';
 import { resolveManualCustomerGroup } from '../private-group-auth';
+import type { PrivateGroupCustomerLinkLike } from '../private-group-auth';
 import type { CrmSessionUser } from '../crm-auth';
 import type { KhachHang } from '../types';
 
@@ -144,6 +146,39 @@ export async function addPrivateGroupMember(input: AddPrivateGroupMemberInput) {
 export async function removePrivateGroupMember(groupId: string, employeeId: string) {
   assertTransactionalCrm();
   await prisma.privateGroupMember.deleteMany({ where: { group_id: groupId, employee_id: employeeId } });
+}
+
+// ─── Badge "Nhóm riêng" trên GET /api/khach-hang ────────────────────────────
+// Cùng convention isPostgresEnabled-guard-trả-rỗng như
+// getCampaignMembershipCustomerRefs/getCampaignNamesByCustomerIds (campaign.ts)
+// và getDatasetMembershipCustomerRefs (dataset.ts) — KHÔNG dùng
+// assertTransactionalCrm() (throw) vì GET /khach-hang PHẢI luôn hoạt động kể
+// cả khi Postgres CRM tắt (Private Group đơn giản coi như không có gì để badge).
+
+/** PrivateGroupCustomer THÔ (chưa join tên group) cho 1 tập customer_id cụ
+ * thể — dùng cho badge Nhóm riêng trên bảng /khach-hang. Luôn gọi với
+ * customer_id CỦA TRANG ĐANG HIỂN THỊ (paginatedData, tối đa `limit` dòng),
+ * KHÔNG BAO GIỜ cho toàn bộ dataset — 1 query, không N+1 (cùng tinh thần
+ * getCampaignNamesByCustomerIds). Permission filtering (actor có được biết
+ * group này không) PHẢI làm ở caller qua buildCustomerGroupBadges — hàm này
+ * CHỈ trả dữ liệu thô. */
+export async function getPrivateGroupLinksForCustomers(customerIds: readonly string[]): Promise<PrivateGroupCustomerLinkLike[]> {
+  if (customerIds.length === 0 || !isPostgresEnabled('crm') || !process.env.DATABASE_URL) return [];
+  return prisma.privateGroupCustomer.findMany({
+    where: { customer_id: { in: [...customerIds] } },
+    select: { customer_id: true, group_id: true, entered_by_id: true, assigned_to_id: true },
+  });
+}
+
+/** PrivateGroup {id, name, leader_id} cho 1 tập group_id cụ thể — chỉ những
+ * group THỰC SỰ được tham chiếu bởi getPrivateGroupLinksForCustomers ở trên
+ * (thường 0-1 nhóm/trang 20 dòng), không phải toàn bộ bảng PrivateGroup. */
+export async function getPrivateGroupsByIds(groupIds: readonly string[]) {
+  if (groupIds.length === 0 || !isPostgresEnabled('crm') || !process.env.DATABASE_URL) return [];
+  return prisma.privateGroup.findMany({
+    where: { id: { in: [...groupIds] } },
+    select: { id: true, name: true, leader_id: true },
+  });
 }
 
 // ─── Customer của nhóm ──────────────────────────────────────────────────────

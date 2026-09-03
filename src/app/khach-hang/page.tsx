@@ -54,6 +54,10 @@ export default function KhachHangPage() {
   const [filteredTotal, setFilteredTotal] = useState(0);
   const [campaignSummary, setCampaignSummary] = useState<{ inCampaign: number; notInCampaign: number }>({ inCampaign: 0, notInCampaign: 0 });
   const [campaignByCustomer, setCampaignByCustomer] = useState<Record<string, string[]>>({});
+  // Badge Nhóm riêng dưới Tên KH — CHỈ chứa badge actor được phép biết (đã
+  // lọc theo canViewGroupCustomer ở server, xem GET /api/khach-hang), KHÔNG
+  // suy luận thêm ở client (frontend không phải security boundary).
+  const [privateGroupByCustomer, setPrivateGroupByCustomer] = useState<Record<string, { id: string; name: string }>>({});
   const [rangeCampaignPreview, setRangeCampaignPreview] = useState<{ inCampaign: number; notInCampaign: number } | null>(null);
 
   // CUSTOMER DATASET — Dataset (nguồn/lô data import) như MỘT filter nữa,
@@ -218,6 +222,7 @@ export default function KhachHangPage() {
         setFilteredTotal(typeof result.filteredTotal === 'number' ? result.filteredTotal : result.total);
         setCampaignSummary(result.campaignSummary || { inCampaign: 0, notInCampaign: 0 });
         setCampaignByCustomer(result.campaignByCustomer || {});
+        setPrivateGroupByCustomer(result.privateGroupByCustomer || {});
         setSelectedIds(new Set()); // danh sách hiển thị đổi -> reset lựa chọn cho khớp
         setSelectAllMatching(false); // filter/trang đổi -> "chọn tất cả" cũ không còn đúng nghĩa
       }
@@ -1068,6 +1073,11 @@ export default function KhachHangPage() {
                     // Customer vẫn được thêm vào Campaign khác bình thường.
                     const campaignNames = campaignByCustomer[kh.id_khach_hang];
                     const inCampaign = Boolean(campaignNames && campaignNames.length > 0);
+                    // Badge Nhóm riêng — server đã lọc theo quyền actor
+                    // (buildCustomerGroupBadges), key vắng mặt = không hiện
+                    // badge (KHÔNG suy ra "không có nhóm" — có thể actor chỉ
+                    // đơn giản không được phép biết, xem section 3 spec).
+                    const privateGroup = privateGroupByCustomer[kh.id_khach_hang];
                     return (
                     <tr key={kh.id_khach_hang} style={inCampaign ? { opacity: 0.6 } : undefined}>
                       <td>
@@ -1077,15 +1087,27 @@ export default function KhachHangPage() {
                         {(page - 1) * limit + idx + 1}
                       </td>
                       <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
-                        {kh.ten_KH}
-                        {inCampaign && (
-                          <span
-                            title={`Đã vào Campaign: ${campaignNames!.join(', ')}`}
-                            style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#7c3aed', background: '#f5f3ff', padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}
-                          >
-                            Đã vào Campaign
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+                          <span>
+                            {kh.ten_KH}
+                            {inCampaign && (
+                              <span
+                                title={`Đã vào Campaign: ${campaignNames!.join(', ')}`}
+                                style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#7c3aed', background: '#f5f3ff', padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}
+                              >
+                                Đã vào Campaign
+                              </span>
+                            )}
                           </span>
-                        )}
+                          {privateGroup && (
+                            <span
+                              title={`Nhóm riêng: ${privateGroup.name}`}
+                              style={{ fontSize: 11, fontWeight: 600, color: '#0f766e', background: '#f0fdfa', padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}
+                            >
+                              {privateGroup.name}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <span className="flex items-center gap-2">
