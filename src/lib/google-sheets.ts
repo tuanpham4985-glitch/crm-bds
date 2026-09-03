@@ -2433,8 +2433,10 @@ async function getDocBySheetId(sheetId: string): Promise<GoogleSpreadsheet> {
   return doc;
 }
 
-// Extract Sheet ID from either raw ID or full Google Sheets URL
-function extractSheetId(input: string): string {
+// Extract Sheet ID from either raw ID or full Google Sheets URL — exported
+// để API route dùng lại CHÍNH hàm này khi Admin đổi Sheet của 1 nguồn đã
+// đăng ký (PATCH /api/stacking/configs), không viết lại parser thứ 2.
+export function extractSheetId(input: string): string {
   const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   return m ? m[1] : input.trim();
 }
@@ -2522,7 +2524,7 @@ export async function addStackingConfig(
 
 export async function updateStackingConfig(
   id: string,
-  updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string; visible_columns?: string[] }
+  updates: { project_code?: string; ten_hien_thi?: string; sheet_id?: string; sheet_tab?: string; visible_columns?: string[] }
 ): Promise<boolean> {
   const doc = await getDoc();
   const sheet = await getOrCreateStackingConfigSheet(doc);
@@ -2531,6 +2533,11 @@ export async function updateStackingConfig(
   if (!row) return false;
   if (updates.project_code !== undefined) row.set('project_code', updates.project_code.trim().toUpperCase());
   if (updates.ten_hien_thi !== undefined && updates.ten_hien_thi.trim()) row.set('ten_hien_thi', updates.ten_hien_thi.trim());
+  // Đổi Google Sheet backing nguồn — UPDATE CHÍNH row này (giữ nguyên id +
+  // mọi field khác không đổi), KHÔNG tạo row/nguồn mới. Validation truy cập
+  // được (+ tab tồn tại nếu chế độ Danh sách) đã xảy ra ở API route TRƯỚC khi
+  // gọi hàm này — ở đây chỉ còn parse-sạch rồi ghi, không tự validate lại.
+  if (updates.sheet_id !== undefined && updates.sheet_id.trim()) row.set('sheet_id', extractSheetId(updates.sheet_id));
   if (updates.sheet_tab !== undefined && updates.sheet_tab.trim()) row.set('sheet_tab', updates.sheet_tab.trim());
   if (updates.visible_columns !== undefined) row.set('visible_columns', updates.visible_columns.length > 0 ? JSON.stringify(updates.visible_columns) : '');
   await row.save();

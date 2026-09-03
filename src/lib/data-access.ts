@@ -79,6 +79,7 @@ export const getStackingConfigs        = GS.getStackingConfigs;
 export const addStackingConfig         = GS.addStackingConfig;
 export const updateStackingConfig      = GS.updateStackingConfig;
 export const deleteStackingConfig      = GS.deleteStackingConfig;
+export const extractSheetId            = GS.extractSheetId;
 
 // CRM — phan-khach (chưa có PG model)
 export const probePhanKhachSheet       = GS.probePhanKhachSheet;

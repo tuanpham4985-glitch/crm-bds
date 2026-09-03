@@ -9,11 +9,12 @@ import {
 import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import TmbMap from './TmbMap';
-import { TMB_MAP_SHEET_ID } from './tmb-map-data';
+import { isTmbAvailableForConfig } from './tmb-map-data';
 import { fmtGia, fmtArea, fmtGiaFull } from './format';
 import {
   filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
   splitStackingListColumns, groupStackingListColumnsForDetail, effectiveDotStatus, countStackingListRowsByDotStatus,
+  reconcileVisibleColumns,
 } from '@/lib/stacking-list';
 
 // Mirror của extractSheetId() phía server (google-sheets.ts) — Admin có thể
@@ -89,7 +90,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   onClose: () => void;
   onAdd: (c: StackingConfig) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string; visible_columns?: string[] }) => void;
+  onUpdate: (id: string, updates: { project_code?: string; ten_hien_thi?: string; sheet_id?: string; sheet_tab?: string; visible_columns?: string[] }) => void;
 }) {
   const [form, setForm] = useState<{ ten_hien_thi: string; sheet_id: string; loai: 'grid' | 'list'; sheet_tab: string; visible_columns: string[] }>({
     ten_hien_thi: '', sheet_id: '', loai: 'grid', sheet_tab: '', visible_columns: [],
@@ -111,6 +112,16 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
   const [editVisibleColumns, setEditVisibleColumns] = useState<string[]>([]);
   const [loadingEditColumns, setLoadingEditColumns] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  // Đổi Google Sheet backing 1 nguồn đã đăng ký — editSheetId khởi tạo = giá
+  // trị sheet_id hiện tại (yêu cầu "hiển thị giá trị Sheet hiện tại"); PHẢI
+  // "Kiểm tra" (editSheetProbe.ok === true) trước khi cho Lưu nếu Admin đổi
+  // giá trị này — xem handleEditProbe + điều kiện disabled của nút Lưu.
+  const [editSheetId, setEditSheetId]           = useState('');
+  const [editSheetProbing, setEditSheetProbing] = useState(false);
+  const [editSheetProbe, setEditSheetProbe]     = useState<{ ok: boolean; msg: string; allTabs?: string[] } | null>(null);
+  // Cột cũ không còn tồn tại sau khi đối chiếu với header Sheet mới — hiện
+  // NGAY lúc Kiểm tra (trước khi Lưu), không đợi tới sau khi lưu mới báo.
+  const [editColumnsRemoved, setEditColumnsRemoved] = useState<string[]>([]);
   const [saEmail, setSaEmail]   = useState('');
   const [copied, setCopied]     = useState(false);
 
@@ -213,15 +224,81 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
     finally { setLoadingEditColumns(false); }
   }
 
+  // "Kiểm tra" khi Sửa nguồn — validate Sheet MỚI Admin vừa dán (link hoặc
+  // Sheet ID) TRƯỚC khi cho Lưu. Chế độ Danh sách: nếu tab hiện tại (c.sheet_tab)
+  // còn tồn tại trong Sheet mới -> tự tải cột thật + đối chiếu với lựa chọn cũ
+  // (giữ cột còn, báo cột mất — reconcileVisibleColumns); nếu tab KHÔNG còn ->
+  // xoá editTab để bắt buộc Admin chọn lại tab hợp lệ trước khi Lưu (không tự
+  // đoán mapping tab tuỳ tiện).
+  async function handleEditProbe(c: StackingConfig) {
+    const raw = editSheetId.trim();
+    if (!raw) return;
+    setEditSheetProbing(true); setEditSheetProbe(null); setEditColumnsRemoved([]);
+    try {
+      const r = await fetch(`/api/stacking?probe=1&sheet_id=${encodeURIComponent(raw)}`);
+      const d = await r.json();
+      if (!d.success) { setEditSheetProbe({ ok: false, msg: d.error || 'Không kết nối được' }); return; }
+      const allTabs: string[] = d.allTabs || [];
+      setEditSheetProbe({ ok: true, msg: `Kết nối thành công${allTabs.length > 0 ? ` — file có ${allTabs.length} tab` : ''}.`, allTabs });
+
+      if (c.loai === 'list') {
+        const cleanId = extractSheetId(raw);
+        if (editTab && allTabs.includes(editTab)) {
+          setLoadingEditColumns(true);
+          try {
+            const rc = await fetch(`/api/stacking?mode=list-columns&sheet_id=${encodeURIComponent(cleanId)}&tab=${encodeURIComponent(editTab)}`);
+            const dc = await rc.json();
+            if (dc.success) {
+              const newHeaders: string[] = dc.data;
+              setEditColumns(newHeaders);
+              const oldSelection = c.visible_columns && c.visible_columns.length > 0 ? c.visible_columns : newHeaders;
+              const { kept, removed } = reconcileVisibleColumns(oldSelection, newHeaders);
+              setEditVisibleColumns(kept.length > 0 ? kept : newHeaders);
+              setEditColumnsRemoved(removed);
+            }
+          } finally { setLoadingEditColumns(false); }
+        } else {
+          // Tab cũ không còn trong Sheet mới — bắt buộc chọn lại trước khi Lưu.
+          setEditTab(''); setEditColumns([]); setEditVisibleColumns([]);
+        }
+      }
+    } catch {
+      setEditSheetProbe({ ok: false, msg: 'Lỗi kết nối server' });
+    } finally {
+      setEditSheetProbing(false);
+    }
+  }
+
+  // Admin chọn lại tab hợp lệ sau khi Sheet mới không còn tab cũ — tải cột
+  // thật của tab MỚI trên Sheet MỚI (không phải c.sheet_id cũ), mặc định check
+  // hết (giống hành vi "chọn tab" lúc thêm nguồn mới, không suy đoán selection cũ
+  // vì tab đã đổi hẳn, không có gì để đối chiếu).
+  async function handleEditSelectTab(tab: string) {
+    setEditTab(tab);
+    setEditColumns([]); setEditVisibleColumns([]); setEditColumnsRemoved([]);
+    if (!tab) return;
+    setLoadingEditColumns(true);
+    try {
+      const cleanId = extractSheetId(editSheetId);
+      const r = await fetch(`/api/stacking?mode=list-columns&sheet_id=${encodeURIComponent(cleanId)}&tab=${encodeURIComponent(tab)}`);
+      const d = await r.json();
+      if (d.success) { setEditColumns(d.data); setEditVisibleColumns(d.data); }
+    } finally { setLoadingEditColumns(false); }
+  }
+
   async function handleUpdate(id: string) {
     const config = configs.find(c => c.id === id);
-    if (!editName.trim() && !editCode.trim() && !editTab.trim() && editColumns.length === 0) return;
-    if (config?.loai === 'list' && editColumns.length > 0 && editVisibleColumns.length === 0) return; // không cho lưu "0 cột"
+    if (!config) return;
+    const sheetIdChanged = editSheetId.trim() !== '' && extractSheetId(editSheetId.trim()) !== config.sheet_id;
+    if (!editName.trim() && !editCode.trim() && !editTab.trim() && editColumns.length === 0 && !sheetIdChanged) return;
+    if (config.loai === 'list' && editColumns.length > 0 && editVisibleColumns.length === 0) return; // không cho lưu "0 cột"
+    if (sheetIdChanged && !editSheetProbe?.ok) return; // chưa Kiểm tra hoặc Kiểm tra lỗi — chặn lưu, giữ nguyên config cũ
     setUpdatingId(id);
     try {
-      const updates: { project_code?: string; ten_hien_thi?: string; sheet_tab?: string; visible_columns?: string[] } = {};
+      const updates: { project_code?: string; ten_hien_thi?: string; sheet_id?: string; sheet_tab?: string; visible_columns?: string[] } = {};
       if (editCode.trim()) updates.project_code = editCode.trim().toUpperCase();
       if (editName.trim()) updates.ten_hien_thi = editName.trim();
+      if (sheetIdChanged) updates.sheet_id = editSheetId.trim();
       if (editTab.trim()) updates.sheet_tab = editTab.trim();
       if (editColumns.length > 0) updates.visible_columns = editVisibleColumns;
       const r = await fetch('/api/stacking/configs', {
@@ -231,6 +308,13 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
       });
       const d = await r.json();
       if (d.success) {
+        // Server luôn trả sheet_id đã parse-sạch (bóc từ URL nếu Admin dán
+        // nguyên link) — ghi đè bằng giá trị SẠCH này (không phải raw input)
+        // trước khi merge vào state, để các lần gọi API sau (fetchListRows...)
+        // không gửi nhầm URL thô làm sheet_id. `sheet_id` chỉ có mặt trong
+        // `updates` khi thật sự đổi (xem trên) — spread {...c, ...updates}
+        // ở onUpdate vì vậy không đụng sheet_id nếu Admin không đổi field này.
+        if (sheetIdChanged && d.sheet_id) updates.sheet_id = d.sheet_id;
         onUpdate(id, updates);
         setEditingId(null);
       } else { alert(d.error || 'Lỗi cập nhật'); }
@@ -461,6 +545,7 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                         setEditName(c.ten_hien_thi);
                         setEditTab(c.sheet_tab ?? '');
                         setEditColumns([]); setEditVisibleColumns([]);
+                        setEditSheetId(c.sheet_id); setEditSheetProbe(null); setEditColumnsRemoved([]);
                         if (c.loai === 'list') openEditColumns(c);
                       }}
                       title="Sửa thông tin"
@@ -485,6 +570,63 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                         style={{ ...inputStyle, padding: '6px 10px', fontSize: '0.82rem', marginBottom: 8 }}
                         autoFocus
                       />
+
+                      {/* Đổi Google Sheet backing nguồn này — KHÔNG tạo nguồn
+                          mới, chỉ update chính config hiện tại (cùng id). Đổi
+                          xong PHẢI "Kiểm tra" thành công mới cho Lưu. */}
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>
+                        Link hoặc Sheet ID Google Sheets
+                      </p>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                        <input
+                          value={editSheetId}
+                          onChange={e => { setEditSheetId(e.target.value); setEditSheetProbe(null); setEditColumnsRemoved([]); }}
+                          placeholder="Dán link hoặc Sheet ID Google Sheets"
+                          style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: '0.82rem' }}
+                        />
+                        <button
+                          onClick={() => handleEditProbe(c)}
+                          disabled={editSheetProbing || !editSheetId.trim()}
+                          style={{
+                            padding: '6px 12px', borderRadius: 8, fontSize: '0.78rem', whiteSpace: 'nowrap',
+                            border: '1px solid var(--border)', background: 'var(--bg-card)',
+                            color: 'var(--primary)', cursor: 'pointer', fontWeight: 600,
+                            opacity: editSheetProbing || !editSheetId.trim() ? 0.5 : 1,
+                            display: 'flex', alignItems: 'center', gap: 4,
+                          }}>
+                          {editSheetProbing ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+                          Kiểm tra
+                        </button>
+                      </div>
+
+                      {editSheetProbe && (
+                        <div style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 6, background: editSheetProbe.ok ? '#dcfce7' : '#fee2e2', color: editSheetProbe.ok ? '#15803d' : '#dc2626', fontSize: '0.76rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                            {editSheetProbe.ok ? <CheckCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} /> : <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />}
+                            <span>{editSheetProbe.msg}</span>
+                          </div>
+                          {editColumnsRemoved.length > 0 && (
+                            <div style={{ marginTop: 4, fontSize: '0.72rem' }}>
+                              ⚠ {editColumnsRemoved.length} cột không còn trong Sheet mới, đã bỏ: {editColumnsRemoved.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Sheet mới không còn tab cũ (c.sheet_tab) — bắt buộc
+                          chọn tab hợp lệ trước khi cho Lưu, không tự đoán. */}
+                      {c.loai === 'list' && editSheetProbe?.ok && !editTab && editSheetProbe.allTabs && editSheetProbe.allTabs.length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <p style={{ fontSize: '0.72rem', color: '#dc2626', marginBottom: 4, fontWeight: 600 }}>
+                            Tab "{c.sheet_tab}" không còn trong Sheet mới — chọn tab hợp lệ trước khi lưu:
+                          </p>
+                          <select value={editTab} onChange={e => handleEditSelectTab(e.target.value)} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 10px' }}>
+                            <option value="">— Chọn tab —</option>
+                            {editSheetProbe.allTabs.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                      )}
+
                       {/* Mã dự án (chỉ chế độ Lưới) / Tên tab (chỉ chế độ Danh sách) */}
                       {c.loai === 'list' ? (
                         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>
@@ -513,12 +655,27 @@ function ManagePanel({ configs, onClose, onAdd, onDelete, onUpdate }: {
                             onKeyDown={e => { if (e.key === 'Enter') handleUpdate(c.id); if (e.key === 'Escape') setEditingId(null); }}
                           />
                         )}
-                        <button
-                          onClick={() => handleUpdate(c.id)}
-                          disabled={updatingId === c.id || (!editName.trim() && !editCode.trim() && !editTab.trim() && editColumns.length === 0) || (c.loai === 'list' && editColumns.length > 0 && editVisibleColumns.length === 0)}
-                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: (!editName.trim() && !editCode.trim() && !editTab.trim() && editColumns.length === 0) ? 0.6 : 1 }}>
-                          {updatingId === c.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : 'Lưu'}
-                        </button>
+                        {(() => {
+                          // sheetIdChanged: Admin đã dán 1 giá trị khác sheet_id hiện tại
+                          // (so sánh sau extractSheetId — dán nguyên link trỏ ĐÚNG sheet cũ
+                          // không tính là "đổi"). Đã đổi thì BẮT BUỘC Kiểm tra thành công
+                          // (+ chọn tab hợp lệ nếu tab cũ mất) mới cho Lưu — không tin
+                          // client, nhưng cũng không để User bấm Lưu rồi mới biết bị chặn.
+                          const sheetIdChanged = editSheetId.trim() !== '' && extractSheetId(editSheetId.trim()) !== c.sheet_id;
+                          const hasAnyChange = Boolean(editName.trim() || editCode.trim() || editTab.trim() || editColumns.length > 0 || sheetIdChanged);
+                          const columnsInvalid = c.loai === 'list' && editColumns.length > 0 && editVisibleColumns.length === 0;
+                          const sheetChangeUnvalidated = sheetIdChanged && editSheetProbe?.ok !== true;
+                          const tabRequiredAfterSheetChange = sheetIdChanged && editSheetProbe?.ok === true && c.loai === 'list' && !editTab.trim();
+                          const disabled = updatingId === c.id || !hasAnyChange || columnsInvalid || sheetChangeUnvalidated || tabRequiredAfterSheetChange;
+                          return (
+                            <button
+                              onClick={() => handleUpdate(c.id)}
+                              disabled={disabled}
+                              style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', flexShrink: 0, opacity: disabled ? 0.6 : 1 }}>
+                              {updatingId === c.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : 'Lưu'}
+                            </button>
+                          );
+                        })()}
                         <button onClick={() => setEditingId(null)} style={{ padding: '6px 10px', borderRadius: 8, fontSize: '0.8rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}>Hủy</button>
                       </div>
 
@@ -785,7 +942,7 @@ export default function StackingPage() {
   const [listGroupFilter, setListGroupFilter] = useState('');
   const [listPage, setListPage]             = useState(1);
   const [selectedListRow, setSelectedListRow] = useState<StackingListRow | null>(null);
-  const [showTmbMap, setShowTmbMap]           = useState(false); // Tổng mặt bằng — chỉ áp dụng nguồn có TMB_MAP_SHEET_ID tương ứng
+  const [showTmbMap, setShowTmbMap]           = useState(false); // Tổng mặt bằng — chỉ áp dụng nguồn có TMB_MAP_CONFIG_ID tương ứng (xem isTmbAvailableForConfig)
   // Tracks which configId has finished loading towers — prevents stale fetchUnits
   // firing with old project/tower when config switches (race condition guard)
   const towersReadyForRef = useRef<string | null>(null);
@@ -1079,7 +1236,7 @@ export default function StackingPage() {
               vờ generic cho nguồn khác chưa có TMB mapping (v1 chỉ phủ Vinhomes
               Sài Gòn Park). Xem inventory trên bản đồ là tính năng xem, không
               phải quản trị -> không gate theo isAdmin như "Quản lý Sheet". */}
-          {selectedConfig?.sheet_id === TMB_MAP_SHEET_ID && (
+          {isTmbAvailableForConfig(selectedConfig) && (
             <button onClick={() => setShowTmbMap(true)} title="Xem vị trí các căn Còn hàng trên Tổng mặt bằng" style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
               fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
@@ -1094,7 +1251,7 @@ export default function StackingPage() {
               display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
               fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
               background: 'transparent', color: 'var(--primary)', cursor: 'pointer',
-              marginLeft: (listRows.length > 0 || selectedConfig?.sheet_id === TMB_MAP_SHEET_ID) ? 0 : 'auto',
+              marginLeft: (listRows.length > 0 || isTmbAvailableForConfig(selectedConfig)) ? 0 : 'auto',
             }}>
               <Settings size={14} /> Quản lý Sheet
             </button>
@@ -1257,7 +1414,7 @@ export default function StackingPage() {
             nguyên zoom/pan/scroll nội bộ. Đóng detail (onClose bên trên,
             setSelectedListRow(null)) không đụng showTmbMap nên quay lại đúng
             TMB đang mở. Chỉ nút X của TmbMap mới gọi setShowTmbMap(false). */}
-        {showTmbMap && selectedConfig?.sheet_id === TMB_MAP_SHEET_ID && (
+        {showTmbMap && isTmbAvailableForConfig(selectedConfig) && (
           <TmbMap
             listRows={listRows}
             onOpenUnit={row => setSelectedListRow(row)}

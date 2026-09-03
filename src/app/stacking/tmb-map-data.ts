@@ -27,10 +27,25 @@ export interface TmbMapUnit {
   pdfY: number;
 }
 
-/** sheet_id của nguồn Bảng hàng mà map này áp dụng — dùng để CHỈ hiện nút
- * "Tổng mặt bằng" khi đang chọn đúng nguồn có map tương ứng, không giả vờ
- * generic cho nguồn khác chưa có TMB mapping. */
-export const TMB_MAP_SHEET_ID = '1ZACRtVRTT0Bhz4HLbQtGXQv1LoZLWhbedHat2BZP5fg';
+/** id ổn định (StackingConfig.id, dạng "SC_<timestamp>") của nguồn "Vinhomes
+ * Sài Gòn Park" mà TMB map này áp dụng — audit trực tiếp qua getStackingConfigs()
+ * với credentials thật (KHÔNG qua HTTP), id sinh 1 LẦN DUY NHẤT lúc tạo nguồn
+ * (addStackingConfig) và KHÔNG BAO GIỜ đổi qua bất kỳ update nào sau đó.
+ *
+ * TRƯỚC ĐÂY gate bằng sheet_id (mutable — từ khi cho phép Admin đổi Google
+ * Sheet backing 1 nguồn qua "Quản lý Sheet" → "Sửa", sheet_id có thể đổi bất
+ * kỳ lúc nào mà VẪN LÀ cùng 1 nguồn/dự án), khiến nút "Tổng mặt bằng" biến
+ * mất sai ngay khi đổi Sheet dù spatial mapping bên dưới vẫn hoàn toàn đúng.
+ * id không có rủi ro này -> dùng làm stable identity, xem isTmbAvailableForConfig. */
+export const TMB_MAP_CONFIG_ID = 'SC_1788152955557';
+
+/** TMB chỉ hiện cho ĐÚNG nguồn đã audit spatial mapping (v1 chỉ phủ Vinhomes
+ * Sài Gòn Park) — so theo config.id (ổn định), KHÔNG so theo sheet_id (mutable,
+ * xem TMB_MAP_CONFIG_ID). Tách hàm riêng để 3 nơi gọi (nút mở TMB, margin
+ * layout, mount TmbMap) luôn dùng CHUNG 1 điều kiện, không lệch nhau. */
+export function isTmbAvailableForConfig(config: { id: string } | null | undefined): boolean {
+  return config?.id === TMB_MAP_CONFIG_ID;
+}
 
 export const TMB_PDF_URL = '/tmb-poc/tmb-khu-1-2-vhsgp.pdf';
 

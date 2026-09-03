@@ -44,6 +44,21 @@ export function filterStackingListRows(
   return out;
 }
 
+/** Đối chiếu cột đang chọn (visible_columns cũ) với header THẬT của Sheet mới
+ * khi Admin đổi Google Sheet backing 1 nguồn (Sửa nguồn → đổi Link/Sheet ID)
+ * — Sheet mới có thể có bộ header khác hẳn Sheet cũ. `kept` giữ ĐÚNG thứ tự
+ * Sheet MỚI (không phải thứ tự lựa chọn cũ); `removed` = cột cũ không còn,
+ * để UI báo rõ cho Admin thay vì âm thầm mất dữ liệu hiển thị. */
+export function reconcileVisibleColumns(
+  oldColumns: readonly string[], newHeaders: readonly string[]
+): { kept: string[]; removed: string[] } {
+  const newSet = new Set(newHeaders);
+  return {
+    kept: newHeaders.filter(h => oldColumns.includes(h)),
+    removed: oldColumns.filter(c => !newSet.has(c)),
+  };
+}
+
 export function totalStackingListPages(rowCount: number, pageSize = STACKING_LIST_PAGE_SIZE): number {
   return Math.max(1, Math.ceil(rowCount / pageSize));
 }
