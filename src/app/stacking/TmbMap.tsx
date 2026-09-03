@@ -9,6 +9,8 @@ import { buildMaCanIndex, resolveTmbUnitState, summarizeTmbInventory, type TmbUn
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
 import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, computeCenteringMargin } from './tmb-map-pan';
+import { computeRenderQuality, shouldUpgradeRenderQuality } from './tmb-map-render-quality';
+import type { PDFPageProxy, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 
 /** Tổng mặt bằng (TMB) — render trang TMB (PDF thật) làm nền + marker theo
  * toạ độ text layer, click marker -> lookup Mã căn trong Bảng hàng hiện có
@@ -36,6 +38,19 @@ import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, compute
  * effectiveScale = fitScale * zoomMultiplier dùng để CSS-scale canvas VÀ
  * tính vị trí marker từ CÙNG 1 toạ độ gốc (viewX/viewY ở BASE_SCALE=1) ->
  * canvas và marker luôn khớp tuyệt đối ở MỌI mức zoom/pan/resize.
+ *
+ * ── Adaptive high-resolution rendering ──────────────────────────────────
+ * Canvas backing store (canvas.width/height, độ phân giải RASTER thật) ban
+ * đầu chỉ vẽ 1 lần ở BASE_SCALE=1 (~3370×2384px, đo thật bằng pdf.js) — CSS
+ * width/height (scaledSize, hiển thị) phóng bitmap CỐ ĐỊNH đó lên tới 20x,
+ * gây mờ ở zoom sâu (browser upscale, không có thêm điểm ảnh). Sau khi zoom
+ * ổn định (debounce, xem RENDER_DEBOUNCE_MS), gọi lại pdf.js page.render()
+ * (page giữ trong pageRef, KHÔNG re-fetch/re-parse PDF) ở renderScale cao
+ * hơn — xem tmb-map-render-quality.ts cho công thức + hard cap tránh canvas
+ * khổng lồ/OOM. renderScale này CHỈ quyết định độ phân giải raster của
+ * canvas — KHÔNG BAO GIỜ được dùng cho vị trí marker hay CSS display size,
+ * cả 2 vẫn 100% dựa trên effectiveScale + viewport BASE_SCALE=1 như cũ, nên
+ * đổi renderScale không bao giờ làm lệch marker/pan/zoom hiện có.
  */
 
 const BASE_SCALE = 1;
@@ -64,6 +79,10 @@ const LOAD_TIMEOUT_MS = 20000;
 // Kéo dưới ngưỡng này vẫn coi là click (mở popup căn) — vượt ngưỡng mới
 // khoá thành drag/pan và chặn click phát sinh ngoài ý muốn trên marker.
 const DRAG_THRESHOLD_PX = 4;
+// Đợi zoom "đứng yên" bao lâu mới bắt đầu render high-res — tránh render lại
+// canvas (tốn CPU đáng kể ở resolution cao) cho từng tick wheel riêng lẻ
+// trong lúc User còn đang zoom liên tục.
+const RENDER_DEBOUNCE_MS = 220;
 
 function log(...args: unknown[]) {
   // eslint-disable-next-line no-console
@@ -93,6 +112,19 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   const [viewportPoints, setViewportPoints] = useState<{ unitCode: string; viewX: number; viewY: number }[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Adaptive high-res render — giữ page pdf.js SỐNG sau lần render đầu để
+  // render lại CÙNG page ở scale cao hơn khi zoom sâu, không re-fetch/re-parse
+  // file 13MB (doc chỉ cần sống tới lúc getPage() xong nên không giữ ref riêng
+  // — destroy trực tiếp qua biến `loadedDoc` trong closure effect load PDF).
+  // renderedRenderScaleRef theo dõi renderScale ĐANG hiển thị trên canvas
+  // (khởi tạo lại = BASE_SCALE mỗi lần load PDF mới/retry); renderVersionRef +
+  // activeRenderTaskRef là cancellation/stale guard — 1 lượt render high-res
+  // cũ hoàn tất SAU 1 lượt mới hơn phải bị bỏ qua, không được ghi đè kết quả mới.
+  const pageRef = useRef<PDFPageProxy | null>(null);
+  const renderedRenderScaleRef = useRef(BASE_SCALE);
+  const renderVersionRef = useRef(0);
+  const activeRenderTaskRef = useRef<RenderTask | null>(null);
+  const [sharpening, setSharpening] = useState(false); // "Đang làm nét…" — chỉ hiện khi thật sự đang re-render high-res, không chặn tương tác
   // Toạ độ (ở BASE_SCALE=1) cần cuộn tới SAU khi effectiveScale/layout đổi —
   // set bởi nút "Vừa khung"/"Tới khu Còn hàng" (anchorX/Y mặc định = giữa
   // container) hoặc wheel zoom (anchorX/Y = đúng vị trí con trỏ, để điểm dưới
@@ -128,8 +160,21 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   useEffect(() => {
     let cancelled = false;
     let timedOut = false;
+    let loadedDoc: PDFDocumentProxy | null = null;
     setLoading(true);
     setError('');
+
+    // Reset adaptive-render state cho lượt load PDF mới (mount lần đầu hoặc
+    // "Thử lại") — canvas sắp được vẽ lại từ đầu ở BASE_SCALE, không được giữ
+    // renderScale/page của lượt trước; bump version để mọi render high-res cũ
+    // còn đang bay (hiếm, chỉ xảy ra nếu bấm "Thử lại" giữa lúc đang zoom sâu)
+    // tự coi mình là stale khi hoàn tất.
+    pageRef.current = null;
+    renderedRenderScaleRef.current = BASE_SCALE;
+    renderVersionRef.current += 1;
+    activeRenderTaskRef.current?.cancel();
+    activeRenderTaskRef.current = null;
+    setSharpening(false);
 
     const timeoutId = setTimeout(() => {
       timedOut = true;
@@ -152,6 +197,7 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
         loadingTask.onProgress = (p: { loaded: number; total: number }) => log('tải PDF:', p.loaded, '/', p.total || '?', 'bytes');
         const doc = await loadingTask.promise;
         if (timedOut || cancelled) return;
+        loadedDoc = doc;
         log('bước 3/5: getDocument() OK, numPages =', doc.numPages);
 
         const page = await doc.getPage(TMB_PDF_PAGE_NUMBER);
@@ -178,6 +224,12 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
           return { unitCode: h.unitCode, viewX: vx, viewY: vy };
         });
 
+        // Giữ page SỐNG (không .cleanup() ở đây) để adaptive high-res render
+        // sau này gọi lại CHÍNH page này ở scale cao hơn khi zoom sâu — không
+        // re-fetch/re-parse file 13MB. renderedRenderScaleRef đã reset =
+        // BASE_SCALE ở đầu effect, đúng bằng scale vừa render.
+        pageRef.current = page;
+
         clearTimeout(timeoutId);
         setCanvasSize({ w: canvas.width, h: canvas.height });
         setViewportPoints(points);
@@ -194,7 +246,14 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
       }
     })();
 
-    return () => { cancelled = true; clearTimeout(timeoutId); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+      // Dọn đúng doc/render task của LƯỢT NÀY (unmount hoặc bấm "Thử lại")
+      // — tránh leak bộ nhớ pdf.js khi mở/đóng TMB nhiều lần trong 1 phiên.
+      activeRenderTaskRef.current?.cancel();
+      loadedDoc?.destroy();
+    };
   }, [retryKey]);
 
   // fitScale = scale để TOÀN BỘ canvas vừa khung container, giữ đúng aspect
@@ -206,6 +265,74 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   }, [containerSize, canvasSize]);
 
   const effectiveScale = fitScale * zoomMultiplier;
+
+  // Render lại CHÍNH page pdf.js (pageRef, không re-fetch/re-parse PDF) vào 1
+  // canvas OFFSCREEN ở renderScale cao hơn rồi mới blit sang canvas hiển thị
+  // (canvasRef) — tránh canvas hiển thị bị xoá trắng/nháy trong lúc đang vẽ
+  // (gán canvas.width/height xoá nội dung NGAY LẬP TỨC). CSS width/height của
+  // canvas hiển thị KHÔNG đụng tới ở đây (vẫn do scaledSize/effectiveScale
+  // quyết định như cũ) — chỉ đổi canvas.width/height (backing store, số pixel
+  // RASTER thật) + vẽ đè nội dung mới, nên marker/pan/zoom hoàn toàn không bị
+  // ảnh hưởng (xem geometry guard ở đầu file).
+  const renderHighRes = useCallback(async (targetScale: number) => {
+    const page = pageRef.current;
+    const canvas = canvasRef.current;
+    if (!page || !canvas) return;
+
+    // Huỷ lượt render high-res cũ đang bay (nếu có) — không để nó hoàn tất
+    // sau lượt này rồi ghi đè kết quả mới hơn. myVersion là guard thứ 2 (phòng
+    // trường hợp cancel() không kịp chặn promise đã resolve).
+    activeRenderTaskRef.current?.cancel();
+    const myVersion = ++renderVersionRef.current;
+
+    const viewport = page.getViewport({ scale: targetScale, rotation: page.rotate });
+    const off = document.createElement('canvas');
+    off.width = Math.ceil(viewport.width);
+    off.height = Math.ceil(viewport.height);
+    const offCtx = off.getContext('2d');
+    if (!offCtx) return;
+    offCtx.fillStyle = '#ffffff';
+    offCtx.fillRect(0, 0, off.width, off.height);
+
+    setSharpening(true);
+    const task = page.render({ canvasContext: offCtx, viewport });
+    activeRenderTaskRef.current = task;
+    try {
+      await task.promise;
+    } catch {
+      // RenderingCancelledException do bị .cancel() bởi lượt render mới hơn
+      // — hành vi bình thường, không phải lỗi, im lặng bỏ qua.
+      if (renderVersionRef.current === myVersion) setSharpening(false);
+      return;
+    }
+    if (renderVersionRef.current !== myVersion) return; // đã có lượt mới hơn bắt đầu sau đó — bỏ kết quả này (stale guard)
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      canvas.width = off.width;
+      canvas.height = off.height;
+      ctx.drawImage(off, 0, 0);
+      renderedRenderScaleRef.current = targetScale;
+      log('adaptive render: đã render lại canvas ở scale', targetScale, '(', off.width, 'x', off.height, 'px)');
+    }
+    if (activeRenderTaskRef.current === task) activeRenderTaskRef.current = null;
+    setSharpening(false);
+  }, []);
+
+  // Debounce theo effectiveScale — chỉ render high-res SAU KHI zoom đứng yên
+  // RENDER_DEBOUNCE_MS (mỗi thay đổi effectiveScale mới sẽ clear timer cũ,
+  // đúng cơ chế debounce chuẩn của useEffect cleanup), tránh render lại canvas
+  // (tốn CPU ở resolution cao) cho từng tick wheel riêng lẻ khi đang zoom
+  // liên tục. shouldUpgradeRenderQuality đảm bảo KHÔNG downgrade khi zoom ra
+  // (giữ nguyên bitmap nét đã có, CSS tự scale xuống vẫn nét).
+  useEffect(() => {
+    if (!canvasSize || !pageRef.current) return;
+    const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+    const target = computeRenderQuality(effectiveScale, dpr, canvasSize);
+    if (!shouldUpgradeRenderQuality(target, renderedRenderScaleRef.current)) return;
+    const timer = setTimeout(() => { void renderHighRes(target); }, RENDER_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [effectiveScale, canvasSize, renderHighRes]);
 
   // Matching + trạng thái Còn hàng — derive SỐNG từ listRows mỗi lần đổi
   // (đúng authority effectiveDotStatus, không tạo công thức riêng cho TMB,
@@ -414,6 +541,14 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
             <button onClick={() => setZoomMultiplier(z => Math.min(MAX_ZOOM_MULT, +(z + ZOOM_STEP).toFixed(2)))} disabled={loading || zoomMultiplier >= MAX_ZOOM_MULT} title="Phóng to" style={zoomBtnStyle(loading || zoomMultiplier >= MAX_ZOOM_MULT)}>
               <Plus size={15} />
             </button>
+            {/* Indicator nhỏ, không chặn tương tác — chỉ hiện khi đang re-render
+                canvas ở resolution cao hơn (sau khi zoom đứng yên), tự ẩn khi
+                xong hoặc bị lượt zoom mới hơn huỷ giữa chừng. */}
+            {sharpening && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> Đang làm nét…
+              </span>
+            )}
             <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: 'var(--text-muted)', borderRadius: 8, marginLeft: 6 }}>
               <X size={18} />
             </button>
