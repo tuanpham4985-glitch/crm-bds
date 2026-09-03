@@ -76,6 +76,14 @@ export function canCreatePrivateGroup(user: CrmSessionUser): boolean {
   return isCrmAdmin(user);
 }
 
+/** Xóa nhóm — CHỈ Admin (cùng nguyên tắc canCreatePrivateGroup/
+ * canChangePrivateGroupLeader: thay đổi cấu trúc team, không phải business
+ * data hàng ngày) — Leader của CHÍNH nhóm đó cũng KHÔNG được tự xóa nhóm
+ * mình lead, giống Leader không được tự đổi Leader của chính nhóm mình. */
+export function canDeletePrivateGroup(user: CrmSessionUser): boolean {
+  return isCrmAdmin(user);
+}
+
 /** Xem được TOÀN BỘ Customer của 1 nhóm — CHỈ Admin hoặc Leader của group đó.
  * Sale (kể cả thành viên) KHÔNG BAO GIỜ true ở đây — đây CHÍNH LÀ rule khoá:
  * "Sale KHÔNG ĐƯỢC XEM TOÀN BỘ CUSTOMER CỦA NHÓM". */

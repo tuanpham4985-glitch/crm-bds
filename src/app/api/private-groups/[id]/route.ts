@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmSessionUser } from '@/lib/crm-auth';
-import { canChangePrivateGroupLeader, canRenamePrivateGroup, canViewPrivateGroup } from '@/lib/private-group-auth';
-import { getPrivateGroup, listPrivateGroupMembers, updatePrivateGroup } from '@/lib/crm-funnel/private-group';
+import { canChangePrivateGroupLeader, canDeletePrivateGroup, canRenamePrivateGroup, canViewPrivateGroup } from '@/lib/private-group-auth';
+import { deletePrivateGroupTransactional, getPrivateGroup, listPrivateGroupMembers, updatePrivateGroup } from '@/lib/crm-funnel/private-group';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
 // GET /api/private-groups/[id] — chi tiết nhóm + danh sách member. Admin/
@@ -74,5 +74,31 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });
     console.error('[PrivateGroup update]', error);
     return NextResponse.json({ success: false, error: 'Không thể cập nhật Nhóm riêng' }, { status: 500 });
+  }
+}
+
+// DELETE /api/private-groups/[id] — xóa Nhóm riêng. CHỈ Admin
+// (canDeletePrivateGroup) — Leader/Sale (kể cả Leader của CHÍNH nhóm này)
+// KHÔNG được xóa, gate TRƯỚC khi đụng DB, KHÔNG tin role client gửi lên.
+// Xóa PrivateGroupMember + PrivateGroupCustomer (bao gồm CSKH state riêng
+// của nhóm) rồi mới xóa PrivateGroup, atomic trong 1 transaction
+// (deletePrivateGroupTransactional) — KHÔNG đụng KhachHang/Campaign/
+// CampaignMembership/CrmHandoff/Pipeline (3 model Private Group không
+// @relation tới bất kỳ entity nào trong số đó).
+export async function DELETE(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const user = await getCrmSessionUser();
+  if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
+  if (!canDeletePrivateGroup(user)) {
+    return NextResponse.json({ success: false, error: 'Chỉ Admin được xóa Nhóm riêng' }, { status: 403 });
+  }
+  try {
+    const { id } = await context.params;
+    const result = await deletePrivateGroupTransactional(id);
+    if (!result) return NextResponse.json({ success: false, error: 'Không tìm thấy Nhóm riêng' }, { status: 404 });
+    return NextResponse.json({ success: true, data: result });
+  } catch (error) {
+    if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });
+    console.error('[PrivateGroup delete]', error);
+    return NextResponse.json({ success: false, error: 'Không thể xóa Nhóm riêng' }, { status: 500 });
   }
 }

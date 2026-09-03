@@ -4,7 +4,7 @@ import {
   isPrivateGroupLeader, isPrivateGroupMember, canViewPrivateGroup, canManagePrivateGroupMembers,
   canRenamePrivateGroup, canChangePrivateGroupLeader, canCreatePrivateGroup, canViewAllGroupCustomers,
   canReassignGroupCustomer, canViewGroupCustomer, filterGroupCustomersForUser, filterPrivateGroupsForUser,
-  resolveManualCustomerGroup, buildCustomerGroupBadges,
+  resolveManualCustomerGroup, buildCustomerGroupBadges, canDeletePrivateGroup,
   type PrivateGroupCustomerLinkLike, type PrivateGroupBadgeSource,
 } from '../../src/lib/private-group-auth';
 import type { CrmSessionUser } from '../../src/lib/crm-auth';
@@ -76,6 +76,15 @@ test('canCreatePrivateGroup: CHỈ Admin', () => {
   assert.equal(canCreatePrivateGroup(ADMIN), true);
   assert.equal(canCreatePrivateGroup(LEADER), false);
   assert.equal(canCreatePrivateGroup(SALE_A), false);
+});
+
+// ─── canDeletePrivateGroup (task hiện tại) ──────────────────────────────────
+
+test('canDeletePrivateGroup: CHỈ Admin — Leader của CHÍNH nhóm đó cũng KHÔNG được tự xóa nhóm mình lead (test bắt buộc #8/#9)', () => {
+  assert.equal(canDeletePrivateGroup(ADMIN), true);
+  assert.equal(canDeletePrivateGroup(LEADER), false);
+  assert.equal(canDeletePrivateGroup(SALE_A), false);
+  assert.equal(canDeletePrivateGroup(OUTSIDER), false);
 });
 
 // ─── canViewAllGroupCustomers — RULE KHOÁ: Sale KHÔNG được xem toàn bộ ──────

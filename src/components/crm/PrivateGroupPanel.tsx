@@ -25,6 +25,9 @@ export function PrivateGroupPanel({ employees, currentUser, isAdmin, duAnList = 
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  // Success message sau khi xóa nhóm (từ PrivateGroupDetail) — hiện ở đúng
+  // view LIST vì xóa xong quay lại đó (onDeleted đóng detail + fetchGroups()).
+  const [notice, setNotice] = useState('');
 
   const salesForSelect = employees.filter(e => e.trang_thai !== 'Nghỉ việc');
 
@@ -49,6 +52,7 @@ export function PrivateGroupPanel({ employees, currentUser, isAdmin, duAnList = 
         isAdmin={isAdmin}
         duAnList={duAnList}
         onBack={() => { setSelectedGroupId(null); fetchGroups(); }}
+        onDeleted={(groupName) => { setSelectedGroupId(null); fetchGroups(); setNotice(`Đã xóa nhóm "${groupName}".`); }}
         onClose={onClose}
       />
     );
@@ -63,6 +67,7 @@ export function PrivateGroupPanel({ employees, currentUser, isAdmin, duAnList = 
         </div>
         <div className="modal-body">
           {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
+          {notice && <div style={{ background: '#ecfdf5', color: '#047857', borderRadius: 7, padding: 10, marginBottom: 12 }}>{notice}</div>}
 
           {view === 'create' ? (
             <CreateGroupForm
@@ -199,7 +204,7 @@ function CreateGroupForm({ employees, onCancel, onCreated }: {
   );
 }
 
-function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, isAdmin, duAnList, onBack, onClose }: {
+function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, isAdmin, duAnList, onBack, onDeleted, onClose }: {
   groupId: string;
   groupFallback?: PrivateGroup;
   employees: NhanVien[];
@@ -207,6 +212,10 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
   isAdmin: boolean;
   duAnList: DuAn[];
   onBack: () => void;
+  /** Xóa nhóm thành công — parent đóng detail, refresh danh sách, hiện thông
+   * báo (xem PrivateGroupPanel). groupName truyền lên để hiện đúng tên nhóm
+   * vừa xóa trong thông báo dù state cục bộ ở đây đã unmount. */
+  onDeleted: (groupName: string) => void;
   onClose: () => void;
 }) {
   const [group, setGroup] = useState<PrivateGroup | null>(groupFallback ?? null);
@@ -216,6 +225,8 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
   const [error, setError] = useState('');
   const [addMemberId, setAddMemberId] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const isLeader = Boolean(currentUser && group && group.leader_id === currentUser.id_nhan_vien);
   const canManage = isAdmin || isLeader;
@@ -251,6 +262,28 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
     if (result.success) load(); else setError(result.error || 'Không thể gỡ thành viên');
   };
 
+  // Xóa nhóm — CHỈ Admin (nút chỉ render khi isAdmin, server tự re-check
+  // canDeletePrivateGroup, xem DELETE /api/private-groups/[id] — UI ẩn/hiện
+  // KHÔNG phải security boundary). Xóa PrivateGroupMember + PrivateGroupCustomer
+  // (bao gồm CSKH state riêng nhóm) + PrivateGroup, atomic — KHÔNG đụng
+  // KhachHang/Campaign/CampaignMembership/CrmHandoff/Pipeline.
+  const handleDeleteGroup = async () => {
+    if (!group) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/private-groups/${groupId}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (result.success) { onDeleted(group.name); return; }
+      setError(result.error || 'Không thể xóa nhóm');
+      setShowDeleteConfirm(false);
+    } catch {
+      setError('Lỗi kết nối server');
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleReassign = async (relationId: string, newAssigneeId: string) => {
     const person = [...(group ? [{ id_nhan_vien: group.leader_id, ho_ten: group.leader_name }] : []), ...employees]
       .find(e => e.id_nhan_vien === newAssigneeId);
@@ -265,6 +298,7 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
   const eligibleAssignees = group ? [{ id_nhan_vien: group.leader_id, ho_ten: group.leader_name }, ...members.map(m => ({ id_nhan_vien: m.employee_id, ho_ten: m.employee_name }))] : [];
 
   return (
+    <>
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -374,11 +408,42 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
                   </div>
                 )}
               </div>
+
+              {/* "Xóa nhóm" — CHỈ Admin thấy (server tự re-check
+                  canDeletePrivateGroup). Tách hẳn khỏi các action thường
+                  (border-top + margin lớn + để cuối modal) để không lỡ tay
+                  bấm nhầm khi đang thao tác Sale thành viên/Customer phía
+                  trên. */}
+              {isAdmin && (
+                <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <button className="btn btn-danger btn-sm" onClick={() => setShowDeleteConfirm(true)}>
+                    <Trash2 size={14} /> Xóa nhóm
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
     </div>
+    {showDeleteConfirm && group && (
+      <div className="confirm-overlay" onClick={() => !deleting && setShowDeleteConfirm(false)}>
+        <div className="confirm-box" onClick={e => e.stopPropagation()}>
+          <h3>Xác nhận xóa nhóm</h3>
+          <p>
+            Bạn có chắc muốn xóa nhóm &quot;{group.name}&quot;? Xóa nhóm sẽ xóa liên kết Nhóm riêng và toàn bộ lịch sử/trạng thái CSKH thuộc riêng nhóm này. Khách hàng gốc vẫn được giữ lại.
+          </p>
+          {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
+          <div className="confirm-actions">
+            <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Hủy</button>
+            <button className="btn btn-danger" onClick={handleDeleteGroup} disabled={deleting}>
+              {deleting ? <Loader2 size={14} className="spin" /> : 'Xóa nhóm'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

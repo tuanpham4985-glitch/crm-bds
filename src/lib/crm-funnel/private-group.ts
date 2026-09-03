@@ -118,6 +118,39 @@ export async function updatePrivateGroup(id: string, patch: UpdatePrivateGroupPa
   });
 }
 
+/**
+ * Xóa 1 Nhóm riêng — CÙNG pattern deleteCampaignWithMemberships (campaign.ts):
+ * xóa explicit deleteMany các bảng con TRƯỚC rồi mới xóa PrivateGroup, trong
+ * 1 transaction (KHÔNG dùng SERIALIZABLE — xóa xác định, không có race đọc-
+ * rồi-ghi-có-điều-kiện nào cần retry) — atomic: hoặc xóa hết, hoặc rollback
+ * toàn bộ, không có trạng thái nửa vời.
+ *
+ * Xóa: PrivateGroupMember + PrivateGroupCustomer (bao gồm CSKH state nằm trên
+ * chính relation đó — trang_thai_cham_soc/lich_su_cham_soc/qualification/...,
+ * xem comment PrivateGroupCustomer trong schema.prisma) + PrivateGroup.
+ * TUYỆT ĐỐI KHÔNG đụng KhachHang, CustomerDatasetMembership, Campaign,
+ * CampaignMembership, CrmHandoff, hay CrmPipelineLink — 3 model Private
+ * Group này KHÔNG @relation tới bất kỳ entity nào trong số đó (string ref
+ * thuần, xem comment đầu file), nên xóa PrivateGroup không thể cascade sang
+ * chúng dù vô tình.
+ *
+ * Trả về null nếu group không tồn tại (route tự map 404) — KHÔNG throw cho
+ * case này (không phải lỗi hệ thống).
+ */
+export async function deletePrivateGroupTransactional(groupId: string): Promise<{ groupId: string; deletedMembers: number; deletedCustomers: number } | null> {
+  assertTransactionalCrm();
+  return prisma.$transaction(async tx => {
+    const group = await tx.privateGroup.findUnique({ where: { id: groupId }, select: { id: true } });
+    if (!group) return null;
+
+    const { count: deletedCustomers } = await tx.privateGroupCustomer.deleteMany({ where: { group_id: groupId } });
+    const { count: deletedMembers } = await tx.privateGroupMember.deleteMany({ where: { group_id: groupId } });
+    await tx.privateGroup.delete({ where: { id: groupId } });
+
+    return { groupId, deletedMembers, deletedCustomers };
+  });
+}
+
 export async function listPrivateGroupMembers(groupId: string) {
   assertTransactionalCrm();
   return prisma.privateGroupMember.findMany({ where: { group_id: groupId }, orderBy: { created_at: 'asc' } });
