@@ -20,3 +20,34 @@ export function applyPanScroll(
 ): { scrollLeft: number; scrollTop: number } {
   return { scrollLeft: startScrollLeft - dx, scrollTop: startScrollTop - dy };
 }
+
+export interface Size { w: number; h: number }
+
+/** Kích thước canvas/content ĐÃ nhân effectiveScale (fitScale * zoomMultiplier)
+ * — đúng bằng kích thước hiển thị thực tế trên màn hình, dùng làm cơ sở tính
+ * margin canh giữa + xác định phạm vi scroll thật (scrollWidth/scrollHeight
+ * của container phải phản ánh ĐÚNG số này để pan tới được đủ 4 góc). */
+export function computeScaledContentSize(canvasSize: Size, effectiveScale: number): Size {
+  return { w: canvasSize.w * effectiveScale, h: canvasSize.h * effectiveScale };
+}
+
+/** Margin canh giữa content khi nhỏ hơn container trên 1 trục (VD ở đúng
+ * fit, trục còn lại dư viền) — bằng 0 khi content >= container (đã zoom to
+ * hơn khung), để content nằm sát góc trên-trái của container.
+ *
+ * THAY cho flex `alignItems/justifyContent: 'center'` trước đây: đã đo thực
+ * tế trên browser rằng flex-center + overflow:auto với content TRÀN khung
+ * khiến scrollWidth/scrollHeight bị báo cáo THIẾU (chỉ ~64% kích thước thật)
+ * và maxScrollLeft/Top chỉ còn ~50% phạm vi cần — đây là hành vi "unsafe
+ * centering" mặc định của flexbox (browser cắt bỏ nửa overflow phía đầu
+ * trái/trên khỏi vùng scroll được), không phải do sai số tính toán ở component.
+ * Margin JS-computed + layout block bình thường tránh hoàn toàn cơ chế đó:
+ * khi content tràn khung, margin=0 nên scrollWidth = đúng kích thước scaled
+ * thật, scrollLeft/scrollTop cuộn được trọn (scaled - container), chạm đủ
+ * 4 góc. */
+export function computeCenteringMargin(containerSize: Size, scaledSize: Size): { marginX: number; marginY: number } {
+  return {
+    marginX: Math.max(0, (containerSize.w - scaledSize.w) / 2),
+    marginY: Math.max(0, (containerSize.h - scaledSize.h) / 2),
+  };
+}

@@ -8,7 +8,7 @@ import { TMB_PDF_URL, TMB_PDF_WORKER_URL, TMB_PDF_PAGE_NUMBER, TMB_MAP_UNITS } f
 import { buildMaCanIndex, resolveTmbUnitState, summarizeTmbInventory, type TmbUnitState } from './tmb-map-matching';
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
-import { exceedsDragThreshold, applyPanScroll } from './tmb-map-pan';
+import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, computeCenteringMargin } from './tmb-map-pan';
 
 /** Tổng mặt bằng (TMB) — render trang TMB (PDF thật) làm nền + marker theo
  * toạ độ text layer, click marker -> lookup Mã căn trong Bảng hàng hiện có
@@ -359,6 +359,13 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   const availableCount = units.filter(u => u.available).length;
   const showLabels = zoomMultiplier >= LABEL_VISIBLE_AT_ZOOM;
 
+  // Kích thước content đã scale + margin canh giữa khi content nhỏ hơn
+  // container (0 khi đã tràn khung) — xem giải thích đầy đủ ở
+  // computeCenteringMargin trong tmb-map-pan.ts (thay flex-center cũ, vốn
+  // khiến browser chỉ cho scroll được ~nửa phạm vi cần, không tới được góc).
+  const scaledSize = canvasSize ? computeScaledContentSize(canvasSize, effectiveScale) : { w: 0, h: 0 };
+  const centeringMargin = containerSize ? computeCenteringMargin(containerSize, scaledSize) : { marginX: 0, marginY: 0 };
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div
@@ -434,10 +441,13 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
             </div>
           )}
 
-          {/* justifyContent/alignItems:center — khi nội dung nhỏ hơn container
-              (VD ở fit đúng 1 chiều, chiều kia còn dư) thì canh giữa thay vì
-              dồn về góc trái-trên; overflow:auto vẫn cho scroll khi zoom to
-              hơn container. */}
+          {/* Layout block bình thường (KHÔNG dùng flex alignItems/justifyContent:
+              center — flex-center + overflow:auto với content tràn khung khiến
+              browser chỉ cho scroll ĐƯỢC ~nửa phạm vi cần, không tới được góc,
+              xem chi tiết + số đo thực tế ở computeCenteringMargin trong
+              tmb-map-pan.ts). Margin JS-computed (centeringMargin) canh giữa
+              content khi nhỏ hơn container, tự về 0 khi đã tràn khung — nhờ đó
+              scrollWidth/Height luôn phản ánh ĐÚNG kích thước scaled thật. */}
           <div
             ref={scrollRef}
             onPointerDown={handlePointerDown}
@@ -447,7 +457,7 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
             onPointerLeave={endDrag}
             style={{
               width: '100%', height: '100%', overflow: 'auto', background: '#e5e7eb',
-              visibility: loading || error ? 'hidden' : 'visible', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              visibility: loading || error ? 'hidden' : 'visible',
               cursor: loading || error ? 'default' : isDragging ? 'grabbing' : 'grab', touchAction: 'none',
             }}
           >
@@ -458,10 +468,14 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                 "render" xong nhưng code sau đó return sớm trong nhánh
                 `if (!canvas ...) return;`, treo vô hạn không throw lỗi gì.
                 Ẩn bằng width/height=0 thay vì unmount hẳn. */}
-            <div style={{ position: 'relative', flexShrink: 0, width: canvasSize ? canvasSize.w * effectiveScale : 0, height: canvasSize ? canvasSize.h * effectiveScale : 0 }}>
+            <div style={{
+              position: 'relative', width: scaledSize.w, height: scaledSize.h,
+              marginLeft: centeringMargin.marginX, marginRight: centeringMargin.marginX,
+              marginTop: centeringMargin.marginY, marginBottom: centeringMargin.marginY,
+            }}>
               <canvas
                 ref={canvasRef}
-                style={{ width: canvasSize ? canvasSize.w * effectiveScale : 0, height: canvasSize ? canvasSize.h * effectiveScale : 0, display: 'block' }}
+                style={{ width: scaledSize.w, height: scaledSize.h, display: 'block' }}
               />
               {canvasSize && units.map(u => {
                   // Ẩn hoàn toàn nếu không phải Còn hàng, TRỪ khi bật Debug (khi đó
