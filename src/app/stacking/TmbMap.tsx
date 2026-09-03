@@ -237,10 +237,17 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
         pdfjs.GlobalWorkerOptions.workerSrc = TMB_PDF_WORKER_URL;
-        log('bước 2/5: workerSrc =', TMB_PDF_WORKER_URL, '— gọi getDocument():', TMB_PDF_URL);
+        log('bước 2/5: workerSrc =', TMB_PDF_WORKER_URL, '— fetch toàn bộ PDF:', TMB_PDF_URL);
 
-        const loadingTask = pdfjs.getDocument(TMB_PDF_URL);
-        loadingTask.onProgress = (p: { loaded: number; total: number }) => log('tải PDF:', p.loaded, '/', p.total || '?', 'bytes');
+        // Vercel phục vụ PDF với Accept-Ranges; pdf.js đôi khi đọc range/stream
+        // bị lệch offset ("Bad end offset") trên asset lớn. Với file TMB ~13MB,
+        // tải trọn file rồi truyền bytes cho pdf.js ổn định hơn và vẫn đủ nhanh.
+        const pdfResponse = await fetch(TMB_PDF_URL, { cache: 'no-store' });
+        if (!pdfResponse.ok) throw new Error(`Không tải được file TMB (${pdfResponse.status})`);
+        const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
+        log('tải PDF hoàn tất:', pdfBytes.byteLength, 'bytes');
+
+        const loadingTask = pdfjs.getDocument({ data: pdfBytes });
         const doc = await loadingTask.promise;
         if (timedOut || cancelled) return;
         loadedDoc = doc;

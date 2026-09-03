@@ -18,3 +18,10 @@ test('TmbMap: clicking a matched available marker opens the list-detail popup ro
   assert.match(pageSource, /<TmbMap[\s\S]*onOpenUnit=\{row => setSelectedListRow\(row\)\}/);
   assert.match(pageSource, /selectedListRow && \([\s\S]*<ListUnitDetailModal[\s\S]*row=\{selectedListRow\}/);
 });
+
+test('TmbMap: loads PDF as full bytes before pdf.js parses it to avoid range offset errors', () => {
+  assert.match(source, /fetch\(TMB_PDF_URL, \{ cache: 'no-store' \}\)/);
+  assert.match(source, /new Uint8Array\(await pdfResponse\.arrayBuffer\(\)\)/);
+  assert.match(source, /pdfjs\.getDocument\(\{ data: pdfBytes \}\)/);
+  assert.doesNotMatch(source, /pdfjs\.getDocument\(TMB_PDF_URL\)/);
+});
