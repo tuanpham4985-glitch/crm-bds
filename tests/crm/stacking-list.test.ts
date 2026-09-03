@@ -136,17 +136,42 @@ test('chia đôi không mất/không lặp cột nào — gộp lại đúng b�
   assert.deepEqual([...tableColumns, ...detailColumns], REAL_COLUMN_SET);
 });
 
-test('không phụ thuộc số cột chẵn/lẻ hay tổng số cột — nguồn có NHIỀU cột hơn (thêm View, Quỹ, Giỏ bank) vẫn cắt đúng ngay sau Giá, TTC vẫn về popup', () => {
+test('không phụ thuộc số cột chẵn/lẻ hay tổng số cột — nguồn có NHIỀU cột hơn (thêm View) vẫn cắt đúng ngay sau Giá, TTC vẫn về popup', () => {
   // Bug thật: nguồn "Vinhomes Sài Gòn Park" có 19 cột (nhiều hơn ví dụ 17 cột ở
   // trên) — chia đôi thô (ceil(19/2)=10) từng khiến TTC lọt vào bảng chính.
   // Cắt ngay sau cột Giá đảm bảo TTC luôn về popup bất kể tổng số cột.
-  const columns = [...REAL_COLUMN_SET, 'View', 'Quỹ'];
+  const columns = [...REAL_COLUMN_SET, 'View'];
   const { tableColumns, detailColumns } = splitStackingListColumns(columns);
   assert.deepEqual(tableColumns, [
     'STT', 'Phân khu', 'Mã căn', 'Đặc điểm', 'TCBG', 'Loại hình', 'DT Đất (m2)', 'DTXD (m2)', 'Giá gồm VAT+KPBT',
   ]);
   assert.equal(tableColumns.includes('TTC'), false);
-  assert.deepEqual(detailColumns, ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Hướng', 'View', 'Quỹ']);
+  assert.deepEqual(detailColumns, ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Hướng', 'View']);
+});
+
+test('"Quỹ" và "Giỏ bank" luôn hiện trên bảng chính, nối NGAY SAU cột Giá — dù đứng ở đâu trong Sheet gốc', () => {
+  const columns = [...REAL_COLUMN_SET, 'View', 'Quỹ', 'Giỏ bank'];
+  const { tableColumns, detailColumns } = splitStackingListColumns(columns);
+  assert.deepEqual(tableColumns, [
+    'STT', 'Phân khu', 'Mã căn', 'Đặc điểm', 'TCBG', 'Loại hình', 'DT Đất (m2)', 'DTXD (m2)', 'Giá gồm VAT+KPBT',
+    'Quỹ', 'Giỏ bank',
+  ]);
+  // TTC/TTS/Vay.../Link PTG/Hướng/View vẫn ở popup như cũ — chỉ Quỹ/Giỏ bank được kéo lên.
+  assert.deepEqual(detailColumns, ['TTC', 'TTS', 'Vay 18T', 'Vay 24T', 'Vay 30T', 'Vay 36T', 'LINK PTG', 'Hướng', 'View']);
+});
+
+test('"Quỹ"/"Giỏ bank" không lặp lại ở popup sau khi đã kéo lên bảng chính — không mất, không trùng dữ liệu', () => {
+  const columns = [...REAL_COLUMN_SET, 'Quỹ', 'Giỏ bank'];
+  const { tableColumns, detailColumns } = splitStackingListColumns(columns);
+  assert.deepEqual([...tableColumns, ...detailColumns].sort(), [...columns].sort());
+  assert.equal(detailColumns.includes('Quỹ'), false);
+  assert.equal(detailColumns.includes('Giỏ bank'), false);
+});
+
+test('nguồn không có "Quỹ"/"Giỏ bank" thì không sao — không tự thêm cột không tồn tại', () => {
+  const { tableColumns } = splitStackingListColumns(REAL_COLUMN_SET);
+  assert.equal(tableColumns.includes('Quỹ'), false);
+  assert.equal(tableColumns.includes('Giỏ bank'), false);
 });
 
 test('nhiều cột Giá (VD "Giá KS" và "Giá bán") → bảng chính giữ tới cột Giá CUỐI CÙNG', () => {

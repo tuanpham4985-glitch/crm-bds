@@ -76,10 +76,15 @@ export function isMiscColumn(header: string): boolean {
   return n.includes('link') || n.includes('ptg') || n === 'quỹ' || n === 'giỏ bank';
 }
 
+// "Quỹ" và "Giỏ bank" luôn hiện trên bảng chính (yêu cầu riêng), NGAY SAU cột
+// Giá — dù đứng ở đâu trong Sheet gốc, vẫn kéo lên bảng thay vì để trong popup.
+const FORCE_TABLE_COLUMNS = ['quỹ', 'giỏ bank'];
+
 /** Chia `columns` (đúng thứ tự Sheet): bảng chính giữ mọi cột từ đầu tới hết
- * cột Giá cuối cùng tìm thấy (không xáo trộn thứ tự); mọi cột sau đó — VD
- * TTC/TTS/Vay 18-36T/Link PTG/Hướng... — chuyển vào popup, bất kể tổng số
- * cột của nguồn (mỗi Sheet nguồn khác nhau có thể có nhiều/ít cột hơn).
+ * cột Giá cuối cùng tìm thấy (không xáo trộn thứ tự), CỘNG THÊM "Quỹ"/"Giỏ
+ * bank" (nếu có) nối ngay sau đó theo đúng thứ tự chúng xuất hiện trong
+ * Sheet; mọi cột còn lại — VD TTC/TTS/Vay 18-36T/Link PTG/Hướng... — chuyển
+ * vào popup, bất kể tổng số cột của nguồn (mỗi Sheet nguồn có thể khác nhau).
  * Không tìm thấy cột Giá nào (hiếm) → fallback chia đôi (ceil ở nửa đầu) để
  * vẫn thu gọn được bảng thay vì hiện hết. */
 export function splitStackingListColumns(columns: string[]): { tableColumns: string[]; detailColumns: string[] } {
@@ -88,7 +93,17 @@ export function splitStackingListColumns(columns: string[]): { tableColumns: str
     if (isPriceColumn(columns[i])) lastPriceIdx = i;
   }
   const boundary = lastPriceIdx >= 0 ? lastPriceIdx + 1 : Math.ceil(columns.length / 2);
-  return { tableColumns: columns.slice(0, boundary), detailColumns: columns.slice(boundary) };
+  const head = columns.slice(0, boundary);
+  const tail = columns.slice(boundary);
+
+  const forced: string[] = [];
+  const detailColumns: string[] = [];
+  for (const col of tail) {
+    if (FORCE_TABLE_COLUMNS.includes(normHeader(col))) forced.push(col);
+    else detailColumns.push(col);
+  }
+
+  return { tableColumns: [...head, ...forced], detailColumns };
 }
 
 export type StackingListDetailGroup = 'gia' | 'financial' | 'misc' | 'basic';
