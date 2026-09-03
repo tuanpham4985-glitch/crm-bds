@@ -5,6 +5,16 @@ import type { StackingListRow } from '@/lib/types';
 
 export const STACKING_LIST_PAGE_SIZE = 20;
 
+/** Màu chấm tròn hiển thị trên bảng chính (không có label đi kèm, nên màu
+ * sai lệch với nền/badge của dòng gây hiểu nhầm) — ưu tiên marker "Đã bán"
+ * do Sale tự tô trong Sheet nếu CRM Pipeline (authority) CHƯA kịp cập nhật
+ * "Ký HĐ" cho căn đó. CHỈ ảnh hưởng màu hiển thị của chấm; KHÔNG đổi
+ * `trangThai` gốc — filter/search/đếm số lượng/badge có label (popup) vẫn
+ * dùng đúng `row.trangThai` từ CRM Pipeline như cũ. */
+export function effectiveDotStatus(row: Pick<StackingListRow, 'trangThai' | 'marker'>): StackingListRow['trangThai'] {
+  return row.marker === 'da_ban' ? 'da_ban' : row.trangThai;
+}
+
 export function filterStackingListRows(
   rows: StackingListRow[],
   opts: { groupColumn: string; groupFilter: string; search: string }

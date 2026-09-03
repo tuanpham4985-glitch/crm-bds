@@ -10,7 +10,7 @@ import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow }
 import { useAuth } from '@/hooks/useAuth';
 import {
   filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
-  splitStackingListColumns, groupStackingListColumnsForDetail,
+  splitStackingListColumns, groupStackingListColumnsForDetail, effectiveDotStatus,
 } from '@/lib/stacking-list';
 
 // Mirror của extractSheetId() phía server (google-sheets.ts) — Admin có thể
@@ -1133,16 +1133,21 @@ export default function StackingPage() {
                       // phải authority trạng thái (chấm màu Còn hàng/Đang xem/Đã
                       // bán bên trái vẫn tính từ CRM Pipeline, độc lập hoàn toàn).
                       const rowBg = row.rowColor ? hexToRgba(row.rowColor, 0.22) : undefined;
+                      // Chấm không có label đi kèm nên ưu tiên marker "Đã bán" (Sheet)
+                      // khi CRM Pipeline (authority) chưa kịp cập nhật — CHỈ đổi màu
+                      // hiển thị của chấm, KHÔNG đổi row.trangThai gốc (filter/search/
+                      // đếm số lượng/badge có label trong popup vẫn dùng CRM Pipeline
+                      // như cũ, xem effectiveDotStatus trong stacking-list.ts).
+                      const dotStatus = effectiveDotStatus(row);
                       return (
                         <tr key={row.maCan + i} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
                           <td style={{ padding: '6px 10px', background: rowBg ?? 'var(--bg-card)', width: '1%', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                              <span title={STATUS_LABEL[row.trangThai]} style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.trangThai], display: 'inline-block', flexShrink: 0 }} />
+                              <span title={STATUS_LABEL[dotStatus]} style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[dotStatus], display: 'inline-block', flexShrink: 0 }} />
                               {/* Nhãn "Check Admin"/"Đã bán" — quy ước màu Sale tự đánh
-                                  dấu trong Sheet gốc, KHÁC hẳn chấm trạng thái bên cạnh
-                                  (đó là authority CRM Pipeline, độc lập hoàn toàn — 1 căn
-                                  có thể vừa "Đã bán" theo Sheet vừa hiện chấm xanh nếu
-                                  CRM chưa cập nhật, đây là 2 tín hiệu KHÔNG gộp làm một). */}
+                                  dấu trong Sheet gốc. Marker "Đã bán" đã được phản ánh vào
+                                  màu chấm bên cạnh (effectiveDotStatus); "Check Admin" thì
+                                  không, chấm vẫn giữ nguyên theo CRM Pipeline. */}
                               {row.marker && (
                                 <span style={MARKER_BADGE_STYLE[row.marker]}>
                                   {MARKER_LABEL[row.marker]}

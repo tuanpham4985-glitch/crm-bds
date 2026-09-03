@@ -10,6 +10,7 @@ import {
   splitStackingListColumns,
   groupStackingListColumnsForDetail,
   classifyStackingListColumn,
+  effectiveDotStatus,
 } from '../../src/lib/stacking-list';
 
 function makeRows(n: number, opts: Partial<{ phanKhu: string; marker: 'check_admin' | 'da_ban'; prefix: string }> = {}): StackingListRow[] {
@@ -206,4 +207,26 @@ test('field thiếu dữ liệu (null) hiển thị "—" — quy ước hiện 
     values: { 'Hướng': null, 'Giá': 14_369_000_000 },
   };
   assert.equal(row.values['Hướng'], null); // popup renderer map null -> '—' ở UI layer, giá trị gốc giữ nguyên null (không suy diễn)
+});
+
+// ─── Chấm trạng thái trên bảng chính: ưu tiên marker "Đã bán" khi CRM chưa kịp cập nhật ─
+
+test('effectiveDotStatus: marker "da_ban" (Sheet tô đỏ) ghi đè chấm thành đỏ dù Pipeline vẫn "con_hang"', () => {
+  assert.equal(effectiveDotStatus({ trangThai: 'con_hang', marker: 'da_ban' }), 'da_ban');
+  assert.equal(effectiveDotStatus({ trangThai: 'dang_xem', marker: 'da_ban' }), 'da_ban');
+});
+
+test('effectiveDotStatus: marker "check_admin" KHÔNG đổi màu chấm — vẫn theo CRM Pipeline', () => {
+  assert.equal(effectiveDotStatus({ trangThai: 'con_hang', marker: 'check_admin' }), 'con_hang');
+  assert.equal(effectiveDotStatus({ trangThai: 'dang_xem', marker: 'check_admin' }), 'dang_xem');
+});
+
+test('effectiveDotStatus: không có marker → giữ nguyên trangThai gốc từ CRM Pipeline', () => {
+  assert.equal(effectiveDotStatus({ trangThai: 'con_hang', marker: undefined }), 'con_hang');
+  assert.equal(effectiveDotStatus({ trangThai: 'da_ban', marker: undefined }), 'da_ban');
+});
+
+test('effectiveDotStatus: Pipeline đã "da_ban" thật sự thì marker nào cũng không đổi kết quả', () => {
+  assert.equal(effectiveDotStatus({ trangThai: 'da_ban', marker: 'check_admin' }), 'da_ban');
+  assert.equal(effectiveDotStatus({ trangThai: 'da_ban', marker: undefined }), 'da_ban');
 });
