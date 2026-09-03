@@ -448,6 +448,18 @@ export async function GET(request: NextRequest) {
     // Ẩn nhân viên "Nghỉ việc" khỏi dashboard
     const allEmployees = allEmployeesRaw.filter(nv => nv.trang_thai !== 'Nghỉ việc');
 
+    // Bảng xếp hạng doanh thu theo Sale — loại nhân viên "Nghỉ việc" và "CTV"
+    // (2 giá trị trang_thai riêng, xem DEFAULT_TRANG_THAI_NV trong
+    // google-sheets.ts) khỏi bảng xếp hạng, dù deal của họ vẫn còn trong
+    // Pipeline/TongHopGiaoDich (không xóa deal, chỉ không tính vào race nội
+    // bộ) — dùng allEmployeesRaw (chưa lọc) để có đúng trang_thai hiện tại
+    // của MỌI nhân viên, không chỉ tập allEmployees (vốn đã bỏ "Nghỉ việc").
+    const leaderboardExcludedNames = new Set(
+      allEmployeesRaw
+        .filter(nv => nv.trang_thai === 'Nghỉ việc' || nv.trang_thai === 'CTV')
+        .map(nv => nv.ho_ten)
+    );
+
     // === Sinh nhật nhân viên trong tháng hiện tại ===
     const now = new Date();
     const currentMonth = now.getMonth() + 1; // 1-12
@@ -561,6 +573,7 @@ export async function GET(request: NextRequest) {
       if (isDoiTac) return;
 
       const key = pl.sale_phu_trach || 'Chưa phân';
+      if (leaderboardExcludedNames.has(key)) return;
       let existing = saleMap.get(key);
       if (!existing) {
         existing = { nhan_vien: key, doanh_thu: 0, hoa_hong: 0, so_deal: 0 };
@@ -728,6 +741,7 @@ export async function GET(request: NextRequest) {
         if (isDoiTac) return;
 
         const key = (row.sale_phu_trach || '').trim() || 'Chưa phân';
+        if (leaderboardExcludedNames.has(key)) return;
         const existing = raceSaleMap.get(key) || {
           nhan_vien: key,
           doanh_thu: 0,
