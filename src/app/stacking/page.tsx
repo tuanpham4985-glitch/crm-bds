@@ -10,7 +10,7 @@ import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow }
 import { useAuth } from '@/hooks/useAuth';
 import {
   filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
-  splitStackingListColumns, groupStackingListColumnsForDetail, effectiveDotStatus,
+  splitStackingListColumns, groupStackingListColumnsForDetail, effectiveDotStatus, countStackingListRowsByDotStatus,
 } from '@/lib/stacking-list';
 
 // Mirror của extractSheetId() phía server (google-sheets.ts) — Admin có thể
@@ -965,11 +965,7 @@ export default function StackingPage() {
   const towersForProject = useMemo(() => towers.filter(t => t.project === project).map(t => t.tower), [towers, project]);
 
   // ── Chế độ Danh sách (biệt thự/liền kề) ────────────────────────────────────
-  const listStatusCount = useMemo(() => {
-    const c = { con_hang: 0, dang_xem: 0, da_ban: 0 };
-    for (const r of listRows) c[r.trangThai]++;
-    return c;
-  }, [listRows]);
+  const listStatusCount = useMemo(() => countStackingListRowsByDotStatus(listRows), [listRows]);
 
   // Cột "Phân khu" (nếu Sheet có) đóng vai trò như dropdown Dự án của chế độ
   // Lưới — lọc theo đúng giá trị thật tìm thấy trong dữ liệu đã tải (không

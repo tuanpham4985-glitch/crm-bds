@@ -11,6 +11,7 @@ import {
   groupStackingListColumnsForDetail,
   classifyStackingListColumn,
   effectiveDotStatus,
+  countStackingListRowsByDotStatus,
 } from '../../src/lib/stacking-list';
 
 function makeRows(n: number, opts: Partial<{ phanKhu: string; marker: 'check_admin' | 'da_ban'; prefix: string }> = {}): StackingListRow[] {
@@ -254,4 +255,33 @@ test('effectiveDotStatus: không có marker → giữ nguyên trangThai gốc t�
 test('effectiveDotStatus: Pipeline đã "da_ban" thật sự thì marker nào cũng không đổi kết quả', () => {
   assert.equal(effectiveDotStatus({ trangThai: 'da_ban', marker: 'check_admin' }), 'da_ban');
   assert.equal(effectiveDotStatus({ trangThai: 'da_ban', marker: undefined }), 'da_ban');
+});
+
+// ─── Số đếm đầu trang: khớp với chấm màu, không lệch số ────────────────────
+
+test('countStackingListRowsByDotStatus: khớp bug thật — 3 dòng marker "Đã bán" (Sheet) nhưng Pipeline chỉ 1 dòng "da_ban" thật → đếm vẫn ra 3', () => {
+  const rows = [
+    { trangThai: 'da_ban' as const, marker: undefined },          // Pipeline đã Ký HĐ thật
+    { trangThai: 'con_hang' as const, marker: 'da_ban' as const }, // Sheet tô đỏ, Pipeline chưa cập nhật
+    { trangThai: 'con_hang' as const, marker: 'da_ban' as const }, // tương tự
+    { trangThai: 'con_hang' as const, marker: undefined },
+    { trangThai: 'con_hang' as const, marker: 'check_admin' as const },
+  ];
+  const count = countStackingListRowsByDotStatus(rows);
+  assert.equal(count.da_ban, 3);
+  assert.equal(count.con_hang, 2); // 2 dòng còn lại không có marker "Đã bán"
+  assert.equal(count.con_hang + count.dang_xem + count.da_ban, rows.length); // không mất/không đếm trùng căn nào
+});
+
+test('countStackingListRowsByDotStatus: không có marker nào → khớp y hệt đếm theo trangThai gốc', () => {
+  const rows = [
+    { trangThai: 'con_hang' as const, marker: undefined },
+    { trangThai: 'dang_xem' as const, marker: undefined },
+    { trangThai: 'da_ban' as const, marker: undefined },
+  ];
+  assert.deepEqual(countStackingListRowsByDotStatus(rows), { con_hang: 1, dang_xem: 1, da_ban: 1 });
+});
+
+test('countStackingListRowsByDotStatus: danh sách rỗng không lỗi', () => {
+  assert.deepEqual(countStackingListRowsByDotStatus([]), { con_hang: 0, dang_xem: 0, da_ban: 0 });
 });
