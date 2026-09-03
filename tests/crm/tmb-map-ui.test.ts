@@ -14,6 +14,8 @@ test('TmbMap: available unit marker stays compact so nearby units are not covere
 });
 
 test('TmbMap: clicking a matched available marker opens the list-detail popup row', () => {
+  assert.match(source, /onPointerDown=\{e => \{[\s\S]*?e\.stopPropagation\(\);[\s\S]*?\}\}/);
+  assert.match(source, /onClick=\{e => \{[\s\S]*?e\.stopPropagation\(\);[\s\S]*?onOpenUnit\(u\.match\.row\);[\s\S]*?\}\}/);
   assert.match(source, /if \(u\.available && u\.match\.kind === 'matched'\) onOpenUnit\(u\.match\.row\);/);
   assert.match(pageSource, /<TmbMap[\s\S]*onOpenUnit=\{row => setSelectedListRow\(row\)\}/);
   assert.match(pageSource, /selectedListRow && \([\s\S]*<ListUnitDetailModal[\s\S]*row=\{selectedListRow\}/);

@@ -816,7 +816,13 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                   return (
                     <button
                       key={u.unitCode}
-                      onClick={() => {
+                      onPointerDown={e => {
+                        // Marker là target tương tác riêng; không để pointerdown
+                        // bubble lên scroll container rồi bị hiểu thành pan.
+                        e.stopPropagation();
+                      }}
+                      onClick={e => {
+                        e.stopPropagation();
                         // Vừa kết thúc 1 lượt kéo (pan) chạm qua marker này —
                         // không coi là click, tránh mở popup ngoài ý muốn.
                         if (suppressNextClickRef.current) { suppressNextClickRef.current = false; return; }
