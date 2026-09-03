@@ -50,6 +50,21 @@ export const DEFAULT_RENDER_QUALITY_CAPS: RenderQualityCaps = {
   buckets: [1, 1.5, 2, 2.5, 3, 4, 6, 8, 12, 16, 20],
 };
 
+/** Cap dành riêng cho VIEWPORT high-res rendering (tmb-map-viewport.ts) — áp
+ * dụng computeRenderQuality/computeMaxRenderScale với nativeSize = kích thước
+ * VÙNG ĐANG NHÌN (đã overscan+clamp), KHÔNG PHẢI kích thước toàn trang PDF.
+ * Vì vùng này luôn nhỏ (tỉ lệ theo khung nhìn modal TMB, thực tế ~1100×~900px
+ * CSS tối đa), budget nhỏ hơn NHIỀU so với whole-page (40MP) vẫn đủ dư —
+ * maxDimensionPx=4096 là giới hạn canvas an toàn phổ biến trên hầu hết
+ * browser/thiết bị (kể cả cũ), 12MP đủ cho container ~1100px × dpr=2 ×
+ * overscan (~3500×2500px ≈ 8.75MP thực tế đo được, xem test). */
+export const VIEWPORT_RENDER_QUALITY_CAPS: RenderQualityCaps = {
+  maxDpr: 2,
+  maxTotalPixels: 12_000_000,
+  maxDimensionPx: 4096,
+  buckets: [1, 1.5, 2, 2.5, 3, 4, 6, 8, 12, 16, 20],
+};
+
 /** Bound devicePixelRatio an toàn — NaN/0/âm (môi trường lạ, SSR...) fallback
  * về 1 thay vì lan truyền giá trị vô nghĩa vào phép tính scale. */
 export function clampDevicePixelRatio(dpr: number, maxDpr: number): number {

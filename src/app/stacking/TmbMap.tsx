@@ -9,7 +9,11 @@ import { buildMaCanIndex, resolveTmbUnitState, summarizeTmbInventory, type TmbUn
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
 import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, computeCenteringMargin } from './tmb-map-pan';
-import { computeRenderQuality, shouldUpgradeRenderQuality } from './tmb-map-render-quality';
+import { computeRenderQuality, shouldUpgradeRenderQuality, VIEWPORT_RENDER_QUALITY_CAPS } from './tmb-map-render-quality';
+import {
+  computeVisibleContentRect, applyOverscan, clampRectToPageBounds, rectSize, rectContains, rectToDisplayBox,
+  OVERSCAN_FRACTION, type Rect,
+} from './tmb-map-viewport';
 import type { PDFPageProxy, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 
 /** Tổng mặt bằng (TMB) — render trang TMB (PDF thật) làm nền + marker theo
@@ -39,7 +43,7 @@ import type { PDFPageProxy, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
  * tính vị trí marker từ CÙNG 1 toạ độ gốc (viewX/viewY ở BASE_SCALE=1) ->
  * canvas và marker luôn khớp tuyệt đối ở MỌI mức zoom/pan/resize.
  *
- * ── Adaptive high-resolution rendering ──────────────────────────────────
+ * ── Adaptive whole-page rendering (canvasRef — FALLBACK/background) ──────
  * Canvas backing store (canvas.width/height, độ phân giải RASTER thật) ban
  * đầu chỉ vẽ 1 lần ở BASE_SCALE=1 (~3370×2384px, đo thật bằng pdf.js) — CSS
  * width/height (scaledSize, hiển thị) phóng bitmap CỐ ĐỊNH đó lên tới 20x,
@@ -47,10 +51,23 @@ import type { PDFPageProxy, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
  * ổn định (debounce, xem RENDER_DEBOUNCE_MS), gọi lại pdf.js page.render()
  * (page giữ trong pageRef, KHÔNG re-fetch/re-parse PDF) ở renderScale cao
  * hơn — xem tmb-map-render-quality.ts cho công thức + hard cap tránh canvas
- * khổng lồ/OOM. renderScale này CHỈ quyết định độ phân giải raster của
- * canvas — KHÔNG BAO GIỜ được dùng cho vị trí marker hay CSS display size,
- * cả 2 vẫn 100% dựa trên effectiveScale + viewport BASE_SCALE=1 như cũ, nên
- * đổi renderScale không bao giờ làm lệch marker/pan/zoom hiện có.
+ * khổng lồ/OOM (bị giới hạn ~2.23x cho TOÀN trang vì phải đủ lớn phủ hết
+ * trang). renderScale này CHỈ quyết định độ phân giải raster của canvas —
+ * KHÔNG BAO GIỜ được dùng cho vị trí marker hay CSS display size, cả 2 vẫn
+ * 100% dựa trên effectiveScale + viewport BASE_SCALE=1 như cũ.
+ *
+ * ── Viewport high-resolution overlay (viewportOverlayCanvasRef) ──────────
+ * Ở zoom sâu (5x/10x/20x), cap ~2.23x của whole-page KHÔNG đủ — nền vẫn mờ.
+ * Vùng NGƯỜI DÙNG ĐANG NHÌN luôn nhỏ hơn nhiều so với toàn trang nên render
+ * ĐƯỢC ở scale cao hơn NHIỀU mà canvas vẫn nhỏ (tỉ lệ theo khung nhìn, không
+ * theo trang) — dùng CHÍNH pageRef + kỹ thuật offsetX/offsetY NATIVE của
+ * pdf.js (page.getViewport({scale, offsetX, offsetY})) để chỉ RASTERIZE vùng
+ * cần, KHÔNG render toàn trang rồi crop (xem tmb-map-viewport.ts +
+ * renderViewportHighRes). Overlay là 1 <canvas> RIÊNG, đè lên đúng vị trí
+ * tương ứng trên canvas nền qua rectToDisplayBox (CÙNG công thức
+ * `contentCoord * effectiveScale` marker đã dùng — không tạo hệ toạ độ thứ
+ * 2). Canvas nền (whole-page) LUÔN tiếp tục tồn tại làm fallback — nếu
+ * overlay render fail/cancel/timeout, map vẫn dùng được bình thường qua nền.
  */
 
 const BASE_SCALE = 1;
@@ -89,6 +106,12 @@ function log(...args: unknown[]) {
   console.log('[TmbMap]', ...args);
 }
 
+// SSR-safe — TmbMap chỉ mount client-side ('use client') nhưng window vẫn có
+// thể chưa sẵn sàng ở lần render đầu; fallback 1 (không nhân DPR) an toàn hơn NaN.
+function getDevicePixelRatio(): number {
+  return typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+}
+
 interface Props {
   listRows: StackingListRow[];
   onOpenUnit: (row: StackingListRow) => void;
@@ -125,6 +148,19 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   const renderVersionRef = useRef(0);
   const activeRenderTaskRef = useRef<RenderTask | null>(null);
   const [sharpening, setSharpening] = useState(false); // "Đang làm nét…" — chỉ hiện khi thật sự đang re-render high-res, không chặn tương tác
+  // Viewport high-res overlay — canvas RIÊNG, chỉ chứa đúng vùng đang nhìn
+  // (đã overscan) render ở scale cao hơn NHIỀU so với whole-page cap. State
+  // viewportOverlayRect (content-space, KHÔNG đổi theo effectiveScale) điều
+  // khiển JSX hiện/định vị overlay; các ref bên dưới là sổ sách nội bộ cho
+  // quyết định "có cần render lại không" + cancellation/stale guard riêng,
+  // độc lập hoàn toàn với renderVersionRef/activeRenderTaskRef của whole-page.
+  const viewportOverlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [viewportOverlayRect, setViewportOverlayRect] = useState<Rect | null>(null);
+  const viewportRenderedRectRef = useRef<Rect | null>(null);
+  const viewportRenderedScaleRef = useRef(BASE_SCALE);
+  const viewportRenderVersionRef = useRef(0);
+  const viewportActiveTaskRef = useRef<RenderTask | null>(null);
+  const viewportDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Toạ độ (ở BASE_SCALE=1) cần cuộn tới SAU khi effectiveScale/layout đổi —
   // set bởi nút "Vừa khung"/"Tới khu Còn hàng" (anchorX/Y mặc định = giữa
   // container) hoặc wheel zoom (anchorX/Y = đúng vị trí con trỏ, để điểm dưới
@@ -175,6 +211,16 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
     activeRenderTaskRef.current?.cancel();
     activeRenderTaskRef.current = null;
     setSharpening(false);
+    // Cùng lý do — reset toàn bộ sổ sách viewport overlay, huỷ debounce/render
+    // đang bay của lượt trước (nếu có), ẩn overlay cũ (rect content-space của
+    // PDF cũ không còn ý nghĩa với PDF mới).
+    viewportRenderedRectRef.current = null;
+    viewportRenderedScaleRef.current = BASE_SCALE;
+    viewportRenderVersionRef.current += 1;
+    viewportActiveTaskRef.current?.cancel();
+    viewportActiveTaskRef.current = null;
+    if (viewportDebounceTimerRef.current) { clearTimeout(viewportDebounceTimerRef.current); viewportDebounceTimerRef.current = null; }
+    setViewportOverlayRect(null);
 
     const timeoutId = setTimeout(() => {
       timedOut = true;
@@ -252,6 +298,8 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
       // Dọn đúng doc/render task của LƯỢT NÀY (unmount hoặc bấm "Thử lại")
       // — tránh leak bộ nhớ pdf.js khi mở/đóng TMB nhiều lần trong 1 phiên.
       activeRenderTaskRef.current?.cancel();
+      viewportActiveTaskRef.current?.cancel();
+      if (viewportDebounceTimerRef.current) clearTimeout(viewportDebounceTimerRef.current);
       loadedDoc?.destroy();
     };
   }, [retryKey]);
@@ -327,12 +375,123 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   // (giữ nguyên bitmap nét đã có, CSS tự scale xuống vẫn nét).
   useEffect(() => {
     if (!canvasSize || !pageRef.current) return;
-    const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
-    const target = computeRenderQuality(effectiveScale, dpr, canvasSize);
+    const target = computeRenderQuality(effectiveScale, getDevicePixelRatio(), canvasSize);
     if (!shouldUpgradeRenderQuality(target, renderedRenderScaleRef.current)) return;
     const timer = setTimeout(() => { void renderHighRes(target); }, RENDER_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [effectiveScale, canvasSize, renderHighRes]);
+
+  // ── Viewport high-resolution overlay ─────────────────────────────────────
+  // Render CHỈ vùng đang nhìn (đã overscan, kẹp trong biên trang) ở scale cao
+  // hơn NHIỀU so với whole-page cap — dùng offsetX/offsetY NATIVE của pdf.js
+  // (KHÔNG render toàn trang rồi crop, xem tmb-map-viewport.ts). Overlay là
+  // FALLBACK-cộng-thêm: canvas nền (whole-page, phía trên) luôn tiếp tục hiển
+  // thị bình thường dù overlay chưa render/render fail — không có trạng thái
+  // "map hỏng" nào phụ thuộc overlay.
+  const renderViewportHighRes = useCallback(async (rect: Rect, targetScale: number) => {
+    const page = pageRef.current;
+    if (!page) return;
+
+    viewportActiveTaskRef.current?.cancel();
+    const myVersion = ++viewportRenderVersionRef.current;
+
+    const size = rectSize(rect);
+    const w = Math.max(1, Math.ceil(size.w * targetScale));
+    const h = Math.max(1, Math.ceil(size.h * targetScale));
+    // offsetX/offsetY (API pdf.js gốc, KHÔNG phải hack) dịch transform để
+    // content-space (rect.minX, rect.minY) rơi đúng vào pixel (0,0) của canvas
+    // MỚI này — pdf.js chỉ rasterize trong đúng bounds canvas (w×h nhỏ), không
+    // vẽ toàn trang rồi cắt. Đã verify công thức bằng convertToViewportPoint
+    // round-trip (sai số chỉ ở mức dấu phẩy động ~1e-12) trước khi implement.
+    const viewport = page.getViewport({
+      scale: targetScale, rotation: page.rotate,
+      offsetX: -rect.minX * targetScale, offsetY: -rect.minY * targetScale,
+    });
+
+    const off = document.createElement('canvas');
+    off.width = w; off.height = h;
+    const offCtx = off.getContext('2d');
+    if (!offCtx) return;
+    offCtx.fillStyle = '#ffffff';
+    offCtx.fillRect(0, 0, w, h);
+
+    const task = page.render({ canvasContext: offCtx, viewport });
+    viewportActiveTaskRef.current = task;
+    try {
+      await task.promise;
+    } catch {
+      // Cancelled (lượt mới hơn supersede) hoặc lỗi render — im lặng bỏ qua,
+      // canvas nền whole-page vẫn hiển thị bình thường (failure fallback).
+      return;
+    }
+    if (viewportRenderVersionRef.current !== myVersion) return; // stale guard
+
+    const canvas = viewportOverlayCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    canvas.width = w; canvas.height = h;
+    ctx.drawImage(off, 0, 0);
+
+    viewportRenderedRectRef.current = rect;
+    viewportRenderedScaleRef.current = targetScale;
+    setViewportOverlayRect(rect); // trigger reposition/hiện overlay (rectToDisplayBox trong JSX)
+    if (viewportActiveTaskRef.current === task) viewportActiveTaskRef.current = null;
+    log('viewport render: scale', targetScale, '(', w, 'x', h, 'px) rect', JSON.stringify(rect));
+  }, []);
+
+  // Quyết định có cần render lại overlay không: (a) vùng visible HIỆN TẠI
+  // (không overscan) không còn nằm trọn trong vùng đã render (đã overscan) —
+  // đã pan ra ngoài; HOẶC (b) quality cần thiết cao hơn đáng kể quality đã
+  // render (đã zoom sâu hơn). Luôn tính TỪ SCROLL/SIZE THẬT tại thời điểm gọi
+  // (không dựa vào closure cũ) để không ra quyết định lỗi thời sau debounce.
+  const evaluateAndRenderViewport = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container || !canvasSize) return;
+    const visible = computeVisibleContentRect(
+      container.scrollLeft, container.scrollTop, { w: container.clientWidth, h: container.clientHeight }, effectiveScale
+    );
+    const overscanned = clampRectToPageBounds(applyOverscan(visible, OVERSCAN_FRACTION), canvasSize);
+    const regionSize = rectSize(overscanned);
+    if (regionSize.w <= 0 || regionSize.h <= 0) return;
+
+    const targetScale = computeRenderQuality(effectiveScale, getDevicePixelRatio(), regionSize, VIEWPORT_RENDER_QUALITY_CAPS);
+    const renderedRect = viewportRenderedRectRef.current;
+    const covered = renderedRect ? rectContains(renderedRect, visible) : false;
+    const needsUpgrade = shouldUpgradeRenderQuality(targetScale, viewportRenderedScaleRef.current);
+    if (covered && !needsUpgrade) return; // đã đủ nét + đã phủ đủ vùng đang nhìn — không cần render lại
+
+    void renderViewportHighRes(overscanned, targetScale);
+  }, [canvasSize, effectiveScale, renderViewportHighRes]);
+
+  // Debounce dùng chung cho CẢ zoom (effectiveScale đổi) lẫn pan (scroll đổi)
+  // — mỗi lần gọi clear timer cũ, chỉ thực sự đánh giá/render sau khi tương
+  // tác đứng yên RENDER_DEBOUNCE_MS. Trong lúc đang wheel/kéo liên tục, canvas
+  // nền whole-page tiếp tục phục vụ hiển thị (yêu cầu "giữ renderer hiện có
+  // phục vụ tương tác" — không đổi hành vi zoom/pan hiện tại).
+  const scheduleViewportRender = useCallback(() => {
+    if (viewportDebounceTimerRef.current) clearTimeout(viewportDebounceTimerRef.current);
+    viewportDebounceTimerRef.current = setTimeout(() => {
+      viewportDebounceTimerRef.current = null;
+      evaluateAndRenderViewport();
+    }, RENDER_DEBOUNCE_MS);
+  }, [evaluateAndRenderViewport]);
+
+  // Trigger 1: zoom đổi (effectiveScale) hoặc canvasSize đổi (PDF vừa load xong).
+  useEffect(() => {
+    if (!canvasSize || !pageRef.current) return;
+    scheduleViewportRender();
+  }, [effectiveScale, canvasSize, scheduleViewportRender]);
+
+  // Trigger 2: pan — 'scroll' native fire cả khi User kéo chuột (drag-to-pan,
+  // applyPanScroll set trực tiếp scrollLeft/Top) lẫn khi wheel-zoom tự cuộn
+  // lại theo cursor-anchor (pendingScrollTargetRef effect) — 1 listener phủ
+  // đủ mọi nguồn thay đổi scroll, không cần móc riêng vào từng handler.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', scheduleViewportRender, { passive: true });
+    return () => el.removeEventListener('scroll', scheduleViewportRender);
+  }, [scheduleViewportRender]);
 
   // Matching + trạng thái Còn hàng — derive SỐNG từ listRows mỗi lần đổi
   // (đúng authority effectiveDotStatus, không tạo công thức riêng cho TMB,
@@ -612,6 +771,24 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                 ref={canvasRef}
                 style={{ width: scaledSize.w, height: scaledSize.h, display: 'block' }}
               />
+              {/* Viewport high-res overlay — đè lên đúng vị trí tương ứng trên
+                  canvas nền qua rectToDisplayBox (CÙNG công thức effectiveScale
+                  marker/canvas nền dùng, không lệch dù chưa render kịp zoom
+                  mới nhất). pointerEvents:'none' — thuần hiển thị, không bao
+                  giờ chặn click marker hay drag-to-pan (handler gắn trên
+                  scrollRef, cần sự kiện xuyên qua overlay để bubble lên đúng). */}
+              {viewportOverlayRect && (() => {
+                const box = rectToDisplayBox(viewportOverlayRect, effectiveScale);
+                return (
+                  <canvas
+                    ref={viewportOverlayCanvasRef}
+                    style={{
+                      position: 'absolute', left: box.left, top: box.top, width: box.width, height: box.height,
+                      display: 'block', pointerEvents: 'none',
+                    }}
+                  />
+                );
+              })()}
               {canvasSize && units.map(u => {
                   // Ẩn hoàn toàn nếu không phải Còn hàng, TRỪ khi bật Debug (khi đó
                   // hiện rất mờ, non-interactive — không bao giờ trộn với Còn hàng).
