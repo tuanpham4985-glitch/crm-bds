@@ -190,6 +190,13 @@ export interface PrivateGroupMember {
   created_at: string;
 }
 
+// CSKH state (task hiện tại — work queue "Nhóm riêng" tại /phan-khach) mirror
+// ĐÚNG tên/kiểu field của CampaignMembership's CSKH+qualification block (xem
+// comment PrivateGroupCustomer trong prisma/schema.prisma) để tái dùng
+// NGUYÊN VẸN calculateLeadQuality/planMembershipInteraction/
+// planMembershipQualification — KHÔNG có assignment_status/telesale_id/
+// outcome/handoff_id (Private Group không dùng CSKH work queue assignment
+// hay Handoff/Pipeline).
 export interface PrivateGroupCustomer {
   id: string;
   group_id: string;
@@ -198,6 +205,30 @@ export interface PrivateGroupCustomer {
   entered_by_name: string;
   assigned_to_id: string;
   assigned_to_name: string;
+
+  trang_thai_cham_soc?: TrangThaiChamSoc | null;
+  muc_do_quan_tam?: MucDoQuanTam | null;
+  so_lan_lien_he: number;
+  lich_su_cham_soc?: string | null;
+  ngay_lien_he_cuoi?: string | null;
+  ngay_lien_he_tiep?: string | null;
+  qualification_status: QualificationStatus;
+  lead_quality_score: number;
+  lead_quality_rank: LeadQualityRank;
+  lead_score_breakdown?: string | null;
+  lead_score_history?: string | null;
+
+  san_pham_quan_tam?: string | null;
+  nhu_cau?: string | null;
+  ngan_sach_min?: number | null;
+  ngan_sach_max?: number | null;
+  muc_dich?: MucDichLead | null;
+  thoi_gian_du_kien?: ThoiGianDuKien | null;
+  phuong_an_tai_chinh?: string | null;
+  khu_vuc_yeu_cau?: string | null;
+  hanh_dong_tiep_theo?: string | null;
+
+  row_version: number;
   created_at: string;
   updated_at: string;
   customer: { ten_KH: string; so_dien_thoai: string; email: string } | null;

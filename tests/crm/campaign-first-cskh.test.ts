@@ -229,14 +229,21 @@ test('regression: /du-an CRUD dự án hiện có (Thêm/Sửa/Xóa, stacking co
 
 test('phan-khach/page.tsx: mode default = campaign cho MỌI role (?mode=project mới vào lại Project mode) — không còn phân biệt admin/non-admin như trước', () => {
   const src = readFileSync(resolve(PHAN_KHACH_PATH), 'utf8');
-  assert.match(src, /const \[mode, setMode\] = useState<'project' \| 'campaign'>\(searchParams\.get\('mode'\) === 'project' \? 'project' : 'campaign'\);/);
+  // Cập nhật theo task "Nhóm riêng CSKH" (sau REMEDIATION này): mode union mở
+  // rộng thêm 'private_group' (chế độ CSKH thứ 3, cùng cấp Campaign — xem
+  // private-group-cskh.test.ts) — 'project' vẫn giữ default fallback y hệt cũ
+  // (?mode=project mới vào), KHÔNG hồi sinh gì của Project mode.
+  assert.match(src, /const \[mode, setMode\] = useState<'project' \| 'campaign' \| 'private_group'>\(/);
+  assert.match(src, /searchParams\.get\('mode'\) === 'project' \? 'project'/);
   assert.doesNotMatch(src, /if \(!authLoading && !isAdmin && user\) setMode\('campaign'\)/, 'effect auto-chuyển non-admin cũ phải được gỡ (không còn cần thiết vì default đã là campaign cho mọi role)');
 });
 
-test('phan-khach/page.tsx: KHÔNG còn nút chuyển mode ("Theo Dự án"/"Theo Campaign") trong JSX — tab Project ẩn khỏi UI', () => {
+test('phan-khach/page.tsx: KHÔNG có nút chuyển SANG Project mode ("Theo Dự án") — tab Project vẫn ẩn khỏi UI dù đã thêm toggle Campaign/Nhóm riêng (task "Nhóm riêng CSKH")', () => {
   const src = readFileSync(resolve(PHAN_KHACH_PATH), 'utf8');
+  // Toggle Campaign|Nhóm riêng MỚI (task hiện tại, xem private-group-cskh.test.ts)
+  // là evolution CÓ CHỦ Ý của remediation này — KHÔNG hồi sinh nút chuyển
+  // sang Project ('Theo Dự án'), đó là bất biến DUY NHẤT còn giữ nguyên ở đây.
   assert.doesNotMatch(src, /onClick=\{\(\) => setMode\('project'\)\}/);
-  assert.doesNotMatch(src, /onClick=\{\(\) => setMode\('campaign'\)\}/);
   assert.doesNotMatch(src, />Theo Dự án</);
   assert.doesNotMatch(src, />Theo Campaign</);
 });

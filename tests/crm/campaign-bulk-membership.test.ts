@@ -206,7 +206,11 @@ test('phan-khach/page.tsx: dùng useSearchParams() trong Suspense boundary (bắ
   const src = readFileSync(resolve(PHAN_KHACH_PATH), 'utf8');
   assert.match(src, /import \{ useSearchParams \} from 'next\/navigation';/);
   assert.match(src, /<Suspense fallback=\{[^}]*\}>\s*<PhanKhachContent \/>\s*<\/Suspense>/);
-  assert.match(src, /searchParams\.get\('mode'\) === 'project' \? 'project' : 'campaign'/);
+  // "Nhóm riêng" CSKH (task riêng, xem tests/crm/private-group-cskh.test.ts)
+  // mở rộng ternary này thành 3 nhánh ('project' | 'campaign' | 'private_group')
+  // — chỉ còn khoá phần bất biến ở ĐÂY: ?mode=project vẫn resolve về 'project'
+  // (deep link cũ không đổi hành vi).
+  assert.match(src, /searchParams\.get\('mode'\) === 'project' \? 'project'/);
   assert.match(src, /const initialCampaignId = searchParams\.get\('campaignId'\) \|\| undefined;/);
   assert.match(src, /<CampaignCskhWorkQueue employees=\{employees\} projects=\{projects\} initialCampaignId=\{initialCampaignId\} \/>/);
 });

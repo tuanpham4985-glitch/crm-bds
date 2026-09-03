@@ -15,6 +15,17 @@ import { resolveManualCustomerGroup } from '../private-group-auth';
 import type { PrivateGroupCustomerLinkLike } from '../private-group-auth';
 import type { CrmSessionUser } from '../crm-auth';
 import type { KhachHang } from '../types';
+// CSKH work queue của Nhóm riêng — tái dùng NGUYÊN VẸN 2 pure function của
+// Campaign CSKH (planMembershipInteraction/planMembershipQualification KHÔNG
+// hề đụng `tx.campaignMembership`, chỉ nhận snapshot đúng tên/kiểu field —
+// xem comment PrivateGroupCustomer trong schema.prisma) — ghi vào ĐÚNG
+// `tx.privateGroupCustomer`, KHÔNG BAO GIỜ tạo/đụng CampaignMembership,
+// CrmHandoff hay Pipeline từ CSKH theo Nhóm riêng (locked business decision).
+import {
+  planMembershipInteraction, planMembershipQualification,
+  type CampaignContext as PrivateGroupCskhScoreContext,
+  type MembershipInteractionInput, type MembershipQualificationInput, type MembershipQualificationPatchInput,
+} from './membership-workflow';
 
 type Tx = Prisma.TransactionClient;
 
@@ -225,6 +236,82 @@ export async function reassignGroupCustomer(input: ReassignGroupCustomerInput) {
   });
   return count > 0;
 }
+
+/** 1 quan hệ Customer-nhóm theo id — dùng để check quyền (canViewGroupCustomer)
+ * TRƯỚC KHI gọi các hàm CSKH transactional bên dưới. Trả null nếu không tồn
+ * tại — route tự so `relation.group_id` với `id` trên URL để phát hiện
+ * relationId thuộc nhóm khác (cùng cách reassignGroupCustomer tự chặn qua
+ * `where: { id, group_id }`). */
+export async function getPrivateGroupCustomerById(relationId: string) {
+  assertTransactionalCrm();
+  return prisma.privateGroupCustomer.findUnique({ where: { id: relationId } });
+}
+
+// ─── CSKH work queue của Nhóm riêng ─────────────────────────────────────────
+
+export class PrivateGroupCustomerNotFoundError extends Error {
+  constructor() { super('Không tìm thấy khách hàng này trong Nhóm riêng'); }
+}
+
+/** "Dự án" context cho scoring — Nhóm riêng KHÔNG có project scoping riêng
+ * (khác Campaign.ten_du_an), nên dùng thẳng KhachHang.du_an của chính customer
+ * (đã có sẵn, không cần field mới) làm ngữ cảnh chấm điểm. */
+async function scoreContextForCustomer(tx: Tx, customerId: string): Promise<PrivateGroupCskhScoreContext> {
+  const customer = await tx.khachHang.findUnique({ where: { id_khach_hang: customerId }, select: { du_an: true } });
+  return { ten_du_an: customer?.du_an ?? null };
+}
+
+export interface RecordPrivateGroupCustomerInteractionInput extends MembershipInteractionInput {
+  groupId: string;
+  relationId: string;
+}
+
+/** "Chăm sóc" 1 Customer trong Nhóm riêng — cùng shape kết quả với
+ * recordMembershipInteractionTransactional (Campaign), chỉ khác bảng ghi.
+ * Idempotent qua lich_su_cham_soc (planMembershipInteraction tự check). */
+export async function recordPrivateGroupCustomerInteractionTransactional(input: RecordPrivateGroupCustomerInteractionInput) {
+  return serializable(async tx => {
+    const relation = await tx.privateGroupCustomer.findUnique({ where: { id: input.relationId } });
+    if (!relation || relation.group_id !== input.groupId) throw new PrivateGroupCustomerNotFoundError();
+    const context = await scoreContextForCustomer(tx, relation.customer_id);
+    const plan = planMembershipInteraction(relation, context, input);
+    if (!plan.idempotent) {
+      const updated = await tx.privateGroupCustomer.update({
+        where: { id: input.relationId },
+        data: { ...plan.patch, so_lan_lien_he: { increment: 1 }, row_version: { increment: 1 } },
+      });
+      return { relation: updated, idempotent: false as const };
+    }
+    return { relation, idempotent: true as const };
+  });
+}
+
+export interface UpdatePrivateGroupCustomerQualificationInput extends MembershipQualificationInput {
+  groupId: string;
+  relationId: string;
+}
+
+/** "Đánh giá" 1 Customer trong Nhóm riêng — cùng shape kết quả với
+ * updateMembershipQualificationTransactional (Campaign), chỉ khác bảng ghi.
+ * Idempotent qua lead_score_history (planMembershipQualification tự check). */
+export async function updatePrivateGroupCustomerQualificationTransactional(input: UpdatePrivateGroupCustomerQualificationInput) {
+  return serializable(async tx => {
+    const relation = await tx.privateGroupCustomer.findUnique({ where: { id: input.relationId } });
+    if (!relation || relation.group_id !== input.groupId) throw new PrivateGroupCustomerNotFoundError();
+    const context = await scoreContextForCustomer(tx, relation.customer_id);
+    const plan = planMembershipQualification(relation, context, input);
+    if (!plan.idempotent) {
+      const updated = await tx.privateGroupCustomer.update({
+        where: { id: input.relationId },
+        data: { ...plan.patch, row_version: { increment: 1 } },
+      });
+      return { relation: updated, score: plan.score };
+    }
+    return { relation, score: plan.score };
+  });
+}
+
+export type { MembershipQualificationPatchInput as PrivateGroupCustomerQualificationPatchInput };
 
 export interface EmployeePrivateGroups {
   leaderOf: { id: string; name: string }[];

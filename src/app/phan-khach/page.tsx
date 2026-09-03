@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCrmModule } from '@/hooks/useCrmModule';
 import { QualificationModal } from '@/components/crm/QualificationModal';
 import { CampaignCskhWorkQueue } from '@/components/crm/CampaignCskhWorkQueue';
+import { PrivateGroupCskhWorkQueue } from '@/components/crm/PrivateGroupCskhWorkQueue';
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
 const INTERESTS: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'];
@@ -61,7 +62,15 @@ function PhanKhachContent() {
   // hành, xem yêu cầu). ?mode=campaign&campaignId=… (deep link "đi thẳng sang
   // CSKH → Theo Campaign" sau khi tạo Campaign từ /khach-hang) tiếp tục hoạt
   // động bình thường vì đã là default.
-  const [mode, setMode] = useState<'project' | 'campaign'>(searchParams.get('mode') === 'project' ? 'project' : 'campaign');
+  // "Nhóm riêng" (task hiện tại) — chế độ CSKH thứ 3, cùng cấp với 'campaign'.
+  // 'project' vẫn CHỈ truy cập được qua ?mode=project (retired khỏi UI, xem
+  // comment CAMPAIGN-FIRST CSKH bên dưới) — Campaign/Nhóm riêng là 2 lựa chọn
+  // DUY NHẤT hiển thị trên toggle.
+  const [mode, setMode] = useState<'project' | 'campaign' | 'private_group'>(
+    searchParams.get('mode') === 'project' ? 'project'
+      : searchParams.get('mode') === 'private_group' ? 'private_group'
+      : 'campaign',
+  );
   const initialCampaignId = searchParams.get('campaignId') || undefined;
   const [projects, setProjects] = useState<DuAn[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
@@ -199,11 +208,20 @@ function PhanKhachContent() {
   return <div>
     <div className="page-header"><div className="page-header-left"><h1>CSKH</h1><p>Phân data, theo dõi chăm sóc và bàn giao khách quan tâm cho Sale</p></div>{mode === 'project' && <button className="btn btn-secondary" onClick={() => loadCustomers(selectedProject)} disabled={!selectedProject || loading}><RefreshCw size={15} /> Làm mới</button>}</div>
     {/* CAMPAIGN-FIRST CSKH — tab "Theo Dự án" ẩn khỏi UI (không còn nút chuyển
-        mode). Toggle cũ ĐÃ XOÁ khỏi giao diện, KHÔNG xoá code/nhánh 'project'
-        bên dưới (chỉ còn truy cập được qua ?mode=project, xem khai báo state
-        mode ở trên) — đúng yêu cầu "chỉ retire khỏi operational UI". */}
+        sang mode đó). Toggle cũ ĐÃ XOÁ khỏi giao diện, KHÔNG xoá code/nhánh
+        'project' bên dưới (chỉ còn truy cập được qua ?mode=project, xem khai
+        báo state mode ở trên) — đúng yêu cầu "chỉ retire khỏi operational UI".
+        Toggle MỚI (task hiện tại) — CHỈ 2 lựa chọn Campaign/Nhóm riêng, không
+        hiện "Theo Dự án". */}
+    {mode !== 'project' && (
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button className={`btn btn-sm ${mode === 'campaign' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setMode('campaign')}>Campaign</button>
+        <button className={`btn btn-sm ${mode === 'private_group' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setMode('private_group')}><Users size={14} /> Nhóm riêng</button>
+      </div>
+    )}
 
-    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} projects={projects} initialCampaignId={initialCampaignId} /> : <>
+    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} projects={projects} initialCampaignId={initialCampaignId} />
+      : mode === 'private_group' ? <PrivateGroupCskhWorkQueue /> : <>
     {notice && <div style={{ padding: '11px 14px', marginBottom: 16, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', background: notice.type === 'ok' ? '#ecfdf5' : notice.type === 'warn' ? '#fffbeb' : '#fef2f2', color: notice.type === 'ok' ? '#047857' : notice.type === 'warn' ? '#a16207' : '#b91c1c' }}>{notice.type === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}<span style={{ flex: 1 }}>{notice.text}</span><button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)}><X size={14} /></button></div>}
     <div className="card" style={{ padding: 16, marginBottom: 16 }}><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><div style={{ minWidth: 280 }}><label className="form-label">Dự án</label><div style={{ position: 'relative' }}><select className="form-select" value={selectedProjectId} onChange={event => setSelectedProjectId(event.target.value)}><option value="">— Chọn dự án —</option>{accessibleProjects.map(project => <option key={project.id_du_an} value={project.id_du_an}>{project.ten_du_an}</option>)}</select><ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} /></div></div>{selectedProject && <><div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9 }}>Trưởng nhóm: <strong style={{ color: 'var(--text-title)' }}>{selectedProject.truong_nhom || 'Chưa cấu hình'}</strong></div>{canManage && <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto', marginBottom: 3 }} onClick={openTeam}><Settings size={14} /> Cấu hình team</button>}</>}</div></div>
 

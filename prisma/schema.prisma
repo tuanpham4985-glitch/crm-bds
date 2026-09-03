@@ -389,6 +389,46 @@ model PrivateGroupCustomer {
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 
+  // CSKH state (task hiện tại: "Nhóm riêng" work queue) — additive, apply
+  // SAU migration Private Group v1 (20260903000001). CỐ Ý mirror ĐÚNG tên/
+  // kiểu field CampaignMembership's CSKH+qualification block (xem model đó ở
+  // trên) — KHÔNG phải trùng lặp vô nghĩa: scoring.ts#calculateLeadQuality
+  // (ScoreableLead) và membership-workflow.ts#planMembershipInteraction/
+  // planMembershipQualification là PURE function chỉ cần đúng TÊN/KIỂU field,
+  // không cần đúng bảng — mirror tên field cho phép PrivateGroupCustomer tái
+  // dùng NGUYÊN VẸN 2 hàm đó (xem private-group.ts#recordPrivateGroupCustomer
+  // InteractionTransactional/updatePrivateGroupCustomerQualificationTransactional)
+  // thay vì viết lại công thức chấm điểm/idempotency lần 2.
+  //
+  // KHÔNG có assignment_status/telesale_id/outcome/handoff_id — Private Group
+  // đã có entered_by/assigned_to riêng cho "ai chăm sóc" (không phải CSKH
+  // work queue assignment), và KHÔNG BAO GIỜ tạo CrmHandoff/Pipeline từ CSKH
+  // theo Nhóm riêng (locked business decision, xem private-group.ts).
+  trang_thai_cham_soc   String?  @default("Chưa gọi")
+  muc_do_quan_tam       String?  @default("Chưa xác định")
+  so_lan_lien_he        Int      @default(0)
+  lich_su_cham_soc      String?
+  ngay_lien_he_cuoi     String?
+  ngay_lien_he_tiep     String?
+  qualification_status  String   @default("RAW")
+  lead_quality_score    Int      @default(0)
+  lead_quality_rank     String   @default("UNQUALIFIED")
+  lead_score_breakdown  String?
+  lead_score_history    String?
+
+  san_pham_quan_tam     String?
+  nhu_cau               String?
+  ngan_sach_min         Float?
+  ngan_sach_max         Float?
+  muc_dich              String?
+  thoi_gian_du_kien     String?
+  phuong_an_tai_chinh   String?
+  khu_vuc_yeu_cau       String?
+  hanh_dong_tiep_theo   String?
+
+  // Optimistic concurrency guard — cùng pattern CampaignMembership.row_version.
+  row_version           Int      @default(0)
+
   group             PrivateGroup @relation(fields: [group_id], references: [id], onDelete: Cascade)
 
   @@index([group_id])
