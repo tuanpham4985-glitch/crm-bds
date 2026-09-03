@@ -8,6 +8,7 @@ import { TMB_PDF_URL, TMB_PDF_WORKER_URL, TMB_PDF_PAGE_NUMBER, TMB_MAP_UNITS } f
 import { buildMaCanIndex, resolveTmbUnitState, summarizeTmbInventory, type TmbUnitState } from './tmb-map-matching';
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
+import { exceedsDragThreshold, applyPanScroll } from './tmb-map-pan';
 
 /** Tổng mặt bằng (TMB) — render trang TMB (PDF thật) làm nền + marker theo
  * toạ độ text layer, click marker -> lookup Mã căn trong Bảng hàng hiện có
@@ -60,6 +61,9 @@ const FOCUS_PADDING = 1.6;   // "Tới khu Còn hàng": chừa viền quanh boun
 // chuyển sang error state thay vì chờ mãi. 20s đủ rộng cho file 13MB trên
 // mạng chậm, đủ hẹp để không làm User nghĩ app bị đứng.
 const LOAD_TIMEOUT_MS = 20000;
+// Kéo dưới ngưỡng này vẫn coi là click (mở popup căn) — vượt ngưỡng mới
+// khoá thành drag/pan và chặn click phát sinh ngoài ý muốn trên marker.
+const DRAG_THRESHOLD_PX = 4;
 
 function log(...args: unknown[]) {
   // eslint-disable-next-line no-console
@@ -94,6 +98,15 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   // container) hoặc wheel zoom (anchorX/Y = đúng vị trí con trỏ, để điểm dưới
   // cursor giữ nguyên vị trí màn hình sau zoom) — tiêu thụ 1 lần trong effect riêng.
   const pendingScrollTargetRef = useRef<{ x: number; y: number; anchorX?: number; anchorY?: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  // State kéo hiện tại (null = không kéo) — pointerId để lọc đúng pointer
+  // (bỏ qua nếu 1 pointer khác bắt đầu trong lúc đang kéo), dragged=true chỉ
+  // khi đã vượt DRAG_THRESHOLD_PX (phân biệt click ngắn vs kéo thật).
+  const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; startScrollLeft: number; startScrollTop: number; dragged: boolean } | null>(null);
+  // Tiêu thụ 1 lần bởi onClick của marker ngay sau khi 1 lượt kéo (dragged)
+  // kết thúc — pointerup xảy ra TRƯỚC click nên không thể đọc dragStateRef
+  // (đã bị xoá) tại thời điểm click; ref riêng này sống sót qua khoảng đó.
+  const suppressNextClickRef = useRef(false);
 
   // Đo kích thước container liên tục — bắt buộc để fit-to-view đúng khi
   // resize modal/browser (yêu cầu: "resize modal/browser → fit vẫn đúng").
@@ -264,6 +277,60 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
     return () => el.removeEventListener('wheel', handleWheelZoom);
   }, [handleWheelZoom]);
 
+  // Drag-to-pan bằng Pointer Events trên chính scrollRef (dùng lại
+  // scrollLeft/scrollTop hiện có — không tạo map engine thứ hai). Gắn TRỰC
+  // TIẾP trên vùng body/scroll (không phải toolbar/header — 2 khu vực khác
+  // nhau trong DOM nên không cần guard riêng), nên click Debug/Vừa khung/
+  // Tới khu Còn hàng và tương tác popup (render tách biệt, z-index cao hơn)
+  // không bao giờ chạm handler này.
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (loading || error || !canvasSize) return;
+    if (e.button !== 0) return; // chỉ chuột trái (touch/pen primary cũng = 0)
+    const container = scrollRef.current;
+    if (!container) return;
+    dragStateRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startScrollLeft: container.scrollLeft,
+      startScrollTop: container.scrollTop,
+      dragged: false,
+    };
+    container.setPointerCapture(e.pointerId);
+  }, [loading, error, canvasSize]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current;
+    const container = scrollRef.current;
+    if (!drag || !container || drag.pointerId !== e.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.dragged && exceedsDragThreshold(dx, dy, DRAG_THRESHOLD_PX)) {
+      drag.dragged = true;
+      setIsDragging(true);
+    }
+    if (drag.dragged) {
+      const { scrollLeft, scrollTop } = applyPanScroll(drag.startScrollLeft, drag.startScrollTop, dx, dy);
+      container.scrollLeft = scrollLeft;
+      container.scrollTop = scrollTop;
+    }
+  }, []);
+
+  // Dùng chung cho pointerup/pointercancel/pointerleave — PHẢI dọn state ở
+  // cả 3 để không bao giờ kẹt "đang kéo" (VD chuột rời khỏi cửa sổ trình
+  // duyệt giữa lúc kéo). Nếu lượt kéo đã vượt ngưỡng (dragged=true), khoá
+  // suppressNextClickRef để click phát sinh ngay sau đó trên marker (nếu có)
+  // không vô tình mở popup ngoài ý muốn.
+  const endDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const container = scrollRef.current;
+    if (container?.hasPointerCapture(e.pointerId)) container.releasePointerCapture(e.pointerId);
+    if (drag.dragged) suppressNextClickRef.current = true;
+    dragStateRef.current = null;
+    setIsDragging(false);
+  }, []);
+
   const handleFitToView = useCallback(() => {
     pendingScrollTargetRef.current = null;
     setZoomMultiplier(DEFAULT_ZOOM_MULT);
@@ -371,7 +438,19 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
               (VD ở fit đúng 1 chiều, chiều kia còn dư) thì canh giữa thay vì
               dồn về góc trái-trên; overflow:auto vẫn cho scroll khi zoom to
               hơn container. */}
-          <div ref={scrollRef} style={{ width: '100%', height: '100%', overflow: 'auto', background: '#e5e7eb', visibility: loading || error ? 'hidden' : 'visible', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            ref={scrollRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onPointerLeave={endDrag}
+            style={{
+              width: '100%', height: '100%', overflow: 'auto', background: '#e5e7eb',
+              visibility: loading || error ? 'hidden' : 'visible', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: loading || error ? 'default' : isDragging ? 'grabbing' : 'grab', touchAction: 'none',
+            }}
+          >
             {/* QUAN TRỌNG: <canvas> phải LUÔN mount, không được gate theo
                 canvasSize — canvasSize chỉ được set SAU KHI đã vẽ vào canvas
                 (đo canvas.width/height lúc đó), nên nếu gate theo nó thì
@@ -404,7 +483,12 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                   return (
                     <button
                       key={u.unitCode}
-                      onClick={() => u.available && u.match.kind === 'matched' && onOpenUnit(u.match.row)}
+                      onClick={() => {
+                        // Vừa kết thúc 1 lượt kéo (pan) chạm qua marker này —
+                        // không coi là click, tránh mở popup ngoài ý muốn.
+                        if (suppressNextClickRef.current) { suppressNextClickRef.current = false; return; }
+                        if (u.available && u.match.kind === 'matched') onOpenUnit(u.match.row);
+                      }}
                       onMouseEnter={() => u.available && setHoveredCode(u.unitCode)}
                       onMouseLeave={() => setHoveredCode(c => c === u.unitCode ? null : c)}
                       onFocus={() => u.available && setHoveredCode(u.unitCode)}
