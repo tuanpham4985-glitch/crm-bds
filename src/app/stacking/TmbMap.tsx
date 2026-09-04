@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { X, Loader2, AlertCircle, Plus, Minus, RefreshCw, Maximize2, Locate, Search } from 'lucide-react';
 import type { StackingListRow } from '@/lib/types';
 import { fmtGia, fmtArea } from './format';
-import { TMB_PDF_URL, TMB_PDF_WORKER_URL, TMB_PDF_PAGE_NUMBER, TMB_MAP_UNITS } from './tmb-map-data';
+import { TMB_PDF_WORKER_URL, type TmbMapProfile } from './tmb-map-data';
 import { buildMaCanIndex, resolveTmbUnitState, type TmbUnitState } from './tmb-map-matching';
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
@@ -21,11 +21,18 @@ import type { PDFPageProxy, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
  * (đúng authority effectiveDotStatus) -> mở CHÍNH popup chi tiết căn
  * (ListUnitDetailModal, truyền vào qua onOpenUnit).
  *
+ * PROJECT-AGNOSTIC: component này KHÔNG hard-code PDF/unit của bất kỳ dự án
+ * nào — nhận toàn bộ qua prop `profile` (TmbMapProfile, xem tmb-map-data.ts).
+ * Nhiều dự án (VD Vinhomes Sài Gòn Park, Vinhomes Global Gate HLX · VBM1)
+ * dùng CHUNG renderer này, chỉ khác `profile` truyền vào — caller
+ * (stacking/page.tsx) resolve đúng profile theo StackingConfig.id đang chọn
+ * (resolveTmbMapProfile) TRƯỚC khi mount component.
+ *
  * AVAILABLE-ONLY: chỉ căn "Còn hàng" (effectiveDotStatus === 'con_hang')
  * mới hiển thị + clickable/hoverable. Đã bán/Đang xem/unmatched/ambiguous
  * KHÔNG bao giờ hiển thị trên bản đồ.
  *
- * Map CHỈ mang unitCode + toạ độ (TMB_MAP_UNITS) — không chứa business data
+ * Map CHỈ mang unitCode + toạ độ (profile.units) — không chứa business data
  * (giá/diện tích/trạng thái); toàn bộ business data + trạng thái lookup SỐNG
  * từ `listRows` (Bảng hàng) mỗi lần render, đúng nguyên tắc PDF = spatial
  * authority, Bảng hàng = business/status authority. Đổi trạng thái 1 căn ở
@@ -117,6 +124,11 @@ function getDevicePixelRatio(): number {
 }
 
 interface Props {
+  /** Dữ liệu riêng dự án (PDF + spatial mapping) — xem TmbMapProfile trong
+   * tmb-map-data.ts. Renderer này KHÔNG hard-code PDF/unit nào, hoàn toàn
+   * project-agnostic — đổi profile (VD Saigon Park <-> HLX VBM1) chỉ đổi
+   * PROP này, không đụng logic zoom/pan/render bên dưới. */
+  profile: TmbMapProfile;
   listRows: StackingListRow[];
   onOpenUnit: (row: StackingListRow) => void;
   onClose: () => void;
@@ -127,7 +139,7 @@ interface RenderedUnit extends TmbUnitState {
   viewY: number;
 }
 
-export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
+export default function TmbMap({ profile, listRows, onOpenUnit, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
@@ -230,7 +242,7 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
       timedOut = true;
       log('TIMEOUT sau', LOAD_TIMEOUT_MS, 'ms — pdf.js không phản hồi (khả năng cao: worker không load được)');
       if (!cancelled) {
-        setError(`Quá thời gian chờ (${LOAD_TIMEOUT_MS / 1000}s) khi tải bản vẽ TMB — kiểm tra Console (log "[TmbMap]") và tab Network cho "${TMB_PDF_URL}" / "${TMB_PDF_WORKER_URL}".`);
+        setError(`Quá thời gian chờ (${LOAD_TIMEOUT_MS / 1000}s) khi tải bản vẽ TMB — kiểm tra Console (log "[TmbMap]") và tab Network cho "${profile.pdfUrl}" / "${TMB_PDF_WORKER_URL}".`);
         setLoading(false);
       }
     }, LOAD_TIMEOUT_MS);
@@ -241,12 +253,12 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
         pdfjs.GlobalWorkerOptions.workerSrc = TMB_PDF_WORKER_URL;
-        log('bước 2/5: workerSrc =', TMB_PDF_WORKER_URL, '— fetch toàn bộ PDF:', TMB_PDF_URL);
+        log('bước 2/5: workerSrc =', TMB_PDF_WORKER_URL, '— fetch toàn bộ PDF:', profile.pdfUrl);
 
         // Vercel phục vụ PDF với Accept-Ranges; pdf.js đôi khi đọc range/stream
         // bị lệch offset ("Bad end offset") trên asset lớn. Với file TMB ~13MB,
         // tải trọn file rồi truyền bytes cho pdf.js ổn định hơn và vẫn đủ nhanh.
-        const pdfResponse = await fetch(TMB_PDF_URL, { cache: 'no-store' });
+        const pdfResponse = await fetch(profile.pdfUrl, { cache: 'no-store' });
         if (!pdfResponse.ok) throw new Error(`Không tải được file TMB (${pdfResponse.status})`);
         const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
         log('tải PDF hoàn tất:', pdfBytes.byteLength, 'bytes');
@@ -257,7 +269,7 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
         loadedDoc = doc;
         log('bước 3/5: getDocument() OK, numPages =', doc.numPages);
 
-        const page = await doc.getPage(TMB_PDF_PAGE_NUMBER);
+        const page = await doc.getPage(profile.pdfPageNumber);
         if (timedOut || cancelled) return;
         const viewport = page.getViewport({ scale: BASE_SCALE, rotation: page.rotate });
         log('bước 4/5: getPage() OK, viewport =', viewport.width, 'x', viewport.height, 'rotation', viewport.rotation);
@@ -276,7 +288,7 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
         if (cancelled || timedOut) return;
         log('bước 5/5: page.render() hoàn tất');
 
-        const points = TMB_MAP_UNITS.map(h => {
+        const points = profile.units.map(h => {
           const [vx, vy] = viewport.convertToViewportPoint(h.pdfX, h.pdfY);
           return { unitCode: h.unitCode, viewX: vx, viewY: vy };
         });
@@ -313,7 +325,15 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
       if (viewportDebounceTimerRef.current) clearTimeout(viewportDebounceTimerRef.current);
       loadedDoc?.destroy();
     };
-  }, [retryKey]);
+    // profile.configId (KHÔNG phải cả object profile) — theo dõi tường minh
+    // theo configId thay vì dựa ngầm vào identity ổn định của object profile
+    // (dù resolveTmbMapProfile luôn trả về CÙNG reference cho 1 configId từ
+    // registry module-level cố định). Đổi dự án (configId khác) trong lúc
+    // TmbMap đang mount phải load lại đúng PDF/unit mới, giống retryKey.
+    // profile.pdfUrl/pdfPageNumber/units cố ý KHÔNG liệt kê riêng — cả 3 đổi
+    // CÙNG LÚC với configId (1 profile = 1 bộ dữ liệu bất biến).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryKey, profile.configId]);
 
   // fitScale = scale để TOÀN BỘ canvas vừa khung container, giữ đúng aspect
   // ratio (không crop) — luôn tính lại khi container hoặc canvas đổi kích
@@ -509,8 +529,8 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   // không hard-code danh sách Còn hàng nào).
   const maCanIndex = useMemo(() => buildMaCanIndex(listRows), [listRows]);
   const unitStates = useMemo(
-    () => TMB_MAP_UNITS.map(h => resolveTmbUnitState(h.unitCode, maCanIndex)),
-    [maCanIndex]
+    () => profile.units.map(h => resolveTmbUnitState(h.unitCode, maCanIndex)),
+    [maCanIndex, profile.units]
   );
 
   const units: RenderedUnit[] = useMemo(() => {
@@ -707,7 +727,10 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)' }}>Tổng mặt bằng</div>
+            {/* profile.label — giờ có >1 dự án dùng chung TmbMap, cần phân
+                biệt rõ đang xem TMB của dự án nào (VD "Vinhomes Sài Gòn Park"
+                vs "Vinhomes Global Gate HLX · VBM1"). */}
+            <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)' }}>Tổng mặt bằng · {profile.label}</div>
             <div style={{ fontSize: '0.8rem', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: '#15803d', fontWeight: 700 }}>Còn hàng: {availableCount} căn</span>
             </div>

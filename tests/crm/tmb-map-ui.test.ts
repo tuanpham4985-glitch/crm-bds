@@ -42,8 +42,30 @@ test('TmbMap: clicking a matched available marker opens the list-detail popup ro
 });
 
 test('TmbMap: loads PDF as full bytes before pdf.js parses it to avoid range offset errors', () => {
-  assert.match(source, /fetch\(TMB_PDF_URL, \{ cache: 'no-store' \}\)/);
+  assert.match(source, /fetch\(profile\.pdfUrl, \{ cache: 'no-store' \}\)/);
   assert.match(source, /new Uint8Array\(await pdfResponse\.arrayBuffer\(\)\)/);
   assert.match(source, /pdfjs\.getDocument\(\{ data: pdfBytes \}\)/);
-  assert.doesNotMatch(source, /pdfjs\.getDocument\(TMB_PDF_URL\)/);
+  assert.doesNotMatch(source, /pdfjs\.getDocument\(profile\.pdfUrl\)/);
+});
+
+// ─── Multi-project TMB profile (task hiện tại) ──────────────────────────────
+
+test('TmbMap: KHÔNG hard-code PDF/unit của bất kỳ dự án nào — nhận toàn bộ qua prop `profile` (project-agnostic renderer, dùng chung cho nhiều dự án)', () => {
+  assert.match(source, /profile: TmbMapProfile;/);
+  assert.match(source, /export default function TmbMap\(\{ profile, listRows, onOpenUnit, onClose \}: Props\)/);
+  assert.doesNotMatch(source, /import \{ TMB_PDF_URL/, 'TmbMap.tsx không được import thẳng TMB_PDF_URL (hardcode 1 dự án) nữa');
+  assert.doesNotMatch(source, /import \{[^}]*TMB_MAP_UNITS/, 'TmbMap.tsx không được import thẳng TMB_MAP_UNITS (hardcode 1 dự án) nữa');
+});
+
+test('TmbMap: dùng profile.units/profile.pdfPageNumber cho spatial mapping + page load, KHÔNG còn hằng số 1 dự án', () => {
+  assert.match(source, /profile\.units\.map\(h => \{/);
+  assert.match(source, /doc\.getPage\(profile\.pdfPageNumber\)/);
+  assert.match(source, /profile\.units\.map\(h => resolveTmbUnitState\(h\.unitCode, maCanIndex\)\)/);
+});
+
+test('page.tsx: resolve ĐÚNG TmbMapProfile theo StackingConfig đang chọn (resolveTmbMapProfile) rồi truyền xuống TmbMap qua prop `profile` — KHÔNG if/else theo project trong component', () => {
+  const pageSource = fs.readFileSync('src/app/stacking/page.tsx', 'utf8');
+  assert.match(pageSource, /import \{ resolveTmbMapProfile \} from '\.\/tmb-map-data';/);
+  assert.match(pageSource, /const tmbProfile = resolveTmbMapProfile\(selectedConfig\);/);
+  assert.match(pageSource, /<TmbMap[\s\S]*?profile=\{tmbProfile\}/);
 });

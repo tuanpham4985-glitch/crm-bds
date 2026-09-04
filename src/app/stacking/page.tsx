@@ -9,7 +9,7 @@ import {
 import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import TmbMap from './TmbMap';
-import { isTmbAvailableForConfig } from './tmb-map-data';
+import { resolveTmbMapProfile } from './tmb-map-data';
 import { fmtGia, fmtArea, fmtGiaFull } from './format';
 import {
   filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
@@ -1185,6 +1185,13 @@ export default function StackingPage() {
   );
   const maCanInTable = useMemo(() => tableColumns.some(c => c.trim().toLowerCase() === 'mã căn'), [tableColumns]);
 
+  // Tổng mặt bằng — resolve ĐÚNG profile (PDF + spatial mapping) theo nguồn
+  // đang chọn (StackingConfig.id, xem resolveTmbMapProfile trong tmb-map-data.ts)
+  // — null nếu nguồn này chưa có TMB profile nào (không giả vờ generic cho
+  // nguồn chưa audit spatial mapping). Nhiều dự án dùng CHUNG 1 renderer
+  // (TmbMap), chỉ khác profile truyền vào — KHÔNG if/else theo project ở đây.
+  const tmbProfile = resolveTmbMapProfile(selectedConfig);
+
   /** Header cột bảng chính, bấm để sort (tăng dần -> giảm dần -> về gốc) —
    * dùng CHUNG cho cột "Mã căn" fallback lẫn mọi cột trong tableColumns. */
   function renderSortableListHeader(col: string) {
@@ -1273,11 +1280,11 @@ export default function StackingPage() {
             </div>
           )}
 
-          {/* Chỉ hiện khi nguồn đang chọn CÓ spatial map tương ứng — không giả
-              vờ generic cho nguồn khác chưa có TMB mapping (v1 chỉ phủ Vinhomes
-              Sài Gòn Park). Xem inventory trên bản đồ là tính năng xem, không
-              phải quản trị -> không gate theo isAdmin như "Quản lý Sheet". */}
-          {isTmbAvailableForConfig(selectedConfig) && (
+          {/* Chỉ hiện khi nguồn đang chọn CÓ spatial map tương ứng (tmbProfile
+              != null) — không giả vờ generic cho nguồn chưa audit spatial
+              mapping. Xem inventory trên bản đồ là tính năng xem, không phải
+              quản trị -> không gate theo isAdmin như "Quản lý Sheet". */}
+          {tmbProfile && (
             <button onClick={() => setShowTmbMap(true)} title="Xem vị trí các căn Còn hàng trên Tổng mặt bằng" style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
               fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
@@ -1292,7 +1299,7 @@ export default function StackingPage() {
               display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
               fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
               background: 'transparent', color: 'var(--primary)', cursor: 'pointer',
-              marginLeft: (listRows.length > 0 || isTmbAvailableForConfig(selectedConfig)) ? 0 : 'auto',
+              marginLeft: (listRows.length > 0 || Boolean(tmbProfile)) ? 0 : 'auto',
             }}>
               <Settings size={14} /> Quản lý Sheet
             </button>
@@ -1451,8 +1458,9 @@ export default function StackingPage() {
             nguyên zoom/pan/scroll nội bộ. Đóng detail (onClose bên trên,
             setSelectedListRow(null)) không đụng showTmbMap nên quay lại đúng
             TMB đang mở. Chỉ nút X của TmbMap mới gọi setShowTmbMap(false). */}
-        {showTmbMap && isTmbAvailableForConfig(selectedConfig) && (
+        {showTmbMap && tmbProfile && (
           <TmbMap
+            profile={tmbProfile}
             listRows={listRows}
             onOpenUnit={row => setSelectedListRow(row)}
             onClose={() => setShowTmbMap(false)}

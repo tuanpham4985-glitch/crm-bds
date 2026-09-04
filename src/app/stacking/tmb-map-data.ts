@@ -36,16 +36,8 @@ export interface TmbMapUnit {
  * Sheet backing 1 nguồn qua "Quản lý Sheet" → "Sửa", sheet_id có thể đổi bất
  * kỳ lúc nào mà VẪN LÀ cùng 1 nguồn/dự án), khiến nút "Tổng mặt bằng" biến
  * mất sai ngay khi đổi Sheet dù spatial mapping bên dưới vẫn hoàn toàn đúng.
- * id không có rủi ro này -> dùng làm stable identity, xem isTmbAvailableForConfig. */
+ * id không có rủi ro này -> dùng làm stable identity, xem resolveTmbMapProfile. */
 export const TMB_MAP_CONFIG_ID = 'SC_1788152955557';
-
-/** TMB chỉ hiện cho ĐÚNG nguồn đã audit spatial mapping (v1 chỉ phủ Vinhomes
- * Sài Gòn Park) — so theo config.id (ổn định), KHÔNG so theo sheet_id (mutable,
- * xem TMB_MAP_CONFIG_ID). Tách hàm riêng để 3 nơi gọi (nút mở TMB, margin
- * layout, mount TmbMap) luôn dùng CHUNG 1 điều kiện, không lệch nhau. */
-export function isTmbAvailableForConfig(config: { id: string } | null | undefined): boolean {
-  return config?.id === TMB_MAP_CONFIG_ID;
-}
 
 export const TMB_PDF_URL = '/tmb-poc/tmb-khu-1-2-vhsgp.pdf';
 
@@ -55,7 +47,9 @@ export const TMB_PDF_URL = '/tmb-poc/tmb-khu-1-2-vhsgp.pdf';
  * ổn định giữa `next dev` (HMR/dev chunk) và `next build` — build pass
  * không đảm bảo dev cũng chạy đúng, và khi worker không load được, pdf.js
  * có thể treo vô hạn ở getDocument() thay vì throw lỗi rõ ràng. Static path
- * public/ hoạt động giống hệt nhau ở cả dev lẫn production. */
+ * public/ hoạt động giống hệt nhau ở cả dev lẫn production. DÙNG CHUNG cho
+ * MỌI profile (worker là runtime pdf.js chung, KHÔNG phải data riêng dự án
+ * nào) — không lặp lại field này trong từng TmbMapProfile. */
 export const TMB_PDF_WORKER_URL = '/tmb-poc/pdf.worker.min.mjs';
 export const TMB_PDF_PAGE_NUMBER = 1;
 
@@ -85,3 +79,89 @@ export const TMB_MAP_UNITS: TmbMapUnit[] = [
   { unitCode: 'TL12-35', pdfX: 1405.30, pdfY: 1917.50 },
   { unitCode: 'TL12-45', pdfX: 1378.51, pdfY: 1916.21 },
 ];
+
+// ─── Multi-project TMB profile registry ────────────────────────────────────
+// Renderer (TmbMap.tsx) dùng CHUNG cho mọi dự án — dữ liệu riêng từng dự án
+// (PDF + spatial mapping) tách hẳn ra đây thành 1 TmbMapProfile/dự án, KHÔNG
+// hard-code if/else theo project trong component. Thêm dự án mới = thêm 1
+// entry vào TMB_MAP_PROFILES bên dưới (sau khi đã audit PDF thật + verify
+// từng mã căn — xem tmb-map-matching.ts cho exact-match, KHÔNG fuzzy), KHÔNG
+// đụng renderer.
+
+export interface TmbMapProfile {
+  /** StackingConfig.id — CÙNG stable identity đã dùng cho TMB_MAP_CONFIG_ID
+   * (không đổi qua update Sheet, xem comment TMB_MAP_CONFIG_ID). */
+  configId: string;
+  /** Tên hiển thị trong header TmbMap khi có >1 profile (phân biệt đang xem
+   * TMB của dự án nào). */
+  label: string;
+  pdfUrl: string;
+  pdfPageNumber: number;
+  units: TmbMapUnit[];
+}
+
+const SAIGON_PARK_TMB_PROFILE: TmbMapProfile = {
+  configId: TMB_MAP_CONFIG_ID,
+  label: 'Vinhomes Sài Gòn Park',
+  pdfUrl: TMB_PDF_URL,
+  pdfPageNumber: TMB_PDF_PAGE_NUMBER,
+  units: TMB_MAP_UNITS,
+};
+
+/** id ổn định (StackingConfig.id) của nguồn "Vinhomes Global Gate HLX" — audit
+ * trực tiếp qua getStackingConfigs() với credentials thật (KHÔNG qua HTTP),
+ * CÙNG lý do dùng config.id (không phải sheet_id) với TMB_MAP_CONFIG_ID. */
+export const TMB_HLX_VBM_CONFIG_ID = 'SC_1788510325994';
+
+export const TMB_HLX_VBM_PDF_URL = '/tmb-poc/tmb-hlx-vbm1.pdf';
+
+/**
+ * 5 mã = TOÀN BỘ phân khu "VBM1" hiện có trong Bảng hàng nguồn "Vinhomes
+ * Global Gate HLX" (sheet tab "DQ") — audit trực tiếp qua getStackingListRows()
+ * với credentials thật (KHÔNG qua HTTP): 16 dòng trong tab DQ, đúng 5 dòng có
+ * cột "PHÂN KHU" = "VBM1", KHÔNG có dòng VBM nào khác bị bỏ sót.
+ *
+ * Toạ độ trích xuất TRỰC TIẾP từ text layer PDF "VHGG Hạ Long_TMB Tiện ích&mã
+ * căn VBM1.pdf" bằng pdfjs-dist (CÙNG phương pháp TMB_MAP_UNITS — page 1,
+ * rotation=0, đơn vị PDF user-space KHÔNG xoay/scale): PDF có 1 trang, text
+ * layer thật (không phải ảnh raster) — mã căn (pattern `BM<số>-<số>`) đọc
+ * được sạch dù nhiều label tiếng Việt khác trên cùng trang bị lỗi font
+ * encoding (không ảnh hưởng mã căn, chỉ ảnh hưởng nhãn khác không dùng ở đây).
+ * Cả 5/5 mã đều match CHÍNH XÁC 1 LẦN DUY NHẤT trong toàn bộ ~2521 text run
+ * dạng "BM..." tìm được trên trang (PDF phủ nguyên khu, không chỉ VBM1) —
+ * không ambiguous, không cần chọn giữa nhiều vị trí trùng mã.
+ */
+export const TMB_HLX_VBM_UNITS: TmbMapUnit[] = [
+  { unitCode: 'BM34-25', pdfX: 980.4717800000002, pdfY: 731.690335 },
+  { unitCode: 'BM17-12', pdfX: 900.1126679000002, pdfY: 610.4550035000001 },
+  { unitCode: 'BM6-13', pdfX: 1044.8478556, pdfY: 687.5826086 },
+  { unitCode: 'BM54-03', pdfX: 1073.4441127000002, pdfY: 492.8106311 },
+  { unitCode: 'BM57-28', pdfX: 975.3666729000005, pdfY: 433.41757970000003 },
+];
+
+const HLX_VBM_TMB_PROFILE: TmbMapProfile = {
+  configId: TMB_HLX_VBM_CONFIG_ID,
+  label: 'Vinhomes Global Gate HLX · VBM1',
+  pdfUrl: TMB_HLX_VBM_PDF_URL,
+  pdfPageNumber: 1,
+  units: TMB_HLX_VBM_UNITS,
+};
+
+/** Registry — thêm profile mới ở đây khi mở thêm dự án/phân khu (sau khi đã
+ * audit PDF thật + verify từng mã căn, xem comment 2 profile trên). */
+const TMB_MAP_PROFILES: readonly TmbMapProfile[] = [SAIGON_PARK_TMB_PROFILE, HLX_VBM_TMB_PROFILE];
+
+/** Resolve profile theo config.id (ổn định) — null nếu dự án chưa có TMB
+ * profile nào (KHÔNG suy đoán/fallback về profile khác). */
+export function resolveTmbMapProfile(config: { id: string } | null | undefined): TmbMapProfile | null {
+  if (!config) return null;
+  return TMB_MAP_PROFILES.find(p => p.configId === config.id) ?? null;
+}
+
+/** TMB chỉ hiện cho nguồn ĐÃ CÓ profile (đã audit spatial mapping) — so theo
+ * config.id (ổn định), KHÔNG so theo sheet_id (mutable, xem TMB_MAP_CONFIG_ID).
+ * Tách hàm riêng để 3 nơi gọi (nút mở TMB, margin layout, mount TmbMap) luôn
+ * dùng CHUNG 1 điều kiện, không lệch nhau. */
+export function isTmbAvailableForConfig(config: { id: string } | null | undefined): boolean {
+  return resolveTmbMapProfile(config) !== null;
+}
