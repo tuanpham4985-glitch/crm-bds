@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { X, Loader2, AlertCircle, Plus, Minus, Eye, EyeOff, RefreshCw, Maximize2, Locate } from 'lucide-react';
+import { X, Loader2, AlertCircle, Plus, Minus, RefreshCw, Maximize2, Locate } from 'lucide-react';
 import type { StackingListRow } from '@/lib/types';
 import { fmtGia, fmtArea } from './format';
 import { TMB_PDF_URL, TMB_PDF_WORKER_URL, TMB_PDF_PAGE_NUMBER, TMB_MAP_UNITS } from './tmb-map-data';
-import { buildMaCanIndex, resolveTmbUnitState, summarizeTmbInventory, type TmbUnitState } from './tmb-map-matching';
+import { buildMaCanIndex, resolveTmbUnitState, type TmbUnitState } from './tmb-map-matching';
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
 import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, computeCenteringMargin } from './tmb-map-pan';
@@ -22,8 +22,8 @@ import type { PDFPageProxy, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
  * (ListUnitDetailModal, truyền vào qua onOpenUnit).
  *
  * AVAILABLE-ONLY: chỉ căn "Còn hàng" (effectiveDotStatus === 'con_hang')
- * mới hiển thị nổi bật + clickable/hoverable. Đã bán/Đang xem/unmatched/
- * ambiguous mặc định ẨN — Debug mới hiện dạng mờ, không bao giờ clickable.
+ * mới hiển thị + clickable/hoverable. Đã bán/Đang xem/unmatched/ambiguous
+ * KHÔNG bao giờ hiển thị trên bản đồ.
  *
  * Map CHỈ mang unitCode + toạ độ (TMB_MAP_UNITS) — không chứa business data
  * (giá/diện tích/trạng thái); toàn bộ business data + trạng thái lookup SỐNG
@@ -128,7 +128,6 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [zoomMultiplier, setZoomMultiplier] = useState(DEFAULT_ZOOM_MULT);
-  const [showDebug, setShowDebug] = useState(false);
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState<{ w: number; h: number } | null>(null);
@@ -508,7 +507,6 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
     () => TMB_MAP_UNITS.map(h => resolveTmbUnitState(h.unitCode, maCanIndex)),
     [maCanIndex]
   );
-  const summary = useMemo(() => summarizeTmbInventory(unitStates), [unitStates]);
 
   const units: RenderedUnit[] = useMemo(() => {
     const byCode = new Map(unitStates.map(s => [s.unitCode, s]));
@@ -573,9 +571,9 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   // Drag-to-pan bằng Pointer Events trên chính scrollRef (dùng lại
   // scrollLeft/scrollTop hiện có — không tạo map engine thứ hai). Gắn TRỰC
   // TIẾP trên vùng body/scroll (không phải toolbar/header — 2 khu vực khác
-  // nhau trong DOM nên không cần guard riêng), nên click Debug/Vừa khung/
-  // Tới khu Còn hàng và tương tác popup (render tách biệt, z-index cao hơn)
-  // không bao giờ chạm handler này.
+  // nhau trong DOM nên không cần guard riêng), nên click Vừa khung/Tới khu
+  // Còn hàng và tương tác popup (render tách biệt, z-index cao hơn) không
+  // bao giờ chạm handler này.
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (loading || error || !canvasSize) return;
     if (e.button !== 0) return; // chỉ chuột trái (touch/pen primary cũng = 0)
@@ -671,20 +669,9 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
             <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)' }}>Tổng mặt bằng</div>
             <div style={{ fontSize: '0.8rem', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: '#15803d', fontWeight: 700 }}>Còn hàng: {availableCount} căn</span>
-              {showDebug && (
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 400 }}>
-                  (debug — tổng {summary.total} · khớp {summary.matched} · trạng thái khác {summary.otherStatus} · không khớp {summary.unmatched} · mơ hồ {summary.ambiguous})
-                </span>
-              )}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => setShowDebug(v => !v)} title="Debug: hiện số liệu chẩn đoán + các căn không phải Còn hàng dạng mờ (vẫn không click được)" style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
-              border: '1px solid var(--border)', background: showDebug ? 'var(--bg-secondary, #f1f5f9)' : 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer',
-            }}>
-              {showDebug ? <Eye size={13} /> : <EyeOff size={13} />} Debug
-            </button>
             <button onClick={handleFocusAvailable} disabled={loading || availableCount === 0} title="Zoom/pan tới khu vực có căn Còn hàng" style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
               border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)',
@@ -797,19 +784,15 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                 );
               })()}
               {canvasSize && units.map(u => {
-                  // Ẩn hoàn toàn nếu không phải Còn hàng, TRỪ khi bật Debug (khi đó
-                  // hiện rất mờ, non-interactive — không bao giờ trộn với Còn hàng).
-                  if (!u.available && !showDebug) return null;
+                  // Ẩn hoàn toàn nếu không phải Còn hàng — chỉ căn Còn hàng mới
+                  // hiển thị/clickable trên bản đồ.
+                  if (!u.available) return null;
 
                   // Marker cố định theo pixel màn hình — vị trí (tâm) vẫn scale
                   // TUYỆT ĐỐI theo effectiveScale nên không bao giờ lệch khi zoom/pan.
                   const left = u.viewX * effectiveScale - MARKER_SIZE_PX / 2;
                   const top = u.viewY * effectiveScale - MARKER_SIZE_PX / 2;
                   const isHovered = hoveredCode === u.unitCode;
-
-                  const debugLabel = u.match.kind === 'matched' ? 'Trạng thái khác'
-                    : u.match.kind === 'ambiguous' ? `Mơ hồ (${u.match.count} dòng trùng mã)`
-                    : 'Không khớp Bảng hàng';
 
                   const preview = u.available && u.match.kind === 'matched' ? buildTmbPreview(u.match.row) : null;
 
@@ -833,7 +816,7 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                       onFocus={() => u.available && setHoveredCode(u.unitCode)}
                       onBlur={() => setHoveredCode(c => c === u.unitCode ? null : c)}
                       disabled={!u.available}
-                      title={u.available ? u.unitCode : `${u.unitCode} — ${debugLabel}`}
+                      title={u.unitCode}
                       style={{
                         position: 'absolute', left, top, width: MARKER_SIZE_PX, height: MARKER_SIZE_PX, borderRadius: '50%',
                         border: `2px solid ${u.available ? '#16a34a' : '#9ca3af'}`,
@@ -846,16 +829,15 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                       }}
                     >
                       {/* Label mã căn — chỉ thường trực khi đã zoom đủ gần (tránh
-                          chữ chồng chéo che bản đồ ở toàn cảnh); căn Debug-mờ vẫn
-                          luôn hiện label để dễ chẩn đoán vị trí. */}
-                      {(showLabels || !u.available) && (
+                          chữ chồng chéo che bản đồ ở toàn cảnh). */}
+                      {showLabels && (
                         <span style={{
                           position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: 3,
                           fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
-                          color: u.available ? '#15803d' : '#6b7280',
+                          color: '#15803d',
                           background: 'rgba(255,255,255,0.9)', padding: '1px 5px', borderRadius: 3,
                         }}>
-                          {u.available ? u.unitCode : `${u.unitCode} (${debugLabel})`}
+                          {u.unitCode}
                         </span>
                       )}
 
