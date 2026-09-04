@@ -137,6 +137,22 @@ export function isMiscColumn(header: string): boolean {
 // "Quỹ" và "Giỏ bank" luôn hiện trên bảng chính (yêu cầu riêng), NGAY SAU cột
 // Giá — dù đứng ở đâu trong Sheet gốc, vẫn kéo lên bảng thay vì để trong popup.
 const FORCE_TABLE_COLUMNS = ['quỹ', 'giỏ bank'];
+const GLOBAL_GATE_HLX_TABLE_COLUMNS = [
+  'stt',
+  'phân khu',
+  'mã căn',
+  'tcbg',
+  'loại hình',
+  'đặc điểm',
+  'dt đất (m2)',
+  'dtxd (m2)',
+  'giá bán trước vat',
+  'giá full',
+];
+
+function isGlobalGateHlxSource(sourceName?: string | null): boolean {
+  return Boolean(sourceName && normHeader(sourceName).includes('vinhomes global gate hlx'));
+}
 
 /** Chia `columns` (đúng thứ tự Sheet): bảng chính giữ mọi cột từ đầu tới hết
  * cột Giá cuối cùng tìm thấy (không xáo trộn thứ tự), CỘNG THÊM "Quỹ"/"Giỏ
@@ -145,7 +161,19 @@ const FORCE_TABLE_COLUMNS = ['quỹ', 'giỏ bank'];
  * vào popup, bất kể tổng số cột của nguồn (mỗi Sheet nguồn có thể khác nhau).
  * Không tìm thấy cột Giá nào (hiếm) → fallback chia đôi (ceil ở nửa đầu) để
  * vẫn thu gọn được bảng thay vì hiện hết. */
-export function splitStackingListColumns(columns: string[]): { tableColumns: string[]; detailColumns: string[] } {
+export function splitStackingListColumns(
+  columns: string[],
+  opts: { sourceName?: string | null } = {}
+): { tableColumns: string[]; detailColumns: string[] } {
+  if (isGlobalGateHlxSource(opts.sourceName)) {
+    const byNorm = new Map(columns.map(col => [normHeader(col), col]));
+    const tableColumns = GLOBAL_GATE_HLX_TABLE_COLUMNS
+      .map(col => byNorm.get(col))
+      .filter((col): col is string => Boolean(col));
+    const tableSet = new Set(tableColumns);
+    return { tableColumns, detailColumns: columns.filter(col => !tableSet.has(col)) };
+  }
+
   let lastPriceIdx = -1;
   for (let i = 0; i < columns.length; i++) {
     if (isPriceColumn(columns[i])) lastPriceIdx = i;

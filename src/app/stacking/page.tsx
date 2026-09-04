@@ -1177,10 +1177,12 @@ export default function StackingPage() {
     });
   }, []);
 
-  // Bảng chính chỉ hiện NỬA ĐẦU cột (đúng thứ tự Sheet) — nửa sau (TTC/TTS/
-  // Vay.../Link PTG/Hướng...) vẫn còn nguyên trong listColumns/row.values,
-  // chuyển hẳn vào popup chi tiết (ListUnitDetailModal) khi click Mã căn.
-  const { tableColumns, detailColumns } = useMemo(() => splitStackingListColumns(listColumns), [listColumns]);
+  // Bảng chính chỉ hiện nhóm cột tóm tắt theo rule của từng nguồn; các cột còn
+  // lại vẫn còn nguyên trong listColumns/row.values và mở trong popup chi tiết.
+  const { tableColumns, detailColumns } = useMemo(
+    () => splitStackingListColumns(listColumns, { sourceName: selectedConfig?.ten_hien_thi }),
+    [listColumns, selectedConfig?.ten_hien_thi]
+  );
   const maCanInTable = useMemo(() => tableColumns.some(c => c.trim().toLowerCase() === 'mã căn'), [tableColumns]);
 
   /** Header cột bảng chính, bấm để sort (tăng dần -> giảm dần -> về gốc) —

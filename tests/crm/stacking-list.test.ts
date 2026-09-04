@@ -202,6 +202,12 @@ const FULL_COLUMN_SET = [
   'LINK PTG', 'Hướng', 'View', 'Quỹ', 'Giỏ bank',
 ];
 
+const GLOBAL_GATE_HLX_COLUMN_SET = [
+  'STT', 'PHÂN KHU', 'MÃ CĂN', 'TCBG', 'LOẠI HÌNH', 'ĐẶC ĐIỂM',
+  'DT ĐẤT (m2)', 'DTXD (m2)', 'GIÁ BÁN TRƯỚC VAT', 'GIÁ FULL',
+  'TTS', 'TTC', 'HTLS 18T', 'HTLS 24T', 'HTLS 30T', 'HTLS 36T', 'LINK PTG',
+];
+
 test('bảng chính giữ đúng nửa ĐẦU, đúng thứ tự Sheet — khớp screenshot thật (17 cột → 9 cột đầu ở lại bảng)', () => {
   const { tableColumns } = splitStackingListColumns(REAL_COLUMN_SET);
   assert.deepEqual(tableColumns, [
@@ -279,6 +285,31 @@ test('không có cột Giá nào → fallback chia đôi (ceil ở nửa đầu)
 test('danh sách cột rỗng hoặc chỉ 1 cột không lỗi', () => {
   assert.deepEqual(splitStackingListColumns([]), { tableColumns: [], detailColumns: [] });
   assert.deepEqual(splitStackingListColumns(['Mã căn']), { tableColumns: ['Mã căn'], detailColumns: [] });
+});
+
+test('Vinhomes Global Gate HLX: bảng chính chỉ hiện 10 cột yêu cầu, phần còn lại vào popup chi tiết', () => {
+  const { tableColumns, detailColumns } = splitStackingListColumns(GLOBAL_GATE_HLX_COLUMN_SET, {
+    sourceName: 'Vinhomes Global Gate HLX',
+  });
+  assert.deepEqual(tableColumns, [
+    'STT', 'PHÂN KHU', 'MÃ CĂN', 'TCBG', 'LOẠI HÌNH', 'ĐẶC ĐIỂM',
+    'DT ĐẤT (m2)', 'DTXD (m2)', 'GIÁ BÁN TRƯỚC VAT', 'GIÁ FULL',
+  ]);
+  assert.deepEqual(detailColumns, ['TTS', 'TTC', 'HTLS 18T', 'HTLS 24T', 'HTLS 30T', 'HTLS 36T', 'LINK PTG']);
+});
+
+test('Vinhomes Global Gate HLX: rule nhận diện theo tên nguồn và sắp theo thứ tự yêu cầu, nguồn khác giữ thứ tự Sheet', () => {
+  const shuffled = [
+    'MÃ CĂN', 'STT', 'PHÂN KHU', 'TCBG', 'LOẠI HÌNH', 'ĐẶC ĐIỂM',
+    'DT ĐẤT (m2)', 'DTXD (m2)', 'GIÁ BÁN TRƯỚC VAT', 'GIÁ FULL', 'TTS',
+  ];
+  const hlx = splitStackingListColumns(shuffled, { sourceName: 'Vinhomes Global Gate HLX' });
+  const other = splitStackingListColumns(shuffled, { sourceName: 'Vinhomes Saigon Park' });
+  assert.deepEqual(hlx.tableColumns, [
+    'STT', 'PHÂN KHU', 'MÃ CĂN', 'TCBG', 'LOẠI HÌNH', 'ĐẶC ĐIỂM',
+    'DT ĐẤT (m2)', 'DTXD (m2)', 'GIÁ BÁN TRƯỚC VAT', 'GIÁ FULL',
+  ]);
+  assert.deepEqual(other.tableColumns, shuffled.slice(0, 10));
 });
 
 test('classifyStackingListColumn phân đúng nhóm cho từng field trong task', () => {
