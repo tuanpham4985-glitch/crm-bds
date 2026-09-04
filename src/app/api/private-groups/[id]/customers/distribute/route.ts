@@ -69,6 +69,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   } catch (error) {
     if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });
     console.error('[PrivateGroup customers distribute]', error);
-    return NextResponse.json({ success: false, error: 'Không thể chia đều khách hàng' }, { status: 500 });
+    // Kèm message lỗi thật (Prisma/DB) vào response thay vì chỉ 1 câu chung
+    // chung — bug thật gần đây (transaction dạng array không ổn định trên
+    // driver adapter hiện tại) đã KHÓ chẩn đoán vì message chung chung không
+    // nói lên nguyên nhân, phải test trực tiếp DB mới lộ ra. Message lỗi
+    // Prisma không chứa secret (không phải connection string), an toàn để
+    // hiện thẳng cho actor đã qua gate canReassignGroupCustomer ở trên.
+    const detail = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ success: false, error: `Không thể chia đều khách hàng: ${detail}` }, { status: 500 });
   }
 }
