@@ -186,19 +186,26 @@ test('membership-workflow.ts (Campaign, KHÔNG bị sửa bởi task này) KHÔN
 
 // ─── API routes — permission gate + error mapping (test bắt buộc #10) ───────
 
-test('POST .../interaction: 401 nếu chưa đăng nhập, gate canViewGroupCustomer TRƯỚC khi ghi, 403 nếu không có quyền (test bắt buộc #10)', () => {
+test('POST .../interaction: 401 nếu chưa đăng nhập, gate canActOnPrivateGroupCustomer (WRITE/ACT, KHÔNG phải canViewGroupCustomer — group membership KHÔNG mở rộng WRITE) TRƯỚC khi ghi, 403 nếu không có quyền (test bắt buộc #10)', () => {
   const src = read(INTERACTION_ROUTE_PATH);
   assert.match(src, /if\s*\(!user\)\s*return NextResponse\.json\(\{ success: false, error: 'Chưa đăng nhập' \}, \{ status: 401 \}\);/);
-  assert.match(src, /if\s*\(!canViewGroupCustomer\(user, group, relation\)\)/);
-  const idx = src.indexOf('if (!canViewGroupCustomer(user, group, relation))');
+  assert.match(src, /if\s*\(!canActOnPrivateGroupCustomer\(user, group, relation\)\)/);
+  const idx = src.indexOf('if (!canActOnPrivateGroupCustomer(user, group, relation))');
   assert.match(src.slice(idx, idx + 200), /status:\s*403/);
 });
 
-test('PUT .../qualification: 401 nếu chưa đăng nhập, gate canViewGroupCustomer TRƯỚC khi ghi, 403 nếu không có quyền, validateQualificationInput chặn score/rank/status tự nhập (test bắt buộc #10)', () => {
+test('PUT .../qualification: 401 nếu chưa đăng nhập, gate canActOnPrivateGroupCustomer (WRITE/ACT) TRƯỚC khi ghi, 403 nếu không có quyền, validateQualificationInput chặn score/rank/status tự nhập (test bắt buộc #10)', () => {
   const src = read(QUALIFICATION_ROUTE_PATH);
   assert.match(src, /if\s*\(!user\)\s*return NextResponse\.json\(\{ success: false, error: 'Chưa đăng nhập' \}, \{ status: 401 \}\);/);
-  assert.match(src, /if\s*\(!canViewGroupCustomer\(user, group, relation\)\)/);
+  assert.match(src, /if\s*\(!canActOnPrivateGroupCustomer\(user, group, relation\)\)/);
   assert.match(src, /validateQualificationInput\(body\)/);
+});
+
+test('interaction/qualification routes: KHÔNG gọi canViewGroupCustomer(...) (READ đã mở rộng theo group membership) để gate ghi — READ và WRITE PHẢI tách biệt (task hiện tại, xem comment đầu private-group-auth.ts); comment giải thích lý do KHÔNG tính', () => {
+  for (const path of [INTERACTION_ROUTE_PATH, QUALIFICATION_ROUTE_PATH]) {
+    const src = read(path);
+    assert.doesNotMatch(src, /canViewGroupCustomer\(/, `${path} không được GỌI canViewGroupCustomer(...) để gate WRITE`);
+  }
 });
 
 test('interaction/qualification routes: relationId không thuộc group trên URL -> 404, KHÔNG lộ dữ liệu nhóm khác', () => {

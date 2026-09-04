@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmSessionUser } from '@/lib/crm-auth';
-import { canViewGroupCustomer } from '@/lib/private-group-auth';
+import { canActOnPrivateGroupCustomer } from '@/lib/private-group-auth';
 import {
   getPrivateGroup, getPrivateGroupCustomerById, PrivateGroupCustomerNotFoundError,
   updatePrivateGroupCustomerQualificationTransactional, type PrivateGroupCustomerQualificationPatchInput,
@@ -11,10 +11,10 @@ import type { MucDoQuanTam } from '@/lib/types';
 
 // PUT /api/private-groups/[id]/customers/[relationId]/qualification —
 // "Đánh giá" 1 Customer trong Nhóm riêng. Gate/authority CÙNG boundary với
-// interaction/route.ts (canViewGroupCustomer) — xem comment ở đó. Score/rank/
-// status do server tự tính (validateQualificationInput chặn client tự gửi),
-// tái dùng NGUYÊN VẸN công thức calculateLeadQuality qua
-// updatePrivateGroupCustomerQualificationTransactional.
+// interaction/route.ts (canActOnPrivateGroupCustomer, WRITE/ACT — KHÔNG phải
+// canViewGroupCustomer) — xem comment ở đó. Score/rank/status do server tự
+// tính (validateQualificationInput chặn client tự gửi), tái dùng NGUYÊN VẸN
+// công thức calculateLeadQuality qua updatePrivateGroupCustomerQualificationTransactional.
 export async function PUT(request: NextRequest, context: { params: Promise<{ id: string; relationId: string }> }) {
   const user = await getCrmSessionUser();
   if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
@@ -31,7 +31,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     if (!relation || relation.group_id !== id) {
       return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng này trong Nhóm riêng' }, { status: 404 });
     }
-    if (!canViewGroupCustomer(user, group, relation)) {
+    if (!canActOnPrivateGroupCustomer(user, group, relation)) {
       return NextResponse.json({ success: false, error: 'Bạn không có quyền đánh giá khách hàng này' }, { status: 403 });
     }
 

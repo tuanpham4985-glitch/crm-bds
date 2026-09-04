@@ -225,6 +225,43 @@ export async function getPrivateGroupsByIds(groupIds: readonly string[]) {
   });
 }
 
+/** PrivateGroupMember {group_id, employee_id} cho 1 tập group_id cụ thể —
+ * dùng làm input canViewGroupCustomer/buildCustomerGroupBadges (badge Nhóm
+ * riêng cần biết actor có phải THÀNH VIÊN của ĐÚNG group của link đó không —
+ * NEW READ policy, xem private-group-auth.ts). Cùng convention guard-trả-rỗng
+ * (KHÔNG assertTransactionalCrm) và cùng phạm vi group THỰC SỰ tham chiếu bởi
+ * trang hiện tại như getPrivateGroupsByIds ở trên — KHÔNG N+1. */
+export async function getPrivateGroupMembersForGroups(groupIds: readonly string[]) {
+  if (groupIds.length === 0 || !isPostgresEnabled('crm') || !process.env.DATABASE_URL) return [];
+  return prisma.privateGroupMember.findMany({
+    where: { group_id: { in: [...groupIds] } },
+    select: { group_id: true, employee_id: true },
+  });
+}
+
+/** Toàn bộ customer_id thuộc các Nhóm riêng mà 1 nhân viên là Leader HOẶC
+ * Sale thành viên — dùng làm ĐƯỜNG XEM BỔ SUNG (additional read path) cho GET
+ * /api/khach-hang: visibility = existing CRM ownership (sale_phu_trach/
+ * telesale_phu_trach/...) OR private-group-membership (NEW policy, xem
+ * private-group-auth.ts) — KHÔNG thay thế authority cũ. Cùng convention
+ * guard-trả-rỗng (KHÔNG assertTransactionalCrm) như getPrivateGroupLinksForCustomers
+ * — GET /khach-hang PHẢI luôn hoạt động kể cả khi Postgres CRM tắt. 3 query cố
+ * định (2 song song rồi 1), KHÔNG phụ thuộc số lượng allCustomers — không N+1. */
+export async function getPrivateGroupVisibleCustomerIdsForEmployee(employeeId: string): Promise<Set<string>> {
+  if (!isPostgresEnabled('crm') || !process.env.DATABASE_URL) return new Set();
+  const [leaderGroups, memberGroups] = await Promise.all([
+    prisma.privateGroup.findMany({ where: { leader_id: employeeId }, select: { id: true } }),
+    prisma.privateGroupMember.findMany({ where: { employee_id: employeeId }, select: { group_id: true } }),
+  ]);
+  const groupIds = [...new Set([...leaderGroups.map(g => g.id), ...memberGroups.map(m => m.group_id)])];
+  if (groupIds.length === 0) return new Set();
+  const links = await prisma.privateGroupCustomer.findMany({
+    where: { group_id: { in: groupIds } },
+    select: { customer_id: true },
+  });
+  return new Set(links.map(l => l.customer_id));
+}
+
 // ─── Customer của nhóm ──────────────────────────────────────────────────────
 
 export async function getPrivateGroupCustomers(groupId: string) {
@@ -270,8 +307,9 @@ export async function reassignGroupCustomer(input: ReassignGroupCustomerInput) {
   return count > 0;
 }
 
-/** 1 quan hệ Customer-nhóm theo id — dùng để check quyền (canViewGroupCustomer)
- * TRƯỚC KHI gọi các hàm CSKH transactional bên dưới. Trả null nếu không tồn
+/** 1 quan hệ Customer-nhóm theo id — dùng để check quyền
+ * (canActOnPrivateGroupCustomer) TRƯỚC KHI gọi các hàm CSKH transactional
+ * bên dưới. Trả null nếu không tồn
  * tại — route tự so `relation.group_id` với `id` trên URL để phát hiện
  * relationId thuộc nhóm khác (cùng cách reassignGroupCustomer tự chặn qua
  * `where: { id, group_id }`). */
@@ -415,7 +453,8 @@ export interface CreateManualCustomerResult {
  * 3+4. Nếu bước 0 resolve ra 1 group ('ok') -> tạo PrivateGroupCustomer
  *    (entered_by = actor) trong CÙNG transaction — atomic với bước 2.
  * 5. assigned_to mặc định = entered_by (actor tự động được quyền chăm sóc —
- *    canViewGroupCustomer trong private-group-auth.ts check đúng field này).
+ *    canActOnPrivateGroupCustomer trong private-group-auth.ts check đúng
+ *    field này, xem comment ở đó cho boundary READ/WRITE).
  *
  * Toàn bộ trong 1 transaction SERIALIZABLE — 2 request cùng nhập 1 SĐT không
  * thể cùng tạo 2 Customer (xem serializable() ở trên).

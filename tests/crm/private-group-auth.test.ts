@@ -3,8 +3,8 @@ import test from 'node:test';
 import {
   isPrivateGroupLeader, isPrivateGroupMember, canViewPrivateGroup, canManagePrivateGroupMembers,
   canRenamePrivateGroup, canChangePrivateGroupLeader, canCreatePrivateGroup, canViewAllGroupCustomers,
-  canReassignGroupCustomer, canViewGroupCustomer, filterGroupCustomersForUser, filterPrivateGroupsForUser,
-  resolveManualCustomerGroup, buildCustomerGroupBadges, canDeletePrivateGroup,
+  canReassignGroupCustomer, canViewGroupCustomer, canActOnPrivateGroupCustomer, filterGroupCustomersForUser,
+  filterPrivateGroupsForUser, resolveManualCustomerGroup, buildCustomerGroupBadges, canDeletePrivateGroup,
   type PrivateGroupCustomerLinkLike, type PrivateGroupBadgeSource,
 } from '../../src/lib/private-group-auth';
 import type { CrmSessionUser } from '../../src/lib/crm-auth';
@@ -87,78 +87,142 @@ test('canDeletePrivateGroup: CHỈ Admin — Leader của CHÍNH nhóm đó cũn
   assert.equal(canDeletePrivateGroup(OUTSIDER), false);
 });
 
-// ─── canViewAllGroupCustomers — RULE KHOÁ: Sale KHÔNG được xem toàn bộ ──────
+// ─── canViewAllGroupCustomers — NEW READ POLICY: group membership = group-wide READ ─
+// (thay thế rule cũ "Sale KHÔNG được xem toàn bộ" — task hiện tại, xem
+// comment đầu private-group-auth.ts)
 
-test('canViewAllGroupCustomers: Admin và Leader của nhóm -> true', () => {
-  assert.equal(canViewAllGroupCustomers(ADMIN, GROUP), true);
-  assert.equal(canViewAllGroupCustomers(LEADER, GROUP), true);
+test('canViewAllGroupCustomers: Admin, Leader của nhóm, VÀ Sale thành viên hợp lệ -> đều true (NEW policy)', () => {
+  assert.equal(canViewAllGroupCustomers(ADMIN, GROUP, MEMBERS), true);
+  assert.equal(canViewAllGroupCustomers(LEADER, GROUP, MEMBERS), true);
+  assert.equal(canViewAllGroupCustomers(SALE_A, GROUP, MEMBERS), true);
+  assert.equal(canViewAllGroupCustomers(SALE_B, GROUP, MEMBERS), true);
 });
 
-test('canViewAllGroupCustomers: Sale (kể cả thành viên hợp lệ của nhóm) -> LUÔN false — đây là rule khoá bắt buộc, không có ngoại lệ', () => {
-  assert.equal(canViewAllGroupCustomers(SALE_A, GROUP), false);
-  assert.equal(canViewAllGroupCustomers(SALE_B, GROUP), false);
-  assert.equal(canViewAllGroupCustomers(OUTSIDER, GROUP), false);
+test('canViewAllGroupCustomers: Sale NGOÀI nhóm (không phải Leader/member) -> false', () => {
+  assert.equal(canViewAllGroupCustomers(OUTSIDER, GROUP, MEMBERS), false);
 });
 
-// ─── canReassignGroupCustomer ────────────────────────────────────────────────
+// ─── canReassignGroupCustomer — WRITE/quản lý, KHÔNG mở rộng theo membership ─
 
-test('canReassignGroupCustomer: Admin/Leader được giao lại customer; Sale (kể cả đang assigned_to chính mình) không được', () => {
+test('canReassignGroupCustomer: Admin/Leader được giao lại customer; Sale (kể cả thành viên hợp lệ, kể cả đang assigned_to chính mình) không được', () => {
   assert.equal(canReassignGroupCustomer(ADMIN, GROUP), true);
   assert.equal(canReassignGroupCustomer(LEADER, GROUP), true);
   assert.equal(canReassignGroupCustomer(SALE_A, GROUP), false);
 });
 
-// ─── canViewGroupCustomer / filterGroupCustomersForUser — test #5/#6/#7 ─────
+// ─── canViewGroupCustomer (READ) / filterGroupCustomersForUser (READ) ───────
+// Test matrix bắt buộc: Leader L, Members A/B, Outsider C — Customer A
+// (entered/assigned=A), Customer B (entered/assigned=B).
 
 function relation(entered_by_id: string, assigned_to_id: string) {
   return { group_id: 'G1', entered_by_id, assigned_to_id };
 }
 
+const CUSTOMER_A = relation(SALE_A.id_nhan_vien, SALE_A.id_nhan_vien);
+const CUSTOMER_B = relation(SALE_B.id_nhan_vien, SALE_B.id_nhan_vien);
+
 test('canViewGroupCustomer: Sale xem được customer CHÍNH MÌNH nhập', () => {
-  const r = relation(SALE_A.id_nhan_vien, SALE_A.id_nhan_vien);
-  assert.equal(canViewGroupCustomer(SALE_A, GROUP, r), true);
+  assert.equal(canViewGroupCustomer(SALE_A, GROUP, CUSTOMER_A, MEMBERS), true);
 });
 
 test('canViewGroupCustomer: Sale xem được customer ĐƯỢC GIAO cho mình dù người khác nhập', () => {
   const r = relation(SALE_B.id_nhan_vien, SALE_A.id_nhan_vien); // B nhập, giao cho A
-  assert.equal(canViewGroupCustomer(SALE_A, GROUP, r), true);
+  assert.equal(canViewGroupCustomer(SALE_A, GROUP, r, MEMBERS), true);
 });
 
-test('canViewGroupCustomer: Sale KHÔNG xem được customer của Sale khác (không nhập, không được giao) — test bắt buộc #5', () => {
-  const r = relation(SALE_B.id_nhan_vien, SALE_B.id_nhan_vien); // của B hoàn toàn
-  assert.equal(canViewGroupCustomer(SALE_A, GROUP, r), false);
+test('canViewGroupCustomer: Sale THÀNH VIÊN xem được customer của ĐỒNG ĐỘI khác trong CÙNG group (NEW policy — group membership = group-wide READ)', () => {
+  assert.equal(canViewGroupCustomer(SALE_A, GROUP, CUSTOMER_B, MEMBERS), true);
+  assert.equal(canViewGroupCustomer(SALE_B, GROUP, CUSTOMER_A, MEMBERS), true);
 });
 
-test('filterGroupCustomersForUser: Sale B cùng nhóm KHÔNG thấy customer của Sale A (test bắt buộc #5)', () => {
-  const relations = [
-    { id: 'r1', ...relation(SALE_A.id_nhan_vien, SALE_A.id_nhan_vien) },
-    { id: 'r2', ...relation(SALE_B.id_nhan_vien, SALE_B.id_nhan_vien) },
+test('canViewGroupCustomer: Sale NGOÀI nhóm (không phải Leader/member) và không phải entered_by/assigned_to -> false', () => {
+  assert.equal(canViewGroupCustomer(OUTSIDER, GROUP, CUSTOMER_A, MEMBERS), false);
+  assert.equal(canViewGroupCustomer(OUTSIDER, GROUP, CUSTOMER_B, MEMBERS), false);
+});
+
+// READ test matrix — Admin/Leader/Member A/Member B đều thấy CẢ customer A và B; Outsider không thấy gì.
+test('filterGroupCustomersForUser — READ test matrix: Admin thấy A và B', () => {
+  const relations = [{ id: 'rA', ...CUSTOMER_A }, { id: 'rB', ...CUSTOMER_B }];
+  assert.deepEqual(filterGroupCustomersForUser(ADMIN, GROUP, MEMBERS, relations).map(r => r.id).sort(), ['rA', 'rB']);
+});
+
+test('filterGroupCustomersForUser — READ test matrix: Leader L thấy A và B', () => {
+  const relations = [{ id: 'rA', ...CUSTOMER_A }, { id: 'rB', ...CUSTOMER_B }];
+  assert.deepEqual(filterGroupCustomersForUser(LEADER, GROUP, MEMBERS, relations).map(r => r.id).sort(), ['rA', 'rB']);
+});
+
+test('filterGroupCustomersForUser — READ test matrix: Member A thấy CẢ A và B (NEW policy)', () => {
+  const relations = [{ id: 'rA', ...CUSTOMER_A }, { id: 'rB', ...CUSTOMER_B }];
+  assert.deepEqual(filterGroupCustomersForUser(SALE_A, GROUP, MEMBERS, relations).map(r => r.id).sort(), ['rA', 'rB']);
+});
+
+test('filterGroupCustomersForUser — READ test matrix: Member B thấy CẢ A và B (NEW policy)', () => {
+  const relations = [{ id: 'rA', ...CUSTOMER_A }, { id: 'rB', ...CUSTOMER_B }];
+  assert.deepEqual(filterGroupCustomersForUser(SALE_B, GROUP, MEMBERS, relations).map(r => r.id).sort(), ['rA', 'rB']);
+});
+
+test('filterGroupCustomersForUser — READ test matrix: Outsider C KHÔNG thấy A cũng không thấy B', () => {
+  const relations = [{ id: 'rA', ...CUSTOMER_A }, { id: 'rB', ...CUSTOMER_B }];
+  assert.deepEqual(filterGroupCustomersForUser(OUTSIDER, GROUP, MEMBERS, relations), []);
+});
+
+// ─── canActOnPrivateGroupCustomer (server-side WRITE/ACT) — test matrix bắt buộc ─
+// CỐ Ý tách khỏi canViewGroupCustomer: group membership KHÔNG mở rộng WRITE.
+
+test('canActOnPrivateGroupCustomer — ACT test matrix: A act trên Customer A -> YES', () => {
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, CUSTOMER_A), true);
+});
+
+test('canActOnPrivateGroupCustomer — ACT test matrix: A act trên Customer B -> NO (không phải entered_by/assigned_to, chỉ là đồng đội)', () => {
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, CUSTOMER_B), false);
+});
+
+test('canActOnPrivateGroupCustomer — ACT test matrix: B act trên Customer A -> NO', () => {
+  assert.equal(canActOnPrivateGroupCustomer(SALE_B, GROUP, CUSTOMER_A), false);
+});
+
+test('canActOnPrivateGroupCustomer — ACT test matrix: B act trên Customer B -> YES', () => {
+  assert.equal(canActOnPrivateGroupCustomer(SALE_B, GROUP, CUSTOMER_B), true);
+});
+
+test('canActOnPrivateGroupCustomer — ACT test matrix: Leader act được cả A và B (Leader authority hiện tại, không đổi)', () => {
+  assert.equal(canActOnPrivateGroupCustomer(LEADER, GROUP, CUSTOMER_A), true);
+  assert.equal(canActOnPrivateGroupCustomer(LEADER, GROUP, CUSTOMER_B), true);
+});
+
+test('canActOnPrivateGroupCustomer — ACT test matrix: Admin act được cả A và B', () => {
+  assert.equal(canActOnPrivateGroupCustomer(ADMIN, GROUP, CUSTOMER_A), true);
+  assert.equal(canActOnPrivateGroupCustomer(ADMIN, GROUP, CUSTOMER_B), true);
+});
+
+test('canActOnPrivateGroupCustomer — reassignment: Customer B đổi assigned_to=A -> A act trên B thành YES (ownership theo dõi assigned_to hiện tại, không phải snapshot cũ)', () => {
+  const reassignedB = relation(SALE_B.id_nhan_vien, SALE_A.id_nhan_vien); // vẫn B nhập, nhưng giờ giao cho A
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, reassignedB), true);
+});
+
+// ─── MULTI-GROUP — 1 nhân viên thuộc nhiều Nhóm riêng cùng lúc ──────────────
+
+test('multi-group READ: Sale là member của Group 1 VÀ Group 2 -> thấy TOÀN BỘ customer của CẢ 2 nhóm', () => {
+  const group1 = { id: 'G1', leader_id: LEADER.id_nhan_vien };
+  const group2 = { id: 'G2', leader_id: 'U_OTHER_LEADER' };
+  const membersG1AndG2 = [
+    { group_id: 'G1', employee_id: SALE_A.id_nhan_vien },
+    { group_id: 'G2', employee_id: SALE_A.id_nhan_vien },
   ];
-  const visibleToB = filterGroupCustomersForUser(SALE_B, GROUP, relations);
-  assert.deepEqual(visibleToB.map(r => r.id), ['r2']);
+  const relationsG1 = [{ id: 'r1', group_id: 'G1', entered_by_id: SALE_B.id_nhan_vien, assigned_to_id: SALE_B.id_nhan_vien }];
+  const relationsG2 = [{ id: 'r2', group_id: 'G2', entered_by_id: 'U_OTHER_SALE', assigned_to_id: 'U_OTHER_SALE' }];
+  assert.deepEqual(filterGroupCustomersForUser(SALE_A, group1, membersG1AndG2, relationsG1).map(r => r.id), ['r1']);
+  assert.deepEqual(filterGroupCustomersForUser(SALE_A, group2, membersG1AndG2, relationsG2).map(r => r.id), ['r2']);
 });
 
-test('filterGroupCustomersForUser: Leader nhìn thấy customer của CẢ A và B (test bắt buộc #6)', () => {
-  const relations = [
-    { id: 'r1', ...relation(SALE_A.id_nhan_vien, SALE_A.id_nhan_vien) },
-    { id: 'r2', ...relation(SALE_B.id_nhan_vien, SALE_B.id_nhan_vien) },
+test('multi-group READ: Sale KHÔNG là member của Group 3 -> KHÔNG suy ra được quyền xem Group 3 dù đang là member Group 1/2', () => {
+  const group3 = { id: 'G3', leader_id: 'U_OTHER_LEADER' };
+  const membersG1AndG2Only = [
+    { group_id: 'G1', employee_id: SALE_A.id_nhan_vien },
+    { group_id: 'G2', employee_id: SALE_A.id_nhan_vien },
   ];
-  const visibleToLeader = filterGroupCustomersForUser(LEADER, GROUP, relations);
-  assert.deepEqual(visibleToLeader.map(r => r.id).sort(), ['r1', 'r2']);
-});
-
-test('filterGroupCustomersForUser: Admin nhìn thấy tất cả (test bắt buộc #7)', () => {
-  const relations = [
-    { id: 'r1', ...relation(SALE_A.id_nhan_vien, SALE_A.id_nhan_vien) },
-    { id: 'r2', ...relation(SALE_B.id_nhan_vien, SALE_B.id_nhan_vien) },
-  ];
-  const visibleToAdmin = filterGroupCustomersForUser(ADMIN, GROUP, relations);
-  assert.deepEqual(visibleToAdmin.map(r => r.id).sort(), ['r1', 'r2']);
-});
-
-test('filterGroupCustomersForUser: Sale không nhập/không được giao bất kỳ dòng nào -> mảng rỗng, không lỗi', () => {
-  const relations = [{ id: 'r1', ...relation(SALE_B.id_nhan_vien, SALE_B.id_nhan_vien) }];
-  assert.deepEqual(filterGroupCustomersForUser(OUTSIDER, GROUP, relations), []);
+  const relationsG3 = [{ id: 'r3', group_id: 'G3', entered_by_id: 'U_OTHER_SALE', assigned_to_id: 'U_OTHER_SALE' }];
+  assert.deepEqual(filterGroupCustomersForUser(SALE_A, group3, membersG1AndG2Only, relationsG3), []);
 });
 
 // ─── filterPrivateGroupsForUser — test #7 (Admin thấy tất cả) + #3 (Sale ngoài không thấy) ─
@@ -235,8 +299,7 @@ test('resolveManualCustomerGroup: actor thuộc >=2 nhóm + groupId KHÔNG thu�
   assert.deepEqual(resolveManualCustomerGroup(leaderOf, memberOf, 'G999'), { status: 'forbidden' });
 });
 
-// ─── buildCustomerGroupBadges — badge Nhóm riêng trên /khach-hang ───────────
-// (task hiện tại — test bắt buộc #1-#5 của final report)
+// ─── buildCustomerGroupBadges — badge Nhóm riêng trên /khach-hang (NEW READ policy) ─
 
 const GROUP_A: PrivateGroupBadgeSource = { id: 'G1', leader_id: LEADER.id_nhan_vien, name: 'Thu - Yến - Thanh' };
 const GROUP_B: PrivateGroupBadgeSource = { id: 'G2', leader_id: 'U_OTHER_LEADER', name: 'Nhóm VIP' };
@@ -248,12 +311,12 @@ function link(customer_id: string, group_id: string, entered_by_id: string, assi
 test('buildCustomerGroupBadges: customer có group + actor được phép biết (Leader của group đó) -> trả đúng {id, name} (test bắt buộc #1)', () => {
   const links = [link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
   const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
-  const result = buildCustomerGroupBadges(LEADER, links, groupsById);
+  const result = buildCustomerGroupBadges(LEADER, links, groupsById, MEMBERS);
   assert.deepEqual(result, { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
 });
 
 test('buildCustomerGroupBadges: customer KHÔNG có link nào trong input -> không có key trong result (test bắt buộc #2, không phải "—"/placeholder)', () => {
-  const result = buildCustomerGroupBadges(ADMIN, [], new Map());
+  const result = buildCustomerGroupBadges(ADMIN, [], new Map(), []);
   assert.deepEqual(result, {});
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'KH_KHONG_GROUP'), false);
 });
@@ -264,7 +327,7 @@ test('buildCustomerGroupBadges: actor (Leader) thuộc nhiều group nhưng cust
   // vào (route chỉ query group THỰC SỰ được tham chiếu bởi link của trang).
   const links = [link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
   const groupsById = new Map([[GROUP_A.id, GROUP_A], [GROUP_B.id, GROUP_B]]);
-  const result = buildCustomerGroupBadges(LEADER, links, groupsById);
+  const result = buildCustomerGroupBadges(LEADER, links, groupsById, MEMBERS);
   assert.deepEqual(result, { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
   assert.equal(Object.keys(result).length, 1);
 });
@@ -272,33 +335,34 @@ test('buildCustomerGroupBadges: actor (Leader) thuộc nhiều group nhưng cust
 test('buildCustomerGroupBadges: Admin luôn thấy badge (authority hiện tại)', () => {
   const links = [link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
   const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
-  assert.deepEqual(buildCustomerGroupBadges(ADMIN, links, groupsById), { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
+  assert.deepEqual(buildCustomerGroupBadges(ADMIN, links, groupsById, MEMBERS), { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
 });
 
 test('buildCustomerGroupBadges: Sale là entered_by/assigned_to của chính quan hệ đó -> thấy badge', () => {
   const links = [link('KH1', GROUP_A.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
   const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
-  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, groupsById), { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
+  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, groupsById, MEMBERS), { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
 });
 
-test('buildCustomerGroupBadges: Sale KHÔNG phải entered_by/assigned_to, KHÔNG phải Leader/Admin -> KHÔNG có key trong result (test bắt buộc #4 — không leak tên group)', () => {
+test('buildCustomerGroupBadges: Sale KHÔNG phải entered_by/assigned_to, KHÔNG phải Leader/Admin, KHÔNG phải member của group đó -> KHÔNG có key trong result (test bắt buộc #4 — không leak tên group cho outsider)', () => {
   const links = [link('KH1', GROUP_A.id, SALE_B.id_nhan_vien, SALE_B.id_nhan_vien)];
   const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
-  const result = buildCustomerGroupBadges(SALE_A, links, groupsById);
+  const result = buildCustomerGroupBadges(OUTSIDER, links, groupsById, MEMBERS);
   assert.deepEqual(result, {});
 });
 
-test('buildCustomerGroupBadges: Sale là member hợp lệ của group nhưng customer là của đồng đội khác trong CÙNG group -> vẫn KHÔNG thấy (đúng rule "Sale không xem toàn bộ customer nhóm", test bắt buộc #4)', () => {
+test('buildCustomerGroupBadges: Sale là member hợp lệ của group và customer là của đồng đội khác trong CÙNG group -> THẤY badge (NEW policy — group membership = group-wide READ, thay thế rule cũ "Sale không xem toàn bộ customer nhóm")', () => {
   const links = [link('KH1', GROUP_A.id, SALE_B.id_nhan_vien, SALE_B.id_nhan_vien)];
   const groupsById = new Map([[GROUP_A.id, GROUP_A]]);
-  // SALE_A không phải leader_id của GROUP_A (LEADER mới là) và không phải
-  // entered_by/assigned_to của KH1 -> false dù cùng nhóm với SALE_B.
-  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, groupsById), {});
+  // SALE_A không phải leader_id của GROUP_A và không phải entered_by/
+  // assigned_to của KH1, nhưng LÀ member hợp lệ của GROUP_A (MEMBERS) -> vẫn
+  // thấy badge theo policy mới.
+  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, groupsById, MEMBERS), { KH1: { id: 'G1', name: 'Thu - Yến - Thanh' } });
 });
 
 test('buildCustomerGroupBadges: link.group_id không có trong groupsById (group lạ/dữ liệu thiếu) -> bỏ qua, KHÔNG throw, KHÔNG hiện badge sai', () => {
   const links = [link('KH1', 'G_UNKNOWN', SALE_A.id_nhan_vien, SALE_A.id_nhan_vien)];
-  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, new Map()), {});
+  assert.deepEqual(buildCustomerGroupBadges(SALE_A, links, new Map(), MEMBERS), {});
 });
 
 test('buildCustomerGroupBadges: nhiều customer, mỗi customer badge độc lập theo đúng link/group của chính nó', () => {
@@ -307,7 +371,7 @@ test('buildCustomerGroupBadges: nhiều customer, mỗi customer badge độc l�
     link('KH2', GROUP_B.id, SALE_A.id_nhan_vien, SALE_A.id_nhan_vien),
   ];
   const groupsById = new Map([[GROUP_A.id, GROUP_A], [GROUP_B.id, GROUP_B]]);
-  const result = buildCustomerGroupBadges(SALE_A, links, groupsById);
+  const result = buildCustomerGroupBadges(SALE_A, links, groupsById, MEMBERS);
   assert.deepEqual(result, {
     KH1: { id: 'G1', name: 'Thu - Yến - Thanh' },
     KH2: { id: 'G2', name: 'Nhóm VIP' },

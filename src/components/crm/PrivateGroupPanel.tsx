@@ -351,7 +351,7 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                   <div style={{ fontWeight: 600, fontSize: 13.5 }}>
-                    Khách hàng của nhóm ({customers.length}){!canManage && <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}> — chỉ khách bạn nhập/được giao</span>}
+                    Khách hàng của nhóm ({customers.length})
                   </div>
                   {/* "+ Thêm khách hàng" từ group detail — group ĐÃ xác định
                       sẵn (groupId), không bắt user chọn lại (xem section 5).

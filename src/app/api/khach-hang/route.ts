@@ -3,7 +3,7 @@ import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKh
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
 import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds } from '@/lib/crm-funnel/campaign';
 import { getDatasetMembershipCustomerRefs } from '@/lib/crm-funnel/dataset';
-import { createManualCustomerWithGroupLink, DuplicatePhoneError, getPrivateGroupLinksForCustomers, getPrivateGroupsByIds, GroupNotAllowedError, GroupSelectionRequiredError } from '@/lib/crm-funnel/private-group';
+import { createManualCustomerWithGroupLink, DuplicatePhoneError, getPrivateGroupLinksForCustomers, getPrivateGroupMembersForGroups, getPrivateGroupsByIds, getPrivateGroupVisibleCustomerIdsForEmployee, GroupNotAllowedError, GroupSelectionRequiredError } from '@/lib/crm-funnel/private-group';
 import { buildCustomerGroupBadges } from '@/lib/private-group-auth';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
@@ -42,7 +42,20 @@ export async function GET(request: NextRequest) {
     // đúng shape khoá bởi test), chỉ chạy khi có datasetId.
     const datasetMembershipRefs = datasetId ? await getDatasetMembershipCustomerRefs(datasetId) : [];
     const datasetMembershipSet = new Set(datasetMembershipRefs.map(ref => ref.customer_id));
-    let data = allCustomers.filter(customer => canViewCustomer(user, customer, projects) || isDirectManager(user, customer, employees));
+    // NHÓM RIÊNG — ĐƯỜNG XEM BỔ SUNG (additional read path, KHÔNG thay thế
+    // authority /khach-hang hiện có) — query RIÊNG (không gộp vào Promise.all
+    // 4-tuple ở trên, giữ đúng shape khoá bởi test cùng tinh thần
+    // datasetMembershipRefs): customer_id của MỌI Nhóm riêng mà user là
+    // Leader/Sale thành viên (NEW policy, xem private-group-auth.ts đầu
+    // file) — 3 query cố định, KHÔNG phụ thuộc allCustomers.length nên KHÔNG
+    // N+1. Guard-trả-rỗng khi Postgres CRM tắt (route vẫn luôn chạy).
+    const privateGroupVisibleIds = await getPrivateGroupVisibleCustomerIdsForEmployee(user.id_nhan_vien);
+    // Visibility = existing CRM ownership (canViewCustomer/isDirectManager,
+    // KHÔNG đổi) OR private-group-membership (privateGroupVisibleIds) — Nhóm
+    // riêng CHỈ CỘNG THÊM đường xem, không thay thế authority cũ.
+    let data = allCustomers.filter(customer => canViewCustomer(user, customer, projects)
+      || isDirectManager(user, customer, employees)
+      || privateGroupVisibleIds.has(customer.id_khach_hang));
 
     if (id) data = data.filter(kh => kh.id_khach_hang === id);
     // Apply filters
@@ -95,9 +108,14 @@ export async function GET(request: NextRequest) {
     // biết, không trả nguyên rồi tin client tự ẩn.
     const pageCustomerIds = paginatedData.map(kh => kh.id_khach_hang);
     const privateGroupLinks = await getPrivateGroupLinksForCustomers(pageCustomerIds);
-    const privateGroups = await getPrivateGroupsByIds([...new Set(privateGroupLinks.map(l => l.group_id))]);
+    const privateGroupIds = [...new Set(privateGroupLinks.map(l => l.group_id))];
+    const privateGroups = await getPrivateGroupsByIds(privateGroupIds);
     const privateGroupsById = new Map(privateGroups.map(g => [g.id, g]));
-    const privateGroupByCustomer = buildCustomerGroupBadges(user, privateGroupLinks, privateGroupsById);
+    // Members CỦA ĐÚNG các group được tham chiếu bởi trang (privateGroupIds,
+    // thường 0-1 nhóm/trang) — buildCustomerGroupBadges cần biết actor có
+    // phải THÀNH VIÊN của group đó không (NEW READ policy) — KHÔNG N+1.
+    const privateGroupMembers = await getPrivateGroupMembersForGroups(privateGroupIds);
+    const privateGroupByCustomer = buildCustomerGroupBadges(user, privateGroupLinks, privateGroupsById, privateGroupMembers);
 
     return NextResponse.json({
       success: true,

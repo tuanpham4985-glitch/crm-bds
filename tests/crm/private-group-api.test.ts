@@ -157,9 +157,9 @@ test('POST+DELETE /api/private-groups/[id]/members: cả 2 đều gate canManage
   assert.equal(matches.length, 2, 'phải có đúng 2 chỗ gate (POST và DELETE)');
 });
 
-test('GET /api/private-groups/[id]/customers: filter qua filterGroupCustomersForUser TRƯỚC khi trả — CHÍNH LÀ nơi enforce "Sale không xem toàn bộ customer nhóm" server-side (test bắt buộc #11)', () => {
+test('GET /api/private-groups/[id]/customers: filter qua filterGroupCustomersForUser TRƯỚC khi trả — CHÍNH LÀ nơi enforce READ policy server-side (NEW: group membership = group-wide READ, test bắt buộc #11)', () => {
   const src = read(CUSTOMERS_ROUTE_PATH);
-  assert.match(src, /filterGroupCustomersForUser\(user, group, relations\)/);
+  assert.match(src, /filterGroupCustomersForUser\(user, group, members, relations\)/);
   assert.match(src, /if\s*\(!canViewPrivateGroup\(user, group, members\)\)/);
 });
 
@@ -287,7 +287,18 @@ test('GET /api/khach-hang: badge Nhóm riêng chỉ query cho customer_id CỦA 
 
 test('GET /api/khach-hang: badge tính qua buildCustomerGroupBadges(user, ...) — permission filtering CHẠY Ở SERVER trước khi trả response, không trả link thô rồi tin client tự lọc (test bắt buộc #4)', () => {
   const src = read(KHACH_HANG_ROUTE_PATH);
-  assert.match(src, /buildCustomerGroupBadges\(user, privateGroupLinks, privateGroupsById\)/);
+  assert.match(src, /buildCustomerGroupBadges\(user, privateGroupLinks, privateGroupsById, privateGroupMembers\)/);
+});
+
+test('GET /api/khach-hang: visibility = existing CRM ownership (canViewCustomer/isDirectManager) OR private-group-membership (privateGroupVisibleIds) — Nhóm riêng là ĐƯỜNG XEM BỔ SUNG, KHÔNG thay thế authority /khach-hang hiện có (task hiện tại)', () => {
+  const src = read(KHACH_HANG_ROUTE_PATH);
+  assert.match(src, /getPrivateGroupVisibleCustomerIdsForEmployee\(user\.id_nhan_vien\)/);
+  const idx = src.indexOf('let data = allCustomers.filter(');
+  assert.ok(idx > -1);
+  const snippet = src.slice(idx, idx + 400);
+  assert.match(snippet, /canViewCustomer\(user, customer, projects\)/);
+  assert.match(snippet, /isDirectManager\(user, customer, employees\)/);
+  assert.match(snippet, /privateGroupVisibleIds\.has\(customer\.id_khach_hang\)/);
 });
 
 test('GET /api/khach-hang: response trả privateGroupByCustomer (cùng shape pattern campaignByCustomer) — KHÔNG gắn field group thẳng vào từng customer object (giữ nguyên shape KhachHang hiện có)', () => {

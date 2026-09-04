@@ -3,9 +3,21 @@
 // mọi hàm nhận object dữ liệu đã fetch sẵn, trả về boolean/mảng đã lọc —
 // route gọi các hàm này SAU KHI fetch, KHÔNG bao giờ tin filter phía client.
 //
-// RULE BẮT BUỘC (đã khoá theo yêu cầu): Sale KHÔNG được xem toàn bộ Customer
-// của nhóm — chỉ thấy customer do chính mình nhập (entered_by_id) hoặc được
-// giao (assigned_to_id). Leader/Admin xem được toàn bộ Customer của nhóm.
+// RULE HIỆN TẠI (đã khoá lại theo quyết định business mới — thay thế rule cũ
+// "Sale chỉ thấy customer của chính mình"):
+//   READ tách biệt hoàn toàn với WRITE/ACT:
+//   - READ: Admin xem toàn bộ; Leader xem toàn bộ Customer của nhóm mình lead;
+//     Sale THÀNH VIÊN xem TOÀN BỘ Customer của MỌI nhóm mình là member (kể cả
+//     customer do đồng đội khác nhập/được giao) — group membership = quyền
+//     xem cả nhóm (canViewAllGroupCustomers/canViewGroupCustomer/
+//     filterGroupCustomersForUser/buildCustomerGroupBadges).
+//   - WRITE/ACT (CSKH "Chăm sóc"/"Đánh giá"): KHÔNG tự động mở rộng theo
+//     membership — Sale CHỈ thao tác được customer chính mình nhập
+//     (entered_by_id) hoặc được giao (assigned_to_id); Leader/Admin thao tác
+//     được toàn bộ (canActOnPrivateGroupCustomer — dùng cho server route
+//     interaction/qualification, KHÔNG dùng canViewGroupCustomer cho việc
+//     này nữa để tránh lẫn READ vào WRITE).
+// Sale ngoài nhóm (không phải Leader/member) vẫn KHÔNG thấy gì cả (cả 2 chiều).
 import type { CrmSessionUser } from './crm-auth';
 import { isCrmAdmin } from './crm-auth';
 
@@ -84,38 +96,66 @@ export function canDeletePrivateGroup(user: CrmSessionUser): boolean {
   return isCrmAdmin(user);
 }
 
-/** Xem được TOÀN BỘ Customer của 1 nhóm — CHỈ Admin hoặc Leader của group đó.
- * Sale (kể cả thành viên) KHÔNG BAO GIỜ true ở đây — đây CHÍNH LÀ rule khoá:
- * "Sale KHÔNG ĐƯỢC XEM TOÀN BỘ CUSTOMER CỦA NHÓM". */
-export function canViewAllGroupCustomers(user: CrmSessionUser, group: PrivateGroupLike): boolean {
-  return isCrmAdmin(user) || isPrivateGroupLeader(user, group);
+/** Xem được TOÀN BỘ Customer của 1 nhóm (READ) — Admin, Leader của group đó,
+ * HOẶC Sale THÀNH VIÊN của group đó (NEW policy: group membership => group-
+ * wide READ, xem comment đầu file — thay thế rule cũ chỉ Admin/Leader). Đây
+ * là authority CHỈ CHO XEM — KHÔNG dùng hàm này để gate hành động ghi/CSKH,
+ * xem canActOnPrivateGroupCustomer bên dưới cho việc đó. */
+export function canViewAllGroupCustomers(
+  user: CrmSessionUser, group: PrivateGroupLike, members: readonly PrivateGroupMemberLike[]
+): boolean {
+  return isCrmAdmin(user) || isPrivateGroupLeader(user, group) || isPrivateGroupMember(user, group, members);
 }
 
 /** Giao lại (reassign) 1 Customer trong nhóm cho Sale khác — cùng quyền với
  * quản lý member (Leader/Admin), KHÔNG phải Sale thường (kể cả Sale đang là
- * entered_by/assigned_to hiện tại của chính customer đó). */
+ * entered_by/assigned_to hiện tại của chính customer đó) — group membership
+ * (READ) KHÔNG mở rộng ra hành động quản lý này. */
 export function canReassignGroupCustomer(user: CrmSessionUser, group: PrivateGroupLike): boolean {
   return isCrmAdmin(user) || isPrivateGroupLeader(user, group);
 }
 
-/** 1 Customer-relation cụ thể user này có được xem/chăm sóc không — Admin/
- * Leader luôn true; Sale CHỈ true nếu chính mình nhập HOẶC đang được giao. */
+/** 1 Customer-relation cụ thể user này có được XEM không (READ) — Admin/
+ * Leader/Sale thành viên của group đó luôn true (canViewAllGroupCustomers);
+ * cộng thêm entered_by/assigned_to phòng hờ trường hợp actor có quan hệ với
+ * customer này nhưng dữ liệu member bị thiếu/lệch (defensive, hiếm khi cần
+ * vì actor luôn được thêm vào group trước khi nhập/được giao customer đó).
+ * KHÔNG dùng hàm này để gate ghi/CSKH — xem canActOnPrivateGroupCustomer. */
 export function canViewGroupCustomer(
-  user: CrmSessionUser, group: PrivateGroupLike, relation: PrivateGroupCustomerLike
+  user: CrmSessionUser, group: PrivateGroupLike, relation: PrivateGroupCustomerLike,
+  members: readonly PrivateGroupMemberLike[]
 ): boolean {
-  return canViewAllGroupCustomers(user, group)
+  return canViewAllGroupCustomers(user, group, members)
     || relation.entered_by_id === user.id_nhan_vien
     || relation.assigned_to_id === user.id_nhan_vien;
 }
 
-/** Lọc danh sách Customer-relation của 1 nhóm theo ĐÚNG quyền user — dùng
- * cho GET .../customers. Admin/Leader thấy hết; Sale chỉ thấy phần của mình
- * (entered_by HOẶC assigned_to) — KHÔNG BAO GIỜ trả nguyên mảng cho Sale rồi
- * tin client tự lọc (đây là chỗ SERVER phải tự quyết định, không phải UI). */
+/** Thao tác (CSKH "Chăm sóc"/"Đánh giá") 1 Customer-relation cụ thể (WRITE/
+ * ACT) — CỐ Ý tách riêng khỏi canViewGroupCustomer (đó là READ): Admin/Leader
+ * của group luôn true; Sale CHỈ true nếu chính mình nhập (entered_by_id) HOẶC
+ * đang được giao (assigned_to_id) — Sale thành viên khác trong CÙNG group
+ * (dù xem được customer này qua canViewGroupCustomer) KHÔNG tự động thao tác
+ * được. Mirror CHÍNH XÁC canActOnPrivateGroupCustomer (client-side, xem
+ * private-group-cskh-authority.ts) — sửa 1 bên phải sửa cả 2, xem comment ở
+ * đó. Dùng cho POST .../interaction và PUT .../qualification. */
+export function canActOnPrivateGroupCustomer(
+  user: CrmSessionUser, group: PrivateGroupLike, relation: PrivateGroupCustomerLike
+): boolean {
+  return isCrmAdmin(user) || isPrivateGroupLeader(user, group)
+    || relation.entered_by_id === user.id_nhan_vien
+    || relation.assigned_to_id === user.id_nhan_vien;
+}
+
+/** Lọc danh sách Customer-relation của 1 nhóm theo ĐÚNG quyền user (READ) —
+ * dùng cho GET .../customers. Admin/Leader/Sale thành viên thấy TOÀN BỘ
+ * customer của nhóm (NEW policy — group membership = group-wide READ); người
+ * không phải Leader/member (route đã gate canViewPrivateGroup trước khi gọi
+ * hàm này, nên nhánh else dưới đây chỉ còn ý nghĩa phòng thủ) chỉ thấy phần
+ * của mình. KHÔNG BAO GIỜ trả nguyên mảng cho Sale rồi tin client tự lọc. */
 export function filterGroupCustomersForUser<T extends PrivateGroupCustomerLike>(
-  user: CrmSessionUser, group: PrivateGroupLike, relations: readonly T[]
+  user: CrmSessionUser, group: PrivateGroupLike, members: readonly PrivateGroupMemberLike[], relations: readonly T[]
 ): T[] {
-  if (canViewAllGroupCustomers(user, group)) return [...relations];
+  if (canViewAllGroupCustomers(user, group, members)) return [...relations];
   return relations.filter(r => r.entered_by_id === user.id_nhan_vien || r.assigned_to_id === user.id_nhan_vien);
 }
 
@@ -205,9 +245,12 @@ export interface PrivateGroupBadgeSource extends PrivateGroupLike {
  * Authority tái dùng NGUYÊN VẸN canViewGroupCustomer (đã khoá bởi
  * private-group-auth.test.ts) — KHÔNG tạo rule mới cho riêng badge:
  *   - Admin, hoặc Leader của ĐÚNG group đó -> luôn thấy.
- *   - Sale -> CHỈ thấy nếu chính mình là entered_by/assigned_to của ĐÚNG
- *     quan hệ đó (dù là member hợp lệ của group, không tự suy ra được thấy
- *     TẤT CẢ badge của group mình).
+ *   - Sale THÀNH VIÊN của ĐÚNG group đó -> thấy badge của TOÀN BỘ customer
+ *     nhóm đó (NEW policy — group membership = group-wide READ, xem comment
+ *     đầu file), kể cả customer do đồng đội khác nhập/được giao.
+ *   - Sale KHÔNG phải Leader/member của group đó -> vẫn có thể thấy nếu
+ *     chính mình là entered_by/assigned_to của ĐÚNG quan hệ đó (defensive,
+ *     xem comment canViewGroupCustomer).
  * link.group_id không khớp group nào trong `groupsById` (dữ liệu hiếm/lỗi
  * tham chiếu) -> bỏ qua, KHÔNG throw, KHÔNG hiện badge sai.
  */
@@ -215,12 +258,13 @@ export function buildCustomerGroupBadges(
   user: CrmSessionUser,
   links: readonly PrivateGroupCustomerLinkLike[],
   groupsById: ReadonlyMap<string, PrivateGroupBadgeSource>,
+  members: readonly PrivateGroupMemberLike[],
 ): Record<string, { id: string; name: string }> {
   const result: Record<string, { id: string; name: string }> = {};
   for (const link of links) {
     const group = groupsById.get(link.group_id);
     if (!group) continue;
-    if (!canViewGroupCustomer(user, group, link)) continue;
+    if (!canViewGroupCustomer(user, group, link, members)) continue;
     result[link.customer_id] = { id: group.id, name: group.name };
   }
   return result;
