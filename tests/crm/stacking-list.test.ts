@@ -12,6 +12,7 @@ import {
   classifyStackingListColumn,
   effectiveDotStatus,
   countStackingListRowsByDotStatus,
+  sortStackingListRows,
 } from '../../src/lib/stacking-list';
 
 function makeRows(n: number, opts: Partial<{ phanKhu: string; marker: 'check_admin' | 'da_ban'; prefix: string }> = {}): StackingListRow[] {
@@ -96,6 +97,94 @@ test('marker Đã bán / Check Admin vẫn đi kèm đúng dòng sau khi paginat
   const page2 = paginateStackingListRows(rows, 2);
   assert.equal(page1[19].marker, 'da_ban');
   assert.equal(page2[0].marker, 'check_admin');
+});
+
+// ─── sortStackingListRows — click header sắp xếp bảng chính ────────────────
+
+test('sortStackingListRows: sort=null giữ NGUYÊN thứ tự gốc từ Sheet', () => {
+  const rows = makeRows(5);
+  assert.deepEqual(sortStackingListRows(rows, null).map(r => r.maCan), rows.map(r => r.maCan));
+});
+
+test('sortStackingListRows: sort theo cột số (Giá) tăng dần', () => {
+  const rows = [
+    { maCan: 'A-01', values: { Giá: 3 }, trangThai: 'con_hang' as const },
+    { maCan: 'A-02', values: { Giá: 1 }, trangThai: 'con_hang' as const },
+    { maCan: 'A-03', values: { Giá: 2 }, trangThai: 'con_hang' as const },
+  ];
+  const sorted = sortStackingListRows(rows, { column: 'Giá', direction: 'asc' });
+  assert.deepEqual(sorted.map(r => r.maCan), ['A-02', 'A-03', 'A-01']);
+});
+
+test('sortStackingListRows: sort theo cột số (Giá) giảm dần', () => {
+  const rows = [
+    { maCan: 'A-01', values: { Giá: 3 }, trangThai: 'con_hang' as const },
+    { maCan: 'A-02', values: { Giá: 1 }, trangThai: 'con_hang' as const },
+    { maCan: 'A-03', values: { Giá: 2 }, trangThai: 'con_hang' as const },
+  ];
+  const sorted = sortStackingListRows(rows, { column: 'Giá', direction: 'desc' });
+  assert.deepEqual(sorted.map(r => r.maCan), ['A-01', 'A-03', 'A-02']);
+});
+
+test('sortStackingListRows: sort theo "Mã căn" (field riêng, không nằm trong values) A→Z', () => {
+  const rows = [
+    { maCan: 'C-01', values: {}, trangThai: 'con_hang' as const },
+    { maCan: 'A-01', values: {}, trangThai: 'con_hang' as const },
+    { maCan: 'B-01', values: {}, trangThai: 'con_hang' as const },
+  ];
+  const sorted = sortStackingListRows(rows, { column: 'Mã căn', direction: 'asc' });
+  assert.deepEqual(sorted.map(r => r.maCan), ['A-01', 'B-01', 'C-01']);
+});
+
+test('sortStackingListRows: sort chữ dùng numeric compare — "A-2" đứng trước "A-10", không so ký tự thô', () => {
+  const rows = [
+    { maCan: 'A-10', values: {}, trangThai: 'con_hang' as const },
+    { maCan: 'A-2', values: {}, trangThai: 'con_hang' as const },
+    { maCan: 'A-1', values: {}, trangThai: 'con_hang' as const },
+  ];
+  const sorted = sortStackingListRows(rows, { column: 'Mã căn', direction: 'asc' });
+  assert.deepEqual(sorted.map(r => r.maCan), ['A-1', 'A-2', 'A-10']);
+});
+
+test('sortStackingListRows: dòng thiếu dữ liệu (null) LUÔN rơi xuống cuối, bất kể asc hay desc', () => {
+  const rows = [
+    { maCan: 'A-01', values: { Hướng: 'Đông' }, trangThai: 'con_hang' as const },
+    { maCan: 'A-02', values: { Hướng: null }, trangThai: 'con_hang' as const },
+    { maCan: 'A-03', values: { Hướng: 'Tây' }, trangThai: 'con_hang' as const },
+  ];
+  const asc = sortStackingListRows(rows, { column: 'Hướng', direction: 'asc' });
+  assert.equal(asc[asc.length - 1].maCan, 'A-02');
+  const desc = sortStackingListRows(rows, { column: 'Hướng', direction: 'desc' });
+  assert.equal(desc[desc.length - 1].maCan, 'A-02');
+});
+
+test('sortStackingListRows: cột thiếu ở 1 số dòng (undefined trong values) cũng bị coi là null, rơi xuống cuối', () => {
+  const rows = [
+    { maCan: 'A-01', values: { Giá: 100 }, trangThai: 'con_hang' as const },
+    { maCan: 'A-02', values: {}, trangThai: 'con_hang' as const },
+  ];
+  const sorted = sortStackingListRows(rows, { column: 'Giá', direction: 'asc' });
+  assert.deepEqual(sorted.map(r => r.maCan), ['A-01', 'A-02']);
+});
+
+test('sortStackingListRows: không mutate mảng gốc — trả về mảng MỚI', () => {
+  const rows = [
+    { maCan: 'A-02', values: { Giá: 2 }, trangThai: 'con_hang' as const },
+    { maCan: 'A-01', values: { Giá: 1 }, trangThai: 'con_hang' as const },
+  ];
+  const original = [...rows];
+  sortStackingListRows(rows, { column: 'Giá', direction: 'asc' });
+  assert.deepEqual(rows.map(r => r.maCan), original.map(r => r.maCan));
+});
+
+test('sortStackingListRows: chạy SAU filter (filter rồi mới sort, không sort lại toàn bộ danh sách gốc)', () => {
+  const rows = [
+    ...makeRows(3, { phanKhu: 'IVY PARK', prefix: 'A' }),
+    ...makeRows(3, { phanKhu: 'GLOBAL PARK', prefix: 'B' }),
+  ];
+  const filtered = filterStackingListRows(rows, { groupColumn: 'Phân khu', groupFilter: 'GLOBAL PARK', search: '' });
+  const sorted = sortStackingListRows(filtered, { column: 'Mã căn', direction: 'desc' });
+  assert.deepEqual(sorted.map(r => r.maCan), ['B-003', 'B-002', 'B-001']);
 });
 
 // ─── Bảng chính vs popup — chia cột ĐÚNG thứ tự Sheet, cắt ngay sau Giá ────

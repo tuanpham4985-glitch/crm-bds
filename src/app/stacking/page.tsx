@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Grid3x3, RefreshCw, X, Settings, Plus, Trash2,
   CheckCircle, AlertCircle, ChevronDown, Loader2, Copy,
-  Minus, Maximize2, Search, Map as MapIcon,
+  Minus, Maximize2, Search, Map as MapIcon, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
 import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,7 +14,7 @@ import { fmtGia, fmtArea, fmtGiaFull } from './format';
 import {
   filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
   splitStackingListColumns, groupStackingListColumnsForDetail, effectiveDotStatus, countStackingListRowsByDotStatus,
-  reconcileVisibleColumns,
+  reconcileVisibleColumns, sortStackingListRows, type StackingListSort,
 } from '@/lib/stacking-list';
 
 // Mirror của extractSheetId() phía server (google-sheets.ts) — Admin có thể
@@ -941,6 +941,7 @@ export default function StackingPage() {
   const [loadingList, setLoadingList]       = useState(false);
   const [listSearch, setListSearch]         = useState('');
   const [listGroupFilter, setListGroupFilter] = useState('');
+  const [listSort, setListSort]             = useState<StackingListSort | null>(null);
   const [listPage, setListPage]             = useState(1);
   const [selectedListRow, setSelectedListRow] = useState<StackingListRow | null>(null);
   const [showTmbMap, setShowTmbMap]           = useState(false); // Tổng mặt bằng — chỉ áp dụng nguồn có TMB_MAP_CONFIG_ID tương ứng (xem isTmbAvailableForConfig)
@@ -1005,7 +1006,7 @@ export default function StackingPage() {
   const fetchListRows = useCallback(() => {
     if (!selectedConfig || selectedConfig.loai !== 'list') return;
     if (!selectedConfig.sheet_tab) { setListError('Nguồn này chưa gán tab bảng hàng — vào "Quản lý Sheet" → "Sửa" để chọn tab.'); return; }
-    setLoadingList(true); setListError(''); setListSearch(''); setListGroupFilter('');
+    setLoadingList(true); setListError(''); setListSearch(''); setListGroupFilter(''); setListSort(null);
     const params = new URLSearchParams({ mode: 'list', sheet_id: selectedConfig.sheet_id, tab: selectedConfig.sheet_tab });
     if (selectedConfig.project_code) params.set('project_code', selectedConfig.project_code);
     if (selectedConfig.visible_columns && selectedConfig.visible_columns.length > 0) {
@@ -1147,22 +1148,59 @@ export default function StackingPage() {
     [listRows, listSearch, listGroupFilter]
   );
 
-  // Reset về trang 1 mỗi khi đổi nguồn/dự án, Phân khu, hoặc tìm kiếm —
-  // không reset khi chỉ "Làm mới" (refetch cùng bộ lọc).
-  useEffect(() => { setListPage(1); }, [selectedConfig?.id, listGroupFilter, listSearch]);
-
-  const listTotalPages = totalStackingListPages(filteredListRows.length);
-  const listPageSafe   = clampStackingListPage(listPage, filteredListRows.length);
-  const pagedListRows  = useMemo(
-    () => paginateStackingListRows(filteredListRows, listPageSafe),
-    [filteredListRows, listPageSafe]
+  // Sort CHẠY SAU filter (đúng thứ tự filter -> sort -> paginate) — không đổi
+  // số dòng/tổng số trang, chỉ đổi thứ tự hiển thị trong trang.
+  const sortedListRows = useMemo(
+    () => sortStackingListRows(filteredListRows, listSort),
+    [filteredListRows, listSort]
   );
+
+  // Reset về trang 1 mỗi khi đổi nguồn/dự án, Phân khu, tìm kiếm, hoặc đổi cột
+  // sort — không reset khi chỉ "Làm mới" (refetch cùng bộ lọc).
+  useEffect(() => { setListPage(1); }, [selectedConfig?.id, listGroupFilter, listSearch, listSort]);
+
+  const listTotalPages = totalStackingListPages(sortedListRows.length);
+  const listPageSafe   = clampStackingListPage(listPage, sortedListRows.length);
+  const pagedListRows  = useMemo(
+    () => paginateStackingListRows(sortedListRows, listPageSafe),
+    [sortedListRows, listPageSafe]
+  );
+
+  /** Click header cột — 3-state cycle: chưa sort -> tăng dần -> giảm dần ->
+   * về lại thứ tự gốc (Sheet), KHÔNG cộng dồn nhiều cột (1 cột sort tại 1
+   * thời điểm — đủ dùng cho bảng này, tránh phức tạp hoá UI). */
+  const toggleListSort = useCallback((column: string) => {
+    setListSort(current => {
+      if (!current || current.column !== column) return { column, direction: 'asc' };
+      if (current.direction === 'asc') return { column, direction: 'desc' };
+      return null;
+    });
+  }, []);
 
   // Bảng chính chỉ hiện NỬA ĐẦU cột (đúng thứ tự Sheet) — nửa sau (TTC/TTS/
   // Vay.../Link PTG/Hướng...) vẫn còn nguyên trong listColumns/row.values,
   // chuyển hẳn vào popup chi tiết (ListUnitDetailModal) khi click Mã căn.
   const { tableColumns, detailColumns } = useMemo(() => splitStackingListColumns(listColumns), [listColumns]);
   const maCanInTable = useMemo(() => tableColumns.some(c => c.trim().toLowerCase() === 'mã căn'), [tableColumns]);
+
+  /** Header cột bảng chính, bấm để sort (tăng dần -> giảm dần -> về gốc) —
+   * dùng CHUNG cho cột "Mã căn" fallback lẫn mọi cột trong tableColumns. */
+  function renderSortableListHeader(col: string) {
+    const direction = listSort?.column === col ? listSort.direction : null;
+    return (
+      <th key={col} onClick={() => toggleListSort(col)} title="Bấm để sắp xếp" style={{
+        padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)',
+        color: 'var(--text-label)', fontWeight: 600, cursor: 'pointer', userSelect: 'none',
+      }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {col}
+          {direction === 'asc' && <ArrowUp size={12} />}
+          {direction === 'desc' && <ArrowDown size={12} />}
+          {!direction && <ArrowUpDown size={11} style={{ opacity: 0.35 }} />}
+        </span>
+      </th>
+    );
+  }
 
   // ── Crosshair highlight ───────────────────────────────────────────────────
   // Hover có ưu tiên hơn click — khi chuột rời bảng thì fallback về selectedUnit
@@ -1290,12 +1328,8 @@ export default function StackingPage() {
                       {/* Fallback — chỉ thêm cột Mã căn riêng nếu nguồn này (hiếm)
                           không có "Mã căn" trong nửa cột đầu; bình thường "Mã căn"
                           đã nằm sẵn trong tableColumns, giữ ĐÚNG vị trí như Sheet gốc. */}
-                      {!maCanInTable && (
-                        <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>Mã căn</th>
-                      )}
-                      {tableColumns.map(col => (
-                        <th key={col} style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-label)', fontWeight: 600 }}>{col}</th>
-                      ))}
+                      {!maCanInTable && renderSortableListHeader('Mã căn')}
+                      {tableColumns.map(col => renderSortableListHeader(col))}
                     </tr>
                   </thead>
                   <tbody>

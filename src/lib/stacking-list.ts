@@ -41,6 +41,41 @@ export function filterStackingListRows(
   return out;
 }
 
+export interface StackingListSort {
+  column: string;
+  direction: 'asc' | 'desc';
+}
+
+/** Giá trị dùng để so sánh khi sort theo `column` — "Mã căn" là field riêng
+ * (`row.maCan`), KHÔNG nằm trong `row.values` như mọi cột khác (xem
+ * StackingListRow). So khớp không phân biệt hoa/thường/khoảng trắng thừa,
+ * cùng cách MA_CAN_HEADER được nhận diện ở nơi khác trong file này. */
+function sortValueOf(row: StackingListRow, column: string): string | number | null {
+  return normHeader(column) === normHeader(MA_CAN_HEADER) ? row.maCan : row.values[column] ?? null;
+}
+
+/** Sắp xếp theo 1 cột — dùng cho click header bảng chính (Sắp xếp A→Z/Z→A,
+ * tăng dần/giảm dần). `sort: null` giữ NGUYÊN thứ tự gốc từ Sheet (không sort
+ * — trạng thái mặc định/toggle-về). So số theo giá trị số thật (không phải
+ * string), so chữ theo tiếng Việt (localeCompare 'vi', numeric để "A-2" đứng
+ * trước "A-10" thay vì so ký tự thô). Dòng thiếu dữ liệu (null) LUÔN rơi
+ * xuống cuối bất kể asc/desc — tránh cột toàn "—" nhảy lên đầu khi sort desc,
+ * gây hiểu lầm là dữ liệu lớn nhất. Trả về mảng MỚI (không mutate `rows`
+ * gốc — filteredListRows đến từ state, sort tại chỗ sẽ làm hỏng state React). */
+export function sortStackingListRows(rows: StackingListRow[], sort: StackingListSort | null): StackingListRow[] {
+  if (!sort) return rows;
+  const dir = sort.direction === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const va = sortValueOf(a, sort.column);
+    const vb = sortValueOf(b, sort.column);
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'vi', { numeric: true }) * dir;
+  });
+}
+
 /** Đối chiếu cột đang chọn (visible_columns cũ) với header THẬT của Sheet mới
  * khi Admin đổi Google Sheet backing 1 nguồn (Sửa nguồn → đổi Link/Sheet ID)
  * — Sheet mới có thể có bộ header khác hẳn Sheet cũ. `kept` giữ ĐÚNG thứ tự
