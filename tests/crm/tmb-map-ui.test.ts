@@ -7,10 +7,30 @@ const pageSource = fs.readFileSync('src/app/stacking/page.tsx', 'utf8');
 
 test('TmbMap: available unit marker stays compact so nearby units are not covered', () => {
   assert.match(source, /const MARKER_SIZE_PX = 12;/);
-  assert.match(source, /border: `2px solid \$\{u\.available \? '#16a34a' : '#9ca3af'\}`/);
+  assert.match(source, /border: `2px solid \$\{isSearchMatch \? '#b91c1c' : u\.available \? '#16a34a' : '#9ca3af'\}`/);
   assert.match(source, /0 0 0 3px rgba\(34,197,94,0\.28\)/);
   assert.doesNotMatch(source, /const MARKER_SIZE_PX = 18;/);
   assert.doesNotMatch(source, /0 0 0 5px rgba\(34,197,94,0\.35\)/);
+});
+
+// ─── Ô tìm mã căn (Còn hàng) — nhập mã, tự phóng tới vị trí + đổi marker đỏ ─
+
+test('TmbMap: ô tìm mã căn CHỈ khớp căn Còn hàng (u.available), so khớp chính xác không phân biệt hoa/thường', () => {
+  assert.match(source, /const \[unitSearch, setUnitSearch\] = useState\(''\);/);
+  assert.match(source, /units\.find\(u => u\.available && u\.unitCode\.toLowerCase\(\) === norm\)/);
+});
+
+test('TmbMap: tìm thấy căn -> tự cuộn/zoom tới vị trí (pendingScrollTargetRef + contentPointToScroll + zoom tối thiểu SEARCH_FOCUS_ZOOM, không zoom lùi nếu đã zoom sâu hơn)', () => {
+  assert.match(source, /const SEARCH_FOCUS_ZOOM = 6;/);
+  assert.match(source, /pendingScrollTargetRef\.current = \{ x: matchedUnit\.viewX, y: matchedUnit\.viewY \};/);
+  assert.match(source, /contentPointToScroll\(\s*matchedUnit\.viewX, matchedUnit\.viewY, effectiveScale/);
+  assert.match(source, /setZoomMultiplier\(z => Math\.max\(z, SEARCH_FOCUS_ZOOM\)\);/);
+});
+
+test('TmbMap: marker khớp tìm kiếm đổi màu đỏ nổi bật (khác hẳn xanh "Còn hàng" thường), có pulse animation riêng', () => {
+  assert.match(source, /background: isSearchMatch \? '#ef4444' : u\.available \? '#22c55e' : 'rgba\(156,163,175,0\.32\)',/);
+  assert.match(source, /className=\{isSearchMatch \? 'tmb-search-match' : undefined\}/);
+  assert.match(source, /@keyframes tmbSearchPulse/);
 });
 
 test('TmbMap: clicking a matched available marker opens the list-detail popup row', () => {

@@ -159,9 +159,9 @@ test('sortStackingListRows: dòng thiếu dữ liệu (null) LUÔN rơi xuống 
 });
 
 test('sortStackingListRows: cột thiếu ở 1 số dòng (undefined trong values) cũng bị coi là null, rơi xuống cuối', () => {
-  const rows = [
-    { maCan: 'A-01', values: { Giá: 100 }, trangThai: 'con_hang' as const },
-    { maCan: 'A-02', values: {}, trangThai: 'con_hang' as const },
+  const rows: StackingListRow[] = [
+    { maCan: 'A-01', values: { Giá: 100 }, trangThai: 'con_hang' },
+    { maCan: 'A-02', values: {}, trangThai: 'con_hang' },
   ];
   const sorted = sortStackingListRows(rows, { column: 'Giá', direction: 'asc' });
   assert.deepEqual(sorted.map(r => r.maCan), ['A-01', 'A-02']);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { X, Loader2, AlertCircle, Plus, Minus, RefreshCw, Maximize2, Locate } from 'lucide-react';
+import { X, Loader2, AlertCircle, Plus, Minus, RefreshCw, Maximize2, Locate, Search } from 'lucide-react';
 import type { StackingListRow } from '@/lib/types';
 import { fmtGia, fmtArea } from './format';
 import { TMB_PDF_URL, TMB_PDF_WORKER_URL, TMB_PDF_PAGE_NUMBER, TMB_MAP_UNITS } from './tmb-map-data';
@@ -89,6 +89,10 @@ const MARKER_SIZE_PX = 12;   // marker cố định theo pixel màn hình (khôn
 // Ở zoom thấp hơn, vẫn xem được mã căn qua hover/focus (preview card).
 const LABEL_VISIBLE_AT_ZOOM = 2;
 const FOCUS_PADDING = 1.6;   // "Tới khu Còn hàng": chừa viền quanh bounding box khu vực
+// Ô tìm mã căn: zoom TỐI THIỂU khi nhảy tới 1 căn cụ thể (đủ gần để marker đỏ
+// nổi bật, không cần zoom hết cỡ) — CHỈ zoom LÊN nếu đang thấp hơn mức này,
+// giữ nguyên zoom hiện tại nếu User đã zoom sâu hơn (không zoom lùi lại).
+const SEARCH_FOCUS_ZOOM = 6;
 // Không được spinner vô hạn — nếu pdf.js (network/worker) treo quá lâu, tự
 // chuyển sang error state thay vì chờ mãi. 20s đủ rộng cho file 13MB trên
 // mạng chậm, đủ hẹp để không làm User nghĩ app bị đứng.
@@ -129,6 +133,7 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
   const [retryKey, setRetryKey] = useState(0);
   const [zoomMultiplier, setZoomMultiplier] = useState(DEFAULT_ZOOM_MULT);
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
+  const [unitSearch, setUnitSearch] = useState('');
   const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState<{ w: number; h: number } | null>(null);
   const [viewportPoints, setViewportPoints] = useState<{ unitCode: string; viewX: number; viewY: number }[]>([]);
@@ -647,6 +652,42 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
     setZoomMultiplier(+nextMultiplier.toFixed(2));
   }, [units, containerSize, fitScale]);
 
+  // ── Ô tìm mã căn (Còn hàng) ────────────────────────────────────────────
+  // Chỉ khớp căn "Còn hàng" (u.available) — cùng rule "chỉ Còn hàng mới
+  // hiển thị/tương tác" của toàn bộ map (xem đầu file). So khớp CHÍNH XÁC
+  // (trim + không phân biệt hoa/thường) — mã căn là định danh cố định, không
+  // cần fuzzy/partial match, tránh nhảy tới nhầm căn khi đang gõ dở.
+  const trimmedUnitSearch = unitSearch.trim();
+  const matchedUnit = useMemo(() => {
+    if (!trimmedUnitSearch) return null;
+    const norm = trimmedUnitSearch.toLowerCase();
+    return units.find(u => u.available && u.unitCode.toLowerCase() === norm) ?? null;
+  }, [units, trimmedUnitSearch]);
+  const unitSearchNotFound = trimmedUnitSearch.length > 0 && !matchedUnit;
+
+  // Tự động zoom/pan tới marker NGAY khi tìm thấy đúng 1 căn khớp — chỉ chạy
+  // lại khi ĐỔI SANG căn khác (dep theo unitCode, không theo effectiveScale/
+  // matchedUnit object) để không kéo màn hình về mỗi khi User tự zoom/pan đi
+  // chỗ khác sau đó mà vẫn giữ nguyên ô tìm kiếm. Set scroll TRỰC TIẾP bằng
+  // effectiveScale hiện tại (cùng lúc set pendingScrollTargetRef) — nếu
+  // SEARCH_FOCUS_ZOOM không làm đổi zoom (đã zoom sâu hơn từ trước) thì effect
+  // tiêu thụ pendingScrollTargetRef (keyed theo effectiveScale) sẽ không tự
+  // chạy lại, nên phải tự cuộn ở đây làm fallback (cùng lý do dùng cho
+  // handleFitToView tự set scrollLeft/Top thay vì chỉ dựa vào effect đó).
+  useEffect(() => {
+    if (!matchedUnit) return;
+    const container = scrollRef.current;
+    if (!container) return;
+    pendingScrollTargetRef.current = { x: matchedUnit.viewX, y: matchedUnit.viewY };
+    const { scrollLeft, scrollTop } = contentPointToScroll(
+      matchedUnit.viewX, matchedUnit.viewY, effectiveScale, container.clientWidth / 2, container.clientHeight / 2
+    );
+    container.scrollLeft = scrollLeft;
+    container.scrollTop = scrollTop;
+    setZoomMultiplier(z => Math.max(z, SEARCH_FOCUS_ZOOM));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchedUnit?.unitCode]);
+
   const availableCount = units.filter(u => u.available).length;
   const showLabels = zoomMultiplier >= LABEL_VISIBLE_AT_ZOOM;
 
@@ -672,6 +713,34 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                value={unitSearch}
+                onChange={e => setUnitSearch(e.target.value)}
+                disabled={loading}
+                placeholder="Tìm mã căn (Còn hàng)..."
+                title="Nhập ĐÚNG mã căn Còn hàng để tự động phóng tới vị trí, marker sẽ đổi màu đỏ"
+                style={{
+                  padding: '5px 24px 5px 26px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600, width: 168,
+                  border: `1px solid ${unitSearchNotFound ? '#dc2626' : 'var(--border)'}`, background: 'var(--bg-card)',
+                  color: 'var(--text-body)', outline: 'none',
+                }}
+              />
+              {unitSearch && (
+                <button onClick={() => setUnitSearch('')} title="Xoá tìm kiếm" style={{
+                  position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex',
+                }}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            {unitSearchNotFound && (
+              <span style={{ fontSize: '0.7rem', color: '#dc2626', whiteSpace: 'nowrap' }}>Không tìm thấy căn Còn hàng</span>
+            )}
+            <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
             <button onClick={handleFocusAvailable} disabled={loading || availableCount === 0} title="Zoom/pan tới khu vực có căn Còn hàng" style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
               border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)',
@@ -793,6 +862,10 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                   const left = u.viewX * effectiveScale - MARKER_SIZE_PX / 2;
                   const top = u.viewY * effectiveScale - MARKER_SIZE_PX / 2;
                   const isHovered = hoveredCode === u.unitCode;
+                  // Ô tìm mã căn — căn đang khớp đổi màu đỏ + viền pulse để nổi
+                  // bật rõ giữa các marker xanh còn lại (yêu cầu "đổi icon hình
+                  // tròn xanh thành đỏ để nổi bật").
+                  const isSearchMatch = matchedUnit?.unitCode === u.unitCode;
 
                   const preview = u.available && u.match.kind === 'matched' ? buildTmbPreview(u.match.row) : null;
 
@@ -817,24 +890,29 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
                       onBlur={() => setHoveredCode(c => c === u.unitCode ? null : c)}
                       disabled={!u.available}
                       title={u.unitCode}
+                      className={isSearchMatch ? 'tmb-search-match' : undefined}
                       style={{
                         position: 'absolute', left, top, width: MARKER_SIZE_PX, height: MARKER_SIZE_PX, borderRadius: '50%',
-                        border: `2px solid ${u.available ? '#16a34a' : '#9ca3af'}`,
-                        background: u.available ? '#22c55e' : 'rgba(156,163,175,0.32)',
-                        boxShadow: u.available ? (isHovered ? '0 0 0 3px rgba(34,197,94,0.28), 0 2px 5px rgba(0,0,0,0.24)' : '0 2px 5px rgba(0,0,0,0.24)') : 'none',
+                        border: `2px solid ${isSearchMatch ? '#b91c1c' : u.available ? '#16a34a' : '#9ca3af'}`,
+                        background: isSearchMatch ? '#ef4444' : u.available ? '#22c55e' : 'rgba(156,163,175,0.32)',
+                        boxShadow: isSearchMatch
+                          ? '0 0 0 4px rgba(239,68,68,0.3), 0 2px 6px rgba(0,0,0,0.3)'
+                          : u.available ? (isHovered ? '0 0 0 3px rgba(34,197,94,0.28), 0 2px 5px rgba(0,0,0,0.24)' : '0 2px 5px rgba(0,0,0,0.24)') : 'none',
                         opacity: u.available ? 1 : 0.5,
                         cursor: u.available ? 'pointer' : 'not-allowed',
                         padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        zIndex: isHovered ? 3 : 1, transition: 'box-shadow 0.1s',
+                        zIndex: isSearchMatch ? 4 : isHovered ? 3 : 1, transition: 'box-shadow 0.1s',
                       }}
                     >
                       {/* Label mã căn — chỉ thường trực khi đã zoom đủ gần (tránh
-                          chữ chồng chéo che bản đồ ở toàn cảnh). */}
-                      {showLabels && (
+                          chữ chồng chéo che bản đồ ở toàn cảnh), TRỪ căn đang khớp
+                          tìm kiếm luôn hiện label bất kể mức zoom (dễ xác nhận
+                          đúng căn vừa tìm). */}
+                      {(showLabels || isSearchMatch) && (
                         <span style={{
                           position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: 3,
                           fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
-                          color: '#15803d',
+                          color: isSearchMatch ? '#b91c1c' : '#15803d',
                           background: 'rgba(255,255,255,0.9)', padding: '1px 5px', borderRadius: 3,
                         }}>
                           {u.unitCode}
@@ -867,7 +945,15 @@ export default function TmbMap({ listRows, onOpenUnit, onClose }: Props) {
           </div>
         </div>
       </div>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes tmbSearchPulse {
+          0% { box-shadow: 0 0 0 4px rgba(239,68,68,0.35), 0 2px 6px rgba(0,0,0,0.3); }
+          50% { box-shadow: 0 0 0 9px rgba(239,68,68,0.12), 0 2px 6px rgba(0,0,0,0.3); }
+          100% { box-shadow: 0 0 0 4px rgba(239,68,68,0.35), 0 2px 6px rgba(0,0,0,0.3); }
+        }
+        .tmb-search-match { animation: tmbSearchPulse 1.4s ease-in-out infinite; }
+      `}</style>
     </div>
   );
 }
