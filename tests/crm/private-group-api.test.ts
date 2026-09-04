@@ -22,6 +22,8 @@ const PRIVATE_GROUP_PANEL_PATH = 'src/components/crm/PrivateGroupPanel.tsx';
 const KHACH_HANG_PAGE_PATH = 'src/app/khach-hang/page.tsx';
 const GROUP_IMPORT_EXCEL_ROUTE_PATH = 'src/app/api/private-groups/[id]/customers/import-excel/route.ts';
 const KHACH_HANG_IMPORT_EXCEL_ROUTE_PATH = 'src/app/api/khach-hang/import-excel/route.ts';
+const GROUP_DISTRIBUTE_ROUTE_PATH = 'src/app/api/private-groups/[id]/customers/distribute/route.ts';
+const CAMPAIGN_LIB_PATH = 'src/lib/crm-funnel/campaign.ts';
 
 function read(path: string): string {
   return readFileSync(resolve(path), 'utf8');
@@ -421,4 +423,83 @@ test('PrivateGroupPanel.tsx: nút "Import Excel" POST tới ĐÚNG route /api/pr
 test('/api/khach-hang/import-excel (route chung, Admin-only) KHÔNG bị đụng bởi task này — vẫn giữ nguyên gate isCrmAdmin', () => {
   const src = read(KHACH_HANG_IMPORT_EXCEL_ROUTE_PATH);
   assert.match(src, /if\s*\(!isCrmAdmin\(user\)\)/);
+});
+
+// ─── "Chia đều" (round-robin) cho Nhóm riêng (task hiện tại) ────────────────
+// TÁI DÙNG NGUYÊN VẸN planDistribution (campaign.ts, THUẦN) — KHÔNG viết lại
+// công thức round-robin. Authority CÙNG canReassignGroupCustomer (Admin/
+// Leader, khác "+ Thêm khách hàng"/"Import Excel" mở cho mọi member) vì đây
+// đụng vào assignment của CẢ nhóm, không chỉ data của chính actor.
+
+test('POST .../customers/distribute: gate canReassignGroupCustomer (Admin/Leader, KHÔNG mở cho Sale thường) — 401/404/403 đúng thứ tự', () => {
+  const src = read(GROUP_DISTRIBUTE_ROUTE_PATH);
+  assert.match(src, /if\s*\(!user\)\s*return NextResponse\.json\(\{ success: false, error: 'Chưa đăng nhập' \}, \{ status: 401 \}\);/);
+  assert.match(src, /if\s*\(!group\)\s*return NextResponse\.json\(\{ success: false, error: 'Không tìm thấy Nhóm riêng' \}, \{ status: 404 \}\);/);
+  assert.match(src, /if\s*\(!canReassignGroupCustomer\(user, group\)\)/);
+  const idx = src.indexOf('if (!canReassignGroupCustomer(user, group))');
+  assert.match(src.slice(idx, idx + 200), /status:\s*403/);
+});
+
+test('POST .../customers/distribute: validate member_ids PHẢI là Leader hoặc member ĐÃ có trong ĐÚNG nhóm này — không chia cho người ngoài nhóm (cùng rule PATCH reassign đơn)', () => {
+  const src = read(GROUP_DISTRIBUTE_ROUTE_PATH);
+  assert.match(src, /if \(memberId === group\.leader_id\)/);
+  assert.match(src, /members\.find\(m => m\.employee_id === memberId\)/);
+  assert.match(src, /'Chỉ được chia cho Leader hoặc Sale thành viên của chính nhóm này'/);
+});
+
+test('POST .../customers/distribute: thiếu member_ids -> 400, không gọi tới distributeGroupCustomersTransactional', () => {
+  const src = read(GROUP_DISTRIBUTE_ROUTE_PATH);
+  const idx = src.indexOf("if (memberIds.length === 0)");
+  assert.ok(idx > -1);
+  const distributeIdx = src.indexOf('distributeGroupCustomersTransactional(');
+  assert.ok(distributeIdx > idx, 'check "chưa chọn Sale" phải chạy TRƯỚC khi gọi hàm ghi');
+  assert.match(src.slice(idx, idx + 200), /status:\s*400/);
+});
+
+test('private-group.ts: distributeGroupCustomersTransactional TÁI DÙNG NGUYÊN VẸN planDistribution (campaign.ts) — không viết lại công thức round-robin lần 2', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  assert.match(src, /import \{ planDistribution, type TelesaleRef \} from '\.\/campaign';/);
+  const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
+  const fnBody = src.slice(fnStart, fnStart + 1200);
+  assert.match(fnBody, /planDistribution\(\{/);
+  assert.match(fnBody, /mode: 'round_robin',/);
+});
+
+test('private-group.ts: distributeGroupCustomersTransactional lấy TOÀN BỘ Customer hiện có của nhóm (findMany theo group_id) — không lọc theo assigned_to hiện tại (đúng ý nghĩa "chia đều lại toàn bộ")', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
+  const fnBody = src.slice(fnStart, fnStart + 1200);
+  assert.match(fnBody, /prisma\.privateGroupCustomer\.findMany\(\{\s*where: \{ group_id: input\.groupId \}/);
+});
+
+test('private-group.ts: distributeGroupCustomersTransactional gộp update vào 1 prisma.$transaction([...]) — hoặc chia hết hoặc không đổi gì, không nửa vời', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
+  const fnBody = src.slice(fnStart, fnStart + 1600);
+  assert.match(fnBody, /prisma\.\$transaction\(updates\)/);
+  assert.match(fnBody, /prisma\.privateGroupCustomer\.update\(\{/);
+});
+
+test('private-group.ts: distributeGroupCustomersTransactional KHÔNG đụng KhachHang.sale_phu_trach — CHỈ đổi assigned_to_id/name trên PrivateGroupCustomer (cùng bất biến reassignGroupCustomer)', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
+  const fnBody = src.slice(fnStart, fnStart + 1600);
+  assert.doesNotMatch(fnBody, /khachHang/);
+  assert.match(fnBody, /data: \{ assigned_to_id: item\.telesale_id, assigned_to_name: item\.telesale_name \}/);
+});
+
+test('campaign.ts: planDistribution KHÔNG bị đụng bởi task này (vẫn export nguyên vẹn cho cả Campaign lẫn Private Group dùng chung)', () => {
+  const src = read(CAMPAIGN_LIB_PATH);
+  assert.match(src, /export function planDistribution\(input: DistributionInput\): DistributionPlanItem\[\]/);
+});
+
+test('PrivateGroupPanel.tsx: nút "Chia đều" CHỈ hiện khi canManage (Admin/Leader) — KHÁC "+ Thêm khách hàng"/"Import Excel" (mở cho mọi member)', () => {
+  const src = read(PRIVATE_GROUP_PANEL_PATH);
+  assert.match(src, /\{canManage && customers\.length > 0 && !showDistribute && \(/);
+});
+
+test('PrivateGroupPanel.tsx: "Chia đều" POST tới ĐÚNG route /api/private-groups/{groupId}/customers/distribute với member_ids đã chọn', () => {
+  const src = read(PRIVATE_GROUP_PANEL_PATH);
+  assert.match(src, /fetch\(`\/api\/private-groups\/\$\{groupId\}\/customers\/distribute`, \{/);
+  assert.match(src, /body: JSON\.stringify\(\{ member_ids: selectedIds \}\)/);
 });

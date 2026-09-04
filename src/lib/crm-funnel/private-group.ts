@@ -26,6 +26,10 @@ import {
   type CampaignContext as PrivateGroupCskhScoreContext,
   type MembershipInteractionInput, type MembershipQualificationInput, type MembershipQualificationPatchInput,
 } from './membership-workflow';
+// "Chia đều" (round-robin) — tái dùng NGUYÊN VẸN planDistribution (THUẦN,
+// campaign.ts) cho distributeGroupCustomersTransactional bên dưới, KHÔNG
+// viết lại công thức round-robin lần 2 (xem comment ở hàm đó).
+import { planDistribution, type TelesaleRef } from './campaign';
 
 type Tx = Prisma.TransactionClient;
 
@@ -305,6 +309,69 @@ export async function reassignGroupCustomer(input: ReassignGroupCustomerInput) {
     data: { assigned_to_id: input.assigned_to_id, assigned_to_name: input.assigned_to_name },
   });
   return count > 0;
+}
+
+export interface DistributeGroupCustomersInput {
+  groupId: string;
+  /** Sale (Leader/member — route đã validate thuộc ĐÚNG group này) để chia
+   * đều, theo ĐÚNG thứ tự truyền vào (round-robin lấy customerIds[i] ->
+   * telesales[i % n], xem planDistribution). */
+  telesales: readonly TelesaleRef[];
+}
+
+export interface DistributeGroupCustomersResult {
+  totalCustomers: number;
+  /** Số relation vừa đổi assigned_to trong lần chia này. */
+  distributed: number;
+}
+
+/**
+ * "Chia đều" (round-robin) TOÀN BỘ Customer HIỆN CÓ của 1 nhóm cho các Sale
+ * được chọn — dùng cho nút "Chia đều" trong group detail (cùng nhu cầu với
+ * "Chia đều" khi phân data vào Campaign, task hiện tại).
+ *
+ * TÁI DÙNG NGUYÊN VẸN planDistribution (campaign.ts, THUẦN — customerIds[i]
+ * -> telesales[i % n], deterministic theo đúng thứ tự truyền vào) — KHÔNG
+ * viết lại công thức round-robin lần 2. KHÁC Campaign: Private Group
+ * KHÔNG có khái niệm UNASSIGNED (mọi Customer LUÔN có assigned_to ngay từ lúc
+ * tạo, xem entered_by/assigned_to mặc định) nên đây là REDISTRIBUTE (ghi đè
+ * assigned_to hiện có), không phải "gán cho customer chưa có ai phụ trách"
+ * như Campaign — page/route gọi hàm này CHỈ với mode round_robin (đủ dùng
+ * cho yêu cầu "chia đều", không cần mode 'quantity'/'none' của Campaign ở
+ * đây — planDistribution vẫn hỗ trợ đủ nếu sau này cần mở rộng).
+ *
+ * Toàn bộ update gộp vào 1 prisma.$transaction([...]) — hoặc chia đều hết,
+ * hoặc không đổi gì (tránh trạng thái nửa vời nếu 1 update lỗi giữa chừng).
+ */
+export async function distributeGroupCustomersTransactional(
+  input: DistributeGroupCustomersInput
+): Promise<DistributeGroupCustomersResult> {
+  assertTransactionalCrm();
+  const relations = await prisma.privateGroupCustomer.findMany({
+    where: { group_id: input.groupId },
+    orderBy: { created_at: 'asc' },
+    select: { id: true, customer_id: true },
+  });
+  if (relations.length === 0) return { totalCustomers: 0, distributed: 0 };
+
+  const plan = planDistribution({
+    customerIds: relations.map(r => r.customer_id),
+    telesales: input.telesales,
+    mode: 'round_robin',
+  });
+  const planByCustomerId = new Map(plan.map(item => [item.customer_id, item]));
+
+  const updates = relations.flatMap(r => {
+    const item = planByCustomerId.get(r.customer_id);
+    if (!item || item.assignment_status !== 'ASSIGNED' || !item.telesale_id || !item.telesale_name) return [];
+    return [prisma.privateGroupCustomer.update({
+      where: { id: r.id },
+      data: { assigned_to_id: item.telesale_id, assigned_to_name: item.telesale_name },
+    })];
+  });
+  if (updates.length > 0) await prisma.$transaction(updates);
+
+  return { totalCustomers: relations.length, distributed: updates.length };
 }
 
 /** 1 quan hệ Customer-nhóm theo id — dùng để check quyền

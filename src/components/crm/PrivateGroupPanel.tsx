@@ -7,7 +7,7 @@
 // Server luôn là authority — UI CHỈ ẩn/hiện control cho gọn, không tự quyết
 // định ai thấy gì (mọi API đều tự check lại quyền, xem private-group-auth.ts).
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, Loader2, Plus, Trash2, Upload, Users, X } from 'lucide-react';
+import { AlertCircle, Loader2, Plus, Shuffle, Trash2, Upload, Users, X } from 'lucide-react';
 import type { NhanVien, PrivateGroup, PrivateGroupMember, PrivateGroupCustomer, DuAn } from '@/lib/types';
 import { NGUON } from '@/lib/constants';
 
@@ -226,6 +226,7 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
   const [addMemberId, setAddMemberId] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showImportExcel, setShowImportExcel] = useState(false);
+  const [showDistribute, setShowDistribute] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -375,6 +376,16 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
                         <Upload size={14} /> Import Excel
                       </button>
                     )}
+                    {/* "Chia đều" — CÙNG authority với giao lại 1 Customer
+                        (canReassignGroupCustomer, Admin/Leader) — KHÁC 2 nút
+                        trên (mở cho mọi member): đây đụng vào assignment của
+                        CẢ nhóm, không chỉ data của chính actor, nên chỉ hiện
+                        khi canManage (UI ẩn/hiện cho gọn, server tự re-check). */}
+                    {canManage && customers.length > 0 && !showDistribute && (
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowDistribute(true)}>
+                        <Shuffle size={14} /> Chia đều
+                      </button>
+                    )}
                   </div>
                 </div>
                 {showAddCustomer && group && (
@@ -394,6 +405,15 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
                     groupName={group.name}
                     onCancel={() => setShowImportExcel(false)}
                     onImported={() => load()}
+                  />
+                )}
+                {showDistribute && group && (
+                  <DistributeGroupCustomersForm
+                    groupId={group.id}
+                    customerCount={customers.length}
+                    eligibleAssignees={eligibleAssignees}
+                    onCancel={() => setShowDistribute(false)}
+                    onDistributed={() => load()}
                   />
                 )}
                 {customers.length === 0 ? (
@@ -685,6 +705,93 @@ function ImportCustomersToGroupForm({ groupId, groupName, onCancel, onImported }
             <button className="btn btn-secondary btn-sm" onClick={() => setResult(null)}>Import file khác</button>
             <button className="btn btn-secondary btn-sm" onClick={onCancel}>Đóng</button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "Chia đều" — round-robin TOÀN BỘ Customer hiện có của nhóm cho các Sale
+ * được chọn, cùng nhu cầu với "Chia đều" khi phân data vào Campaign (task
+ * hiện tại). POST /api/private-groups/{groupId}/customers/distribute — CHỈ
+ * ghi đè assigned_to trên PrivateGroupCustomer, KHÔNG đụng KhachHang.
+ * sale_phu_trach (2 authority độc lập, cùng nguyên tắc reassignGroupCustomer). */
+function DistributeGroupCustomersForm({ groupId, customerCount, eligibleAssignees, onCancel, onDistributed }: {
+  groupId: string;
+  customerCount: number;
+  eligibleAssignees: { id_nhan_vien: string; ho_ten: string }[];
+  onCancel: () => void;
+  onDistributed: () => void;
+}) {
+  // Mặc định chọn hết Leader + thành viên — case thường gặp nhất (vừa import
+  // hàng loạt, giờ chia đều lại cho cả nhóm), User vẫn bỏ chọn bớt được nếu
+  // chỉ muốn chia cho 1 phần.
+  const [selectedIds, setSelectedIds] = useState<string[]>(eligibleAssignees.map(p => p.id_nhan_vien));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<{ totalCustomers: number; distributed: number } | null>(null);
+
+  const toggle = (id: string) => {
+    setSelectedIds(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
+  };
+
+  const handleSubmit = async () => {
+    if (selectedIds.length === 0) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/private-groups/${groupId}/customers/distribute`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ member_ids: selectedIds }),
+      });
+      const data = await res.json();
+      if (!data.success) { setError(data.error || 'Không thể chia đều'); return; }
+      setResult(data.data);
+      onDistributed();
+    } catch {
+      setError('Lỗi kết nối server');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 14, background: 'var(--bg-card)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+          Chia đều (round-robin) toàn bộ <strong style={{ color: 'var(--text-primary)' }}>{customerCount}</strong> khách hàng hiện có của nhóm cho các Sale được chọn bên dưới — GHI ĐÈ "Đang giao cho" hiện tại.
+        </div>
+        <button className="btn btn-ghost btn-icon btn-sm" onClick={onCancel}><X size={14} /></button>
+      </div>
+      {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 10, fontSize: 12.5 }}>{error}</div>}
+
+      {!result ? (
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {eligibleAssignees.map(p => (
+              <label key={p.id_nhan_vien} style={{
+                display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '3px 8px', borderRadius: 5,
+                border: '1px solid var(--border)', cursor: 'pointer',
+                background: selectedIds.includes(p.id_nhan_vien) ? 'var(--primary-light, #eff6ff)' : 'transparent',
+              }}>
+                <input type="checkbox" checked={selectedIds.includes(p.id_nhan_vien)} onChange={() => toggle(p.id_nhan_vien)} style={{ margin: 0 }} />
+                {p.ho_ten}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary btn-sm" disabled={selectedIds.length === 0 || submitting} onClick={handleSubmit}>
+              {submitting ? <Loader2 size={14} className="spin" /> : <Shuffle size={14} />} Chia đều cho {selectedIds.length} Sale
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={onCancel}>Hủy</button>
+          </div>
+        </>
+      ) : (
+        <div>
+          <div style={{ padding: '8px 10px', background: '#f0fdf4', color: '#16a34a', borderRadius: 7, fontSize: 12.5, marginBottom: 10, fontWeight: 600 }}>
+            Đã chia đều {result.distributed}/{result.totalCustomers} khách hàng.
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={onCancel}>Đóng</button>
         </div>
       )}
     </div>
