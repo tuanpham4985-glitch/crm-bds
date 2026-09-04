@@ -115,3 +115,36 @@ test('buildTravelSalesLeaderboard: deal Đối tác bị loại không tạo ent
   ]);
   assert.deepEqual(result, []);
 });
+
+// ─── stripRoleSuffix (qua buildTravelSalesLeaderboard) — audit avatar Dashboard ──
+// Phát hiện: sheet "Tổng hợp giao dịch chi tiết" có 1 dòng Sale bán ghi
+// "Nguyễn Thị Mỹ Diệu (TPKD)" (tên + mã chức danh trong ngoặc), trong khi
+// NhanVien.ho_ten của id 0007 là "Nguyễn Thị Mỹ Diệu" (sạch, có avatar_url).
+// Group thẳng theo giá trị thô -> key lệch khỏi ho_ten -> mất avatar (route.ts
+// dùng allEmployees.find(nv => nv.ho_ten === entry.nhan_vien), EXACT match).
+
+test('buildTravelSalesLeaderboard: "Tên (MÃ_VIẾT_HOA)" -> gộp về tên sạch, khớp NhanVien.ho_ten (fix mất avatar Nguyễn Thị Mỹ Diệu)', () => {
+  const result = buildTravelSalesLeaderboard([
+    row({ gia_tri: 8_985_743_362, sale_phu_trach: 'Nguyễn Thị Mỹ Diệu (TPKD)', ty_le_phi_hh_thuc_nhan: 0.5 }),
+  ]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].nhan_vien, 'Nguyễn Thị Mỹ Diệu');
+});
+
+test('buildTravelSalesLeaderboard: deal có suffix "(TPKD)" và deal không có suffix của CÙNG người -> gộp chung 1 entry, không tách 2 dòng', () => {
+  const result = buildTravelSalesLeaderboard([
+    row({ gia_tri: 8_985_743_362, sale_phu_trach: 'Nguyễn Thị Mỹ Diệu (TPKD)', ty_le_phi_hh_thuc_nhan: 0.5 }),
+    row({ gia_tri: 1_000_000_000, sale_phu_trach: 'Nguyễn Thị Mỹ Diệu', ty_le_phi_hh_thuc_nhan: 0.5 }),
+  ]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].nhan_vien, 'Nguyễn Thị Mỹ Diệu');
+  assert.equal(result[0].so_deal, 2);
+  assert.equal(result[0].doanh_thu, 9_985_743_362);
+});
+
+test('buildTravelSalesLeaderboard: ngoặc KHÔNG phải viết hoa toàn bộ (VD ghi chú thường) -> GIỮ NGUYÊN, không strip nhầm (chỉ strip mã chức danh dạng viết hoa)', () => {
+  const result = buildTravelSalesLeaderboard([
+    row({ gia_tri: 1000, sale_phu_trach: 'Nguyễn Văn A (ghi chú)', ty_le_phi_hh_thuc_nhan: 0.5 }),
+  ]);
+  assert.equal(result[0].nhan_vien, 'Nguyễn Văn A (ghi chú)');
+});

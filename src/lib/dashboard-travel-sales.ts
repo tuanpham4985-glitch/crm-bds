@@ -21,6 +21,28 @@ function isDoiTacStr(s: string | undefined | null): boolean {
   return (s || '').toLowerCase().includes('đối tác');
 }
 
+/**
+ * "Sale bán" đôi khi bị nhập kèm mã chức danh trong ngoặc (VD "Nguyễn Thị Mỹ
+ * Diệu (TPKD)" — phát hiện qua audit avatar Dashboard: nhân viên id 0007 có
+ * ho_ten sạch "Nguyễn Thị Mỹ Diệu" và avatar_url hợp lệ trong NHAN_VIEN, sheet
+ * "Tổng hợp giao dịch chi tiết" là dòng DUY NHẤT trong toàn bộ cột Sale bán
+ * có ngoặc). Nếu group thẳng theo giá trị thô, key lệch khỏi NhanVien.ho_ten
+ * -> mất avatar (allEmployees.find so khớp EXACT) và lệch khỏi tab tham chiếu
+ * đối chiếu golden case. Chỉ strip khi phần trong ngoặc là mã viết hoa toàn
+ * bộ (VD "TPKD", "GĐKD") để không đụng tên/ghi chú khác vô tình có dấu ngoặc.
+ */
+function stripRoleSuffix(rawName: string): string {
+  const trimmed = rawName.trim();
+  const match = trimmed.match(/^(.+?)\s*\(([^()]+)\)$/);
+  if (!match) return trimmed;
+  const base = match[1].trim();
+  const inner = match[2].trim();
+  const isAllCapsCode = inner.length > 0
+    && /[A-ZĐÂÊÔƠƯĂ]/.test(inner)
+    && inner === inner.toLocaleUpperCase('vi-VN');
+  return base && isAllCapsCode ? base : trimmed;
+}
+
 export type TravelSalesEligibilityInput = Pick<TongHopRow, 'gia_tri' | 'loai_nguon' | 'phong_kd' | 'ty_le_phi_hh_thuc_nhan'>;
 
 /**
@@ -67,7 +89,7 @@ export function buildTravelSalesLeaderboard(rows: readonly TongHopRow[]): DoanhT
   const map = new Map<string, DoanhThuTheoSale>();
   for (const row of rows) {
     if (!isTravelSalesEligible(row)) continue;
-    const key = (row.sale_phu_trach || '').trim() || 'Chưa phân';
+    const key = stripRoleSuffix(row.sale_phu_trach || '') || 'Chưa phân';
     const existing = map.get(key) || { nhan_vien: key, doanh_thu: 0, hoa_hong: 0, so_deal: 0 };
     existing.doanh_thu += row.gia_tri;
     existing.so_deal += 1;
