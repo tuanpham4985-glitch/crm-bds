@@ -6,8 +6,8 @@
 // (Admin) → chi tiết 1 nhóm (member + customer, đã lọc theo quyền bởi server).
 // Server luôn là authority — UI CHỈ ẩn/hiện control cho gọn, không tự quyết
 // định ai thấy gì (mọi API đều tự check lại quyền, xem private-group-auth.ts).
-import { useEffect, useState } from 'react';
-import { Loader2, Plus, Trash2, Users, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, Loader2, Plus, Trash2, Upload, Users, X } from 'lucide-react';
 import type { NhanVien, PrivateGroup, PrivateGroupMember, PrivateGroupCustomer, DuAn } from '@/lib/types';
 import { NGUON } from '@/lib/constants';
 
@@ -225,6 +225,7 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
   const [error, setError] = useState('');
   const [addMemberId, setAddMemberId] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [showImportExcel, setShowImportExcel] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -353,16 +354,28 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
                   <div style={{ fontWeight: 600, fontSize: 13.5 }}>
                     Khách hàng của nhóm ({customers.length})
                   </div>
-                  {/* "+ Thêm khách hàng" từ group detail — group ĐÃ xác định
-                      sẵn (groupId), không bắt user chọn lại (xem section 5).
-                      Hiển thị cho mọi người xem được group detail này (đã qua
-                      gate canViewPrivateGroup ở trang cha) — cùng nguyên tắc
-                      "Thêm khách hàng" mở cho mọi user CRM hợp lệ ở /khach-hang. */}
-                  {!showAddCustomer && (
-                    <button className="btn btn-secondary btn-sm" onClick={() => setShowAddCustomer(true)}>
-                      <Plus size={14} /> Thêm khách hàng
-                    </button>
-                  )}
+                  {/* "+ Thêm khách hàng" / "Import Excel" từ group detail —
+                      group ĐÃ xác định sẵn (groupId), không bắt user chọn lại
+                      (xem section 5, và comment ImportCustomersToGroupForm bên
+                      dưới cho Import Excel). Hiển thị cho mọi người xem được
+                      group detail này (đã qua gate canViewPrivateGroup ở trang
+                      cha) — cùng nguyên tắc "Thêm khách hàng" mở cho mọi user
+                      CRM hợp lệ ở /khach-hang. Server tự re-check actor THỰC
+                      SỰ là Leader/member của ĐÚNG group này khi ghi (KHÔNG có
+                      Admin-bypass), UI ẩn/hiện chỉ để gọn, không phải security
+                      boundary. */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {!showAddCustomer && (
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowAddCustomer(true)}>
+                        <Plus size={14} /> Thêm khách hàng
+                      </button>
+                    )}
+                    {!showImportExcel && (
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowImportExcel(true)}>
+                        <Upload size={14} /> Import Excel
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {showAddCustomer && group && (
                   <AddCustomerToGroupForm
@@ -373,6 +386,14 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
                     duAnList={duAnList}
                     onCancel={() => setShowAddCustomer(false)}
                     onCreated={() => { setShowAddCustomer(false); load(); }}
+                  />
+                )}
+                {showImportExcel && group && (
+                  <ImportCustomersToGroupForm
+                    groupId={group.id}
+                    groupName={group.name}
+                    onCancel={() => setShowImportExcel(false)}
+                    onImported={() => load()}
                   />
                 )}
                 {customers.length === 0 ? (
@@ -529,6 +550,143 @@ function AddCustomerToGroupForm({ groupId, groupName, isAdmin, employees, duAnLi
         </button>
         <button className="btn btn-secondary btn-sm" onClick={onCancel}>Hủy</button>
       </div>
+    </div>
+  );
+}
+
+interface PrivateGroupImportResultData {
+  totalRows: number;
+  imported: number;
+  duplicateInFile: number;
+  alreadyExists: number;
+  invalid: number;
+  errors: number;
+  invalidList: { row: number; reason: string; sheet: string }[];
+  duplicateInFileList: { ten_KH: string; so_dien_thoai: string }[];
+  alreadyExistsList: { ten_KH: string; so_dien_thoai: string }[];
+  errorList: { ten_KH: string; error: string }[];
+  duplicateNameWarnings: string[];
+}
+
+/** "Import Excel" từ group detail — hàng loạt Customer từ 1 file .xlsx/.xls,
+ * TỰ ĐỘNG gắn vào ĐÚNG Nhóm riêng đang mở (groupId cố định, không chọn lại —
+ * cùng nguyên tắc AddCustomerToGroupForm ở trên). POST thẳng tới
+ * /api/private-groups/{groupId}/customers/import-excel (KHÔNG phải Import
+ * Excel chung ở /khach-hang — route đó Admin-only + bắt buộc Dataset, 2 tính
+ * năng độc lập, xem comment route). File chỉ cần 2 cột: Tên KH + SĐT (Email
+ * tuỳ chọn) — tên cột linh hoạt theo alias đã hỗ trợ (Tên/Tên KH/Họ tên...,
+ * SĐT/Số điện thoại/Phone...), KHÔNG đọc field nào khác từ file. */
+function ImportCustomersToGroupForm({ groupId, groupName, onCancel, onImported }: {
+  groupId: string;
+  groupName: string;
+  onCancel: () => void;
+  onImported: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<PrivateGroupImportResultData | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // cho phép chọn lại cùng 1 file nếu cần import lại
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    setResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`/api/private-groups/${groupId}/customers/import-excel`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!data.success) { setError(data.error || 'Import thất bại'); return; }
+      setResult(data);
+      if (data.imported > 0) onImported();
+    } catch {
+      setError('Lỗi kết nối server');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 14, background: 'var(--bg-card)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+          Khách hàng trong file sẽ vào Nhóm riêng <strong style={{ color: 'var(--text-primary)' }}>{groupName}</strong> — file cần cột Tên KH và SĐT (Email tuỳ chọn), KHÔNG đọc field nào khác.
+        </div>
+        <button className="btn btn-ghost btn-icon btn-sm" onClick={onCancel}><X size={14} /></button>
+      </div>
+      {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 10, fontSize: 12.5 }}>{error}</div>}
+
+      {!result && (
+        <>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChange} style={{ display: 'none' }} disabled={uploading} />
+          <button className="btn btn-primary btn-sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+            {uploading ? <><Loader2 size={14} className="spin" /> Đang import...</> : <><Upload size={14} /> Chọn file Excel</>}
+          </button>
+        </>
+      )}
+
+      {result && (
+        <div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-label)', marginBottom: 8 }}>Tổng số dòng dữ liệu: <strong style={{ color: 'var(--text-title)' }}>{result.totalRows}</strong></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(80px,1fr))', gap: 8, marginBottom: 10 }}>
+            <div style={{ textAlign: 'center', padding: '8px 6px', background: '#f0fdf4', borderRadius: 7 }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#16a34a' }}>{result.imported}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-label)', marginTop: 2 }}>Đã thêm mới</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '8px 6px', background: '#fffbeb', borderRadius: 7 }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#d97706' }}>{result.duplicateInFile}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-label)', marginTop: 2 }}>Trùng trong file</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '8px 6px', background: '#eff6ff', borderRadius: 7 }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1d4ed8' }}>{result.alreadyExists}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-label)', marginTop: 2 }}>Đã có trong CRM</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '8px 6px', background: '#fff7ed', borderRadius: 7 }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#c2410c' }}>{result.invalid}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-label)', marginTop: 2 }}>Thiếu dữ liệu</div>
+            </div>
+            {result.errors > 0 && (
+              <div style={{ textAlign: 'center', padding: '8px 6px', background: '#fef2f2', borderRadius: 7 }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#dc2626' }}>{result.errors}</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-label)', marginTop: 2 }}>Lỗi</div>
+              </div>
+            )}
+          </div>
+
+          {result.duplicateNameWarnings.length > 0 && (
+            <div style={{ padding: '8px 10px', background: '#fffbeb', borderRadius: 7, fontSize: '0.78rem', color: '#a16207', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, marginBottom: 3 }}>
+                <AlertCircle size={13} /> Cảnh báo trùng tên (SĐT khác nhau — vẫn giữ là các khách riêng biệt)
+              </div>
+              {result.duplicateNameWarnings.join(', ')}
+            </div>
+          )}
+
+          {result.invalidList.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5, color: '#c2410c', fontWeight: 600, fontSize: '0.78rem' }}>
+                <AlertCircle size={13} /> Bỏ qua (thiếu Tên KH hoặc SĐT)
+              </div>
+              <div style={{ maxHeight: 100, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, fontSize: '0.75rem' }}>
+                {result.invalidList.map((item, i) => (
+                  <div key={i} style={{ padding: '5px 10px', borderBottom: i < result.invalidList.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <span>{item.sheet ? `${item.sheet} — ` : ''}Dòng {item.row}</span>
+                    <span style={{ color: 'var(--text-label)' }}>{item.reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setResult(null)}>Import file khác</button>
+            <button className="btn btn-secondary btn-sm" onClick={onCancel}>Đóng</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

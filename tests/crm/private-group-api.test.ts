@@ -20,6 +20,8 @@ const REASSIGN_ROUTE_PATH = 'src/app/api/private-groups/[id]/customers/[relation
 const MINE_ROUTE_PATH = 'src/app/api/private-groups/mine/route.ts';
 const PRIVATE_GROUP_PANEL_PATH = 'src/components/crm/PrivateGroupPanel.tsx';
 const KHACH_HANG_PAGE_PATH = 'src/app/khach-hang/page.tsx';
+const GROUP_IMPORT_EXCEL_ROUTE_PATH = 'src/app/api/private-groups/[id]/customers/import-excel/route.ts';
+const KHACH_HANG_IMPORT_EXCEL_ROUTE_PATH = 'src/app/api/khach-hang/import-excel/route.ts';
 
 function read(path: string): string {
   return readFileSync(resolve(path), 'utf8');
@@ -322,4 +324,101 @@ test('khach-hang/page.tsx: KHÔNG có customer nào bị render "—"/"Không c�
   const after = src.slice(idx, idx + 1600);
   assert.match(after, /\{privateGroup && \(/);
   assert.doesNotMatch(after, /Không có nhóm/);
+});
+
+// ─── Import Excel cho Nhóm riêng (task hiện tại) ────────────────────────────
+// Route riêng cho group detail — KHÔNG phải Import Excel chung ở /khach-hang
+// (Admin-only + bắt buộc Dataset). Group đã xác định qua URL (KHÔNG chọn lại,
+// giống "+ Thêm khách hàng"); actor phải THỰC SỰ Leader/member của ĐÚNG group
+// này (không có Admin-bypass, đồng nhất add đơn); parse/classify TÁI DÙNG
+// NGUYÊN VẸN pipeline chung (findImportSheets/classifyRow/phoneKey/
+// detectDuplicateNameWarnings) — không viết lại logic đó lần 2.
+
+test('POST .../customers/import-excel: gate canViewPrivateGroup TRƯỚC khi đọc file — 401 nếu chưa đăng nhập, 404 nếu group không tồn tại, 403 nếu không xem được group', () => {
+  const src = read(GROUP_IMPORT_EXCEL_ROUTE_PATH);
+  assert.match(src, /if\s*\(!user\)\s*return NextResponse\.json\(\{ success: false, error: 'Chưa đăng nhập' \}, \{ status: 401 \}\);/);
+  assert.match(src, /if\s*\(!group\)\s*return NextResponse\.json\(\{ success: false, error: 'Không tìm thấy Nhóm riêng' \}, \{ status: 404 \}\);/);
+  assert.match(src, /if\s*\(!canViewPrivateGroup\(user, group, members\)\)/);
+});
+
+test('POST .../customers/import-excel: TÁI DÙNG NGUYÊN VẸN pipeline parse/classify chung (findImportSheets/classifyRow/phoneKey/detectDuplicateNameWarnings) — không viết lại logic phân loại dòng lần 2', () => {
+  const src = read(GROUP_IMPORT_EXCEL_ROUTE_PATH);
+  assert.match(src, /from '@\/lib\/khach-hang-excel-import'/);
+  assert.match(src, /findImportSheets\(sheets\)/);
+  assert.match(src, /classifyRow\(row, columns, existingDbPhoneKeys, seenInFilePhoneKeys\)/);
+  assert.match(src, /detectDuplicateNameWarnings\(readyRows\)/);
+});
+
+test('POST .../customers/import-excel: CHỈ dòng \'ready\' được truyền vào importCustomersToPrivateGroupTransactional — blank/invalid/already_exists/duplicate_in_file đều bị lọc TRƯỚC (route tự phân loại, KHÔNG đẩy hết cho hàm ghi)', () => {
+  const src = read(GROUP_IMPORT_EXCEL_ROUTE_PATH);
+  const importCallIdx = src.indexOf('importCustomersToPrivateGroupTransactional({');
+  assert.ok(importCallIdx > -1);
+  const before = src.slice(0, importCallIdx);
+  assert.match(before, /status === 'blank'/);
+  assert.match(before, /status === 'invalid'/);
+  assert.match(before, /status === 'already_exists'/);
+  assert.match(before, /status === 'duplicate_in_file'/);
+  assert.match(src.slice(importCallIdx, importCallIdx + 200), /rows: readyRows/);
+});
+
+test('POST .../customers/import-excel: error mapping — GroupNotAllowedError -> 403, TransactionalCrmRequiredError -> 503', () => {
+  const src = read(GROUP_IMPORT_EXCEL_ROUTE_PATH);
+  const groupIdx = src.indexOf('if (error instanceof GroupNotAllowedError)');
+  assert.ok(groupIdx > -1);
+  assert.match(src.slice(groupIdx, groupIdx + 150), /status:\s*403/);
+  const txIdx = src.indexOf('if (error instanceof TransactionalCrmRequiredError)');
+  assert.ok(txIdx > -1);
+  assert.match(src.slice(txIdx, txIdx + 150), /status:\s*503/);
+});
+
+test('POST .../customers/import-excel: KHÔNG có Dataset/Import Batch nào được đụng tới — Private Group độc lập khỏi 2 hệ đó (khác Import Excel chung ở /khach-hang)', () => {
+  const src = read(GROUP_IMPORT_EXCEL_ROUTE_PATH);
+  assert.doesNotMatch(src, /createImportBatch|dataset_id|createDataset|ensureCustomerDatasetMemberships/);
+});
+
+test('POST .../customers/import-excel: KHÔNG gate isCrmAdmin — khác Import Excel chung (Admin-only), authority thật nằm ở importCustomersToPrivateGroupTransactional (Leader/member của group)', () => {
+  const src = read(GROUP_IMPORT_EXCEL_ROUTE_PATH);
+  assert.doesNotMatch(src, /isCrmAdmin/);
+});
+
+test('private-group.ts: importCustomersToPrivateGroupTransactional validate actor THỰC SỰ Leader/member của ĐÚNG group (resolvePrivateGroupsForEmployee) — throw GroupNotAllowedError nếu không, KHÔNG có Admin-bypass', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function importCustomersToPrivateGroupTransactional');
+  const fnBody = src.slice(fnStart, fnStart + 900);
+  assert.match(fnBody, /resolvePrivateGroupsForEmployee\(input\.actor\.id_nhan_vien\)/);
+  assert.match(fnBody, /groups\.leaderOf\.some\(g => g\.id === input\.groupId\) \|\| groups\.memberOf\.some\(g => g\.id === input\.groupId\)/);
+  assert.match(fnBody, /if \(!allowed\) throw new GroupNotAllowedError\(\);/);
+  assert.doesNotMatch(fnBody, /isCrmAdmin/);
+});
+
+test('private-group.ts: importCustomersToPrivateGroupTransactional tạo Customer + PrivateGroupCustomer ATOMIC per-row (transaction riêng từng dòng) — 1 dòng lỗi bị cô lập vào errors, KHÔNG fail cả batch', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function importCustomersToPrivateGroupTransactional');
+  const fnBody = src.slice(fnStart, fnStart + 2200);
+  assert.match(fnBody, /prisma\.\$transaction\(async tx => \{/);
+  assert.match(fnBody, /tx\.khachHang\.create\(/);
+  assert.match(fnBody, /tx\.privateGroupCustomer\.create\(/);
+  assert.match(fnBody, /catch \(e\) \{\s*errors\.push\(/);
+  // Customer PHẢI tạo trước PrivateGroupCustomer (link cần customer_id đã tồn tại về mặt logic nghiệp vụ).
+  const createCustomerIdx = fnBody.indexOf('tx.khachHang.create(');
+  const createLinkIdx = fnBody.indexOf('tx.privateGroupCustomer.create(');
+  assert.ok(createCustomerIdx > -1 && createLinkIdx > createCustomerIdx);
+});
+
+test('private-group.ts: importCustomersToPrivateGroupTransactional gán entered_by = assigned_to = actor (tự động được quyền act ngay, cùng rule createManualCustomerWithGroupLink)', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function importCustomersToPrivateGroupTransactional');
+  const fnBody = src.slice(fnStart, fnStart + 2200);
+  assert.match(fnBody, /entered_by_id: input\.actor\.id_nhan_vien/);
+  assert.match(fnBody, /assigned_to_id: input\.actor\.id_nhan_vien/);
+});
+
+test('PrivateGroupPanel.tsx: nút "Import Excel" POST tới ĐÚNG route /api/private-groups/{groupId}/customers/import-excel (route riêng, không dùng chung /api/khach-hang/import-excel)', () => {
+  const src = read(PRIVATE_GROUP_PANEL_PATH);
+  assert.match(src, /fetch\(`\/api\/private-groups\/\$\{groupId\}\/customers\/import-excel`, \{ method: 'POST', body: formData \}\)/);
+});
+
+test('/api/khach-hang/import-excel (route chung, Admin-only) KHÔNG bị đụng bởi task này — vẫn giữ nguyên gate isCrmAdmin', () => {
+  const src = read(KHACH_HANG_IMPORT_EXCEL_ROUTE_PATH);
+  assert.match(src, /if\s*\(!isCrmAdmin\(user\)\)/);
 });

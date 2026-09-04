@@ -521,3 +521,108 @@ export async function createManualCustomerWithGroupLink(
     return { customer: created as unknown as KhachHang, groupLink };
   });
 }
+
+// ─── Import Excel hàng loạt → group ĐÃ XÁC ĐỊNH sẵn (group detail) ─────────
+// Bản BULK của createManualCustomerWithGroupLink ở trên — khác ở chỗ group
+// KHÔNG cần resolve (route gọi hàm này luôn biết sẵn groupId từ URL, giống
+// "+ Thêm khách hàng" trong group detail), và KHÔNG dedupe theo phoneKey ở
+// đây nữa — route (POST .../customers/import-excel) đã tự lọc rows qua
+// classifyRow/findImportSheets (TÁI DÙNG NGUYÊN VẸN pipeline Import Excel
+// chung, xem khach-hang-excel-import.ts) và CHỈ truyền vào các dòng đã được
+// phân loại 'ready' (không trùng DB, không trùng trong file).
+
+export interface PrivateGroupImportRow {
+  ten_KH: string;
+  /** Đã normalize (khôi phục số 0 đầu) SẴN ở classifyRow/resolveRowPhone —
+   * hàm này KHÔNG gọi lại normalizePhone. */
+  so_dien_thoai: string;
+  email: string;
+}
+
+export interface PrivateGroupImportRowError {
+  ten_KH: string;
+  error: string;
+}
+
+export interface PrivateGroupImportResult {
+  imported: string[];
+  errors: PrivateGroupImportRowError[];
+}
+
+/**
+ * Import hàng loạt Customer + gắn Nhóm riêng — dùng cho nút "Import Excel"
+ * trong chi tiết nhóm (KHÔNG phải Import Excel chung ở /khach-hang, Admin-
+ * only + bắt buộc Dataset — 2 tính năng độc lập, xem comment route).
+ *
+ * 1. Validate actor THỰC SỰ là Leader HOẶC Sale thành viên của ĐÚNG group
+ *    này (resolvePrivateGroupsForEmployee, CÙNG rule resolveManualCustomerGroup
+ *    dùng cho add đơn — KHÔNG có Admin-bypass, đồng nhất hành vi "+ Thêm
+ *    khách hàng": Admin không phải Leader/member của 1 group cụ thể vẫn
+ *    KHÔNG import được vào group đó) -> throw GroupNotAllowedError nếu không.
+ * 2. Tạo Customer + PrivateGroupCustomer cho TỪNG dòng, atomic PER-ROW (1
+ *    transaction nhỏ/dòng) — KHÔNG SERIALIZABLE cho cả batch: nguy cơ 2 lượt
+ *    import cùng lúc trùng SĐT là rất hiếm cho use-case Sale tự nhập data
+ *    riêng (khác add đơn tương tác — vẫn giữ SERIALIZABLE riêng ở đó). 1
+ *    dòng lỗi (hiếm, VD DB blip) bị cô lập vào `errors`, KHÔNG fail cả batch
+ *    — các dòng còn lại vẫn import bình thường.
+ * 3. KHÔNG BAO GIỜ ghi vào Customer đã tồn tại — route đã lọc 'already_exists'
+ *    TRƯỚC khi gọi hàm này (cùng bất biến an toàn với createManualCustomerWithGroupLink).
+ * 4. KHÔNG có Dataset/Import Batch — Private Group độc lập khỏi 2 hệ đó (xem
+ *    comment đầu file).
+ */
+export async function importCustomersToPrivateGroupTransactional(input: {
+  actor: CrmSessionUser;
+  groupId: string;
+  rows: readonly PrivateGroupImportRow[];
+}): Promise<PrivateGroupImportResult> {
+  assertTransactionalCrm();
+  const groups = await resolvePrivateGroupsForEmployee(input.actor.id_nhan_vien);
+  const allowed = groups.leaderOf.some(g => g.id === input.groupId) || groups.memberOf.some(g => g.id === input.groupId);
+  if (!allowed) throw new GroupNotAllowedError();
+
+  const imported: string[] = [];
+  const errors: PrivateGroupImportRowError[] = [];
+  for (let i = 0; i < input.rows.length; i++) {
+    const row = input.rows[i];
+    const id_khach_hang = `KH_${Date.now()}_${i}_${Math.floor(Math.random() * 10000)}`;
+    try {
+      await prisma.$transaction(async tx => {
+        await tx.khachHang.create({
+          data: {
+            id_khach_hang,
+            ngay_tao: new Date().toISOString(),
+            ten_KH: row.ten_KH,
+            so_dien_thoai: row.so_dien_thoai,
+            email: row.email || '',
+            nguon: '',
+            nhu_cau: '',
+            ghi_chu: '',
+            sale_phu_trach: input.actor.ho_ten,
+            label_khach: `${row.ten_KH} - ${row.so_dien_thoai}`,
+            du_an: '',
+            trang_thai_cham_soc: 'Chưa gọi',
+            muc_do_quan_tam: 'Chưa xác định',
+            so_lan_lien_he: 0,
+            lich_su_cham_soc: '[]',
+            trang_thai_ban_giao: 'Chưa bàn giao',
+            lich_su_ban_giao: '[]',
+          },
+        });
+        await tx.privateGroupCustomer.create({
+          data: {
+            group_id: input.groupId,
+            customer_id: id_khach_hang,
+            entered_by_id: input.actor.id_nhan_vien,
+            entered_by_name: input.actor.ho_ten,
+            assigned_to_id: input.actor.id_nhan_vien,
+            assigned_to_name: input.actor.ho_ten,
+          },
+        });
+      });
+      imported.push(row.ten_KH);
+    } catch (e) {
+      errors.push({ ten_KH: row.ten_KH, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { imported, errors };
+}
