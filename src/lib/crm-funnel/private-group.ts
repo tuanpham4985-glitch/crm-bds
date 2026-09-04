@@ -359,6 +359,19 @@ export interface DistributeGroupCustomersResult {
  * array" ($transaction([...])) — driver adapter (@prisma/adapter-pg) không
  * xử lý ổn định dạng array cho nhiều update cùng lúc trong setup hiện tại
  * (khác Rust query engine cũ), gây lỗi runtime dù code hợp lệ về mặt kiểu.
+ *
+ * GOM update theo ĐÍCH (telesale_id) thành 1 updateMany() MỖI người — round-
+ * robin chỉ có ĐÚNG telesales.length đích khác nhau (VD chia cho 2 Sale thì
+ * dù 27 hay 270 Customer cũng chỉ có 2 đích), nên round-trip DB tỉ lệ với số
+ * Sale được chọn, KHÔNG phải số Customer. Đây CHÍNH LÀ fix cho bug thật đã
+ * gặp: 1 update/dòng tuần tự (27 round-trip) vượt quá timeout mặc định 5s
+ * của Prisma interactive transaction ("A query cannot be executed on an
+ * expired transaction") trên latency thật của pooled connection (Neon) —
+ * KHÔNG phải do dạng transaction array/interactive (đã thử cả 2, không phải
+ * nguyên nhân) mà do SỐ LƯỢNG round-trip tuần tự trong 1 transaction. `timeout`
+ * tường minh thêm dư dả (không dựa hoàn toàn vào batching) cho trường hợp
+ * chọn rất nhiều Sale (nhiều đích -> nhiều updateMany hơn).
+ *
  * Hoặc chia đều hết, hoặc không đổi gì (rollback nếu 1 update lỗi giữa chừng).
  */
 export async function distributeGroupCustomersTransactional(
@@ -382,24 +395,28 @@ export async function distributeGroupCustomersTransactional(
   });
   const planByCustomerId = new Map(plan.map(item => [item.customer_id, item]));
 
-  const updates = relations.flatMap(r => {
+  const groupsByTelesale = new Map<string, { telesale_name: string; relationIds: string[] }>();
+  let distributed = 0;
+  for (const r of relations) {
     const item = planByCustomerId.get(r.customer_id);
-    if (!item || item.assignment_status !== 'ASSIGNED' || !item.telesale_id || !item.telesale_name) return [];
-    return [{ relationId: r.id, telesale_id: item.telesale_id, telesale_name: item.telesale_name }];
-  });
-
-  if (updates.length > 0) {
-    await prisma.$transaction(async tx => {
-      for (const u of updates) {
-        await tx.privateGroupCustomer.update({
-          where: { id: u.relationId },
-          data: { assigned_to_id: u.telesale_id, assigned_to_name: u.telesale_name },
-        });
-      }
-    });
+    if (!item || item.assignment_status !== 'ASSIGNED' || !item.telesale_id || !item.telesale_name) continue;
+    if (!groupsByTelesale.has(item.telesale_id)) groupsByTelesale.set(item.telesale_id, { telesale_name: item.telesale_name, relationIds: [] });
+    groupsByTelesale.get(item.telesale_id)!.relationIds.push(r.id);
+    distributed++;
   }
 
-  return { totalCustomers: relations.length, distributed: updates.length };
+  if (groupsByTelesale.size > 0) {
+    await prisma.$transaction(async tx => {
+      for (const [telesale_id, g] of groupsByTelesale) {
+        await tx.privateGroupCustomer.updateMany({
+          where: { id: { in: g.relationIds } },
+          data: { assigned_to_id: telesale_id, assigned_to_name: g.telesale_name },
+        });
+      }
+    }, { timeout: 20000 });
+  }
+
+  return { totalCustomers: relations.length, distributed };
 }
 
 /** 1 quan hệ Customer-nhóm theo id — dùng để check quyền

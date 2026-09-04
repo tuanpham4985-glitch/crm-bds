@@ -488,18 +488,28 @@ test('private-group.ts: distributeGroupCustomersTransactional mặc định lấ
 test('private-group.ts: distributeGroupCustomersTransactional dùng transaction dạng INTERACTIVE (prisma.$transaction(async tx => ...)) — CÙNG pattern với mọi hàm ghi khác trong file (createManualCustomerWithGroupLink, importCustomersToPrivateGroupTransactional), KHÔNG dùng dạng sequential array ($transaction([...])) — hoặc chia hết hoặc không đổi gì, không nửa vời', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 1800);
+  const fnBody = src.slice(fnStart, fnStart + 2400);
   assert.match(fnBody, /await prisma\.\$transaction\(async tx => \{/);
-  assert.match(fnBody, /await tx\.privateGroupCustomer\.update\(\{/);
   assert.doesNotMatch(fnBody, /prisma\.\$transaction\(updates\)/);
+});
+
+test('private-group.ts: distributeGroupCustomersTransactional GOM update theo ĐÍCH (1 updateMany/Sale, KHÔNG phải 1 update/Customer) — fix bug thật: N update tuần tự vượt timeout mặc định 5s của Prisma interactive transaction trên group nhiều Customer (VD 27 dòng -> "A query cannot be executed on an expired transaction")', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
+  const fnBody = src.slice(fnStart, fnStart + 2400);
+  assert.match(fnBody, /await tx\.privateGroupCustomer\.updateMany\(\{/);
+  assert.match(fnBody, /where: \{ id: \{ in: g\.relationIds \} \}/);
+  assert.doesNotMatch(fnBody, /await tx\.privateGroupCustomer\.update\(\{/);
+  // timeout tường minh (dư dả cho trường hợp rất nhiều Sale được chọn -> nhiều updateMany hơn).
+  assert.match(fnBody, /\}, \{ timeout: \d+ \}\);/);
 });
 
 test('private-group.ts: distributeGroupCustomersTransactional KHÔNG đụng KhachHang.sale_phu_trach — CHỈ đổi assigned_to_id/name trên PrivateGroupCustomer (cùng bất biến reassignGroupCustomer)', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 1800);
+  const fnBody = src.slice(fnStart, fnStart + 2400);
   assert.doesNotMatch(fnBody, /khachHang/);
-  assert.match(fnBody, /data: \{ assigned_to_id: u\.telesale_id, assigned_to_name: u\.telesale_name \}/);
+  assert.match(fnBody, /data: \{ assigned_to_id: telesale_id, assigned_to_name: g\.telesale_name \}/);
 });
 
 test('campaign.ts: planDistribution KHÔNG bị đụng bởi task này (vẫn export nguyên vẹn cho cả Campaign lẫn Private Group dùng chung)', () => {
