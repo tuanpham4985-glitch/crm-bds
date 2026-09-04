@@ -14,7 +14,7 @@
 // xem import bên dưới.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, History, Layers, Loader2, Phone, RefreshCw, Save, Search, Users, X } from 'lucide-react';
-import type { PrivateGroup, PrivateGroupCustomer, CrmChamSocEntry, MucDoQuanTam, TrangThaiChamSoc } from '@/lib/types';
+import type { PrivateGroup, PrivateGroupCustomer, PrivateGroupMember, CrmChamSocEntry, MucDoQuanTam, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { bucketOf, CSKH_BUCKETS, isOverdue, type MembershipBucket } from '@/lib/campaign-cskh-bucket';
@@ -52,6 +52,7 @@ export function PrivateGroupCskhWorkQueue() {
   const [groups, setGroups] = useState<PrivateGroup[]>([]);
   const [groupId, setGroupId] = useState('');
   const [group, setGroup] = useState<PrivateGroup | null>(null);
+  const [members, setMembers] = useState<PrivateGroupMember[]>([]);
   const [relations, setRelations] = useState<PrivateGroupCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
@@ -74,7 +75,7 @@ export function PrivateGroupCskhWorkQueue() {
   }, []);
 
   const loadRelations = useCallback(async (id: string) => {
-    if (!id) { setGroup(null); setRelations([]); return; }
+    if (!id) { setGroup(null); setMembers([]); setRelations([]); return; }
     setLoading(true);
     try {
       const [detailRes, customersRes] = await Promise.all([
@@ -83,6 +84,7 @@ export function PrivateGroupCskhWorkQueue() {
       const [detail, customers] = await Promise.all([detailRes.json(), customersRes.json()]);
       if (!detail.success) throw new Error(detail.error || 'Không tải được thông tin Nhóm riêng');
       setGroup(detail.data.group);
+      setMembers(detail.data.members);
       if (!customers.success) throw new Error(customers.error || 'Không tải được danh sách khách hàng');
       setRelations(customers.data);
     } catch (error) { setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không tải được danh sách.' }); } finally { setLoading(false); }
@@ -114,7 +116,7 @@ export function PrivateGroupCskhWorkQueue() {
   };
 
   function canActOn(relation: PrivateGroupCustomer): boolean {
-    return canActOnPrivateGroupCustomer(user, isAdmin, group ?? undefined, relation);
+    return canActOnPrivateGroupCustomer(user, isAdmin, group ?? undefined, relation, members);
   }
 
   function openInteraction(relation: PrivateGroupCustomer) {

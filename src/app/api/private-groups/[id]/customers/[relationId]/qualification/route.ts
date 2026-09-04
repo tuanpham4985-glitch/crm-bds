@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmSessionUser } from '@/lib/crm-auth';
 import { canActOnPrivateGroupCustomer } from '@/lib/private-group-auth';
 import {
-  getPrivateGroup, getPrivateGroupCustomerById, PrivateGroupCustomerNotFoundError,
+  getPrivateGroup, getPrivateGroupCustomerById, listPrivateGroupMembers, PrivateGroupCustomerNotFoundError,
   updatePrivateGroupCustomerQualificationTransactional, type PrivateGroupCustomerQualificationPatchInput,
 } from '@/lib/crm-funnel/private-group';
 import { validateQualificationInput } from '@/lib/crm-funnel/qualification-input';
@@ -11,10 +11,11 @@ import type { MucDoQuanTam } from '@/lib/types';
 
 // PUT /api/private-groups/[id]/customers/[relationId]/qualification —
 // "Đánh giá" 1 Customer trong Nhóm riêng. Gate/authority CÙNG boundary với
-// interaction/route.ts (canActOnPrivateGroupCustomer, WRITE/ACT — KHÔNG phải
-// canViewGroupCustomer) — xem comment ở đó. Score/rank/status do server tự
-// tính (validateQualificationInput chặn client tự gửi), tái dùng NGUYÊN VẸN
-// công thức calculateLeadQuality qua updatePrivateGroupCustomerQualificationTransactional.
+// interaction/route.ts (canActOnPrivateGroupCustomer, WRITE/ACT — data nhóm
+// dùng CHUNG cho cả nhóm, xem comment ở đó) — xem comment đầu private-group-
+// auth.ts. Score/rank/status do server tự tính (validateQualificationInput
+// chặn client tự gửi), tái dùng NGUYÊN VẸN công thức calculateLeadQuality
+// qua updatePrivateGroupCustomerQualificationTransactional.
 export async function PUT(request: NextRequest, context: { params: Promise<{ id: string; relationId: string }> }) {
   const user = await getCrmSessionUser();
   if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
@@ -31,7 +32,8 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     if (!relation || relation.group_id !== id) {
       return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng này trong Nhóm riêng' }, { status: 404 });
     }
-    if (!canActOnPrivateGroupCustomer(user, group, relation)) {
+    const members = await listPrivateGroupMembers(id);
+    if (!canActOnPrivateGroupCustomer(user, group, relation, members)) {
       return NextResponse.json({ success: false, error: 'Bạn không có quyền đánh giá khách hàng này' }, { status: 403 });
     }
 

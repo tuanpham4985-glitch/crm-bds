@@ -167,37 +167,45 @@ test('filterGroupCustomersForUser — READ test matrix: Outsider C KHÔNG thấy
 });
 
 // ─── canActOnPrivateGroupCustomer (server-side WRITE/ACT) — test matrix bắt buộc ─
-// CỐ Ý tách khỏi canViewGroupCustomer: group membership KHÔNG mở rộng WRITE.
+// NEW policy (đổi so với bản trước): data Nhóm riêng dùng CHUNG cho cả nhóm
+// cùng chăm sóc — WRITE giờ ĐỒNG NHẤT với READ (group membership), KHÔNG còn
+// giới hạn entered_by/assigned_to. TÁI DÙNG NGUYÊN VẸN canViewGroupCustomer
+// nên cần truyền `members`.
 
-test('canActOnPrivateGroupCustomer — ACT test matrix: A act trên Customer A -> YES', () => {
-  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, CUSTOMER_A), true);
+test('canActOnPrivateGroupCustomer — ACT test matrix: A act trên Customer A -> YES (chính mình nhập)', () => {
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, CUSTOMER_A, MEMBERS), true);
 });
 
-test('canActOnPrivateGroupCustomer — ACT test matrix: A act trên Customer B -> NO (không phải entered_by/assigned_to, chỉ là đồng đội)', () => {
-  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, CUSTOMER_B), false);
+test('canActOnPrivateGroupCustomer — ACT test matrix: A act trên Customer B -> YES (NEW policy — A là member hợp lệ của group, dù không phải entered_by/assigned_to của B, VD note buổi chiều tiếp nối note của B buổi sáng)', () => {
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, CUSTOMER_B, MEMBERS), true);
 });
 
-test('canActOnPrivateGroupCustomer — ACT test matrix: B act trên Customer A -> NO', () => {
-  assert.equal(canActOnPrivateGroupCustomer(SALE_B, GROUP, CUSTOMER_A), false);
+test('canActOnPrivateGroupCustomer — ACT test matrix: B act trên Customer A -> YES (NEW policy, tương tự chiều ngược lại)', () => {
+  assert.equal(canActOnPrivateGroupCustomer(SALE_B, GROUP, CUSTOMER_A, MEMBERS), true);
 });
 
 test('canActOnPrivateGroupCustomer — ACT test matrix: B act trên Customer B -> YES', () => {
-  assert.equal(canActOnPrivateGroupCustomer(SALE_B, GROUP, CUSTOMER_B), true);
+  assert.equal(canActOnPrivateGroupCustomer(SALE_B, GROUP, CUSTOMER_B, MEMBERS), true);
 });
 
 test('canActOnPrivateGroupCustomer — ACT test matrix: Leader act được cả A và B (Leader authority hiện tại, không đổi)', () => {
-  assert.equal(canActOnPrivateGroupCustomer(LEADER, GROUP, CUSTOMER_A), true);
-  assert.equal(canActOnPrivateGroupCustomer(LEADER, GROUP, CUSTOMER_B), true);
+  assert.equal(canActOnPrivateGroupCustomer(LEADER, GROUP, CUSTOMER_A, MEMBERS), true);
+  assert.equal(canActOnPrivateGroupCustomer(LEADER, GROUP, CUSTOMER_B, MEMBERS), true);
 });
 
 test('canActOnPrivateGroupCustomer — ACT test matrix: Admin act được cả A và B', () => {
-  assert.equal(canActOnPrivateGroupCustomer(ADMIN, GROUP, CUSTOMER_A), true);
-  assert.equal(canActOnPrivateGroupCustomer(ADMIN, GROUP, CUSTOMER_B), true);
+  assert.equal(canActOnPrivateGroupCustomer(ADMIN, GROUP, CUSTOMER_A, MEMBERS), true);
+  assert.equal(canActOnPrivateGroupCustomer(ADMIN, GROUP, CUSTOMER_B, MEMBERS), true);
 });
 
-test('canActOnPrivateGroupCustomer — reassignment: Customer B đổi assigned_to=A -> A act trên B thành YES (ownership theo dõi assigned_to hiện tại, không phải snapshot cũ)', () => {
+test('canActOnPrivateGroupCustomer — Sale NGOÀI nhóm (không phải Leader/member) và không phải entered_by/assigned_to -> NO (ranh giới duy nhất còn lại là group membership)', () => {
+  assert.equal(canActOnPrivateGroupCustomer(OUTSIDER, GROUP, CUSTOMER_A, MEMBERS), false);
+  assert.equal(canActOnPrivateGroupCustomer(OUTSIDER, GROUP, CUSTOMER_B, MEMBERS), false);
+});
+
+test('canActOnPrivateGroupCustomer — reassignment: Customer B đổi assigned_to=A -> A act trên B vẫn YES (đã YES từ trước qua group membership, reassignment không đổi kết luận)', () => {
   const reassignedB = relation(SALE_B.id_nhan_vien, SALE_A.id_nhan_vien); // vẫn B nhập, nhưng giờ giao cho A
-  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, reassignedB), true);
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A, GROUP, reassignedB, MEMBERS), true);
 });
 
 // ─── MULTI-GROUP — 1 nhân viên thuộc nhiều Nhóm riêng cùng lúc ──────────────

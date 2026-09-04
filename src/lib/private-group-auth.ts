@@ -3,21 +3,21 @@
 // mọi hàm nhận object dữ liệu đã fetch sẵn, trả về boolean/mảng đã lọc —
 // route gọi các hàm này SAU KHI fetch, KHÔNG bao giờ tin filter phía client.
 //
-// RULE HIỆN TẠI (đã khoá lại theo quyết định business mới — thay thế rule cũ
-// "Sale chỉ thấy customer của chính mình"):
-//   READ tách biệt hoàn toàn với WRITE/ACT:
-//   - READ: Admin xem toàn bộ; Leader xem toàn bộ Customer của nhóm mình lead;
-//     Sale THÀNH VIÊN xem TOÀN BỘ Customer của MỌI nhóm mình là member (kể cả
-//     customer do đồng đội khác nhập/được giao) — group membership = quyền
-//     xem cả nhóm (canViewAllGroupCustomers/canViewGroupCustomer/
-//     filterGroupCustomersForUser/buildCustomerGroupBadges).
-//   - WRITE/ACT (CSKH "Chăm sóc"/"Đánh giá"): KHÔNG tự động mở rộng theo
-//     membership — Sale CHỈ thao tác được customer chính mình nhập
-//     (entered_by_id) hoặc được giao (assigned_to_id); Leader/Admin thao tác
-//     được toàn bộ (canActOnPrivateGroupCustomer — dùng cho server route
-//     interaction/qualification, KHÔNG dùng canViewGroupCustomer cho việc
-//     này nữa để tránh lẫn READ vào WRITE).
-// Sale ngoài nhóm (không phải Leader/member) vẫn KHÔNG thấy gì cả (cả 2 chiều).
+// RULE HIỆN TẠI (đã khoá lại theo quyết định business mới nhất — data Nhóm
+// riêng dùng CHUNG cho cả nhóm cùng chăm sóc, thay thế rule cũ "Sale chỉ
+// thao tác customer chính mình nhập/được giao"):
+//   READ và WRITE/ACT (CSKH "Chăm sóc"/"Đánh giá") ĐỒNG NHẤT theo group
+//   membership — Admin xem/thao tác toàn bộ; Leader xem/thao tác toàn bộ
+//   Customer của nhóm mình lead; Sale THÀNH VIÊN xem/thao tác được TOÀN BỘ
+//   Customer của MỌI nhóm mình là member (kể cả customer do đồng đội khác
+//   nhập/được giao) — VD Sale A note buổi sáng, Sale B note tiếp buổi chiều
+//   CÙNG 1 customer, cả 2 đều hợp lệ (canViewAllGroupCustomers/
+//   canViewGroupCustomer/canActOnPrivateGroupCustomer/filterGroupCustomersForUser/
+//   buildCustomerGroupBadges — canActOnPrivateGroupCustomer giờ TÁI DÙNG
+//   NGUYÊN VẸN canViewGroupCustomer, giữ tên riêng để route gọi rõ ý nghĩa).
+//   canReassignGroupCustomer (Admin/Leader-only, đổi assigned_to chính thức)
+//   KHÔNG đổi — "ai được note" khác với "ai chính thức phụ trách".
+// Sale ngoài nhóm (không phải Leader/member) vẫn KHÔNG thấy/thao tác được gì.
 import type { CrmSessionUser } from './crm-auth';
 import { isCrmAdmin } from './crm-auth';
 
@@ -131,19 +131,22 @@ export function canViewGroupCustomer(
 }
 
 /** Thao tác (CSKH "Chăm sóc"/"Đánh giá") 1 Customer-relation cụ thể (WRITE/
- * ACT) — CỐ Ý tách riêng khỏi canViewGroupCustomer (đó là READ): Admin/Leader
- * của group luôn true; Sale CHỈ true nếu chính mình nhập (entered_by_id) HOẶC
- * đang được giao (assigned_to_id) — Sale thành viên khác trong CÙNG group
- * (dù xem được customer này qua canViewGroupCustomer) KHÔNG tự động thao tác
- * được. Mirror CHÍNH XÁC canActOnPrivateGroupCustomer (client-side, xem
- * private-group-cskh-authority.ts) — sửa 1 bên phải sửa cả 2, xem comment ở
- * đó. Dùng cho POST .../interaction và PUT .../qualification. */
+ * ACT) — theo quyết định business MỚI (đổi so với bản trước): data của Nhóm
+ * riêng dùng CHUNG cho cả nhóm cùng chăm sóc (VD Sale A gọi buổi sáng ghi
+ * note, Sale B gọi buổi chiều ghi tiếp note cập nhật, CÙNG 1 customer) — nên
+ * WRITE giờ ĐỒNG NHẤT với READ: Admin, Leader, HOẶC bất kỳ Sale thành viên
+ * nào của group đó đều act được trên MỌI customer của group, không chỉ
+ * customer chính mình nhập/được giao. TÁI DÙNG NGUYÊN VẸN canViewGroupCustomer
+ * (KHÔNG viết lại điều kiện lần 2) — giữ TÊN HÀM riêng để route gọi rõ ý
+ * nghĩa "đây là gate ghi" (interaction/qualification); nếu sau này cần tách
+ * lại READ/WRITE, chỉ cần sửa ĐÚNG hàm này, không đụng canViewGroupCustomer.
+ * canReassignGroupCustomer (Admin/Leader-only, "giao lại" đổi assigned_to)
+ * KHÔNG đổi — quyết định AI phụ trách chính thức vẫn khác với "ai được note". */
 export function canActOnPrivateGroupCustomer(
-  user: CrmSessionUser, group: PrivateGroupLike, relation: PrivateGroupCustomerLike
+  user: CrmSessionUser, group: PrivateGroupLike, relation: PrivateGroupCustomerLike,
+  members: readonly PrivateGroupMemberLike[]
 ): boolean {
-  return isCrmAdmin(user) || isPrivateGroupLeader(user, group)
-    || relation.entered_by_id === user.id_nhan_vien
-    || relation.assigned_to_id === user.id_nhan_vien;
+  return canViewGroupCustomer(user, group, relation, members);
 }
 
 /** Lọc danh sách Customer-relation của 1 nhóm theo ĐÚNG quyền user (READ) —

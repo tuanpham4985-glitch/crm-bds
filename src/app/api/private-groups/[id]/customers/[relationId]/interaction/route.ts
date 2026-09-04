@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmSessionUser } from '@/lib/crm-auth';
 import { canActOnPrivateGroupCustomer } from '@/lib/private-group-auth';
 import {
-  getPrivateGroup, getPrivateGroupCustomerById, PrivateGroupCustomerNotFoundError,
+  getPrivateGroup, getPrivateGroupCustomerById, listPrivateGroupMembers, PrivateGroupCustomerNotFoundError,
   recordPrivateGroupCustomerInteractionTransactional,
 } from '@/lib/crm-funnel/private-group';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
@@ -13,13 +13,12 @@ const INTERESTS: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình'
 
 // POST /api/private-groups/[id]/customers/[relationId]/interaction — "Chăm
 // sóc" 1 Customer trong Nhóm riêng. Gate qua canActOnPrivateGroupCustomer
-// (WRITE/ACT — Admin/Leader của ĐÚNG group này, hoặc chính actor là
-// entered_by/assigned_to của ĐÚNG quan hệ này) — CỐ Ý KHÔNG dùng
-// canViewGroupCustomer (đó là READ đã mở rộng theo group membership): Sale
-// thành viên khác trong cùng group XEM được relation này nhưng KHÔNG được
-// act nếu không phải entered_by/assigned_to, KHÔNG phải nút UI ẩn/hiện quyết
-// định. KHÔNG tạo CampaignMembership/CrmHandoff/Pipeline — chỉ ghi vào
-// private_group_customers (xem recordPrivateGroupCustomerInteractionTransactional).
+// (WRITE/ACT — data nhóm dùng CHUNG cho cả nhóm cùng chăm sóc theo quyết
+// định business mới nhất: Admin, Leader, HOẶC BẤT KỲ Sale thành viên nào
+// của ĐÚNG group này đều act được, KHÔNG chỉ entered_by/assigned_to — xem
+// comment đầu private-group-auth.ts). KHÔNG tạo CampaignMembership/
+// CrmHandoff/Pipeline — chỉ ghi vào private_group_customers (xem
+// recordPrivateGroupCustomerInteractionTransactional).
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string; relationId: string }> }) {
   const user = await getCrmSessionUser();
   if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
@@ -41,7 +40,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (!relation || relation.group_id !== id) {
       return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng này trong Nhóm riêng' }, { status: 404 });
     }
-    if (!canActOnPrivateGroupCustomer(user, group, relation)) {
+    const members = await listPrivateGroupMembers(id);
+    if (!canActOnPrivateGroupCustomer(user, group, relation, members)) {
       return NextResponse.json({ success: false, error: 'Bạn không có quyền chăm sóc khách hàng này' }, { status: 403 });
     }
 

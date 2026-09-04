@@ -68,39 +68,51 @@ test('matchesPrivateGroupCustomerQueueFilter: cả search lẫn bucket phải c�
   assert.equal(matchesPrivateGroupCustomerQueueFilter(r, { search: 'khong ton tai', bucket: 'Quan tâm' }), false);
 });
 
-// ─── canActOnPrivateGroupCustomer — client-safe gate (test bắt buộc #2/#3/#4) ──
+// ─── canActOnPrivateGroupCustomer — client-safe gate (NEW policy: data nhóm
+// dùng CHUNG cho cả nhóm cùng chăm sóc — WRITE = READ theo group membership,
+// KHÔNG còn giới hạn entered_by/assigned_to) ────────────────────────────────
 
 const ADMIN_ACTOR = { id_nhan_vien: 'U_ADMIN', ho_ten: 'Admin' };
 const LEADER_ACTOR = { id_nhan_vien: 'U_LEADER', ho_ten: 'Leader' };
 const SALE_A_ACTOR = { id_nhan_vien: 'U_SALE_A', ho_ten: 'Sale A' };
 const SALE_B_ACTOR = { id_nhan_vien: 'U_SALE_B', ho_ten: 'Sale B' };
+const OUTSIDER_ACTOR = { id_nhan_vien: 'U_OUTSIDER', ho_ten: 'Outsider' };
 const GROUP = { leader_id: LEADER_ACTOR.id_nhan_vien };
+const GROUP_MEMBERS = [
+  { employee_id: SALE_A_ACTOR.id_nhan_vien },
+  { employee_id: SALE_B_ACTOR.id_nhan_vien },
+];
 
 test('canActOnPrivateGroupCustomer: Admin luôn true (test bắt buộc #2 — Leader/Admin xem/act toàn bộ)', () => {
   const r = { entered_by_id: SALE_B_ACTOR.id_nhan_vien, assigned_to_id: SALE_B_ACTOR.id_nhan_vien };
-  assert.equal(canActOnPrivateGroupCustomer(ADMIN_ACTOR, true, GROUP, r), true);
+  assert.equal(canActOnPrivateGroupCustomer(ADMIN_ACTOR, true, GROUP, r, GROUP_MEMBERS), true);
 });
 
 test('canActOnPrivateGroupCustomer: Leader của ĐÚNG group -> true dù không phải entered_by/assigned_to (test bắt buộc #2)', () => {
   const r = { entered_by_id: SALE_A_ACTOR.id_nhan_vien, assigned_to_id: SALE_B_ACTOR.id_nhan_vien };
-  assert.equal(canActOnPrivateGroupCustomer(LEADER_ACTOR, false, GROUP, r), true);
+  assert.equal(canActOnPrivateGroupCustomer(LEADER_ACTOR, false, GROUP, r, GROUP_MEMBERS), true);
 });
 
-test('canActOnPrivateGroupCustomer: Sale A KHÔNG thấy/act customer của Sale B trong CÙNG group (test bắt buộc #3)', () => {
+test('canActOnPrivateGroupCustomer: Sale A act ĐƯỢC customer của Sale B trong CÙNG group (NEW policy — thay thế rule cũ "chỉ entered_by/assigned_to"; VD Sale A note buổi chiều tiếp nối note Sale B ghi buổi sáng)', () => {
   const r = { entered_by_id: SALE_B_ACTOR.id_nhan_vien, assigned_to_id: SALE_B_ACTOR.id_nhan_vien };
-  assert.equal(canActOnPrivateGroupCustomer(SALE_A_ACTOR, false, GROUP, r), false);
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A_ACTOR, false, GROUP, r, GROUP_MEMBERS), true);
 });
 
-test('canActOnPrivateGroupCustomer: Sale chỉ act được customer chính mình nhập hoặc được giao (test bắt buộc #4)', () => {
+test('canActOnPrivateGroupCustomer: Sale act được customer chính mình nhập hoặc được giao (vẫn đúng — nay chỉ là 1 trong các lý do dẫn tới true, không còn là ĐIỀU KIỆN DUY NHẤT)', () => {
   const entered = { entered_by_id: SALE_A_ACTOR.id_nhan_vien, assigned_to_id: SALE_B_ACTOR.id_nhan_vien };
   const assigned = { entered_by_id: SALE_B_ACTOR.id_nhan_vien, assigned_to_id: SALE_A_ACTOR.id_nhan_vien };
-  assert.equal(canActOnPrivateGroupCustomer(SALE_A_ACTOR, false, GROUP, entered), true);
-  assert.equal(canActOnPrivateGroupCustomer(SALE_A_ACTOR, false, GROUP, assigned), true);
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A_ACTOR, false, GROUP, entered, GROUP_MEMBERS), true);
+  assert.equal(canActOnPrivateGroupCustomer(SALE_A_ACTOR, false, GROUP, assigned, GROUP_MEMBERS), true);
+});
+
+test('canActOnPrivateGroupCustomer: Sale NGOÀI nhóm (không phải Leader/member) và không phải entered_by/assigned_to -> false (ranh giới duy nhất còn lại)', () => {
+  const r = { entered_by_id: SALE_A_ACTOR.id_nhan_vien, assigned_to_id: SALE_A_ACTOR.id_nhan_vien };
+  assert.equal(canActOnPrivateGroupCustomer(OUTSIDER_ACTOR, false, GROUP, r, GROUP_MEMBERS), false);
 });
 
 test('canActOnPrivateGroupCustomer: actor null -> false, không throw', () => {
   const r = { entered_by_id: SALE_A_ACTOR.id_nhan_vien, assigned_to_id: SALE_A_ACTOR.id_nhan_vien };
-  assert.equal(canActOnPrivateGroupCustomer(null, false, GROUP, r), false);
+  assert.equal(canActOnPrivateGroupCustomer(null, false, GROUP, r, GROUP_MEMBERS), false);
 });
 
 // ─── Schema — additive fields, KHÔNG đụng cột đã có (test bắt buộc #4/#8) ────
@@ -186,25 +198,26 @@ test('membership-workflow.ts (Campaign, KHÔNG bị sửa bởi task này) KHÔN
 
 // ─── API routes — permission gate + error mapping (test bắt buộc #10) ───────
 
-test('POST .../interaction: 401 nếu chưa đăng nhập, gate canActOnPrivateGroupCustomer (WRITE/ACT, KHÔNG phải canViewGroupCustomer — group membership KHÔNG mở rộng WRITE) TRƯỚC khi ghi, 403 nếu không có quyền (test bắt buộc #10)', () => {
+test('POST .../interaction: 401 nếu chưa đăng nhập, gate canActOnPrivateGroupCustomer(user, group, relation, members) TRƯỚC khi ghi, 403 nếu không có quyền (test bắt buộc #10)', () => {
   const src = read(INTERACTION_ROUTE_PATH);
   assert.match(src, /if\s*\(!user\)\s*return NextResponse\.json\(\{ success: false, error: 'Chưa đăng nhập' \}, \{ status: 401 \}\);/);
-  assert.match(src, /if\s*\(!canActOnPrivateGroupCustomer\(user, group, relation\)\)/);
-  const idx = src.indexOf('if (!canActOnPrivateGroupCustomer(user, group, relation))');
+  assert.match(src, /if\s*\(!canActOnPrivateGroupCustomer\(user, group, relation, members\)\)/);
+  const idx = src.indexOf('if (!canActOnPrivateGroupCustomer(user, group, relation, members))');
   assert.match(src.slice(idx, idx + 200), /status:\s*403/);
 });
 
-test('PUT .../qualification: 401 nếu chưa đăng nhập, gate canActOnPrivateGroupCustomer (WRITE/ACT) TRƯỚC khi ghi, 403 nếu không có quyền, validateQualificationInput chặn score/rank/status tự nhập (test bắt buộc #10)', () => {
+test('PUT .../qualification: 401 nếu chưa đăng nhập, gate canActOnPrivateGroupCustomer(user, group, relation, members) TRƯỚC khi ghi, 403 nếu không có quyền, validateQualificationInput chặn score/rank/status tự nhập (test bắt buộc #10)', () => {
   const src = read(QUALIFICATION_ROUTE_PATH);
   assert.match(src, /if\s*\(!user\)\s*return NextResponse\.json\(\{ success: false, error: 'Chưa đăng nhập' \}, \{ status: 401 \}\);/);
-  assert.match(src, /if\s*\(!canActOnPrivateGroupCustomer\(user, group, relation\)\)/);
+  assert.match(src, /if\s*\(!canActOnPrivateGroupCustomer\(user, group, relation, members\)\)/);
   assert.match(src, /validateQualificationInput\(body\)/);
 });
 
-test('interaction/qualification routes: KHÔNG gọi canViewGroupCustomer(...) (READ đã mở rộng theo group membership) để gate ghi — READ và WRITE PHẢI tách biệt (task hiện tại, xem comment đầu private-group-auth.ts); comment giải thích lý do KHÔNG tính', () => {
+test('interaction/qualification routes: gọi ĐÚNG canActOnPrivateGroupCustomer (tên hàm riêng cho WRITE) — KHÔNG gọi thẳng canViewGroupCustomer — dù bên dưới (private-group-auth.ts) giờ 2 hàm cùng logic theo policy mới, route vẫn giữ tên ngữ nghĩa rõ ràng, đã fetch members qua listPrivateGroupMembers TRƯỚC khi gate', () => {
   for (const path of [INTERACTION_ROUTE_PATH, QUALIFICATION_ROUTE_PATH]) {
     const src = read(path);
-    assert.doesNotMatch(src, /canViewGroupCustomer\(/, `${path} không được GỌI canViewGroupCustomer(...) để gate WRITE`);
+    assert.doesNotMatch(src, /canViewGroupCustomer\(/, `${path} không được GỌI thẳng canViewGroupCustomer(...) để gate WRITE`);
+    assert.match(src, /const members = await listPrivateGroupMembers\(id\);/);
   }
 });
 
