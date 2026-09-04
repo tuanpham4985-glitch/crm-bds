@@ -442,9 +442,22 @@ test('POST .../customers/distribute: gate canReassignGroupCustomer (Admin/Leader
 
 test('POST .../customers/distribute: validate member_ids PHẢI là Leader hoặc member ĐÃ có trong ĐÚNG nhóm này — không chia cho người ngoài nhóm (cùng rule PATCH reassign đơn)', () => {
   const src = read(GROUP_DISTRIBUTE_ROUTE_PATH);
-  assert.match(src, /if \(memberId === group\.leader_id\)/);
-  assert.match(src, /members\.find\(m => m\.employee_id === memberId\)/);
+  assert.match(src, /function resolveGroupPerson\(personId: string\): TelesaleRef \| null \{/);
+  assert.match(src, /if \(personId === group!\.leader_id\)/);
+  assert.match(src, /members\.find\(m => m\.employee_id === personId\)/);
   assert.match(src, /'Chỉ được chia cho Leader hoặc Sale thành viên của chính nhóm này'/);
+});
+
+test('POST .../customers/distribute: source_assigned_to_id (optional) CŨNG phải validate qua resolveGroupPerson — cùng rule "chỉ Leader/member của ĐÚNG nhóm này" như member_ids, không tin id lạ từ client', () => {
+  const src = read(GROUP_DISTRIBUTE_ROUTE_PATH);
+  assert.match(src, /body\?\.source_assigned_to_id === 'string'/);
+  assert.match(src, /const resolvedSource = resolveGroupPerson\(body\.source_assigned_to_id\.trim\(\)\);/);
+  assert.match(src, /'Nguồn lọc "đang giao cho" phải là Leader hoặc Sale thành viên của chính nhóm này'/);
+});
+
+test('POST .../customers/distribute: onlyCurrentlyAssignedToId truyền xuống distributeGroupCustomersTransactional CHỈ khi source_assigned_to_id thực sự được gửi lên (undefined khi bỏ trống -> chia lại TOÀN BỘ nhóm, không phải lỗi âm thầm)', () => {
+  const src = read(GROUP_DISTRIBUTE_ROUTE_PATH);
+  assert.match(src, /distributeGroupCustomersTransactional\(\{ groupId: id, telesales, onlyCurrentlyAssignedToId \}\)/);
 });
 
 test('POST .../customers/distribute: thiếu member_ids -> 400, không gọi tới distributeGroupCustomersTransactional', () => {
@@ -465,27 +478,28 @@ test('private-group.ts: distributeGroupCustomersTransactional TÁI DÙNG NGUYÊN
   assert.match(fnBody, /mode: 'round_robin',/);
 });
 
-test('private-group.ts: distributeGroupCustomersTransactional lấy TOÀN BỘ Customer hiện có của nhóm (findMany theo group_id) — không lọc theo assigned_to hiện tại (đúng ý nghĩa "chia đều lại toàn bộ")', () => {
+test('private-group.ts: distributeGroupCustomersTransactional mặc định lấy TOÀN BỘ Customer của nhóm (findMany theo group_id), nhưng lọc thêm theo assigned_to_id khi onlyCurrentlyAssignedToId có giá trị — tách khách vừa dồn vào 1 người khỏi khách đã giao ổn định từ trước (task hiện tại)', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 1200);
-  assert.match(fnBody, /prisma\.privateGroupCustomer\.findMany\(\{\s*where: \{ group_id: input\.groupId \}/);
+  const fnBody = src.slice(fnStart, fnStart + 1400);
+  assert.match(fnBody, /where: \{\s*group_id: input\.groupId,\s*\.\.\.\(input\.onlyCurrentlyAssignedToId \? \{ assigned_to_id: input\.onlyCurrentlyAssignedToId \} : \{\}\),\s*\},/);
 });
 
-test('private-group.ts: distributeGroupCustomersTransactional gộp update vào 1 prisma.$transaction([...]) — hoặc chia hết hoặc không đổi gì, không nửa vời', () => {
+test('private-group.ts: distributeGroupCustomersTransactional dùng transaction dạng INTERACTIVE (prisma.$transaction(async tx => ...)) — CÙNG pattern với mọi hàm ghi khác trong file (createManualCustomerWithGroupLink, importCustomersToPrivateGroupTransactional), KHÔNG dùng dạng sequential array ($transaction([...])) — hoặc chia hết hoặc không đổi gì, không nửa vời', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 1600);
-  assert.match(fnBody, /prisma\.\$transaction\(updates\)/);
-  assert.match(fnBody, /prisma\.privateGroupCustomer\.update\(\{/);
+  const fnBody = src.slice(fnStart, fnStart + 1800);
+  assert.match(fnBody, /await prisma\.\$transaction\(async tx => \{/);
+  assert.match(fnBody, /await tx\.privateGroupCustomer\.update\(\{/);
+  assert.doesNotMatch(fnBody, /prisma\.\$transaction\(updates\)/);
 });
 
 test('private-group.ts: distributeGroupCustomersTransactional KHÔNG đụng KhachHang.sale_phu_trach — CHỈ đổi assigned_to_id/name trên PrivateGroupCustomer (cùng bất biến reassignGroupCustomer)', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 1600);
+  const fnBody = src.slice(fnStart, fnStart + 1800);
   assert.doesNotMatch(fnBody, /khachHang/);
-  assert.match(fnBody, /data: \{ assigned_to_id: item\.telesale_id, assigned_to_name: item\.telesale_name \}/);
+  assert.match(fnBody, /data: \{ assigned_to_id: u\.telesale_id, assigned_to_name: u\.telesale_name \}/);
 });
 
 test('campaign.ts: planDistribution KHÔNG bị đụng bởi task này (vẫn export nguyên vẹn cho cả Campaign lẫn Private Group dùng chung)', () => {
@@ -498,8 +512,14 @@ test('PrivateGroupPanel.tsx: nút "Chia đều" CHỈ hiện khi canManage (Admi
   assert.match(src, /\{canManage && customers\.length > 0 && !showDistribute && \(/);
 });
 
-test('PrivateGroupPanel.tsx: "Chia đều" POST tới ĐÚNG route /api/private-groups/{groupId}/customers/distribute với member_ids đã chọn', () => {
+test('PrivateGroupPanel.tsx: "Chia đều" POST tới ĐÚNG route /api/private-groups/{groupId}/customers/distribute với member_ids đã chọn + source_assigned_to_id (lọc theo người đang giao, task hiện tại)', () => {
   const src = read(PRIVATE_GROUP_PANEL_PATH);
   assert.match(src, /fetch\(`\/api\/private-groups\/\$\{groupId\}\/customers\/distribute`, \{/);
-  assert.match(src, /body: JSON\.stringify\(\{ member_ids: selectedIds \}\)/);
+  assert.match(src, /body: JSON\.stringify\(\{ member_ids: selectedIds, source_assigned_to_id: sourceId \|\| undefined \}\)/);
+});
+
+test('PrivateGroupPanel.tsx: dropdown "Chỉ chia khách đang giao cho" mặc định RỖNG (= toàn bộ nhóm) — CÓ chọn 1 người mới thu hẹp phạm vi, không mặc định thu hẹp âm thầm', () => {
+  const src = read(PRIVATE_GROUP_PANEL_PATH);
+  assert.match(src, /const \[sourceId, setSourceId\] = useState\(''\);/);
+  assert.match(src, /Chỉ chia khách đang giao cho/);
 });

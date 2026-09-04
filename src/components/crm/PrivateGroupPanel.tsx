@@ -410,7 +410,7 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
                 {showDistribute && group && (
                   <DistributeGroupCustomersForm
                     groupId={group.id}
-                    customerCount={customers.length}
+                    customers={customers}
                     eligibleAssignees={eligibleAssignees}
                     onCancel={() => setShowDistribute(false)}
                     onDistributed={() => load()}
@@ -716,9 +716,9 @@ function ImportCustomersToGroupForm({ groupId, groupName, onCancel, onImported }
  * hiện tại). POST /api/private-groups/{groupId}/customers/distribute — CHỈ
  * ghi đè assigned_to trên PrivateGroupCustomer, KHÔNG đụng KhachHang.
  * sale_phu_trach (2 authority độc lập, cùng nguyên tắc reassignGroupCustomer). */
-function DistributeGroupCustomersForm({ groupId, customerCount, eligibleAssignees, onCancel, onDistributed }: {
+function DistributeGroupCustomersForm({ groupId, customers, eligibleAssignees, onCancel, onDistributed }: {
   groupId: string;
-  customerCount: number;
+  customers: PrivateGroupCustomer[];
   eligibleAssignees: { id_nhan_vien: string; ho_ten: string }[];
   onCancel: () => void;
   onDistributed: () => void;
@@ -727,6 +727,13 @@ function DistributeGroupCustomersForm({ groupId, customerCount, eligibleAssignee
   // hàng loạt, giờ chia đều lại cho cả nhóm), User vẫn bỏ chọn bớt được nếu
   // chỉ muốn chia cho 1 phần.
   const [selectedIds, setSelectedIds] = useState<string[]>(eligibleAssignees.map(p => p.id_nhan_vien));
+  // "Chỉ chia khách đang giao cho" — mặc định RỖNG = chia lại TOÀN BỘ khách
+  // của nhóm (hành vi cũ). CÓ chọn -> chỉ xáo trộn phần đang dồn vào 1 người
+  // (VD vừa Import Excel/Thêm khách hàng loạt), KHÔNG đụng khách đã được giao
+  // ổn định từ trước cho người khác trong CÙNG nhóm (task hiện tại — tránh
+  // "Chia đều" vô tình xáo trộn cả khách đã phân sẵn, chỉ nên gom đúng phần
+  // vừa đổ dồn vào 1 người).
+  const [sourceId, setSourceId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ totalCustomers: number; distributed: number } | null>(null);
@@ -735,6 +742,12 @@ function DistributeGroupCustomersForm({ groupId, customerCount, eligibleAssignee
     setSelectedIds(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
   };
 
+  // Đếm số khách đang giao cho từng người — hiện kèm tên trong dropdown lọc
+  // nguồn, để User biết ngay "dồn vào ai" trước khi chọn (VD "Vũ Thị Thu (27)").
+  const countByAssignee = new Map<string, number>();
+  for (const c of customers) countByAssignee.set(c.assigned_to_id, (countByAssignee.get(c.assigned_to_id) || 0) + 1);
+  const scopedCount = sourceId ? (countByAssignee.get(sourceId) || 0) : customers.length;
+
   const handleSubmit = async () => {
     if (selectedIds.length === 0) return;
     setSubmitting(true);
@@ -742,7 +755,7 @@ function DistributeGroupCustomersForm({ groupId, customerCount, eligibleAssignee
     try {
       const res = await fetch(`/api/private-groups/${groupId}/customers/distribute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ member_ids: selectedIds }),
+        body: JSON.stringify({ member_ids: selectedIds, source_assigned_to_id: sourceId || undefined }),
       });
       const data = await res.json();
       if (!data.success) { setError(data.error || 'Không thể chia đều'); return; }
@@ -759,7 +772,7 @@ function DistributeGroupCustomersForm({ groupId, customerCount, eligibleAssignee
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 14, background: 'var(--bg-card)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
         <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-          Chia đều (round-robin) toàn bộ <strong style={{ color: 'var(--text-primary)' }}>{customerCount}</strong> khách hàng hiện có của nhóm cho các Sale được chọn bên dưới — GHI ĐÈ "Đang giao cho" hiện tại.
+          Chia đều (round-robin) <strong style={{ color: 'var(--text-primary)' }}>{scopedCount}</strong> khách hàng cho các Sale được chọn bên dưới — GHI ĐÈ "Đang giao cho" hiện tại.
         </div>
         <button className="btn btn-ghost btn-icon btn-sm" onClick={onCancel}><X size={14} /></button>
       </div>
@@ -767,6 +780,18 @@ function DistributeGroupCustomersForm({ groupId, customerCount, eligibleAssignee
 
       {!result ? (
         <>
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label" style={{ fontSize: 12 }}>Chỉ chia khách đang giao cho</label>
+            <select className="form-select" style={{ fontSize: 12.5 }} value={sourceId} onChange={e => setSourceId(e.target.value)}>
+              <option value="">— Toàn bộ khách của nhóm ({customers.length}) —</option>
+              {eligibleAssignees.map(p => (
+                <option key={p.id_nhan_vien} value={p.id_nhan_vien}>{p.ho_ten} ({countByAssignee.get(p.id_nhan_vien) || 0})</option>
+              ))}
+            </select>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              Chọn 1 người nếu chỉ muốn chia lại phần vừa đổ dồn vào họ (VD sau khi Import Excel/Thêm khách hàng loạt) — khách đã giao ổn định cho người khác sẽ không bị đụng tới.
+            </p>
+          </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
             {eligibleAssignees.map(p => (
               <label key={p.id_nhan_vien} style={{
@@ -780,7 +805,7 @@ function DistributeGroupCustomersForm({ groupId, customerCount, eligibleAssignee
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary btn-sm" disabled={selectedIds.length === 0 || submitting} onClick={handleSubmit}>
+            <button className="btn btn-primary btn-sm" disabled={selectedIds.length === 0 || scopedCount === 0 || submitting} onClick={handleSubmit}>
               {submitting ? <Loader2 size={14} className="spin" /> : <Shuffle size={14} />} Chia đều cho {selectedIds.length} Sale
             </button>
             <button className="btn btn-secondary btn-sm" onClick={onCancel}>Hủy</button>

@@ -317,18 +317,31 @@ export interface DistributeGroupCustomersInput {
    * đều, theo ĐÚNG thứ tự truyền vào (round-robin lấy customerIds[i] ->
    * telesales[i % n], xem planDistribution). */
   telesales: readonly TelesaleRef[];
+  /** CHỈ chia lại Customer đang được giao (assigned_to_id) cho ĐÚNG người
+   * này — dùng để tách khách "vừa import/dồn hết vào 1 người" khỏi khách đã
+   * được giao ổn định từ trước trong CÙNG nhóm (VD Leader import 30 khách,
+   * cả 30 đều assigned_to = Leader; "Chia đều" chỉ nên xáo trộn đúng 30 khách
+   * đó, KHÔNG đụng khách đã giao cho Sale khác từ trước lần import này).
+   * undefined -> chia lại TOÀN BỘ Customer của nhóm (hành vi cũ, dùng khi
+   * thực sự muốn rebalance lại cả nhóm). */
+  onlyCurrentlyAssignedToId?: string;
 }
 
 export interface DistributeGroupCustomersResult {
+  /** Số Customer THAM GIA lần chia này (đã lọc theo onlyCurrentlyAssignedToId
+   * nếu có) — KHÔNG phải tổng số Customer của cả nhóm khi có filter. */
   totalCustomers: number;
   /** Số relation vừa đổi assigned_to trong lần chia này. */
   distributed: number;
 }
 
 /**
- * "Chia đều" (round-robin) TOÀN BỘ Customer HIỆN CÓ của 1 nhóm cho các Sale
- * được chọn — dùng cho nút "Chia đều" trong group detail (cùng nhu cầu với
- * "Chia đều" khi phân data vào Campaign, task hiện tại).
+ * "Chia đều" (round-robin) Customer của 1 nhóm cho các Sale được chọn — dùng
+ * cho nút "Chia đều" trong group detail (cùng nhu cầu với "Chia đều" khi
+ * phân data vào Campaign, task hiện tại). Mặc định (KHÔNG truyền
+ * onlyCurrentlyAssignedToId) áp dụng cho TOÀN BỘ Customer của nhóm; truyền
+ * onlyCurrentlyAssignedToId để CHỈ chia lại phần đang dồn vào 1 người (xem
+ * comment field đó) — filter TRỰC TIẾP ở query findMany, không tự loại sau.
  *
  * TÁI DÙNG NGUYÊN VẸN planDistribution (campaign.ts, THUẦN — customerIds[i]
  * -> telesales[i % n], deterministic theo đúng thứ tự truyền vào) — KHÔNG
@@ -340,15 +353,23 @@ export interface DistributeGroupCustomersResult {
  * cho yêu cầu "chia đều", không cần mode 'quantity'/'none' của Campaign ở
  * đây — planDistribution vẫn hỗ trợ đủ nếu sau này cần mở rộng).
  *
- * Toàn bộ update gộp vào 1 prisma.$transaction([...]) — hoặc chia đều hết,
- * hoặc không đổi gì (tránh trạng thái nửa vời nếu 1 update lỗi giữa chừng).
+ * Dùng transaction dạng INTERACTIVE (prisma.$transaction(async tx => ...)) —
+ * CÙNG pattern với mọi hàm ghi khác trong file này (createManualCustomerWithGroupLink,
+ * importCustomersToPrivateGroupTransactional...), KHÔNG dùng dạng "sequential
+ * array" ($transaction([...])) — driver adapter (@prisma/adapter-pg) không
+ * xử lý ổn định dạng array cho nhiều update cùng lúc trong setup hiện tại
+ * (khác Rust query engine cũ), gây lỗi runtime dù code hợp lệ về mặt kiểu.
+ * Hoặc chia đều hết, hoặc không đổi gì (rollback nếu 1 update lỗi giữa chừng).
  */
 export async function distributeGroupCustomersTransactional(
   input: DistributeGroupCustomersInput
 ): Promise<DistributeGroupCustomersResult> {
   assertTransactionalCrm();
   const relations = await prisma.privateGroupCustomer.findMany({
-    where: { group_id: input.groupId },
+    where: {
+      group_id: input.groupId,
+      ...(input.onlyCurrentlyAssignedToId ? { assigned_to_id: input.onlyCurrentlyAssignedToId } : {}),
+    },
     orderBy: { created_at: 'asc' },
     select: { id: true, customer_id: true },
   });
@@ -364,12 +385,19 @@ export async function distributeGroupCustomersTransactional(
   const updates = relations.flatMap(r => {
     const item = planByCustomerId.get(r.customer_id);
     if (!item || item.assignment_status !== 'ASSIGNED' || !item.telesale_id || !item.telesale_name) return [];
-    return [prisma.privateGroupCustomer.update({
-      where: { id: r.id },
-      data: { assigned_to_id: item.telesale_id, assigned_to_name: item.telesale_name },
-    })];
+    return [{ relationId: r.id, telesale_id: item.telesale_id, telesale_name: item.telesale_name }];
   });
-  if (updates.length > 0) await prisma.$transaction(updates);
+
+  if (updates.length > 0) {
+    await prisma.$transaction(async tx => {
+      for (const u of updates) {
+        await tx.privateGroupCustomer.update({
+          where: { id: u.relationId },
+          data: { assigned_to_id: u.telesale_id, assigned_to_name: u.telesale_name },
+        });
+      }
+    });
+  }
 
   return { totalCustomers: relations.length, distributed: updates.length };
 }
