@@ -796,6 +796,11 @@ export interface TongHopRow {
   sale_phu_trach: string;
   ngay_ky: string;     // Ngày ký (for date filtering)
   ngay_coc?: string;
+  /** "Tỷ lệ phí hh/thực nhận" — dạng tỷ lệ 0-1 (đã /100 qua num(), VD 70% ->
+   * 0.7). undefined nếu sheet không có cột này hoặc ô trống — dùng cho
+   * eligibility "Doanh số tính du lịch" (xem dashboard-travel-sales.ts),
+   * KHÔNG suy đoán giá trị khi thiếu. */
+  ty_le_phi_hh_thuc_nhan?: number;
 }
 
 // Normalize Vietnamese header text for flexible column matching
@@ -806,6 +811,72 @@ function normVi(s: string): string {
     .replace(/[̀-ͯ]/g, '')
     .replace(/đ/g, 'd')
     .replace(/\s+/g, '');
+}
+
+export interface TongHopColumnMapping {
+  colGiaTri: string | null;
+  colLoaiHinh: string | null;
+  colNguon: string | null;
+  colChiNhanh: string | null;
+  colPhongKD: string | null;
+  colSale: string | null;
+  colDuAn: string | null;
+  colTyLePhiHH: string | null;
+  colNgayCocStrict: string | null;
+  colNgaySigned: string | null;
+}
+
+/**
+ * Resolve cột thật trong sheet "Tổng hợp giao dịch chi tiết" theo header thô
+ * — THUẦN (không đụng Sheets API), tách riêng để test được với header array
+ * thật mà không cần gọi Google Sheets (xem tests/crm/tong-hop-columns.test.ts).
+ *
+ * colSale: PHẢI ưu tiên exact match "Sale bán"/"Sale phụ trách" TRƯỚC bất kỳ
+ * pattern rộng nào. "Quà tặng sale từ CĐT" (cột số tiền quà tặng, đứng TRƯỚC
+ * "Sale bán" trong sheet thật) cũng chứa substring "sale" — dùng
+ * findCol('sale', ...) sẽ khớp nhầm cột đó trước (cột luôn trống), khiến
+ * sale_phu_trach rỗng cho MỌI dòng. Đây CHÍNH LÀ bug đã audit khiến Race
+ * leaderboard/"Doanh số tính du lịch" không gán được tên Sale nào (xem
+ * dashboard-travel-sales.ts). Cùng nguyên tắc exact-match-trước đã dùng cho
+ * colLoaiHinh bên dưới.
+ */
+export function resolveTongHopColumns(h: readonly string[]): TongHopColumnMapping {
+  // Find a column whose normalized name matches any of the given patterns
+  const findCol = (...patterns: string[]): string | null => {
+    for (const col of h) {
+      const norm = normVi(col);
+      if (patterns.some(p => norm.includes(p))) return col;
+    }
+    return null;
+  };
+
+  const colGiaTri  = findCol('giatinhhh', 'giatri', 'doanhso', 'giaban', 'tongtien', 'giatrihd', 'doanhso');
+  // Prioritize exact "Loại căn" column (apartment type codes: 1BR, 2BR, etc.)
+  // before broader "Loại hình" patterns, to avoid grabbing the wrong column
+  const colLoaiHinh = h.find(c => normVi(c) === 'loaican')
+    || h.find(c => { const n = normVi(c); return n.includes('loai') && n.includes('can') && !n.includes('hinh'); })
+    || findCol('loaihinhcan', 'loaihinh', 'phanloai', 'caothap', 'tang')
+    || null;
+  const colNguon   = findCol('nguon', 'loainguon', 'loaigd', 'noibo', 'doitac', 'phanloaigd', 'loaihinhtd');
+  const colChiNhanh = findCol('chinhanh', 'vuongkd', 'khuvuc', 'region', 'mien', 'vung');
+  const colPhongKD = findCol('phongkd', 'phongban', 'khoikd', 'nhomkd', 'team');
+  const colSale = h.find(c => normVi(c) === 'saleban')
+    || h.find(c => normVi(c) === 'salephutrach')
+    || findCol('salephutrach', 'sale', 'nhanvien', 'nguoiphutrach', 'tuvan', 'chamsoc')
+    || null;
+  const colDuAn    = findCol('duan', 'tenduan', 'tenduan', 'project');
+  // "Tỷ lệ phí hh/thực nhận" — exact match CHỈ, sheet có nhiều cột "% ..."
+  // khác nhau (% Tỷ lệ HH NHẬN VỀ, % Trả sale, ...) nên KHÔNG dùng substring
+  // pattern rộng cho cột này — deterministic, không đoán.
+  const colTyLePhiHH = h.find(c => normVi(c) === 'tylephihh/thucnhan') || null;
+  const colNgayCocStrict = h.find(c => normVi(c) === 'ngaycoc')
+    || h.find(c => normVi(c).startsWith('ngaycoc'))
+    || null;
+  const colNgaySigned = h.find(c => { const n = normVi(c); return n.includes('ngayttdc') || n.includes('ngayvbtt') || n.includes('ngayky'); })
+    || h.find(c => { const n = normVi(c); return (n.includes('ngay') || n.includes('date')) && !n.includes('thang') && !n.includes('tuan') && !n.includes('coc'); })
+    || null;
+
+  return { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colSale, colDuAn, colTyLePhiHH, colNgayCocStrict, colNgaySigned };
 }
 
 export async function getTongHopGiaoDich(
@@ -846,33 +917,12 @@ export async function getTongHopGiaoDich(
 
     console.log('[TongHop] Sheet:', sheet.title, '— headers:', h.join(', '));
 
-    // Find a column whose normalized name matches any of the given patterns
-    const findCol = (...patterns: string[]): string | null => {
-      for (const col of h) {
-        const norm = normVi(col);
-        if (patterns.some(p => norm.includes(p))) return col;
-      }
-      return null;
-    };
+    const {
+      colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colSale, colDuAn,
+      colTyLePhiHH, colNgayCocStrict, colNgaySigned,
+    } = resolveTongHopColumns(h);
 
-    const colGiaTri  = findCol('giatinhhh', 'giatri', 'doanhso', 'giaban', 'tongtien', 'giatrihd', 'doanhso');
-    // Prioritize exact "Loại căn" column (apartment type codes: 1BR, 2BR, etc.)
-    // before broader "Loại hình" patterns, to avoid grabbing the wrong column
-    const colLoaiHinh = h.find(c => normVi(c) === 'loaican')
-      || h.find(c => { const n = normVi(c); return n.includes('loai') && n.includes('can') && !n.includes('hinh'); })
-      || findCol('loaihinhcan', 'loaihinh', 'phanloai', 'caothap', 'tang');
-    const colNguon   = findCol('nguon', 'loainguon', 'loaigd', 'noibo', 'doitac', 'phanloaigd', 'loaihinhtd');
-    const colChiNhanh = findCol('chinhanh', 'vuongkd', 'khuvuc', 'region', 'mien', 'vung');
-    const colPhongKD = findCol('phongkd', 'phongban', 'khoikd', 'nhomkd', 'team');
-    const colSale = findCol('salephutrach', 'sale', 'nhanvien', 'nguoiphutrach', 'tuvan', 'chamsoc');
-    const colDuAn    = findCol('duan', 'tenduan', 'tenduan', 'project');
-    const colNgayCocStrict = h.find(c => normVi(c) === 'ngaycoc')
-      || h.find(c => normVi(c).startsWith('ngaycoc'));
-    const colNgaySigned = h.find(c => { const n = normVi(c); return n.includes('ngayttdc') || n.includes('ngayvbtt') || n.includes('ngayky'); })
-      || h.find(c => { const n = normVi(c); return (n.includes('ngay') || n.includes('date')) && !n.includes('thang') && !n.includes('tuan') && !n.includes('coc'); })
-      || null;
-
-    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colSale, colDuAn, colNgayCocStrict, colNgaySigned, dateSource });
+    console.log('[TongHop] Column mapping:', { colGiaTri, colLoaiHinh, colNguon, colChiNhanh, colPhongKD, colSale, colDuAn, colTyLePhiHH, colNgayCocStrict, colNgaySigned, dateSource });
 
     return rows
       .map(row => {
@@ -909,6 +959,7 @@ export async function getTongHopGiaoDich(
           sale_phu_trach: colSale ? str(v[colSale]) : '',
           ngay_ky:    rawNgayTinhDoanhSo,
           ngay_coc:   rawNgayCoc,
+          ty_le_phi_hh_thuc_nhan: colTyLePhiHH ? (v[colTyLePhiHH] ? num(v[colTyLePhiHH]) : undefined) : undefined,
         } as TongHopRow;
       })
       .filter((r): r is TongHopRow => r !== null);
