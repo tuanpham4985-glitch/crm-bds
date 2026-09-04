@@ -5,6 +5,7 @@ import type { HrEmployeeRecord } from '@/lib/data-access';
 import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
+import { buildTravelSalesLeaderboard } from '@/lib/dashboard-travel-sales';
 
 async function getIsAdmin(): Promise<boolean> {
   try {
@@ -733,34 +734,14 @@ export async function GET(request: NextRequest) {
       return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
     };
 
-    const buildRaceSaleLeaderboard = (rows: typeof tongHopRows): DoanhThuTheoSale[] => {
-      const raceSaleMap = new Map<string, DoanhThuTheoSale>();
-
-      rows.forEach(row => {
-        const isDoiTac = isDoiTacStr(row.loai_nguon || '') || isDoiTacStr(row.phong_kd || '');
-        if (isDoiTac) return;
-
-        const key = (row.sale_phu_trach || '').trim() || 'Chưa phân';
-        if (leaderboardExcludedNames.has(key)) return;
-        const existing = raceSaleMap.get(key) || {
-          nhan_vien: key,
-          doanh_thu: 0,
-          hoa_hong: 0,
-          so_deal: 0,
-        };
-
-        if (!existing.avatar_url && key !== 'Chưa phân') {
-          const emp = allEmployees.find(nv => nv.ho_ten === key);
-          if (emp?.avatar_url) existing.avatar_url = emp.avatar_url;
-        }
-
-        existing.doanh_thu += row.gia_tri;
-        existing.so_deal += 1;
-        raceSaleMap.set(key, existing);
-      });
-
-      return Array.from(raceSaleMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
-    };
+    // buildRaceSaleLeaderboard (raw gia_tri sum, không lọc theo tỷ lệ phí
+    // hh/thực nhận) đã bị THAY THẾ bởi buildTravelSalesLeaderboard
+    // (dashboard-travel-sales.ts) — xem cách gán selectedLeaderboard bên
+    // dưới. Đó là "Doanh số tính du lịch", quy tắc kinh doanh đã khoá qua
+    // audit đối chiếu workbook (group theo Sale bán, value = Giá tính HH,
+    // eligible <=70% tỷ lệ phí hh/thực nhận, loại Đối tác) — KHÔNG phải tính
+    // lại thô như hàm cũ. avatar_url + loại nhân viên Nghỉ việc/CTV
+    // (leaderboardExcludedNames) áp dụng SAU khi gọi hàm thuần đó, xem dưới.
 
     const buildRaceDuAn = (rows: typeof tongHopRows): DoanhThuTheoDuAn[] => {
       const raceDuAnMap = new Map<string, DoanhThuTheoDuAn>();
@@ -935,7 +916,23 @@ export async function GET(request: NextRequest) {
       };
     };
 
-    const raceLeaderboard = buildRaceSaleLeaderboard(tongHopRows);
+    // "Doanh số tính du lịch" — authoritative calculation cho Bảng xếp hạng
+    // (doanh_thu_theo_sale), xem dashboard-travel-sales.ts cho rule đã khoá
+    // (group Sale bán, value Giá tính HH, eligible <=70% tỷ lệ phí hh/thực
+    // nhận, loại Đối tác) + golden case Trần Võ Khánh (verified qua audit
+    // đối chiếu workbook, tests/crm/dashboard-travel-sales.test.ts).
+    // Áp dụng THÊM 2 filter route-specific mà pure function không biết:
+    //   1. leaderboardExcludedNames (Nghỉ việc/CTV) — cùng Set đã release
+    //      trước đây, filter theo tên SAU KHI gộp (1 entry/tên).
+    //   2. avatar_url — enrich từ allEmployees, cùng cách buildRaceSaleLeaderboard
+    //      cũ đã làm, giữ nguyên UI contract (SafeAvatar trên Dashboard).
+    const travelSalesLeaderboard = buildTravelSalesLeaderboard(tongHopRows)
+      .filter(entry => !leaderboardExcludedNames.has(entry.nhan_vien))
+      .map(entry => {
+        if (entry.nhan_vien === 'Chưa phân') return entry;
+        const emp = allEmployees.find(nv => nv.ho_ten === entry.nhan_vien);
+        return emp?.avatar_url ? { ...entry, avatar_url: emp.avatar_url } : entry;
+      });
     const raceDuAn = buildRaceDuAn(tongHopRows);
     const raceTheoThang = buildRaceTheoThang(tongHopRows);
     const tonghop = isAdmin
@@ -948,7 +945,14 @@ export async function GET(request: NextRequest) {
       : undefined;
     const useRaceSource = reportMode === 'race' && tongHopRows.length > 0;
 
-    const selectedLeaderboard = useRaceSource ? raceLeaderboard : leaderboard;
+    // "standard" mode CHỦ Ý KHÔNG fetch tongHopRows (xem Promise.all phía
+    // trên, reportMode !== 'standard') — giữ nguyên hành vi cũ (Pipeline-based
+    // `leaderboard`) cho riêng mode đó, KHÔNG đổi thời điểm/điều kiện fetch
+    // (out of scope, "không đổi tính toán Dashboard không liên quan"). Mọi
+    // mode khác (default/race, nơi tongHopRows CÓ dữ liệu) dùng authoritative
+    // travelSalesLeaderboard — đây CHÍNH LÀ "Bảng xếp hạng" mặc định hiển thị
+    // (report_mode không truyền -> 'default').
+    const selectedLeaderboard = reportMode === 'standard' ? leaderboard : travelSalesLeaderboard;
     const selectedDuAn = useRaceSource
       ? raceDuAn
       : Array.from(duAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);

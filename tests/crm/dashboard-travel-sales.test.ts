@@ -57,12 +57,19 @@ test('isTravelSalesEligible: ty_le 70.01% -> KHÔNG eligible (vượt biên)', (
   assert.equal(isTravelSalesEligible(row({ gia_tri: 1000, sale_phu_trach: 'A', ty_le_phi_hh_thuc_nhan: 0.7001 })), false);
 });
 
-test('isTravelSalesEligible: ty_le_phi_hh_thuc_nhan = undefined (sheet không có cột hoặc ô trống) -> KHÔNG eligible, không suy đoán', () => {
+test('isTravelSalesEligible: ty_le_phi_hh_thuc_nhan = undefined (sheet không có cột, hoặc ô TRỐNG — getTongHopGiaoDich guard trước num(), KHÔNG để num() tự trả 0 cho ô trống) -> KHÔNG eligible, không suy đoán (verified: coi trống là eligible làm sai lệch khỏi tab tham chiếu, xem comment trong dashboard-travel-sales.ts)', () => {
   assert.equal(isTravelSalesEligible(row({ gia_tri: 1000, sale_phu_trach: 'A' })), false);
 });
 
-test('isTravelSalesEligible: ty_le_phi_hh_thuc_nhan = 0 -> KHÔNG eligible (0% coi như dữ liệu chưa điền, không phải deal miễn phí hợp lệ)', () => {
-  assert.equal(isTravelSalesEligible(row({ gia_tri: 1000, sale_phu_trach: 'A', ty_le_phi_hh_thuc_nhan: 0 })), false);
+test('isTravelSalesEligible: ty_le_phi_hh_thuc_nhan = 0 (ratio PARSE ĐƯỢC, khác undefined/ô trống) -> ELIGIBLE — rule literal "<=70%" không có điều kiện >0, KHÔNG tự invent thêm điều kiện (correction so với bản trước — xem final report)', () => {
+  assert.equal(isTravelSalesEligible(row({ gia_tri: 1000, sale_phu_trach: 'A', ty_le_phi_hh_thuc_nhan: 0 })), true);
+});
+
+test('isTravelSalesEligible: phân biệt RÕ undefined (ô trống, loại) và 0 (ratio thật, tính) — 2 giá trị KHÔNG được xử lý giống nhau', () => {
+  const blank = row({ gia_tri: 1000, sale_phu_trach: 'A' }); // ty_le_phi_hh_thuc_nhan omitted = undefined
+  const zero = row({ gia_tri: 1000, sale_phu_trach: 'A', ty_le_phi_hh_thuc_nhan: 0 });
+  assert.equal(isTravelSalesEligible(blank), false);
+  assert.equal(isTravelSalesEligible(zero), true);
 });
 
 test('isTravelSalesEligible: gia_tri <= 0 -> KHÔNG eligible dù ty_le hợp lệ', () => {

@@ -7,7 +7,8 @@
 // Google Sheets sống qua getTongHopGiaoDich() vẫn là data authority thật):
 //   - Group by: sale_phu_trach ("Sale bán")
 //   - Value: gia_tri ("Giá tính HH (Chưa gồm VAT & KPBT)")
-//   - Eligible CHỈ KHI: 0% < ty_le_phi_hh_thuc_nhan <= 70%
+//   - Eligible CHỈ KHI: ty_le_phi_hh_thuc_nhan <= 70% (literal rule — KHÔNG
+//     có điều kiện > 0, xem giải thích dưới isTravelSalesEligible)
 //   - Loại: Đối tác (qua loai_nguon/phong_kd, cùng check "đối tác" hiện có
 //     trong dashboard/route.ts#isDoiTacStr — không phát minh rule mới)
 // KHÔNG lọc theo năm: tab đối chiếu không có cột ngày/năm nào, và tổng khớp
@@ -23,16 +24,40 @@ function isDoiTacStr(s: string | undefined | null): boolean {
 export type TravelSalesEligibilityInput = Pick<TongHopRow, 'gia_tri' | 'loai_nguon' | 'phong_kd' | 'ty_le_phi_hh_thuc_nhan'>;
 
 /**
- * 1 deal có tính vào "Doanh số tính du lịch" hay không. ty_le_phi_hh_thuc_nhan
- * undefined/0/>70% -> KHÔNG tính — deal thiếu dữ liệu tỷ lệ KHÔNG được suy
- * đoán là đạt hay không đạt (an toàn, đúng với golden case: 1/4 deal của
- * Trần Võ Khánh có tỷ lệ 86.25% > 70% -> loại, 3 deal còn lại -> tính).
+ * 1 deal có tính vào "Doanh số tính du lịch" hay không.
+ *
+ * Rule literal: "Tỷ lệ phí hh/thực nhận <= 70%" — KHÔNG có điều kiện > 0.
+ * Semantics của ty_le_phi_hh_thuc_nhan đã audit riêng, đối chiếu với tab
+ * tham chiếu "TH Doanh số sale đạt du lịch" (workbook Excel — golden
+ * reference, không phải nguồn production):
+ *   - Ô TRỐNG/không parse được -> getTongHopGiaoDich() gán `undefined`
+ *     (guard trước khi gọi num(), KHÔNG để num() tự trả 0 cho ô trống — xem
+ *     google-sheets.ts) -> ở đây `undefined` LUÔN KHÔNG eligible: không có
+ *     ratio để so sánh <=70%, không suy đoán đạt hay không đạt. Verified:
+ *     4 deal thật có ô trống — coi trống là eligible làm tổng theo Sale
+ *     LỆCH khỏi tab tham chiếu (13/18 sale khớp chính xác khi loại trống,
+ *     giảm còn 10/18 khi tính cả trống — loại trống là đúng).
+ *   - Ratio parse RA ĐÚNG SỐ 0 (VD ô thật sự ghi "0%") -> 0<=70% đúng theo
+ *     rule literal -> ELIGIBLE. KHÔNG suy diễn thêm "0% nghĩa là chưa có dữ
+ *     liệu" — đó là giả định không có trong rule đã khoá, và dữ liệu thật
+ *     không có ca nào để verify riêng (chỉ có ca TRỐNG, đã xử lý ở trên).
+ *   - Non-numeric text (VD "N/A") mà sau khi loại ký tự không phải
+ *     số/,/./- còn lại rỗng -> num() hiện trả 0 (giới hạn chung của num(),
+ *     dùng chung cho nhiều field khác trong repo, KHÔNG sửa riêng cho field
+ *     này) -> xử lý giống ratio=0 thật (ELIGIBLE nếu <=70%) — không có dữ
+ *     liệu thật kiểu này trong workbook để verify khác đi.
+ *   - "70%"/"0.7"/"0.70" (có hoặc không dấu %) đều parse đúng về cùng 1 tỷ lệ
+ *     0-1 qua num() (xem google-sheets.ts#num) — verified khớp dữ liệu thật
+ *     (VD "86.25%", "50.00%", "58.82%").
+ *
+ * Golden case: 1/4 deal của Trần Võ Khánh có tỷ lệ 86.25% > 70% -> loại, 3
+ * deal còn lại (50.00%/58.82%/50.00%) -> tính, tổng = 40.451.280.122.
  */
 export function isTravelSalesEligible(row: TravelSalesEligibilityInput): boolean {
   if (!row.gia_tri || row.gia_tri <= 0) return false;
   if (isDoiTacStr(row.loai_nguon) || isDoiTacStr(row.phong_kd)) return false;
   const ratio = row.ty_le_phi_hh_thuc_nhan;
-  return typeof ratio === 'number' && ratio > 0 && ratio <= 0.70;
+  return typeof ratio === 'number' && ratio <= 0.70;
 }
 
 /** Tổng hợp "Doanh số tính du lịch" theo Sale — page-agnostic, nhận
