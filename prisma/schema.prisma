@@ -898,6 +898,70 @@ model TmActivityLog {
   @@map("tm_activity_logs")
 }
 
+// ─── TMB MANAGER (Tổng mặt bằng — reusable masterplan map capability) ──────
+// StackingConfig ("nguồn"/dự án) sống trong Google Sheets, KHÔNG trong
+// Postgres (xem getStackingConfigs trong google-sheets.ts) — stacking_config_id
+// dưới đây là tham chiếu ngoài (string), KHÔNG phải FK thật, vì không có bảng
+// StackingConfig trong Postgres để FK vào. 1 dự án có thể có 0..N map profile
+// (renderer TmbMap.tsx dùng chung, xem tmb-map-data.ts) — KHÔNG giả định 1
+// dự án = 1 PDF.
+model TmbMapProfile {
+  id                 String    @id @default(cuid())
+  stacking_config_id String
+  label              String
+  subdivision        String?
+  source_type        String    @default("PDF") // "PDF" | "IMAGE"
+  master_asset_ref   String // storage key — file GỐC, không mutate, dùng làm authority/audit
+  web_asset_ref      String? // storage key — derivative đã tối ưu cho browser, null tới khi optimize xong
+  page_number        Int       @default(1)
+  page_width         Float?
+  page_height        Float?
+  rotation           Int       @default(0)
+  unit_code_field    String? // tên cột Sheet dùng làm khoá mã căn khi auto-index (mặc định maCan)
+  // Bảng decode ký tự cho font bị lỗi encoding (CAD export) — CHỈ áp dụng khi
+  // extract text cho auto-index của map profile này, KHÔNG ảnh hưởng profile
+  // khác. Rỗng/null = dùng text layer nguyên bản (trường hợp bình thường, như
+  // Saigon Park/HLX VBM1). Value dạng { "<charCode thập phân>": "<ký tự thật>" }.
+  glyph_remap        Json?
+  status             String    @default("DRAFT") // DRAFT|ANALYZED|READY_FOR_REVIEW|ACTIVE|ERROR
+  error_message      String?
+  master_size_bytes  Int?
+  web_size_bytes     Int?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  unit_mappings TmbUnitMapping[]
+
+  @@index([stacking_config_id])
+  @@index([status])
+  @@map("tmb_map_profile")
+}
+
+// unitCode -> toạ độ trên trang PDF/ảnh gốc của 1 map profile — data-driven,
+// thay cho mảng TS hard-code (TMB_MAP_UNITS) mà các profile cũ hiện dùng.
+model TmbUnitMapping {
+  id                   String   @id @default(cuid())
+  map_profile_id       String
+  map_profile          TmbMapProfile @relation(fields: [map_profile_id], references: [id], onDelete: Cascade)
+  unit_code            String
+  normalized_unit_code String // normalizeUnitCode() — cùng hàm/luật đã dùng cho matching hiện tại
+  x                    Float
+  y                    Float
+  source               String // "AUTO_TEXT" | "MANUAL" — MANUAL luôn là authority khi có conflict
+  confidence           Float?
+  // Provenance cho AUTO_TEXT: { pdfText, page, rawX, rawY, normalizationVersion, extractedAt }
+  provenance           Json?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  // 1 mapping ACTIVE duy nhất mỗi mã căn mỗi profile — sửa/thay thế = update
+  // record hiện có (bump updated_at, source chuyển MANUAL khi Admin tự sửa),
+  // KHÔNG tạo bản ghi trùng.
+  @@unique([map_profile_id, normalized_unit_code])
+  @@index([map_profile_id])
+  @@map("tmb_unit_mapping")
+}
+
 // Đăng ký nhận Web Push của từng thiết bị/trình duyệt (để đẩy thông báo đơn chờ duyệt)
 model PushSubscription {
   id           String   @id @default(cuid())

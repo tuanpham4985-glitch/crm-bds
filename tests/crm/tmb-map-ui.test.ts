@@ -66,6 +66,19 @@ test('TmbMap: dùng profile.units/profile.pdfPageNumber cho spatial mapping + pa
 test('page.tsx: resolve ĐÚNG TmbMapProfile theo StackingConfig đang chọn (resolveTmbMapProfile) rồi truyền xuống TmbMap qua prop `profile` — KHÔNG if/else theo project trong component', () => {
   const pageSource = fs.readFileSync('src/app/stacking/page.tsx', 'utf8');
   assert.match(pageSource, /import \{ resolveTmbMapProfile \} from '\.\/tmb-map-data';/);
-  assert.match(pageSource, /const tmbProfile = resolveTmbMapProfile\(selectedConfig\);/);
+  assert.match(pageSource, /const staticTmbProfile = resolveTmbMapProfile\(selectedConfig\);/);
   assert.match(pageSource, /<TmbMap[\s\S]*?profile=\{tmbProfile\}/);
+});
+
+// ─── TMB Manager v1: 0..N map profile/project (DB-managed CỘNG THÊM profile tĩnh) ─
+
+test('page.tsx: hỗ trợ 0..N map profile/project — cộng profile DB-managed (ACTIVE) vào cùng danh sách với profile tĩnh, KHÔNG thay thế', () => {
+  assert.match(pageSource, /import \{ useDbTmbMapProfiles \} from '\.\/tmb-map-registry';/);
+  assert.match(pageSource, /const dbTmbProfiles = useDbTmbMapProfiles\(selectedConfig\?\.id\);/);
+  assert.match(pageSource, /if \(staticTmbProfile && !list\.some\(p => p\.configId === staticTmbProfile\.configId\)\) list\.unshift\(staticTmbProfile\);/);
+});
+
+test('page.tsx: >1 map profile -> hiện dropdown chọn map; chỉ 1 map (Saigon Park/HLX VBM1 hiện tại) -> KHÔNG hiện dropdown, giữ nguyên UX cũ', () => {
+  assert.match(pageSource, /\{tmbProfiles\.length > 1 && \(/);
+  assert.match(pageSource, /<select[\s\S]*?value=\{selectedTmbProfileIdx\}/);
 });

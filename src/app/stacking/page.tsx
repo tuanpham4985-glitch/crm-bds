@@ -9,7 +9,9 @@ import {
 import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import TmbMap from './TmbMap';
+import TmbManagerPanel from './TmbManagerPanel';
 import { resolveTmbMapProfile } from './tmb-map-data';
+import { useDbTmbMapProfiles } from './tmb-map-registry';
 import { fmtGia, fmtArea, fmtGiaFull } from './format';
 import {
   filterStackingListRows, totalStackingListPages, clampStackingListPage, paginateStackingListRows, STACKING_LIST_PAGE_SIZE,
@@ -925,6 +927,7 @@ export default function StackingPage() {
   const [units, setUnits]                   = useState<StackingUnit[]>([]);
   const [selectedUnit, setSelectedUnit]     = useState<StackingUnit | null>(null);
   const [showManage, setShowManage]         = useState(false);
+  const [showTmbManager, setShowTmbManager] = useState(false);
   const [filterType, setFilterType]         = useState<string | null>(null);
   const [zoom, setZoom]                     = useState(1);
   const [hoverPos, setHoverPos]             = useState<{ fi: number; ci: number } | null>(null);
@@ -1185,12 +1188,21 @@ export default function StackingPage() {
   );
   const maCanInTable = useMemo(() => tableColumns.some(c => c.trim().toLowerCase() === 'mã căn'), [tableColumns]);
 
-  // Tổng mặt bằng — resolve ĐÚNG profile (PDF + spatial mapping) theo nguồn
-  // đang chọn (StackingConfig.id, xem resolveTmbMapProfile trong tmb-map-data.ts)
-  // — null nếu nguồn này chưa có TMB profile nào (không giả vờ generic cho
-  // nguồn chưa audit spatial mapping). Nhiều dự án dùng CHUNG 1 renderer
-  // (TmbMap), chỉ khác profile truyền vào — KHÔNG if/else theo project ở đây.
-  const tmbProfile = resolveTmbMapProfile(selectedConfig);
+  // Tổng mặt bằng — 1 project có thể có 0..N map (Section 10 TMB Manager):
+  // profile TĨNH (hard-code, xem tmb-map-data.ts — Saigon Park/HLX VBM1,
+  // KHÔNG đổi) CỘNG profile ADMIN-MANAGED đang ACTIVE lưu Postgres (xem
+  // tmb-map-registry.ts). Nhiều dự án dùng CHUNG 1 renderer (TmbMap), chỉ
+  // khác profile truyền vào — KHÔNG if/else theo project ở đây.
+  const staticTmbProfile = resolveTmbMapProfile(selectedConfig);
+  const dbTmbProfiles = useDbTmbMapProfiles(selectedConfig?.id);
+  const tmbProfiles = useMemo(() => {
+    const list = [...dbTmbProfiles];
+    if (staticTmbProfile && !list.some(p => p.configId === staticTmbProfile.configId)) list.unshift(staticTmbProfile);
+    return list;
+  }, [staticTmbProfile, dbTmbProfiles]);
+  const [selectedTmbProfileIdx, setSelectedTmbProfileIdx] = useState(0);
+  useEffect(() => { setSelectedTmbProfileIdx(0); }, [selectedConfig?.id]);
+  const tmbProfile = tmbProfiles[selectedTmbProfileIdx] ?? tmbProfiles[0] ?? null;
 
   /** Header cột bảng chính, bấm để sort (tăng dần -> giảm dần -> về gốc) —
    * dùng CHUNG cho cột "Mã căn" fallback lẫn mọi cột trong tableColumns. */
@@ -1283,7 +1295,22 @@ export default function StackingPage() {
           {/* Chỉ hiện khi nguồn đang chọn CÓ spatial map tương ứng (tmbProfile
               != null) — không giả vờ generic cho nguồn chưa audit spatial
               mapping. Xem inventory trên bản đồ là tính năng xem, không phải
-              quản trị -> không gate theo isAdmin như "Quản lý Sheet". */}
+              quản trị -> không gate theo isAdmin như "Quản lý Sheet". Có >1
+              map (Section 10, VD dự án có nhiều phân khu) -> thêm dropdown
+              chọn map TRƯỚC khi mở, KHÔNG tự đổi hành vi khi chỉ có 1 map
+              (dropdown ẩn hẳn, giữ nguyên UX hiện tại cho Saigon Park/HLX VBM1). */}
+          {tmbProfiles.length > 1 && (
+            <select
+              value={selectedTmbProfileIdx}
+              onChange={e => setSelectedTmbProfileIdx(Number(e.target.value))}
+              title="Chọn Tổng mặt bằng"
+              style={{ padding: '5px 8px', borderRadius: 6, fontSize: '0.8rem', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}
+            >
+              {tmbProfiles.map((p, idx) => (
+                <option key={p.configId} value={idx}>{p.label}</option>
+              ))}
+            </select>
+          )}
           {tmbProfile && (
             <button onClick={() => setShowTmbMap(true)} title="Xem vị trí các căn Còn hàng trên Tổng mặt bằng" style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
@@ -1302,6 +1329,16 @@ export default function StackingPage() {
               marginLeft: (listRows.length > 0 || Boolean(tmbProfile)) ? 0 : 'auto',
             }}>
               <Settings size={14} /> Quản lý Sheet
+            </button>
+          )}
+
+          {isAdmin && selectedConfig && (
+            <button onClick={() => setShowTmbManager(true)} title="Tạo/tối ưu/quét mã căn cho Tổng mặt bằng của nguồn này" style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
+              fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--primary)',
+              background: 'transparent', color: 'var(--primary)', cursor: 'pointer',
+            }}>
+              <MapIcon size={14} /> Quản lý TMB
             </button>
           )}
         </div>
@@ -1464,6 +1501,14 @@ export default function StackingPage() {
             listRows={listRows}
             onOpenUnit={row => setSelectedListRow(row)}
             onClose={() => setShowTmbMap(false)}
+          />
+        )}
+
+        {showTmbManager && isAdmin && selectedConfig && (
+          <TmbManagerPanel
+            stackingConfigId={selectedConfig.id}
+            stackingConfigLabel={selectedConfig.ten_hien_thi}
+            onClose={() => setShowTmbManager(false)}
           />
         )}
 
