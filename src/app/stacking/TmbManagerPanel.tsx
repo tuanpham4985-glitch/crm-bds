@@ -193,7 +193,8 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: 'var(--surface)', borderRadius: 10, width: 'min(920px, 94vw)', maxHeight: '88vh',
+        background: 'var(--bg-card)', borderRadius: 10, width: 'min(920px, 94vw)', maxHeight: '88vh',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
         overflow: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
