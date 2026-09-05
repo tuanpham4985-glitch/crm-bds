@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { X, Plus, RefreshCw, Trash2, CheckCircle, Loader2, Map as MapIcon } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Plus, RefreshCw, Trash2, CheckCircle, Loader2, Map as MapIcon, Upload, FileText, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 
 /** TMB Manager — panel Admin quản lý Tổng mặt bằng (Section 9 TMB Manager
  * spec): tạo profile, Phân tích/Tối ưu/Quét mã căn, review + mapping thủ
@@ -91,15 +91,60 @@ export function validateGlyphRemapConfig(rawText: string): { ok: true; value: un
   return { ok: true, value: parsed };
 }
 
+interface AliasSuggestion {
+  label: string;
+  pattern: string;
+  replacement: string;
+  supportCount: number;
+  totalUnmatched: number;
+  examples: { sheetCode: string; pdfCode: string }[];
+}
+
 interface IndexResult {
   summary: { total: number; matchedDirect: number; matchedAlias: number; ambiguous: number; unmatched: number };
   autoCreated: number;
   autoSkippedManual: number;
+  matchedDirect: { code: string }[];
   ambiguous: { code: string; reason?: string; sheetRowCount: number }[];
   unmatched: { code: string; reason?: string }[];
   matchedAlias: { code: string; resolvedPdfCode?: string; aliasRuleLabel?: string }[];
+  suggestedAliasRules: AliasSuggestion[];
   sheetInventoryCount: number;
   sheetInventoryCountNormalized: number;
+}
+
+/** Giai đoạn pipeline "Tải lên & xử lý" (Simple Mode, one-click) — MỖI bước
+ * gọi 1 request riêng tới ĐÚNG route hiện có (upload trực tiếp Blob, rồi
+ * POST tuần tự /tmb-profiles, /analyze, /optimize, /index) — KHÔNG gộp thành
+ * 1 request server-side duy nhất (Section "One-click processing pipeline":
+ * "Nếu file lớn khiến synchronous execution không an toàn: thiết kế safe
+ * staged processing"). Mỗi bước tự chịu timeout riêng của Vercel Function,
+ * và có thể retry lại đúng bước lỗi qua "Chi tiết kỹ thuật" mà KHÔNG cần
+ * upload lại file hay tạo trùng profile (idempotent theo thiết kế của từng
+ * route — xem index/route.ts upsert theo unique normalized_unit_code). */
+type UploadStage = 'idle' | 'uploading' | 'creating' | 'analyzing' | 'optimizing' | 'indexing' | 'done' | 'error';
+const UPLOAD_STAGE_LABEL: Record<UploadStage, string> = {
+  idle: '', uploading: 'Đang tải file lên...', creating: 'Đang tạo hồ sơ...',
+  analyzing: 'Đang phân tích bản vẽ...', optimizing: 'Đang tối ưu file...', indexing: 'Đang quét mã căn...',
+  done: 'Hoàn tất', error: 'Lỗi',
+};
+
+/** Đọc lại glyph_remap hiện có ở đúng shape TmbProfileDecodeConfig (server
+ * đọc bằng parseProfileDecodeConfig, tmb-indexer.ts) để ghép thêm 1 alias rule
+ * mới khi Admin "Chấp nhận quy tắc" — viết lại RIÊNG (không import
+ * tmb-indexer.ts, file đó kéo theo pdfjs-dist chỉ chạy server-side, xem comment
+ * validateGlyphRemapConfig phía trên). Field/semantics PHẢI khớp contract thật
+ * — đổi 1 bên phải đổi cả 2. */
+function decodeConfigForClient(raw: unknown): { charRemap?: Record<string, string>; unitAliasRules: { label: string; pattern: string; replacement: string }[] } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { unitAliasRules: [] };
+  const obj = raw as Record<string, unknown>;
+  if ('charRemap' in obj || 'unitAliasRules' in obj) {
+    return {
+      charRemap: (obj.charRemap as Record<string, string> | undefined) ?? undefined,
+      unitAliasRules: Array.isArray(obj.unitAliasRules) ? obj.unitAliasRules as { label: string; pattern: string; replacement: string }[] : [],
+    };
+  }
+  return { charRemap: obj as Record<string, string>, unitAliasRules: [] };
 }
 
 interface AnalyzeResult {
@@ -141,8 +186,39 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
 
   const [form, setForm] = useState({ label: '', subdivision: '', master_asset_ref: '' });
   const [saving, setSaving] = useState(false);
+  const [showAdvancedAdd, setShowAdvancedAdd] = useState(false); // form nhập tay master_asset_ref (nâng cao) — ẩn mặc định, xem Section "Simple mode vs Technical mode"
 
   const [manualForm, setManualForm] = useState<{ profileId: string; unitCode: string; x: string; y: string } | null>(null);
+
+  // ── Simple Mode: upload file trực tiếp + one-click processing ────────────
+  const [storageConfigured, setStorageConfigured] = useState<boolean | null>(null); // null = chưa biết (đang tải /api/stacking/info)
+  const [simpleLabel, setSimpleLabel] = useState('');
+  const [simpleSubdivision, setSimpleSubdivision] = useState('');
+  const [simpleFile, setSimpleFile] = useState<File | null>(null);
+  const [uploadStage, setUploadStage] = useState<UploadStage>('idle');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Bật/tắt "Chi tiết kỹ thuật" theo từng profile — mặc định ĐÓNG (Simple Mode
+  // là mặc định của Admin thường, xem Section "Simple mode vs Technical mode").
+  // KHÔNG xoá bất kỳ action/field kỹ thuật nào, chỉ gấp gọn lại.
+  const [technicalOpenIds, setTechnicalOpenIds] = useState<Set<string>>(new Set());
+  const [reviewTabByProfile, setReviewTabByProfile] = useState<Record<string, 'matched' | 'alias' | 'unmatched' | 'ambiguous'>>({});
+
+  useEffect(() => {
+    fetch('/api/stacking/info').then(r => r.json()).then(d => {
+      if (d.success) setStorageConfigured(Boolean(d.tmb_storage_configured));
+    }).catch(() => setStorageConfigured(false));
+  }, []);
+
+  function toggleTechnical(id: string) {
+    setTechnicalOpenIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   // Cấu hình decode/alias (glyph_remap) — draft text theo từng profile (chưa
   // gõ gì thì hiển thị giá trị THẬT đang lưu, xem glyphRemapText() bên dưới).
@@ -223,6 +299,108 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** "Tải lên & xử lý" (Simple Mode, one-click) — Section "Upload architecture"
+   * + "One-click processing pipeline": browser upload TRỰC TIẾP tới Vercel
+   * Blob (KHÔNG qua body Next.js API — giới hạn cứng ~4.5MB serverless), rồi
+   * gọi TUẦN TỰ đúng các route hiện có (tạo profile JSON -> analyze -> optimize
+   * -> index) — mỗi bước 1 request riêng, KHÔNG gộp 1 request server-side làm
+   * hết (an toàn với file 200MB+, mỗi bước tự chịu timeout riêng của Vercel
+   * Function). Lỗi ở bước nào dừng ở đó, profile giữ trạng thái ERROR/đã tạo
+   * -> Admin retry đúng bước đó qua "Chi tiết kỹ thuật" mà KHÔNG upload lại
+   * file/tạo trùng profile. */
+  async function handleSimpleUpload() {
+    if (!simpleLabel.trim() || !simpleFile) return;
+    if (!storageConfigured) {
+      setUploadStage('error');
+      setUploadError('Chưa cấu hình Object Storage cho Tổng mặt bằng — liên hệ Admin kỹ thuật (cần env TMB_ASSET_STORAGE_PROVIDER + BLOB_READ_WRITE_TOKEN, xem tài liệu TMB Self-Service Ingestion).');
+      return;
+    }
+    const file = simpleFile;
+    setUploadError('');
+    setUploadProgress(0);
+    try {
+      setUploadStage('uploading');
+      const { upload } = await import('@vercel/blob/client');
+      const blob = await upload(`${stackingConfigId}/${Date.now()}-${file.name}`, file, {
+        access: 'public',
+        handleUploadUrl: '/api/stacking/tmb-profiles/upload-url',
+        onUploadProgress: (p) => setUploadProgress(Math.round(p.percentage)),
+      });
+
+      setUploadStage('creating');
+      const createRes = await fetch('/api/stacking/tmb-profiles', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stacking_config_id: stackingConfigId,
+          label: simpleLabel.trim(),
+          subdivision: simpleSubdivision.trim() || undefined,
+          master_asset_ref: blob.url,
+          master_size_bytes: file.size,
+        }),
+      });
+      const created = await createRes.json();
+      if (!created.success) throw new Error(created.error || 'Không tạo được hồ sơ Tổng mặt bằng');
+      const id: string = created.data.id;
+      await load();
+
+      setUploadStage('analyzing');
+      const analyzeRes = await fetch(`/api/stacking/tmb-profiles/${id}/analyze`, { method: 'POST' }).then(r => r.json());
+      if (!analyzeRes.success) throw new Error(analyzeRes.error || 'Phân tích thất bại');
+      setLastAnalyze(m => ({ ...m, [id]: analyzeRes.data.analysis }));
+
+      setUploadStage('optimizing');
+      const optimizeRes = await fetch(`/api/stacking/tmb-profiles/${id}/optimize`, { method: 'POST' }).then(r => r.json());
+      if (!optimizeRes.success) throw new Error(optimizeRes.error || 'Tối ưu thất bại');
+
+      setUploadStage('indexing');
+      const indexRes = await fetch(`/api/stacking/tmb-profiles/${id}/index`, { method: 'POST' }).then(r => r.json());
+      if (!indexRes.success) throw new Error(indexRes.error || 'Quét mã căn thất bại');
+      setLastIndex(m => ({ ...m, [id]: indexRes.data }));
+
+      setUploadStage('done');
+      setExpandedId(id);
+      setSimpleLabel(''); setSimpleSubdivision(''); setSimpleFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await load();
+    } catch (e) {
+      setUploadStage('error');
+      setUploadError(e instanceof Error ? e.message : 'Lỗi không xác định trong lúc xử lý');
+      await load(); // profile (nếu đã tạo) vẫn hiện trong danh sách với status ERROR/đúng bước đã xong — không mồ côi, không mất tiến độ
+    }
+  }
+
+  /** "Chấp nhận quy tắc" (Section "Alias suggestion — UX quan trọng") — Admin
+   * xác nhận TƯỜNG MINH 1 đề xuất alias (suggestUnitAliasRules, tmb-indexer.ts)
+   * trước khi nó được áp dụng: ghép rule vào glyph_remap.unitAliasRules hiện
+   * có (PATCH, KHÔNG ghi đè charRemap/rule khác) rồi chạy lại "Quét mã căn" để
+   * rule mới thật sự tạo mapping AUTO_TEXT cho các mã vừa khớp được. */
+  async function acceptAliasSuggestion(p: TmbProfileRow, suggestion: AliasSuggestion) {
+    setBusyId(p.id);
+    try {
+      const current = decodeConfigForClient(p.glyph_remap);
+      const nextConfig = {
+        charRemap: current.charRemap,
+        unitAliasRules: [...current.unitAliasRules, { label: suggestion.label, pattern: suggestion.pattern, replacement: suggestion.replacement }],
+      };
+      const patchRes = await fetch(`/api/stacking/tmb-profiles/${p.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ glyph_remap: nextConfig }),
+      }).then(r => r.json());
+      if (!patchRes.success) { setActionMsg(m => ({ ...m, [p.id]: `Lỗi: ${patchRes.error}` })); return; }
+
+      const indexRes = await fetch(`/api/stacking/tmb-profiles/${p.id}/index`, { method: 'POST' }).then(r => r.json());
+      if (indexRes.success) {
+        setLastIndex(m => ({ ...m, [p.id]: indexRes.data }));
+        setActionMsg(m => ({ ...m, [p.id]: `Đã chấp nhận quy tắc "${suggestion.label}"` }));
+      } else {
+        setActionMsg(m => ({ ...m, [p.id]: `Đã lưu quy tắc nhưng quét lại lỗi: ${indexRes.error}` }));
+      }
+      await load();
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -315,22 +493,72 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
         </div>
 
         {showAddForm && (
-          <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-label)' }}>
-              File PDF gốc phải được ingest sẵn server-side trước (script hoặc storage abstraction — xem báo cáo audit "Asset storage") rồi dán key/path vào đây. Upload trực tiếp qua form này chỉ hỗ trợ file vừa/nhỏ do giới hạn body size của platform.
-            </p>
-            <input placeholder="Tên TMB (VD: HLX · TĐNĐ1)" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
-              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }} />
-            <input placeholder="Phân khu (tuỳ chọn, VD: TĐNĐ1)" value={form.subdivision} onChange={e => setForm(f => ({ ...f, subdivision: e.target.value }))}
-              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }} />
-            <input placeholder="master_asset_ref (path public/... hoặc storage key)" value={form.master_asset_ref} onChange={e => setForm(f => ({ ...f, master_asset_ref: e.target.value }))}
-              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }} />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={handleAdd} disabled={saving || !form.label.trim() || !form.master_asset_ref.trim()} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>
-                {saving ? 'Đang lưu...' : 'Tạo (DRAFT)'}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {storageConfigured === false && (
+              <div style={{ padding: '8px 12px', borderRadius: 6, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: '0.78rem' }}>
+                Chưa cấu hình Object Storage cho upload trực tiếp (cần env <code>TMB_ASSET_STORAGE_PROVIDER=vercel-blob</code> + <code>BLOB_READ_WRITE_TOKEN</code> trên production) — liên hệ Admin kỹ thuật. Vẫn có thể dùng "Nhập thủ công (nâng cao)" bên dưới nếu đã có sẵn master_asset_ref từ ingest server-side.
+              </div>
+            )}
+
+            <input placeholder="Tên TMB (VD: HLX · TĐNĐ1)" value={simpleLabel} onChange={e => setSimpleLabel(e.target.value)}
+              style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)' }} />
+            <input placeholder="Phân khu (tuỳ chọn, VD: TĐNĐ1)" value={simpleSubdivision} onChange={e => setSimpleSubdivision(e.target.value)}
+              style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)' }} />
+
+            <div>
+              <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
+                onChange={e => setSimpleFile(e.target.files?.[0] ?? null)} />
+              <button onClick={() => fileInputRef.current?.click()} disabled={uploadStage !== 'idle' && uploadStage !== 'done' && uploadStage !== 'error'}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 6, border: '1px dashed var(--border)', background: 'transparent', cursor: 'pointer', fontSize: '0.8rem', width: '100%', justifyContent: 'center' }}>
+                <Upload size={14} /> Chọn file PDF
               </button>
-              <button onClick={() => setShowAddForm(false)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: '0.8rem' }}>Huỷ</button>
+              {simpleFile && (
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: 'var(--text-label)' }}>
+                  <FileText size={13} /> {simpleFile.name} · {fmtMB(simpleFile.size)}
+                </div>
+              )}
             </div>
+
+            {uploadStage !== 'idle' && (
+              <div style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 6, color: uploadStage === 'error' ? '#dc2626' : uploadStage === 'done' ? '#16a34a' : 'var(--text-label)' }}>
+                {uploadStage !== 'done' && uploadStage !== 'error' && <Loader2 size={13} style={{ animation: 'spin 0.7s linear infinite' }} />}
+                {UPLOAD_STAGE_LABEL[uploadStage]}
+                {uploadStage === 'uploading' && ` (${uploadProgress}%)`}
+                {uploadStage === 'error' && `: ${uploadError}`}
+                {uploadStage === 'done' && ' — xem Review bên dưới'}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleSimpleUpload}
+                disabled={!simpleLabel.trim() || !simpleFile || (uploadStage !== 'idle' && uploadStage !== 'done' && uploadStage !== 'error')}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 6, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>
+                {uploadStage !== 'idle' && uploadStage !== 'done' && uploadStage !== 'error' ? 'Đang xử lý...' : 'Tải lên & xử lý'}
+              </button>
+              <button onClick={() => { setShowAddForm(false); setUploadStage('idle'); setUploadError(''); }} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: '0.8rem' }}>Đóng</button>
+            </div>
+
+            <button onClick={() => setShowAdvancedAdd(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'none', color: 'var(--text-label)', cursor: 'pointer', fontSize: '0.72rem', textAlign: 'left' }}>
+              {showAdvancedAdd ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Nhập thủ công (nâng cao) — đã có sẵn master_asset_ref/storage key
+            </button>
+            {showAdvancedAdd && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 4, borderLeft: '2px solid var(--border)' }}>
+                <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-label)' }}>
+                  Dùng khi file đã được ingest sẵn server-side (VD script cho file quá lớn, hoặc path tĩnh dưới public/) — dán key/path trực tiếp, KHÔNG upload lại qua đây.
+                </p>
+                <input placeholder="Tên TMB (VD: HLX · TĐNĐ1)" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }} />
+                <input placeholder="Phân khu (tuỳ chọn, VD: TĐNĐ1)" value={form.subdivision} onChange={e => setForm(f => ({ ...f, subdivision: e.target.value }))}
+                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }} />
+                <input placeholder="master_asset_ref (path public/... hoặc storage key)" value={form.master_asset_ref} onChange={e => setForm(f => ({ ...f, master_asset_ref: e.target.value }))}
+                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }} />
+                <div>
+                  <button onClick={handleAdd} disabled={saving || !form.label.trim() || !form.master_asset_ref.trim()} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>
+                    {saving ? 'Đang lưu...' : 'Tạo (DRAFT)'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -351,14 +579,13 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button disabled={busyId === p.id} onClick={() => runAction(p.id, 'analyze')} style={actionBtnStyle}>Phân tích</button>
-                    <button disabled={busyId === p.id} onClick={() => runAction(p.id, 'optimize')} style={actionBtnStyle}>Tối ưu</button>
-                    <button disabled={busyId === p.id} onClick={() => runAction(p.id, 'index')} style={actionBtnStyle}>Quét mã căn</button>
-                    <button disabled={busyId === p.id} onClick={() => toggleActivate(p)} style={{ ...actionBtnStyle, borderColor: p.status === 'ACTIVE' ? '#ef4444' : '#22c55e', color: p.status === 'ACTIVE' ? '#ef4444' : '#22c55e' }}>
-                      {p.status === 'ACTIVE' ? 'Ngừng dùng' : 'Kích hoạt'}
-                    </button>
+                    {(p.status === 'READY_FOR_REVIEW' || p.status === 'ACTIVE') && (
+                      <button disabled={busyId === p.id} onClick={() => toggleActivate(p)} style={{ ...actionBtnStyle, borderColor: p.status === 'ACTIVE' ? '#ef4444' : '#22c55e', color: p.status === 'ACTIVE' ? '#ef4444' : '#22c55e' }}>
+                        {p.status === 'ACTIVE' ? 'Ngừng dùng' : 'Kích hoạt'}
+                      </button>
+                    )}
                     <button disabled={busyId === p.id} onClick={() => runAction(p.id, 'delete')} style={{ ...actionBtnStyle, color: '#ef4444', borderColor: '#ef4444' }}><Trash2 size={12} /></button>
-                    <button onClick={() => setExpandedId(id => id === p.id ? null : p.id)} style={actionBtnStyle}>{expandedId === p.id ? 'Thu gọn' : 'Chi tiết'}</button>
+                    <button onClick={() => setExpandedId(id => id === p.id ? null : p.id)} style={actionBtnStyle}>{expandedId === p.id ? 'Thu gọn' : 'Review'}</button>
                   </div>
                 </div>
 
@@ -374,68 +601,182 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
 
                 {expandedId === p.id && (
                   <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {analysis && (
-                      <div style={{ fontSize: '0.78rem' }}>
-                        <strong>Phân tích gần nhất:</strong> {analysis.pageCount} trang · Text layer: {analysis.hasTextLayer ? 'Có' : 'Không'} ({analysis.textItemCount} items) · Phân loại: {analysis.classification} · {analysis.images.length} ảnh raster
-                      </div>
-                    )}
-                    {index && (
-                      <div style={{ fontSize: '0.78rem' }}>
-                        <strong>Quét mã căn gần nhất:</strong> Bảng hàng {index.sheetInventoryCount} dòng ({index.sheetInventoryCountNormalized} mã duy nhất) ·
-                        Matched trực tiếp: {index.summary.matchedDirect} · Matched qua alias: {index.summary.matchedAlias} · Ambiguous: {index.summary.ambiguous} · Unmatched: {index.summary.unmatched} ·
-                        Tự tạo mapping: {index.autoCreated} (bỏ qua {index.autoSkippedManual} đã có MANUAL)
-                        {index.matchedAlias.length > 0 && (
-                          <div style={{ marginTop: 4 }}>
-                            <em>Matched qua alias:</em> {index.matchedAlias.slice(0, 15).map(a => `${a.code} → ${a.resolvedPdfCode}`).join(', ')}{index.matchedAlias.length > 15 ? '…' : ''}
-                          </div>
-                        )}
-                        {index.ambiguous.length > 0 && (
-                          <div style={{ marginTop: 4 }}>
-                            <em>Ambiguous (cần review thủ công):</em> {index.ambiguous.slice(0, 15).map(a => `${a.code} (${a.reason})`).join(', ')}{index.ambiguous.length > 15 ? '…' : ''}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div>
-                      <strong style={{ fontSize: '0.78rem' }}>Cấu hình decode/alias (glyph_remap):</strong>
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-label)', margin: '4px 0' }}>
-                        JSON, áp dụng CHỈ cho profile này. Rỗng ({'{}'}) = dùng text layer PDF nguyên bản. Dùng khi PDF có font mã căn bị lỗi encoding (charRemap) và/hoặc Bảng hàng dùng mã kinh doanh khác mã lưới kỹ thuật trong PDF (unitAliasRules) — xem "Quét mã căn" để xem kết quả matched qua alias.
+                    {!index && (
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-label)', margin: 0 }}>
+                        Chưa có kết quả "Quét mã căn" — mở "Chi tiết kỹ thuật" bên dưới để chạy, hoặc dùng "Tải lên & xử lý" cho profile mới.
                       </p>
-                      <textarea
-                        value={glyphRemapText(p)}
-                        onChange={e => setGlyphRemapDraft(m => ({ ...m, [p.id]: e.target.value }))}
-                        rows={6}
-                        spellCheck={false}
-                        style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.75rem', padding: 8, borderRadius: 6, border: '1px solid var(--border)', boxSizing: 'border-box' }}
-                      />
-                      {glyphRemapError[p.id] && (
-                        <div style={{ marginTop: 4, padding: '6px 10px', borderRadius: 6, background: '#fef2f2', color: '#dc2626', fontSize: '0.75rem' }}>{glyphRemapError[p.id]}</div>
-                      )}
-                      <div style={{ marginTop: 6 }}>
-                        <button disabled={glyphRemapSavingId === p.id} onClick={() => saveGlyphRemap(p)} style={actionBtnStyle}>
-                          {glyphRemapSavingId === p.id ? 'Đang lưu...' : 'Lưu cấu hình'}
-                        </button>
-                      </div>
-                    </div>
+                    )}
+                    {index && (() => {
+                      const mappedCount = index.summary.matchedDirect + index.summary.matchedAlias;
+                      const activeTab = reviewTabByProfile[p.id] ?? (index.summary.unmatched > 0 ? 'unmatched' : 'matched');
+                      const setTab = (t: typeof activeTab) => setReviewTabByProfile(m => ({ ...m, [p.id]: t }));
+                      const TABS: { key: typeof activeTab; label: string; count: number }[] = [
+                        { key: 'matched', label: '✅ Khớp trực tiếp', count: index.summary.matchedDirect },
+                        { key: 'alias', label: '🔄 Khớp theo quy tắc', count: index.summary.matchedAlias },
+                        { key: 'unmatched', label: '⚠️ Chưa tìm thấy', count: index.summary.unmatched },
+                        { key: 'ambiguous', label: '❌ Trùng/không rõ', count: index.summary.ambiguous },
+                      ];
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                            Bảng hàng: {index.sheetInventoryCountNormalized} căn — {mappedCount}/{index.sheetInventoryCountNormalized} căn đã map
+                          </div>
 
-                    <div>
-                      <strong style={{ fontSize: '0.78rem' }}>Mapping thủ công (Section 8):</strong>
-                      {manualForm?.profileId === p.id ? (
-                        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                          <input placeholder="Mã căn" value={manualForm.unitCode} onChange={e => setManualForm(f => f && ({ ...f, unitCode: e.target.value }))} style={smallInputStyle} />
-                          <input placeholder="x (pdf user-space)" value={manualForm.x} onChange={e => setManualForm(f => f && ({ ...f, x: e.target.value }))} style={smallInputStyle} />
-                          <input placeholder="y (pdf user-space)" value={manualForm.y} onChange={e => setManualForm(f => f && ({ ...f, y: e.target.value }))} style={smallInputStyle} />
-                          <button onClick={saveManualMapping} style={actionBtnStyle}><CheckCircle size={12} /> Lưu</button>
-                          <button onClick={() => setManualForm(null)} style={actionBtnStyle}>Huỷ</button>
+                          {index.suggestedAliasRules.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {index.suggestedAliasRules.map(s => (
+                                <div key={s.label} style={{ padding: '8px 10px', borderRadius: 6, background: '#eef2ff', border: '1px solid #c7d2fe', fontSize: '0.78rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, color: '#3730a3' }}>
+                                    <Sparkles size={13} /> Phát hiện quy tắc: {s.label}
+                                  </div>
+                                  <div style={{ marginTop: 3, color: 'var(--text-label)' }}>
+                                    {s.supportCount}/{s.totalUnmatched} mã chưa tìm thấy khớp phần số chính xác qua quy tắc này
+                                    {s.examples.length > 0 && ` (VD: ${s.examples.slice(0, 3).map(e => `${e.sheetCode}→${e.pdfCode}`).join(', ')})`}
+                                  </div>
+                                  <div style={{ marginTop: 6 }}>
+                                    <button disabled={busyId === p.id} onClick={() => acceptAliasSuggestion(p, s)} style={{ ...actionBtnStyle, borderColor: '#4f46e5', color: '#4f46e5' }}>
+                                      Chấp nhận quy tắc
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {TABS.map(t => (
+                              <button key={t.key} onClick={() => setTab(t.key)} style={{
+                                ...actionBtnStyle,
+                                background: activeTab === t.key ? 'var(--primary)' : 'transparent',
+                                color: activeTab === t.key ? '#fff' : 'var(--text-body)',
+                                borderColor: activeTab === t.key ? 'var(--primary)' : 'var(--border)',
+                              }}>
+                                {t.label}: {t.count}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                              <thead>
+                                <tr style={{ textAlign: 'left', background: 'var(--bg-secondary, #f8fafc)' }}>
+                                  <th style={{ padding: '5px 8px' }}>Mã căn (Sheet)</th>
+                                  <th style={{ padding: '5px 8px' }}>Mã PDF</th>
+                                  <th style={{ padding: '5px 8px' }}>Ghi chú</th>
+                                  {activeTab === 'unmatched' && <th style={{ padding: '5px 8px' }} />}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {activeTab === 'matched' && index.matchedDirect.map(r => (
+                                  <tr key={r.code} style={{ borderTop: '1px solid var(--border)' }}>
+                                    <td style={{ padding: '5px 8px' }}>{r.code}</td>
+                                    <td style={{ padding: '5px 8px', color: 'var(--text-label)' }}>=</td>
+                                    <td style={{ padding: '5px 8px', color: 'var(--text-label)' }}>Khớp trực tiếp</td>
+                                  </tr>
+                                ))}
+                                {activeTab === 'alias' && index.matchedAlias.map(r => (
+                                  <tr key={r.code} style={{ borderTop: '1px solid var(--border)' }}>
+                                    <td style={{ padding: '5px 8px' }}>{r.code}</td>
+                                    <td style={{ padding: '5px 8px' }}>{r.resolvedPdfCode}</td>
+                                    <td style={{ padding: '5px 8px', color: 'var(--text-label)' }}>{r.aliasRuleLabel}</td>
+                                  </tr>
+                                ))}
+                                {activeTab === 'unmatched' && index.unmatched.map(r => (
+                                  <tr key={r.code} style={{ borderTop: '1px solid var(--border)' }}>
+                                    <td style={{ padding: '5px 8px' }}>{r.code}</td>
+                                    <td style={{ padding: '5px 8px', color: 'var(--text-label)' }}>—</td>
+                                    <td style={{ padding: '5px 8px', color: 'var(--text-label)' }}>Chưa có trong PDF</td>
+                                    <td style={{ padding: '5px 8px' }}>
+                                      <button onClick={() => { toggleTechnical(p.id); setManualForm({ profileId: p.id, unitCode: r.code, x: '', y: '' }); }} style={actionBtnStyle}>
+                                        Nhập toạ độ
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {activeTab === 'ambiguous' && index.ambiguous.map(r => (
+                                  <tr key={r.code} style={{ borderTop: '1px solid var(--border)' }}>
+                                    <td style={{ padding: '5px 8px' }}>{r.code}</td>
+                                    <td style={{ padding: '5px 8px', color: 'var(--text-label)' }}>—</td>
+                                    <td style={{ padding: '5px 8px', color: 'var(--text-label)' }}>{r.reason} ({r.sheetRowCount} dòng Sheet)</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
-                      ) : (
-                        <button onClick={() => setManualForm({ profileId: p.id, unitCode: '', x: '', y: '' })} style={{ ...actionBtnStyle, marginLeft: 8 }}>+ Thêm mapping</button>
-                      )}
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-label)', marginTop: 4 }}>
-                        v1: nhập toạ độ số trực tiếp (đơn vị PDF user-space, trang chưa xoay/scale — cùng hệ TmbMap.tsx đang dùng). Click-to-place trên canvas là cải tiến tương lai.
-                      </p>
-                    </div>
+                      );
+                    })()}
+
+                    <button onClick={() => toggleTechnical(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'none', color: 'var(--text-label)', cursor: 'pointer', fontSize: '0.75rem', textAlign: 'left', marginTop: 4 }}>
+                      {technicalOpenIds.has(p.id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Chi tiết kỹ thuật
+                    </button>
+
+                    {technicalOpenIds.has(p.id) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 4, borderLeft: '2px solid var(--border)' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button disabled={busyId === p.id} onClick={() => runAction(p.id, 'analyze')} style={actionBtnStyle}>Phân tích</button>
+                          <button disabled={busyId === p.id} onClick={() => runAction(p.id, 'optimize')} style={actionBtnStyle}>Tối ưu</button>
+                          <button disabled={busyId === p.id} onClick={() => runAction(p.id, 'index')} style={actionBtnStyle}>Quét mã căn (làm mới review)</button>
+                        </div>
+
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-label)' }}>
+                          master_asset_ref: <code>{p.master_asset_ref}</code>{p.web_asset_ref && <> · web_asset_ref: <code>{p.web_asset_ref}</code></>}
+                        </div>
+
+                        {analysis && (
+                          <div style={{ fontSize: '0.78rem' }}>
+                            <strong>Phân tích gần nhất:</strong> {analysis.pageCount} trang · Text layer: {analysis.hasTextLayer ? 'Có' : 'Không'} ({analysis.textItemCount} items) · Phân loại: {analysis.classification} · {analysis.images.length} ảnh raster
+                          </div>
+                        )}
+                        {index && (
+                          <div style={{ fontSize: '0.78rem' }}>
+                            <strong>Quét mã căn gần nhất:</strong> Bảng hàng {index.sheetInventoryCount} dòng ({index.sheetInventoryCountNormalized} mã duy nhất) ·
+                            Matched trực tiếp: {index.summary.matchedDirect} · Matched qua alias: {index.summary.matchedAlias} · Ambiguous: {index.summary.ambiguous} · Unmatched: {index.summary.unmatched} ·
+                            Tự tạo mapping: {index.autoCreated} (bỏ qua {index.autoSkippedManual} đã có MANUAL)
+                          </div>
+                        )}
+
+                        <div>
+                          <strong style={{ fontSize: '0.78rem' }}>Cấu hình decode/alias (glyph_remap):</strong>
+                          <p style={{ fontSize: '0.72rem', color: 'var(--text-label)', margin: '4px 0' }}>
+                            JSON, áp dụng CHỈ cho profile này. Rỗng ({'{}'}) = dùng text layer PDF nguyên bản. Dùng khi PDF có font mã căn bị lỗi encoding (charRemap) và/hoặc Bảng hàng dùng mã kinh doanh khác mã lưới kỹ thuật trong PDF (unitAliasRules) — bình thường nên dùng "Chấp nhận quy tắc" ở Review thay vì gõ tay ở đây.
+                          </p>
+                          <textarea
+                            value={glyphRemapText(p)}
+                            onChange={e => setGlyphRemapDraft(m => ({ ...m, [p.id]: e.target.value }))}
+                            rows={6}
+                            spellCheck={false}
+                            style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.75rem', padding: 8, borderRadius: 6, border: '1px solid var(--border)', boxSizing: 'border-box' }}
+                          />
+                          {glyphRemapError[p.id] && (
+                            <div style={{ marginTop: 4, padding: '6px 10px', borderRadius: 6, background: '#fef2f2', color: '#dc2626', fontSize: '0.75rem' }}>{glyphRemapError[p.id]}</div>
+                          )}
+                          <div style={{ marginTop: 6 }}>
+                            <button disabled={glyphRemapSavingId === p.id} onClick={() => saveGlyphRemap(p)} style={actionBtnStyle}>
+                              {glyphRemapSavingId === p.id ? 'Đang lưu...' : 'Lưu cấu hình'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <strong style={{ fontSize: '0.78rem' }}>Mapping thủ công (Section 8):</strong>
+                          {manualForm?.profileId === p.id ? (
+                            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                              <input placeholder="Mã căn" value={manualForm.unitCode} onChange={e => setManualForm(f => f && ({ ...f, unitCode: e.target.value }))} style={smallInputStyle} />
+                              <input placeholder="x (pdf user-space)" value={manualForm.x} onChange={e => setManualForm(f => f && ({ ...f, x: e.target.value }))} style={smallInputStyle} />
+                              <input placeholder="y (pdf user-space)" value={manualForm.y} onChange={e => setManualForm(f => f && ({ ...f, y: e.target.value }))} style={smallInputStyle} />
+                              <button onClick={saveManualMapping} style={actionBtnStyle}><CheckCircle size={12} /> Lưu</button>
+                              <button onClick={() => setManualForm(null)} style={actionBtnStyle}>Huỷ</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setManualForm({ profileId: p.id, unitCode: '', x: '', y: '' })} style={{ ...actionBtnStyle, marginLeft: 8 }}>+ Thêm mapping</button>
+                          )}
+                          <p style={{ fontSize: '0.72rem', color: 'var(--text-label)', marginTop: 4 }}>
+                            v1: nhập toạ độ số trực tiếp (đơn vị PDF user-space, trang chưa xoay/scale — cùng hệ TmbMap.tsx đang dùng). Click-to-place trên canvas là cải tiến tương lai (Phase B).
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

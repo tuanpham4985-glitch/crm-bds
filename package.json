@@ -27,6 +27,7 @@
     "@hello-pangea/dnd": "^18.0.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@types/nodemailer": "^8.0.0",
+    "@vercel/blob": "^2.8.0",
     "date-fns": "^4.1.0",
     "docx": "^9.6.1",
     "docxtemplater": "^3.68.5",

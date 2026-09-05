@@ -355,3 +355,110 @@ export function summarizeSheetClassification(results: readonly SheetUnitClassifi
   }
   return { total: results.length, matchedDirect, matchedAlias, ambiguous, unmatched };
 }
+
+// ─── Alias RULE SUGGESTION (TMB Self-Service Ingestion v1) ─────────────────
+// Hiện tại `UnitAliasRule` phải do Admin TỰ GÕ tay vào JSON glyph_remap (xem
+// TmbManagerPanel.tsx `saveGlyphRemap`) — mục tiêu self-service là ĐỀ XUẤT
+// rule này tự động khi bằng chứng đủ mạnh, để Admin chỉ cần "Chấp nhận" thay
+// vì tự viết regex. Y HỆT ví dụ TĐNĐ1 (TĐ55-11 Sheet <-> BM55-11 PDF): phát
+// hiện các cặp (tiền tố Sheet, tiền tố PDF) mà PHẦN SỐ giữ NGUYÊN Y HỆT giữa
+// 1 mã Sheet UNMATCHED và 1 label PDF — CHỈ đề xuất khi bằng chứng KHÔNG mơ hồ
+// (đúng 1 tiền tố PDF ứng với phần số đó, khác tiền tố Sheet) và đủ số lượng
+// (`minSupport`, mặc định 2 — tránh suy diễn từ 1 trùng hợp ngẫu nhiên).
+// KHÔNG fuzzy: phần số phải khớp CHÍNH XÁC (cùng cách `resolveUnitCodeAliases`
+// đã dùng cho rule sau khi Admin chấp nhận). Profile-scoped: hàm chỉ nhận vào
+// đúng danh sách unmatched + label PDF của 1 profile, KHÔNG đọc/ghi state
+// toàn cục nào — gọi lại nhiều lần (VD sau khi Admin chấp nhận 1 rule rồi
+// re-index) sẽ tự KHÔNG đề xuất lại rule đã áp dụng (những mã đó không còn
+// UNMATCHED nữa). Deterministic: cùng input luôn ra cùng output, sort theo
+// support giảm dần rồi theo label để thứ tự ổn định giữa các lần gọi.
+const PREFIX_NUMERIC_BODY_PATTERN = /^(\p{Lu}+)(\d.*)$/u;
+
+function escapeRegExpLiteral(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export interface AliasSuggestion {
+  /** Nhãn ngắn cho Admin đọc, VD "TĐ → BM" — cũng dùng làm UnitAliasRule.label khi Admin chấp nhận. */
+  label: string;
+  /** Regex source (không flags), tương thích thẳng UnitAliasRule.pattern. */
+  pattern: string;
+  /** Chuỗi thay thế $1, tương thích thẳng UnitAliasRule.replacement. */
+  replacement: string;
+  /** Số mã Sheet UNMATCHED có bằng chứng KHÔNG mơ hồ ủng hộ rule này. */
+  supportCount: number;
+  /** Tổng số mã UNMATCHED đưa vào xét (mẫu số hiển thị dạng "X/Y"). */
+  totalUnmatched: number;
+  /** Ví dụ cụ thể (tối đa 5) để Admin tự kiểm tra trước khi chấp nhận. */
+  examples: { sheetCode: string; pdfCode: string }[];
+}
+
+/** Đề xuất `UnitAliasRule` từ các mã Sheet UNMATCHED + toàn bộ label PDF trích
+ * xuất được (thô, CHƯA alias-resolve — dùng `labels` từ `extractPdfUnitLabels`,
+ * KHÔNG dùng danh sách đã lọc theo rule cũ). `existingRuleLabels` (tuỳ chọn)
+ * để loại bỏ đề xuất trùng nhãn rule Admin đã chấp nhận trước đó — tránh gợi ý
+ * lặp lại thứ đã áp dụng rồi. */
+export function suggestUnitAliasRules(
+  unmatchedCodes: readonly string[],
+  extractedLabels: readonly ExtractedLabel[],
+  opts: { minSupport?: number; existingRuleLabels?: ReadonlySet<string> } = {},
+): AliasSuggestion[] {
+  const minSupport = opts.minSupport ?? 2;
+  const totalUnmatched = unmatchedCodes.length;
+
+  // Số thân (phần sau chữ cái đầu) -> tập tiền tố PDF phân biệt đã thấy, mỗi
+  // tiền tố giữ 1 mã ví dụ (mã ĐÃ normalize, để hiển thị nhất quán).
+  const bodyToPdfPrefixes = new Map<string, Map<string, string>>();
+  for (const l of extractedLabels) {
+    const norm = normalizeUnitCode(l.code);
+    const m = norm.match(PREFIX_NUMERIC_BODY_PATTERN);
+    if (!m) continue;
+    const [, prefix, body] = m;
+    const bucket = bodyToPdfPrefixes.get(body) ?? new Map<string, string>();
+    if (!bucket.has(prefix)) bucket.set(prefix, norm);
+    bodyToPdfPrefixes.set(body, bucket);
+  }
+
+  const pairs = new Map<string, { sheetPrefix: string; pdfPrefix: string; examples: { sheetCode: string; pdfCode: string }[]; count: number }>();
+  for (const code of unmatchedCodes) {
+    const norm = normalizeUnitCode(code);
+    const m = norm.match(PREFIX_NUMERIC_BODY_PATTERN);
+    if (!m) continue;
+    const [, sheetPrefix, body] = m;
+    const pdfPrefixes = bodyToPdfPrefixes.get(body);
+    if (!pdfPrefixes || pdfPrefixes.size === 0) continue;
+
+    // Bằng chứng KHÔNG mơ hồ: đúng 1 tiền tố PDF khác tiền tố Sheet ứng với
+    // CÙNG phần số này — >1 candidate nghĩa là không rõ ràng, bỏ qua (KHÔNG
+    // đoán), giống hệt nguyên tắc "multiple_candidates -> AMBIGUOUS" của
+    // classifySheetInventoryWithAliases, chỉ áp dụng sớm hơn ở bước đề xuất.
+    const candidates = [...pdfPrefixes.entries()].filter(([prefix]) => prefix !== sheetPrefix);
+    if (candidates.length !== 1) continue;
+    const [pdfPrefix, examplePdfCode] = candidates[0];
+
+    const key = `${sheetPrefix} ${pdfPrefix}`;
+    const entry = pairs.get(key) ?? { sheetPrefix, pdfPrefix, examples: [], count: 0 };
+    entry.count++;
+    if (entry.examples.length < 5) entry.examples.push({ sheetCode: code, pdfCode: examplePdfCode });
+    pairs.set(key, entry);
+  }
+
+  const existingLabels = opts.existingRuleLabels ?? new Set<string>();
+  const suggestions: AliasSuggestion[] = [];
+  for (const { sheetPrefix, pdfPrefix, examples, count } of pairs.values()) {
+    if (count < minSupport) continue;
+    const label = `${sheetPrefix} → ${pdfPrefix}`;
+    if (existingLabels.has(label)) continue;
+    suggestions.push({
+      label,
+      pattern: `^${escapeRegExpLiteral(sheetPrefix)}(\\d.*)$`,
+      replacement: `${pdfPrefix}$1`,
+      supportCount: count,
+      totalUnmatched,
+      examples,
+    });
+  }
+
+  suggestions.sort((a, b) => b.supportCount - a.supportCount || a.label.localeCompare(b.label));
+  return suggestions;
+}

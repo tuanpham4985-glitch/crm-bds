@@ -4,7 +4,7 @@ import { getTmbMapProfile, updateTmbMapProfile, listTmbUnitMappings, upsertTmbUn
 import { readTmbAsset } from '@/lib/tmb-asset-read';
 import {
   extractPdfUnitLabels, classifySheetInventoryWithAliases, summarizeSheetClassification,
-  parseProfileDecodeConfig,
+  parseProfileDecodeConfig, suggestUnitAliasRules,
 } from '@/lib/tmb-indexer';
 import { normalizeUnitCode } from '@/app/stacking/tmb-map-matching';
 import { getStackingConfigs, getStackingListRows } from '@/lib/data-access';
@@ -52,7 +52,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       : allRows;
     const sheetUnitCodes = rows.map(r => r.maCan);
 
-    const buffer = await readTmbAsset(profile.master_asset_ref);
+    let buffer: Buffer;
+    try {
+      buffer = await readTmbAsset(profile.master_asset_ref);
+    } catch (e) {
+      const msg = `Không đọc được master asset: ${e instanceof Error ? e.message : String(e)}`;
+      await updateTmbMapProfile(id, { status: 'ERROR', error_message: msg });
+      return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    }
     const decodeConfig = parseProfileDecodeConfig(profile.glyph_remap);
     const labels = await extractPdfUnitLabels(buffer, { pageNumber: profile.page_number, glyphRemap: decodeConfig.charRemap });
     const classified = classifySheetInventoryWithAliases(labels, sheetUnitCodes, { aliasRules: decodeConfig.unitAliasRules });
@@ -85,6 +92,15 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
     const updated = await updateTmbMapProfile(id, { status: 'READY_FOR_REVIEW', error_message: null });
 
+    // Đề xuất alias rule mới (TMB Self-Service Ingestion v1) — CHỈ tính, KHÔNG
+    // tự áp dụng/lưu (Admin phải "Chấp nhận quy tắc" tường minh, xem
+    // tmb-indexer.ts suggestUnitAliasRules comment). Loại bỏ đề xuất trùng
+    // nhãn rule ĐÃ có trong glyph_remap hiện tại — tránh gợi ý lặp lại thứ đã
+    // áp dụng rồi (VD Admin vừa chấp nhận rule, gọi lại index để refresh review).
+    const unmatchedCodes = classified.filter(c => c.classification === 'UNMATCHED').map(c => c.originalCode);
+    const existingRuleLabels = new Set((decodeConfig.unitAliasRules ?? []).map(r => r.label));
+    const suggestedAliasRules = suggestUnitAliasRules(unmatchedCodes, labels, { existingRuleLabels });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -92,9 +108,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         summary,
         autoCreated,
         autoSkippedManual,
+        matchedDirect: classified.filter(c => c.classification === 'MATCHED' && c.matchSource === 'direct').map(c => ({ code: c.originalCode })),
         ambiguous: classified.filter(c => c.classification === 'AMBIGUOUS').map(c => ({ code: c.originalCode, reason: c.reason, sheetRowCount: c.sheetRowCount })),
         unmatched: classified.filter(c => c.classification === 'UNMATCHED').map(c => ({ code: c.originalCode, reason: c.reason })),
         matchedAlias: classified.filter(c => c.classification === 'MATCHED' && c.matchSource === 'alias').map(c => ({ code: c.originalCode, resolvedPdfCode: c.resolvedPdfCode, aliasRuleLabel: c.aliasRuleLabel })),
+        suggestedAliasRules,
         sheetInventoryCount: sheetUnitCodes.length,
         sheetInventoryCountNormalized: new Set(sheetUnitCodes.map(normalizeUnitCode)).size,
       },

@@ -59,9 +59,11 @@ export async function POST(req: NextRequest) {
       }
       assertProductionUploadAllowed();
       const buffer = Buffer.from(await file.arrayBuffer());
-      const ref = `${stacking_config_id}/${Date.now()}-master.pdf`;
-      await getTmbAssetStorage().put(ref, buffer);
-      masterAssetRef = ref;
+      const requestedRef = `${stacking_config_id}/${Date.now()}-master.pdf`;
+      // put() trả về ref THẬT SỰ cần lưu — provider (VD Vercel Blob) có thể tự
+      // sinh URL cuối cùng khác `requestedRef` (addRandomSuffix), KHÔNG dùng lại
+      // requestedRef (xem TmbAssetStorage.put() comment, tmb-storage.ts).
+      masterAssetRef = await getTmbAssetStorage().put(requestedRef, buffer);
       masterSizeBytes = buffer.length;
     } else {
       // JSON: master_asset_ref đã tồn tại sẵn trong storage (ingest qua script

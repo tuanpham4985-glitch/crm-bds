@@ -10,7 +10,9 @@ import {
   classifySheetInventoryWithAliases,
   summarizeSheetClassification,
   parseProfileDecodeConfig,
+  suggestUnitAliasRules,
   type UnitAliasRule,
+  type ExtractedLabel,
 } from '../../src/lib/tmb-indexer';
 
 // Rule thật đang dùng cho fixture TĐNĐ1 (Bảng hàng "TĐ<n>-<m>"/"NĐ<n>-<m>" ->
@@ -290,4 +292,91 @@ test('parseProfileDecodeConfig: null/undefined/không phải object -> {} an to�
   assert.deepEqual(parseProfileDecodeConfig(null), {});
   assert.deepEqual(parseProfileDecodeConfig(undefined), {});
   assert.deepEqual(parseProfileDecodeConfig('not an object'), {});
+});
+
+// ─── suggestUnitAliasRules — TMB Self-Service Ingestion v1 (alias suggestion) ─
+// Tái hiện chính xác ví dụ TĐNĐ1 trong yêu cầu: Sheet dùng "TĐ<n>-<m>", PDF
+// dùng "BM<n>-<m>", phần số giữ nguyên. Hàm này CHỈ ĐỀ XUẤT (không tự áp
+// dụng/ghi glyph_remap) — xem index/route.ts, Admin phải "Chấp nhận quy tắc".
+
+function label(code: string, x = 0, y = 0): ExtractedLabel {
+  return { code, x, y };
+}
+
+test('suggestUnitAliasRules: phát hiện đúng quy tắc TĐ -> BM khi phần số khớp CHÍNH XÁC ở nhiều mã (giống thật TĐNĐ1)', () => {
+  const unmatched = ['TĐ55-11', 'TĐ56-21', 'TĐ43-19'];
+  const pdfLabels = [label('BM55-11'), label('BM56-21'), label('BM43-19'), label('BM99-01')];
+  const suggestions = suggestUnitAliasRules(unmatched, pdfLabels);
+  assert.equal(suggestions.length, 1);
+  assert.equal(suggestions[0].label, 'TĐ → BM');
+  assert.equal(suggestions[0].pattern, '^TĐ(\\d.*)$');
+  assert.equal(suggestions[0].replacement, 'BM$1');
+  assert.equal(suggestions[0].supportCount, 3);
+  assert.equal(suggestions[0].totalUnmatched, 3);
+  assert.equal(suggestions[0].examples.length, 3);
+});
+
+test('suggestUnitAliasRules: rule đề xuất áp đúng vào resolveUnitCodeAliases -> khớp lại được với PDF (round-trip)', () => {
+  const unmatched = ['TĐ55-11', 'TĐ56-21'];
+  const pdfLabels = [label('BM55-11'), label('BM56-21')];
+  const [suggestion] = suggestUnitAliasRules(unmatched, pdfLabels);
+  const rule: UnitAliasRule = { label: suggestion.label, pattern: suggestion.pattern, replacement: suggestion.replacement };
+  const resolved = resolveUnitCodeAliases('TĐ55-11', [rule]);
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].resolvedCode, 'BM55-11');
+});
+
+test('suggestUnitAliasRules: KHÔNG fuzzy — phần số khác đi thì KHÔNG được coi là bằng chứng ủng hộ rule', () => {
+  // "TĐ55-11" chỉ có "BM55-12" trong PDF (số cuối lệch 1) -> không phải bằng
+  // chứng hợp lệ cho quy tắc TĐ->BM (không có "BM55-11" thật trong PDF).
+  const unmatched = ['TĐ55-11', 'TĐ56-21'];
+  const pdfLabels = [label('BM55-12'), label('BM56-21')];
+  const suggestions = suggestUnitAliasRules(unmatched, pdfLabels, { minSupport: 1 });
+  // Chỉ "TĐ56-21" có bằng chứng thật (khớp đúng "BM56-21") -> support=1, đủ
+  // ngưỡng minSupport=1 nhưng KHÔNG bị "kéo theo" bởi cặp số không khớp.
+  assert.equal(suggestions.length, 1);
+  assert.equal(suggestions[0].supportCount, 1);
+  assert.deepEqual(suggestions[0].examples, [{ sheetCode: 'TĐ56-21', pdfCode: 'BM56-21' }]);
+});
+
+test('suggestUnitAliasRules: bằng chứng MƠ HỒ (nhiều tiền tố PDF cùng khớp phần số) -> KHÔNG đề xuất, không đoán', () => {
+  // Cùng phần số "55-11" xuất hiện với CẢ "BM" lẫn "CD" trong PDF -> không rõ
+  // ràng nên bỏ qua mã này khi tính support (giống hệt AMBIGUOUS ở classify).
+  const unmatched = ['TĐ55-11', 'TĐ56-21', 'TĐ43-19'];
+  const pdfLabels = [label('BM55-11'), label('CD55-11'), label('BM56-21'), label('BM43-19')];
+  const suggestions = suggestUnitAliasRules(unmatched, pdfLabels);
+  // TĐ55-11 bị loại (mơ hồ) -> chỉ còn 2 mã ủng hộ TĐ->BM, vẫn đủ minSupport mặc định (2).
+  assert.equal(suggestions.length, 1);
+  assert.equal(suggestions[0].supportCount, 2);
+  assert.ok(!suggestions[0].examples.some(e => e.sheetCode === 'TĐ55-11'));
+});
+
+test('suggestUnitAliasRules: dưới ngưỡng minSupport (mặc định 2) -> KHÔNG đề xuất (tránh suy diễn từ 1 trùng hợp ngẫu nhiên)', () => {
+  const unmatched = ['TĐ55-11'];
+  const pdfLabels = [label('BM55-11')];
+  assert.deepEqual(suggestUnitAliasRules(unmatched, pdfLabels), []);
+  // Hạ ngưỡng tường minh thì mới đề xuất.
+  const lowered = suggestUnitAliasRules(unmatched, pdfLabels, { minSupport: 1 });
+  assert.equal(lowered.length, 1);
+});
+
+test('suggestUnitAliasRules: loại bỏ đề xuất trùng nhãn rule đã có sẵn (existingRuleLabels) — tránh gợi ý lặp lại rule Admin đã chấp nhận', () => {
+  const unmatched = ['TĐ55-11', 'TĐ56-21'];
+  const pdfLabels = [label('BM55-11'), label('BM56-21')];
+  const suggestions = suggestUnitAliasRules(unmatched, pdfLabels, { existingRuleLabels: new Set(['TĐ → BM']) });
+  assert.deepEqual(suggestions, []);
+});
+
+test('suggestUnitAliasRules: mảng UNMATCHED rỗng hoặc không mã nào khớp pattern tiền tố+số -> [] an toàn, không throw', () => {
+  assert.deepEqual(suggestUnitAliasRules([], [label('BM55-11')]), []);
+  assert.deepEqual(suggestUnitAliasRules(['???'], [label('BM55-11')]), []);
+});
+
+test('suggestUnitAliasRules: nhiều quy tắc độc lập cùng lúc -> sort ổn định theo supportCount giảm dần', () => {
+  const unmatched = ['TĐ55-11', 'TĐ56-21', 'TĐ43-19', 'NĐ10-01'];
+  const pdfLabels = [label('BM55-11'), label('BM56-21'), label('BM43-19'), label('QQ10-01')];
+  const suggestions = suggestUnitAliasRules(unmatched, pdfLabels, { minSupport: 1 });
+  assert.equal(suggestions.length, 2);
+  assert.equal(suggestions[0].label, 'TĐ → BM'); // support 3, đứng trước NĐ->QQ (support 1)
+  assert.equal(suggestions[1].label, 'NĐ → QQ');
 });

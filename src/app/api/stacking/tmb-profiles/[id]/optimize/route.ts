@@ -41,8 +41,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ success: true, data: { profile: updated, report: result.report, gates, note: 'Không cần optimize — dùng thẳng master' } });
     }
 
-    const webRef = `${profile.stacking_config_id}/${id}-web.pdf`;
-    await getTmbAssetStorage().put(webRef, result.buffer);
+    const requestedWebRef = `${profile.stacking_config_id}/${id}-web.pdf`;
+    // put() trả về ref THẬT SỰ cần lưu (có thể khác requestedWebRef với provider
+    // tự sinh URL, VD Vercel Blob) — xem TmbAssetStorage.put() comment.
+    const webRef = await getTmbAssetStorage().put(requestedWebRef, result.buffer);
     const updated = await updateTmbMapProfile(id, {
       web_asset_ref: webRef,
       web_size_bytes: result.buffer.length,
