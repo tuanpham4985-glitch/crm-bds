@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { X, Loader2, AlertCircle, Plus, Minus, RefreshCw, Maximize2, Locate, Search } from 'lucide-react';
 import type { StackingListRow } from '@/lib/types';
 import { fmtGia, fmtArea } from './format';
-import { TMB_PDF_WORKER_URL, type TmbMapProfile } from './tmb-map-data';
+import { TMB_PDF_WORKER_URL, tmbShortLabel, type TmbMapProfile } from './tmb-map-data';
 import { buildMaCanIndex, resolveTmbUnitState, type TmbUnitState } from './tmb-map-matching';
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
@@ -725,30 +725,34 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose }: Props
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border, var(--border-light))', flexShrink: 0, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            {/* profile.label — giờ có >1 dự án dùng chung TmbMap, cần phân
-                biệt rõ đang xem TMB của dự án nào (VD "Vinhomes Sài Gòn Park"
-                vs "Vinhomes Global Gate HLX · VBM1"). */}
-            <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)' }}>Tổng mặt bằng · {profile.label}</div>
+            {/* profile.label đầy đủ (VD "Vinhomes Global Gate HLX · VBM1") vẫn
+                giữ nguyên qua title= (không mất thông tin) — hiển thị RÚT GỌN
+                bằng tmbShortLabel (phần sau " · " cuối, xem tmb-map-data.ts)
+                để tránh lặp "Tổng mặt bằng ... Tổng mặt bằng ..." khi profile
+                admin-managed đặt label dạng "Tổng mặt bằng <tên> · <phân khu>". */}
+            <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)' }} title={profile.label}>
+              Tổng mặt bằng · {tmbShortLabel(profile.label)}
+            </div>
             <div style={{ fontSize: '0.8rem', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: '#15803d', fontWeight: 700 }}>Còn hàng: {availableCount} căn</span>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <div style={{ position: 'relative' }}>
-              <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
               <input
                 type="text"
+                className="tmb-search-input"
                 value={unitSearch}
                 onChange={e => setUnitSearch(e.target.value)}
                 disabled={loading}
-                placeholder="Tìm mã căn (Còn hàng)..."
+                placeholder="Tìm mã căn..."
                 title="Nhập ĐÚNG mã căn Còn hàng để tự động phóng tới vị trí, marker sẽ đổi màu đỏ"
                 style={{
-                  padding: '5px 24px 5px 26px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600, width: 168,
-                  border: `1px solid ${unitSearchNotFound ? '#dc2626' : 'var(--border)'}`, background: 'var(--bg-card)',
-                  color: 'var(--text-body)', outline: 'none',
+                  padding: '6px 26px 6px 28px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, width: 180,
+                  borderColor: unitSearchNotFound ? '#dc2626' : undefined, color: 'var(--text-title)', outline: 'none',
                 }}
               />
               {unitSearch && (
@@ -763,27 +767,28 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose }: Props
             {unitSearchNotFound && (
               <span style={{ fontSize: '0.7rem', color: '#dc2626', whiteSpace: 'nowrap' }}>Không tìm thấy căn Còn hàng</span>
             )}
-            <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
-            <button onClick={handleFocusAvailable} disabled={loading || availableCount === 0} title="Zoom/pan tới khu vực có căn Còn hàng" style={{
+            <div style={{ width: 1, height: 20, background: 'var(--border, var(--border-light))' }} />
+            <button onClick={handleFocusAvailable} disabled={loading || availableCount === 0} title="Zoom/pan tới khu vực có căn Còn hàng" className="tmb-toolbar-btn" style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
-              border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)',
-              cursor: loading || availableCount === 0 ? 'default' : 'pointer', opacity: loading || availableCount === 0 ? 0.5 : 1,
+              border: '1px solid var(--border, var(--border-light))', background: 'var(--bg-card)',
+              color: loading || availableCount === 0 ? 'var(--text-muted)' : 'var(--text-body)',
+              cursor: loading || availableCount === 0 ? 'default' : 'pointer', opacity: loading || availableCount === 0 ? 0.55 : 1,
             }}>
               <Locate size={13} /> Tới khu Còn hàng
             </button>
-            <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
-            <button onClick={handleFitToView} disabled={loading} title="Vừa khung — thấy toàn bộ TMB" style={{
+            <div style={{ width: 1, height: 20, background: 'var(--border, var(--border-light))' }} />
+            <button onClick={handleFitToView} disabled={loading} title="Vừa khung — thấy toàn bộ TMB" className="tmb-toolbar-btn" style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
-              border: '1px solid var(--border)', background: zoomMultiplier === DEFAULT_ZOOM_MULT ? 'var(--bg-secondary, #f1f5f9)' : 'var(--bg-card)',
-              color: 'var(--text-muted)', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.5 : 1,
+              border: '1px solid var(--border, var(--border-light))', background: zoomMultiplier === DEFAULT_ZOOM_MULT ? 'var(--bg-secondary, #f1f5f9)' : 'var(--bg-card)',
+              color: loading ? 'var(--text-muted)' : 'var(--text-body)', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.55 : 1,
             }}>
               <Maximize2 size={13} /> Vừa khung
             </button>
-            <button onClick={() => setZoomMultiplier(z => Math.max(MIN_ZOOM_MULT, +(z - ZOOM_STEP).toFixed(2)))} disabled={loading || zoomMultiplier <= MIN_ZOOM_MULT} title="Thu nhỏ" style={zoomBtnStyle(loading || zoomMultiplier <= MIN_ZOOM_MULT)}>
+            <button onClick={() => setZoomMultiplier(z => Math.max(MIN_ZOOM_MULT, +(z - ZOOM_STEP).toFixed(2)))} disabled={loading || zoomMultiplier <= MIN_ZOOM_MULT} title="Thu nhỏ" className="tmb-toolbar-btn" style={zoomBtnStyle(loading || zoomMultiplier <= MIN_ZOOM_MULT)}>
               <Minus size={15} />
             </button>
             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', minWidth: 40, textAlign: 'center' }} title="Zoom tương đối so với Vừa khung (1.0x = đúng bằng fit)">{zoomMultiplier.toFixed(1)}x</span>
-            <button onClick={() => setZoomMultiplier(z => Math.min(MAX_ZOOM_MULT, +(z + ZOOM_STEP).toFixed(2)))} disabled={loading || zoomMultiplier >= MAX_ZOOM_MULT} title="Phóng to" style={zoomBtnStyle(loading || zoomMultiplier >= MAX_ZOOM_MULT)}>
+            <button onClick={() => setZoomMultiplier(z => Math.min(MAX_ZOOM_MULT, +(z + ZOOM_STEP).toFixed(2)))} disabled={loading || zoomMultiplier >= MAX_ZOOM_MULT} title="Phóng to" className="tmb-toolbar-btn" style={zoomBtnStyle(loading || zoomMultiplier >= MAX_ZOOM_MULT)}>
               <Plus size={15} />
             </button>
             {/* Indicator nhỏ, không chặn tương tác — chỉ hiện khi đang re-render
@@ -976,6 +981,18 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose }: Props
           100% { box-shadow: 0 0 0 4px rgba(239,68,68,0.35), 0 2px 6px rgba(0,0,0,0.3); }
         }
         .tmb-search-match { animation: tmbSearchPulse 1.4s ease-in-out infinite; }
+        .tmb-search-input {
+          border: 1px solid var(--border, var(--border-light));
+          background: var(--bg-secondary, #f8fafc);
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .tmb-search-input::placeholder { color: var(--text-muted); opacity: 1; }
+        .tmb-search-input:focus {
+          border-color: var(--primary);
+          box-shadow: 0 0 0 3px var(--primary-ring, rgba(99,102,241,0.25));
+        }
+        .tmb-search-input:disabled { cursor: default; opacity: 0.7; }
+        .tmb-toolbar-btn:not(:disabled):hover { background: var(--bg-secondary, #f1f5f9) !important; }
       `}</style>
     </div>
   );
@@ -984,8 +1001,8 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose }: Props
 function zoomBtnStyle(disabled: boolean): React.CSSProperties {
   return {
     width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)',
+    borderRadius: 6, border: '1px solid var(--border, var(--border-light))', background: 'var(--bg-card)',
     color: disabled ? 'var(--text-muted)' : 'var(--text-body)',
-    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
+    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1,
   };
 }

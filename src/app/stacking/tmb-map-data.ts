@@ -165,3 +165,16 @@ export function resolveTmbMapProfile(config: { id: string } | null | undefined):
 export function isTmbAvailableForConfig(config: { id: string } | null | undefined): boolean {
   return resolveTmbMapProfile(config) !== null;
 }
+
+/** Rút gọn `TmbMapProfile.label` để hiển thị ở nơi cần gọn (dropdown chọn TMB
+ * khi >1 profile, title toolbar TmbMap) — KHÔNG hard-code theo tên dự án cụ
+ * thể nào (VBM1/TĐNĐ1...), suy ra THUẦN TUÝ từ format label sẵn có: mọi label
+ * hiện tại (tĩnh lẫn admin-managed, xem SAIGON_PARK/HLX_VBM_TMB_PROFILE ở trên
+ * + dbProfileToTmbMapProfile trong tmb-map-registry.ts) đều đặt phần phân biệt
+ * dự án ("VBM1", "TĐNĐ1"...) SAU dấu " · " cuối cùng nếu có. Không có " · "
+ * (VD "Vinhomes Sài Gòn Park", dự án single-profile) -> trả nguyên label, vì
+ * không có phần nào để rút gọn mà không mất thông tin. */
+export function tmbShortLabel(label: string): string {
+  const idx = label.lastIndexOf(' · ');
+  return idx === -1 ? label : label.slice(idx + 3);
+}

@@ -10,7 +10,7 @@ import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow }
 import { useAuth } from '@/hooks/useAuth';
 import TmbMap from './TmbMap';
 import TmbManagerPanel from './TmbManagerPanel';
-import { resolveTmbMapProfile } from './tmb-map-data';
+import { resolveTmbMapProfile, tmbShortLabel } from './tmb-map-data';
 import { useDbTmbMapProfiles } from './tmb-map-registry';
 import { fmtGia, fmtArea, fmtGiaFull } from './format';
 import {
@@ -1300,16 +1300,24 @@ export default function StackingPage() {
               chọn map TRƯỚC khi mở, KHÔNG tự đổi hành vi khi chỉ có 1 map
               (dropdown ẩn hẳn, giữ nguyên UX hiện tại cho Saigon Park/HLX VBM1). */}
           {tmbProfiles.length > 1 && (
-            <select
-              value={selectedTmbProfileIdx}
-              onChange={e => setSelectedTmbProfileIdx(Number(e.target.value))}
-              title="Chọn Tổng mặt bằng"
-              style={{ padding: '5px 8px', borderRadius: 6, fontSize: '0.8rem', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}
-            >
-              {tmbProfiles.map((p, idx) => (
-                <option key={p.configId} value={idx}>{p.label}</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                Chọn TMB
+              </span>
+              <div style={{ position: 'relative' }}>
+                <select
+                  value={selectedTmbProfileIdx}
+                  onChange={e => setSelectedTmbProfileIdx(Number(e.target.value))}
+                  title="Chọn Tổng mặt bằng đang xem"
+                  style={{ ...selectStyle, fontWeight: 700 }}
+                >
+                  {tmbProfiles.map((p, idx) => (
+                    <option key={p.configId} value={idx} title={p.label}>{tmbShortLabel(p.label)}</option>
+                  ))}
+                </select>
+                <ChevronDown size={13} style={chevronStyle} />
+              </div>
+            </div>
           )}
           {tmbProfile && (
             <button onClick={() => setShowTmbMap(true)} title="Xem vị trí các căn Còn hàng trên Tổng mặt bằng" style={{

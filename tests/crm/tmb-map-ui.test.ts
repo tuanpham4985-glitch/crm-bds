@@ -65,7 +65,7 @@ test('TmbMap: dùng profile.units/profile.pdfPageNumber cho spatial mapping + pa
 
 test('page.tsx: resolve ĐÚNG TmbMapProfile theo StackingConfig đang chọn (resolveTmbMapProfile) rồi truyền xuống TmbMap qua prop `profile` — KHÔNG if/else theo project trong component', () => {
   const pageSource = fs.readFileSync('src/app/stacking/page.tsx', 'utf8');
-  assert.match(pageSource, /import \{ resolveTmbMapProfile \} from '\.\/tmb-map-data';/);
+  assert.match(pageSource, /import \{ resolveTmbMapProfile, tmbShortLabel \} from '\.\/tmb-map-data';/);
   assert.match(pageSource, /const staticTmbProfile = resolveTmbMapProfile\(selectedConfig\);/);
   assert.match(pageSource, /<TmbMap[\s\S]*?profile=\{tmbProfile\}/);
 });
