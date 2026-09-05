@@ -295,7 +295,24 @@ export async function optimizePdf(buffer: Buffer, opts: OptimizeOptions = {}): P
       reports.push({ path: base.path, refNum: base.refNum, role: 'base', fromWidth: base.width, fromHeight: base.height, toWidth: base.width, toHeight: base.height, fromBytes: base.streamBytes, toBytes: base.streamBytes, skippedReason: `Unsupported filter/colorspace: ${base.filter} ${base.colorSpace}` });
       continue;
     }
-    if (targetScale >= 1) {
+    // "Đã ở đúng kích thước mục tiêu" được xác định bằng SO SÁNH KÍCH THƯỚC
+    // PIXEL SAU KHI ROUND (targetW/targetH) với base.width/height — KHÔNG chỉ
+    // dựa vào targetScale >= 1. Lý do (xác minh thực tế trên chính fixture đã
+    // deploy public/tmb-poc/tmb-hlx-tdnd1.pdf, ảnh nền 7757×5157): ảnh đã được
+    // optimize 1 lần trước đó có kích thước là kết quả của MỘT round() trước
+    // đó rồi, nên sqrt(maxRasterPixels / (base.width*base.height)) ở lần chạy
+    // SAU thường ra một số cực gần nhưng KHÔNG TUYỆT ĐỐI bằng 1 (VD
+    // 0.999964...) do sai số dấu phẩy động — targetScale >= 1 một mình bỏ sót
+    // ca này, khiến ảnh bị resize+re-encode JPEG lần 2 dù targetW/targetH
+    // round ra CHÍNH XÁC lại đúng base.width/base.height (không có gì thay
+    // đổi ngoài nén JPEG thêm 1 lần, giảm chất lượng vô ích). So sánh kích
+    // thước pixel đã round là phép so TẤT ĐỊNH trên số nguyên (không cần chọn
+    // epsilon tuỳ ý) — ảnh THẬT SỰ quá khổ (VD 12000×7978 gốc, targetScale
+    // ≈0.646) luôn cho targetW/targetH nhỏ hơn base rõ rệt, không bị ảnh
+    // hưởng bởi điều kiện bổ sung này (xem test "oversized raster vẫn được
+    // optimize" trong tmb-optimizer.test.ts).
+    const alreadyAtTargetSize = targetScale >= 1 || (targetW === base.width && targetH === base.height);
+    if (alreadyAtTargetSize) {
       reports.push({ path: base.path, refNum: base.refNum, role: 'base', fromWidth: base.width, fromHeight: base.height, toWidth: base.width, toHeight: base.height, fromBytes: base.streamBytes, toBytes: base.streamBytes, skippedReason: 'Already within render budget, no downsample needed' });
       continue;
     }

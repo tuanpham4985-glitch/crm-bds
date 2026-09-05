@@ -26,12 +26,69 @@ interface TmbProfileRow {
   page_height: number | null;
   rotation: number;
   unit_code_field: string | null;
+  glyph_remap: unknown;
   status: string;
   error_message: string | null;
   master_size_bytes: number | null;
   web_size_bytes: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Shape TỐI THIỂU để validate — cố ý KHÔNG import parseProfileDecodeConfig/
+ * UnitAliasRule từ tmb-indexer.ts vào đây: file đó import pdfjs-dist ở top
+ * level (chỉ chạy được server-side), kéo vào bundle client 'use client' này
+ * sẽ vỡ build/runtime. Field name/semantics giữ NGUYÊN THEO ĐÚNG contract
+ * TmbProfileDecodeConfig/UnitAliasRule thật (server đọc lại bằng
+ * parseProfileDecodeConfig, không phải model riêng) — đổi 1 bên phải đổi cả 2. */
+export function validateGlyphRemapConfig(rawText: string): { ok: true; value: unknown } | { ok: false; error: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch (e) {
+    return { ok: false, error: `JSON không hợp lệ: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, error: 'Phải là 1 object JSON (VD {} hoặc {"charRemap": {...}, "unitAliasRules": [...]})' };
+  }
+  const obj = parsed as Record<string, unknown>;
+  const hasNewShapeKeys = 'charRemap' in obj || 'unitAliasRules' in obj;
+
+  if (hasNewShapeKeys) {
+    if ('charRemap' in obj && obj.charRemap !== undefined) {
+      const cr = obj.charRemap;
+      if (cr === null || typeof cr !== 'object' || Array.isArray(cr)) {
+        return { ok: false, error: 'charRemap phải là object (VD {"55": "B"})' };
+      }
+      for (const [k, v] of Object.entries(cr as Record<string, unknown>)) {
+        if (typeof v !== 'string') return { ok: false, error: `charRemap["${k}"] phải là string, nhận được ${typeof v}` };
+      }
+    }
+    if ('unitAliasRules' in obj && obj.unitAliasRules !== undefined) {
+      const rules = obj.unitAliasRules;
+      if (!Array.isArray(rules)) return { ok: false, error: 'unitAliasRules phải là mảng' };
+      for (let i = 0; i < rules.length; i++) {
+        const r = rules[i];
+        if (!r || typeof r !== 'object') return { ok: false, error: `unitAliasRules[${i}] phải là object` };
+        const { label, pattern, replacement } = r as Record<string, unknown>;
+        if (typeof label !== 'string' || !label) return { ok: false, error: `unitAliasRules[${i}].label phải là string không rỗng` };
+        if (typeof pattern !== 'string' || !pattern) return { ok: false, error: `unitAliasRules[${i}].pattern phải là string không rỗng` };
+        if (typeof replacement !== 'string') return { ok: false, error: `unitAliasRules[${i}].replacement phải là string` };
+        try {
+          new RegExp(pattern);
+        } catch (e) {
+          return { ok: false, error: `unitAliasRules[${i}].pattern không phải regex hợp lệ: ${e instanceof Error ? e.message : String(e)}` };
+        }
+      }
+    }
+    return { ok: true, value: parsed };
+  }
+
+  // Shape cũ (tương thích ngược) — flat Record<string,string> = charRemap thuần.
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v !== 'string') return { ok: false, error: `"${k}" phải là string (shape cũ = charRemap phẳng), hoặc dùng shape mới {"charRemap": {...}}` };
+  }
+  return { ok: true, value: parsed };
 }
 
 interface IndexResult {
@@ -86,6 +143,46 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
   const [saving, setSaving] = useState(false);
 
   const [manualForm, setManualForm] = useState<{ profileId: string; unitCode: string; x: string; y: string } | null>(null);
+
+  // Cấu hình decode/alias (glyph_remap) — draft text theo từng profile (chưa
+  // gõ gì thì hiển thị giá trị THẬT đang lưu, xem glyphRemapText() bên dưới).
+  // KHÔNG hard-code bất kỳ config cụ thể (VD TĐNĐ1) nào ở đây — Admin tự dán
+  // JSON cho ĐÚNG profile đang sửa, generic cho mọi profile.
+  const [glyphRemapDraft, setGlyphRemapDraft] = useState<Record<string, string>>({});
+  const [glyphRemapError, setGlyphRemapError] = useState<Record<string, string>>({});
+  const [glyphRemapSavingId, setGlyphRemapSavingId] = useState<string | null>(null);
+
+  function glyphRemapText(p: TmbProfileRow): string {
+    return glyphRemapDraft[p.id] ?? JSON.stringify(p.glyph_remap ?? {}, null, 2);
+  }
+
+  async function saveGlyphRemap(p: TmbProfileRow) {
+    const validation = validateGlyphRemapConfig(glyphRemapText(p));
+    if (!validation.ok) {
+      setGlyphRemapError(m => ({ ...m, [p.id]: validation.error }));
+      return;
+    }
+    setGlyphRemapError(m => ({ ...m, [p.id]: '' }));
+    setGlyphRemapSavingId(p.id);
+    try {
+      const r = await fetch(`/api/stacking/tmb-profiles/${p.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ glyph_remap: validation.value }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setGlyphRemapDraft(m => { const next = { ...m }; delete next[p.id]; return next; });
+        setActionMsg(m => ({ ...m, [p.id]: 'Đã lưu cấu hình decode/alias' }));
+        await load();
+      } else {
+        setGlyphRemapError(m => ({ ...m, [p.id]: d.error || 'Không lưu được' }));
+      }
+    } catch {
+      setGlyphRemapError(m => ({ ...m, [p.id]: 'Lỗi kết nối server' }));
+    } finally {
+      setGlyphRemapSavingId(null);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -299,6 +396,28 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
                         )}
                       </div>
                     )}
+
+                    <div>
+                      <strong style={{ fontSize: '0.78rem' }}>Cấu hình decode/alias (glyph_remap):</strong>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-label)', margin: '4px 0' }}>
+                        JSON, áp dụng CHỈ cho profile này. Rỗng ({'{}'}) = dùng text layer PDF nguyên bản. Dùng khi PDF có font mã căn bị lỗi encoding (charRemap) và/hoặc Bảng hàng dùng mã kinh doanh khác mã lưới kỹ thuật trong PDF (unitAliasRules) — xem "Quét mã căn" để xem kết quả matched qua alias.
+                      </p>
+                      <textarea
+                        value={glyphRemapText(p)}
+                        onChange={e => setGlyphRemapDraft(m => ({ ...m, [p.id]: e.target.value }))}
+                        rows={6}
+                        spellCheck={false}
+                        style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.75rem', padding: 8, borderRadius: 6, border: '1px solid var(--border)', boxSizing: 'border-box' }}
+                      />
+                      {glyphRemapError[p.id] && (
+                        <div style={{ marginTop: 4, padding: '6px 10px', borderRadius: 6, background: '#fef2f2', color: '#dc2626', fontSize: '0.75rem' }}>{glyphRemapError[p.id]}</div>
+                      )}
+                      <div style={{ marginTop: 6 }}>
+                        <button disabled={glyphRemapSavingId === p.id} onClick={() => saveGlyphRemap(p)} style={actionBtnStyle}>
+                          {glyphRemapSavingId === p.id ? 'Đang lưu...' : 'Lưu cấu hình'}
+                        </button>
+                      </div>
+                    </div>
 
                     <div>
                       <strong style={{ fontSize: '0.78rem' }}>Mapping thủ công (Section 8):</strong>

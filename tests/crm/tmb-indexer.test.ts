@@ -9,6 +9,7 @@ import {
   resolveUnitCodeAliases,
   classifySheetInventoryWithAliases,
   summarizeSheetClassification,
+  parseProfileDecodeConfig,
   type UnitAliasRule,
 } from '../../src/lib/tmb-indexer';
 
@@ -259,4 +260,34 @@ test('summarizeSheetClassification: tách riêng matchedDirect vs matchedAlias, 
   assert.equal(summary.matchedDirect, 1); // BM34-25
   assert.equal(summary.unmatched, 1); // NĐ11-60
   assert.equal(summary.matchedDirect + summary.matchedAlias + summary.ambiguous + summary.unmatched, summary.total);
+});
+
+// ─── parseProfileDecodeConfig — contract dùng CHUNG với validateGlyphRemapConfig ─
+// (validator client-side trong TmbManagerPanel.tsx, xem tmb-glyph-remap-validation.test.ts)
+// phía client duplicate lại SHAPE (không import module này vào bundle client vì
+// nó import pdfjs-dist) — 2 test dưới đây khoá contract để đổi 1 bên phải đổi cả 2.
+
+test('parseProfileDecodeConfig: config TĐNĐ1 thật đã audit (shape mới charRemap+unitAliasRules) parse đúng, dùng được ngay cho extractPdfUnitLabels + classifySheetInventoryWithAliases', () => {
+  const raw = {
+    charRemap: { '55': 'B', '264': 'M', '19': '0', '16': '-' },
+    unitAliasRules: [
+      { label: 'TĐNĐ1: TĐ<n>-<m> -> BM<n>-<m>', pattern: '^TĐ(\\d+)-(\\d+)$', replacement: 'BM$1-$2' },
+    ],
+  };
+  const config = parseProfileDecodeConfig(raw);
+  assert.deepEqual(config.charRemap, raw.charRemap);
+  assert.equal(config.unitAliasRules?.length, 1);
+  assert.equal(config.unitAliasRules?.[0].label, raw.unitAliasRules[0].label);
+});
+
+test('parseProfileDecodeConfig: shape CŨ (flat Record<string,string>, không có charRemap/unitAliasRules key) -> coi toàn bộ là charRemap, unitAliasRules undefined', () => {
+  const config = parseProfileDecodeConfig({ '55': 'B', '264': 'M' });
+  assert.deepEqual(config.charRemap, { '55': 'B', '264': 'M' });
+  assert.equal(config.unitAliasRules, undefined);
+});
+
+test('parseProfileDecodeConfig: null/undefined/không phải object -> {} an toàn, không throw', () => {
+  assert.deepEqual(parseProfileDecodeConfig(null), {});
+  assert.deepEqual(parseProfileDecodeConfig(undefined), {});
+  assert.deepEqual(parseProfileDecodeConfig('not an object'), {});
 });

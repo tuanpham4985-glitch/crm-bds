@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs';
 import { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFArray, PDFStream, StandardFonts } from 'pdf-lib';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
@@ -149,4 +150,50 @@ test('checkOptimizationQualityGates: KHÔNG pass nếu mất text layer', async 
   const gates = await checkOptimizationQualityGates(originalAnalysis, noTextBytes, buffer.length);
   assert.equal(gates.pass, false);
   assert.ok(gates.failures.some(f => f.gate === 'text_layer_present'));
+});
+
+// ─── "Already at target size" tolerance (real regression found + fixed) ────
+// Bug thật: ảnh đã optimize 1 lần trước (kích thước là kết quả của round())
+// khi chạy optimizePdf() LẦN 2 cho ra targetScale ≈0.99996 (KHÔNG >= 1 do sai
+// số dấu phẩy động) dù targetW/targetH round lại CHÍNH XÁC bằng kích thước
+// hiện tại — bị resize+re-encode JPEG lần 2 vô ích, phá vỡ semantics "trả
+// buffer gốc nguyên vẹn khi không cần optimize" mà route /optimize dựa vào để
+// KHÔNG gọi asset storage (xem tmb-optimizer.ts comment tại điều kiện
+// alreadyAtTargetSize). Fix: so sánh targetW/targetH (đã round, số nguyên)
+// với base.width/height — tất định, không cần chọn epsilon tuỳ ý.
+
+test('optimizePdf [A]: fixture TĐNĐ1 đã deploy (public/tmb-poc/tmb-hlx-tdnd1.pdf) -> no-op, KHÔNG re-encode (regression cho bug targetScale ≈0.99996)', async () => {
+  const buffer = fs.readFileSync('public/tmb-poc/tmb-hlx-tdnd1.pdf');
+  const result = await optimizePdf(buffer);
+  assert.equal(result.buffer === buffer, true, 'phải trả ĐÚNG buffer gốc (reference equality) để route /optimize không gọi asset storage trên production');
+  assert.equal(result.report.optimizedSizeBytes, result.report.originalSizeBytes);
+  assert.ok(result.report.images.every(i => i.skippedReason), 'mọi ảnh phải bị skip, không ảnh nào bị resize/re-encode');
+});
+
+test('optimizePdf [B]: ảnh THẬT SỰ quá khổ (12000x7978, gấp ~2.4x cap mặc định) vẫn bị optimize đầy đủ, KHÔNG bị điều kiện mới chặn nhầm', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000 }); // 12MP, dùng cap ép nhỏ để test nhanh
+  const result = await optimizePdf(buffer, { maxRasterPixels: 1_000_000 }); // cap 1MP << 12MP -> chắc chắn cần optimize thật
+  assert.equal(result.buffer === buffer, false, 'phải là buffer MỚI (đã thực sự resize/re-encode)');
+  assert.equal(result.report.images.length, 1);
+  assert.equal(result.report.images[0].skippedReason, undefined);
+  assert.ok(result.report.images[0].toWidth < result.report.images[0].fromWidth, 'kích thước phải giảm thật');
+  assert.ok(result.report.optimizedSizeBytes < result.report.originalSizeBytes);
+});
+
+test('optimizePdf [C]: ảnh rõ ràng nhỏ hơn ngưỡng (không phải trường hợp biên) -> no-op như cũ, không bị ảnh hưởng bởi điều kiện mới', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 200, height: 150 }); // rất nhỏ, dưới cả ngưỡng "đáng optimize" (20% cap)
+  const result = await optimizePdf(buffer);
+  assert.equal(result.buffer.equals(buffer), true);
+});
+
+test('optimizePdf [D]: trường hợp biên tất định — ảnh có width*height NHỈNH HƠN cap khiến targetScale < 1 theo dấu phẩy động, NHƯNG targetW/targetH round lại ĐÚNG BẰNG kích thước gốc -> phải nhận diện no-op (không phụ thuộc epsilon tuỳ ý)', async () => {
+  // maxRasterPixels=100_000, base=314x319 -> product=100,166 (nhỉnh hơn cap ~0.17%).
+  // targetScale = sqrt(100_000/100_166) ≈ 0.9991710 (< 1 theo phép tính thô, đã verify bằng script).
+  // targetW = round(314 * 0.9991710) = 314 (= base.width). targetH = round(319 * 0.9991710) = 319 (= base.height).
+  // -> Tái tạo ĐÚNG cơ chế của bug thật đã audit (mục A: base 7757x5157, cap 40M),
+  // bằng số nhỏ để test nhanh + tất định (không phụ thuộc epsilon tuỳ ý).
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 314, height: 319 });
+  const result = await optimizePdf(buffer, { maxRasterPixels: 100_000 });
+  assert.equal(result.buffer === buffer, true, 'trường hợp biên phải được nhận diện là no-op tất định, không phụ thuộc epsilon tuỳ ý');
+  assert.ok(result.report.images.every(i => i.skippedReason));
 });
