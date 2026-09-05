@@ -21,7 +21,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const masterBuffer = await readTmbAsset(profile.master_asset_ref);
     const originalAnalysis = await analyzePdf(masterBuffer);
     const result = await optimizePdf(masterBuffer);
-    const gates = await checkOptimizationQualityGates(originalAnalysis, result.buffer, masterBuffer.length);
+    // isNoOp=true (đã đúng kích thước mục tiêu từ trước — xem OptimizeResult.isNoOp)
+    // -> miễn trừ ĐÚNG gate size_reduced, mọi gate khác (page/text/coordinate)
+    // vẫn áp dụng nguyên vẹn. "Không cần optimize" và "đã optimize mà không
+    // giảm được byte" là 2 kết quả khác nhau — chỉ cái đầu được miễn trừ.
+    const gates = await checkOptimizationQualityGates(originalAnalysis, result.buffer, masterBuffer.length, { skipSizeReductionGate: result.isNoOp });
 
     if (!gates.pass) {
       const msg = `Optimize không qua quality gates: ${gates.failures.map(f => `${f.gate}: ${f.detail}`).join('; ')}`;
@@ -29,7 +33,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ success: false, error: msg, data: { report: result.report, gates } }, { status: 422 });
     }
 
-    if (result.buffer === masterBuffer || result.report.images.every(i => i.skippedReason)) {
+    if (result.isNoOp) {
       // Không có ảnh nào cần optimize — dùng thẳng master làm web asset, KHÔNG
       // tạo bản sao thừa (Section 6: "Do not optimize merely to hit arbitrary
       // MB target").

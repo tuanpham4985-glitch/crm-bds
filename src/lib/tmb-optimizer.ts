@@ -229,6 +229,16 @@ export interface OptimizedImageReport {
 
 export interface OptimizeResult {
   buffer: Buffer;
+  /** TRUE khi KHÔNG có ảnh nào thực sự bị đổi (mọi candidate đều skippedReason)
+   * — asset đã ở đúng kích thước mục tiêu từ trước, `buffer` chính là buffer
+   * gốc nguyên vẹn. Đây là tín hiệu TẤT ĐỊNH duy nhất caller (route /optimize,
+   * checkOptimizationQualityGates) nên dùng để phân biệt "không cần optimize"
+   * với "đã optimize nhưng không giảm được bao nhiêu byte" — KHÔNG suy ra từ
+   * so sánh kích thước file (2 file khác nội dung vẫn có thể tình cờ bằng
+   * byte), CŨNG KHÔNG suy ra từ so sánh buffer identity ở nơi gọi (rò rỉ chi
+   * tiết implementation ra ngoài) — optimizePdf() là nơi DUY NHẤT biết chắc
+   * điều này nên trả thẳng qua field này. */
+  isNoOp: boolean;
   report: {
     originalSizeBytes: number;
     optimizedSizeBytes: number;
@@ -338,13 +348,14 @@ export async function optimizePdf(buffer: Buffer, opts: OptimizeOptions = {}): P
 
   if (reports.every(r => r.skippedReason)) {
     // Không có ảnh nào thực sự bị đổi — trả buffer GỐC, không ghi lại PDF vô ích.
-    return { buffer, report: { originalSizeBytes: buffer.length, optimizedSizeBytes: buffer.length, images: reports } };
+    return { buffer, isNoOp: true, report: { originalSizeBytes: buffer.length, optimizedSizeBytes: buffer.length, images: reports } };
   }
 
   const savedBytes = await pdfDoc.save({ useObjectStreams: true, addDefaultPage: false });
   const optimizedBuffer = Buffer.from(savedBytes);
   return {
     buffer: optimizedBuffer,
+    isNoOp: false,
     report: { originalSizeBytes: buffer.length, optimizedSizeBytes: optimizedBuffer.length, images: reports },
   };
 }
@@ -383,11 +394,26 @@ export interface QualityGateResult {
 
 /** Section 6 — cổng chất lượng: optimized asset chỉ được đánh dấu ACTIVE nếu
  * qua HẾT các gate này. `sampleUnitCodes` (tuỳ chọn) = vài mã căn đã biết
- * trước optimize, dùng để so khớp lại sau optimize (gate 5). */
+ * trước optimize, dùng để so khớp lại sau optimize (gate 5).
+ *
+ * `opts.skipSizeReductionGate` — CHỈ dùng khi optimizePdf() đã báo
+ * `isNoOp: true` (xem OptimizeResult.isNoOp): "không cần optimize vì đã đúng
+ * kích thước mục tiêu" là kết quả HỢP LỆ, khác hẳn "đã thử optimize nhưng
+ * không giảm được byte nào" — bị gate size_reduced chặn NHẦM 1 no-op hợp lệ
+ * là bug thật đã audit trên chính fixture TĐNĐ1 production (10238869 ->
+ * 10238869 bị coi là fail dù optimizer không hề động vào ảnh). Caller (route
+ * /optimize) PHẢI tự xác định no-op từ `OptimizeResult.isNoOp` — KHÔNG được
+ * tự suy đoán no-op từ so sánh kích thước ở gate này (2 lý do khác nhau hoàn
+ * toàn: "chưa từng đổi gì" vs "đổi rồi mà vẫn không nhỏ hơn" — TRƯỜNG HỢP SAU
+ * VẪN PHẢI fail như cũ, xem test "changed buffer với size không giảm vẫn
+ * fail"). Mọi gate khác (page_count/dimensions/rotation/text layer/text item
+ * count/opens_with_pdfjs) áp dụng NGUYÊN VẸN dù no-op hay không — no-op chỉ
+ * miễn trừ ĐÚNG 1 gate size_reduced. */
 export async function checkOptimizationQualityGates(
   originalAnalysis: PdfAnalysis,
   optimizedBuffer: Buffer,
   originalSizeBytes: number,
+  opts: { skipSizeReductionGate?: boolean } = {},
 ): Promise<QualityGateResult> {
   const failures: QualityGateFailure[] = [];
 
@@ -415,7 +441,7 @@ export async function checkOptimizationQualityGates(
   if (originalAnalysis.hasTextLayer && optimizedAnalysis.textItemCount < originalAnalysis.textItemCount) {
     failures.push({ gate: 'text_item_count', detail: `${originalAnalysis.textItemCount} -> ${optimizedAnalysis.textItemCount}` });
   }
-  if (optimizedBuffer.length >= originalSizeBytes) {
+  if (!opts.skipSizeReductionGate && optimizedBuffer.length >= originalSizeBytes) {
     failures.push({ gate: 'size_reduced', detail: `${originalSizeBytes} -> ${optimizedBuffer.length} (không giảm)` });
   }
 

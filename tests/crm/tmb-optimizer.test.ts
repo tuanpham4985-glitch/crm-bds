@@ -162,22 +162,35 @@ test('checkOptimizationQualityGates: KHÔNG pass nếu mất text layer', async 
 // alreadyAtTargetSize). Fix: so sánh targetW/targetH (đã round, số nguyên)
 // với base.width/height — tất định, không cần chọn epsilon tuỳ ý.
 
-test('optimizePdf [A]: fixture TĐNĐ1 đã deploy (public/tmb-poc/tmb-hlx-tdnd1.pdf) -> no-op, KHÔNG re-encode (regression cho bug targetScale ≈0.99996)', async () => {
+test('optimizePdf [A]: fixture TĐNĐ1 đã deploy (public/tmb-poc/tmb-hlx-tdnd1.pdf) -> no-op, KHÔNG re-encode (regression cho bug targetScale ≈0.99996), FULL PIPELINE qua gates y hệt route /optimize -> pass (regression cho bug production thật: size_reduced chặn nhầm no-op hợp lệ)', async () => {
   const buffer = fs.readFileSync('public/tmb-poc/tmb-hlx-tdnd1.pdf');
+  const analysis = await analyzePdf(buffer);
   const result = await optimizePdf(buffer);
+  assert.equal(result.isNoOp, true, 'phải được đánh dấu isNoOp — đây là tín hiệu route /optimize dùng để miễn trừ gate size_reduced VÀ để không ghi asset storage');
   assert.equal(result.buffer === buffer, true, 'phải trả ĐÚNG buffer gốc (reference equality) để route /optimize không gọi asset storage trên production');
   assert.equal(result.report.optimizedSizeBytes, result.report.originalSizeBytes);
   assert.ok(result.report.images.every(i => i.skippedReason), 'mọi ảnh phải bị skip, không ảnh nào bị resize/re-encode');
+
+  // Đúng lời gọi route /optimize thật sự dùng — chứng minh no-op không còn bị
+  // gate size_reduced chặn nhầm (bug production thật đã audit: 10238869 ->
+  // 10238869 từng bị coi là fail), nhưng mọi gate khác vẫn được kiểm đầy đủ.
+  const gates = await checkOptimizationQualityGates(analysis, result.buffer, buffer.length, { skipSizeReductionGate: result.isNoOp });
+  assert.equal(gates.pass, true, JSON.stringify(gates.failures));
 });
 
-test('optimizePdf [B]: ảnh THẬT SỰ quá khổ (12000x7978, gấp ~2.4x cap mặc định) vẫn bị optimize đầy đủ, KHÔNG bị điều kiện mới chặn nhầm', async () => {
+test('optimizePdf [B]: ảnh THẬT SỰ quá khổ (12000x7978, gấp ~2.4x cap mặc định) vẫn bị optimize đầy đủ, KHÔNG bị điều kiện mới chặn nhầm; FULL PIPELINE qua gates (skipSizeReductionGate=false vì isNoOp=false) vẫn yêu cầu giảm dung lượng như cũ', async () => {
   const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000 }); // 12MP, dùng cap ép nhỏ để test nhanh
+  const analysis = await analyzePdf(buffer);
   const result = await optimizePdf(buffer, { maxRasterPixels: 1_000_000 }); // cap 1MP << 12MP -> chắc chắn cần optimize thật
+  assert.equal(result.isNoOp, false, 'ảnh thật sự bị resize -> KHÔNG phải no-op');
   assert.equal(result.buffer === buffer, false, 'phải là buffer MỚI (đã thực sự resize/re-encode)');
   assert.equal(result.report.images.length, 1);
   assert.equal(result.report.images[0].skippedReason, undefined);
   assert.ok(result.report.images[0].toWidth < result.report.images[0].fromWidth, 'kích thước phải giảm thật');
   assert.ok(result.report.optimizedSizeBytes < result.report.originalSizeBytes);
+
+  const gates = await checkOptimizationQualityGates(analysis, result.buffer, buffer.length, { skipSizeReductionGate: result.isNoOp });
+  assert.equal(gates.pass, true, JSON.stringify(gates.failures));
 });
 
 test('optimizePdf [C]: ảnh rõ ràng nhỏ hơn ngưỡng (không phải trường hợp biên) -> no-op như cũ, không bị ảnh hưởng bởi điều kiện mới', async () => {
@@ -196,4 +209,41 @@ test('optimizePdf [D]: trường hợp biên tất định — ảnh có width*h
   const result = await optimizePdf(buffer, { maxRasterPixels: 100_000 });
   assert.equal(result.buffer === buffer, true, 'trường hợp biên phải được nhận diện là no-op tất định, không phụ thuộc epsilon tuỳ ý');
   assert.ok(result.report.images.every(i => i.skippedReason));
+});
+
+// ─── Gate ordering bug (route /optimize — bug production thật đã audit) ────
+// "Không cần optimize vì đã đúng kích thước" (isNoOp=true) và "đã thử optimize
+// mà vẫn không giảm được byte" (isNoOp=false, size không giảm) là 2 kết quả
+// NGỮ NGHĨA KHÁC NHAU — chỉ cái đầu được miễn trừ gate size_reduced. Test dưới
+// đây khoá đúng ranh giới đó, tách biệt hẳn khỏi optimizePdf() (gọi thẳng
+// checkOptimizationQualityGates với buffer tự tạo) để không phụ thuộc việc
+// optimizePdf() có thực sự tạo ra được case "đổi rồi mà không nhỏ hơn" hay không.
+
+test('checkOptimizationQualityGates [5]: buffer ĐÃ ĐỔI (isNoOp=false/mặc định) mà vẫn không giảm dung lượng -> VẪN fail size_reduced như cũ, KHÔNG được miễn trừ nhầm', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000 });
+  const analysis = await analyzePdf(buffer);
+  // Giả lập "đã optimize" (khác nội dung/isNoOp=false) nhưng KHÔNG hề nhỏ hơn
+  // — nối thêm byte để chắc chắn optimizedBuffer.length >= originalSizeBytes.
+  const notActuallySmallerBuffer = Buffer.concat([buffer, Buffer.from('padding')]);
+  const gates = await checkOptimizationQualityGates(analysis, notActuallySmallerBuffer, buffer.length, { skipSizeReductionGate: false });
+  assert.equal(gates.pass, false);
+  assert.ok(gates.failures.some(f => f.gate === 'size_reduced'));
+});
+
+test('checkOptimizationQualityGates [6]: no-op (skipSizeReductionGate=true) miễn trừ ĐÚNG size_reduced, KHÔNG miễn trừ gate khác — page_count sai vẫn fail dù no-op', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000 });
+  const analysis = await analyzePdf(buffer);
+
+  // "optimized" buffer y hệt kích thước gốc (mô phỏng no-op thật) NHƯNG page
+  // count sai — mô phỏng 1 lỗi cấu trúc giả định để xác nhận skip chỉ áp
+  // dụng đúng 1 gate, không "no-op thì miễn hết".
+  const wrongPageCountDoc = await PDFDocument.create();
+  wrongPageCountDoc.addPage([analysis.page.width, analysis.page.height]);
+  wrongPageCountDoc.addPage([analysis.page.width, analysis.page.height]); // 2 trang thay vì 1
+  const wrongBuffer = Buffer.from(await wrongPageCountDoc.save());
+
+  const gates = await checkOptimizationQualityGates(analysis, wrongBuffer, buffer.length, { skipSizeReductionGate: true });
+  assert.equal(gates.pass, false, 'no-op KHÔNG được miễn trừ gate page_count/text_layer — chỉ miễn trừ size_reduced');
+  assert.ok(gates.failures.some(f => f.gate === 'page_count'));
+  assert.ok(!gates.failures.some(f => f.gate === 'size_reduced'), 'size_reduced phải được miễn trừ đúng vì skipSizeReductionGate=true');
 });
