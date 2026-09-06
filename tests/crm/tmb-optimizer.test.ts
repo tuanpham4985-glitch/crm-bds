@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
-import { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFArray, PDFStream, StandardFonts } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFArray, PDFStream, PDFRef, StandardFonts } from 'pdf-lib';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
-import { analyzePdf, optimizePdf, checkOptimizationQualityGates } from '../../src/lib/tmb-optimizer';
+import { analyzePdf, optimizePdf, checkOptimizationQualityGates, isStructurallyValidImageColorSpace } from '../../src/lib/tmb-optimizer';
 
 /** Dựng 1 PDF test có: text layer thật + 1 ảnh raster FlateDecode RGB "quá
  * khổ" (vượt ngưỡng optimize) — mô phỏng ĐÚNG tình huống thật đã audit trên
  * fixture TĐNĐ1 (ảnh nền RAW FlateDecode thay vì JPEG, xem tmb-optimizer.ts
  * comment đầu file), nhưng nhỏ hơn nhiều để test chạy nhanh, không cần file
  * PDF 200MB thật trong repo. */
-async function buildTestPdfWithHugeRasterImage(opts: { width: number; height: number }): Promise<Buffer> {
-  const { width, height } = opts;
+async function buildTestPdfWithHugeRasterImage(opts: { width: number; height: number; withSMask?: boolean }): Promise<Buffer> {
+  const { width, height, withSMask = false } = opts;
   const doc = await PDFDocument.create();
   const page = doc.addPage([400, 300]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -33,6 +33,30 @@ async function buildTestPdfWithHugeRasterImage(opts: { width: number; height: nu
     Filter: 'FlateDecode',
     Length: compressed.length,
   });
+
+  // withSMask=true — mô phỏng ĐÚNG cấu trúc raster nền TĐNĐ1 thật (ảnh RGB +
+  // 1 SMask DeviceGray riêng, xem tmb-optimizer.ts comment đầu file): cần
+  // fixture này để test được CẢ 2 nhánh replaceImageStream() gọi tới (base
+  // '/DeviceRGB' VÀ mask '/DeviceGray') — bug thật (PDFName.of() double-encode
+  // leading slash) làm hỏng CẢ HAI, không chỉ base image.
+  if (withSMask) {
+    const maskPixels = crypto.randomBytes(width * height); // 1 channel (DeviceGray)
+    const maskCompressed = zlib.deflateSync(maskPixels);
+    const maskDict = doc.context.obj({
+      Type: 'XObject',
+      Subtype: 'Image',
+      Width: width,
+      Height: height,
+      ColorSpace: 'DeviceGray',
+      BitsPerComponent: 8,
+      Filter: 'FlateDecode',
+      Length: maskCompressed.length,
+    });
+    const maskStream = PDFRawStream.of(maskDict, maskCompressed);
+    const maskRef = doc.context.register(maskStream);
+    imageDict.set(PDFName.of('SMask'), maskRef);
+  }
+
   const imageStream = PDFRawStream.of(imageDict, compressed);
   const imageRef = doc.context.register(imageStream);
 
@@ -162,7 +186,7 @@ test('checkOptimizationQualityGates: KHÔNG pass nếu mất text layer', async 
 // alreadyAtTargetSize). Fix: so sánh targetW/targetH (đã round, số nguyên)
 // với base.width/height — tất định, không cần chọn epsilon tuỳ ý.
 
-test('optimizePdf [A]: fixture TĐNĐ1 đã deploy (public/tmb-poc/tmb-hlx-tdnd1.pdf) -> no-op, KHÔNG re-encode (regression cho bug targetScale ≈0.99996), FULL PIPELINE qua gates y hệt route /optimize -> pass (regression cho bug production thật: size_reduced chặn nhầm no-op hợp lệ)', async () => {
+test('optimizePdf [A]: fixture TĐNĐ1 đã deploy (public/tmb-poc/tmb-hlx-tdnd1.pdf) -> no-op, KHÔNG re-encode (regression cho bug targetScale ≈0.99996); FULL PIPELINE qua gates y hệt route /optimize -> ĐÚNG PHẢI fail CHỈ ở gate image_colorspace_valid (fixture này còn mang bug ColorSpace thật đã audit, chưa được re-optimize/redeploy trong task fix) — size_reduced vẫn được miễn trừ đúng như regression cũ (bug production: 10238869 -> 10238869 từng bị coi là fail)', async () => {
   const buffer = fs.readFileSync('public/tmb-poc/tmb-hlx-tdnd1.pdf');
   const analysis = await analyzePdf(buffer);
   const result = await optimizePdf(buffer);
@@ -174,8 +198,24 @@ test('optimizePdf [A]: fixture TĐNĐ1 đã deploy (public/tmb-poc/tmb-hlx-tdnd1
   // Đúng lời gọi route /optimize thật sự dùng — chứng minh no-op không còn bị
   // gate size_reduced chặn nhầm (bug production thật đã audit: 10238869 ->
   // 10238869 từng bị coi là fail), nhưng mọi gate khác vẫn được kiểm đầy đủ.
+  //
+  // CẬP NHẬT (TMB fidelity root-cause audit, gate "image_colorspace_valid"
+  // mới): fixture này CHÍNH LÀ asset production đang mang bug ColorSpace
+  // double-encode đã audit (public/tmb-poc/tmb-hlx-tdnd1.pdf CHƯA được
+  // re-optimize/redeploy lại trong task fix này — xem Final Report "Do NOT
+  // upload a new production PDF"), nên gates.pass BÂY GIỜ ĐÚNG PHẢI là false,
+  // và chỉ fail ĐÚNG gate image_colorspace_valid cho refNum 199/200 (base +
+  // SMask của raster nền) — KHÔNG fail bất kỳ gate nào khác (page_count/
+  // dimensions/rotation/text/size_reduced-skip vẫn nguyên vẹn như trước).
+  // Đây là bằng chứng sống: gate mới phát hiện ĐÚNG asset đã biết là hỏng,
+  // và sẽ tự động pass trở lại sau khi asset này được re-optimize bằng
+  // replaceImageStream() đã fix rồi redeploy (việc đó nằm ngoài scope task này).
   const gates = await checkOptimizationQualityGates(analysis, result.buffer, buffer.length, { skipSizeReductionGate: result.isNoOp });
-  assert.equal(gates.pass, true, JSON.stringify(gates.failures));
+  assert.equal(gates.pass, false, 'fixture ĐÃ DEPLOY này còn mang bug ColorSpace đã audit — CHƯA được re-optimize trong task fix này');
+  assert.equal(gates.failures.length, 2, JSON.stringify(gates.failures));
+  assert.ok(gates.failures.every(f => f.gate === 'image_colorspace_valid'), 'KHÔNG được fail bất kỳ gate nào khác ngoài image_colorspace_valid');
+  assert.ok(gates.failures.some(f => f.detail.includes('refNum 200') && f.detail.includes('#2FDeviceRGB')));
+  assert.ok(gates.failures.some(f => f.detail.includes('refNum 199') && f.detail.includes('#2FDeviceGray')));
 });
 
 test('optimizePdf [B]: ảnh THẬT SỰ quá khổ (12000x7978, gấp ~2.4x cap mặc định) vẫn bị optimize đầy đủ, KHÔNG bị điều kiện mới chặn nhầm; FULL PIPELINE qua gates (skipSizeReductionGate=false vì isNoOp=false) vẫn yêu cầu giảm dung lượng như cũ', async () => {
@@ -246,4 +286,205 @@ test('checkOptimizationQualityGates [6]: no-op (skipSizeReductionGate=true) mi�
   assert.equal(gates.pass, false, 'no-op KHÔNG được miễn trừ gate page_count/text_layer — chỉ miễn trừ size_reduced');
   assert.ok(gates.failures.some(f => f.gate === 'page_count'));
   assert.ok(!gates.failures.some(f => f.gate === 'size_reduced'), 'size_reduced phải được miễn trừ đúng vì skipSizeReductionGate=true');
+});
+
+// ─── ColorSpace corruption regression (TMB fidelity root-cause audit) ──────
+// Bug thật đã audit trực tiếp trên production (public/tmb-poc/tmb-hlx-tdnd1.pdf):
+// replaceImageStream() gọi `PDFName.of(colorSpace)` với `colorSpace` ĐÃ có sẵn
+// dấu "/" ('/DeviceRGB' | '/DeviceGray', xem type param) — PDFName.of() coi
+// TOÀN BỘ chuỗi truyền vào là NỘI DUNG tên (nó tự thêm dấu "/" delimiter khi
+// serialize), nên dấu "/" thừa bên trong bị hex-escape thành "#2F", ghi ra
+// PDF tên KHÔNG renderer nào nhận diện được: "/#2FDeviceRGB"/"/#2FDeviceGray".
+// Hậu quả thật: TOÀN BỘ ảnh nền TĐNĐ1 (hồ, đường, cảnh quan — đúng ảnh raster
+// DUY NHẤT đủ lớn để bị resize/re-encode) render sai (MuPDF: bỏ qua hẳn,
+// pdf.js: nhiễu xám) dù mọi quality gate cũ (page/dimension/rotation/text/size)
+// đều pass, vì KHÔNG gate nào từng rasterize/validate colorspace thật.
+// Fix (tmb-optimizer.ts replaceImageStream): PDFName.of(colorSpace.slice(1))
+// — bỏ dấu "/" thừa trước khi đưa cho PDFName.of(), verify bằng repro độc lập:
+//   PDFName.of('/DeviceRGB').toString() === '/#2FDeviceRGB'  (bug)
+//   PDFName.of('DeviceRGB').toString()  === '/DeviceRGB'     (đúng)
+
+/** Đọc lại `/ColorSpace` của 1 XObject sau khi PDF đã save/reload — dùng
+ * CHÍNH pdf-lib (không phải string chứa reasoning riêng) để khớp đúng với
+ * những gì 1 renderer thật sẽ đọc từ dict. `.toString()` trên 1 PDFName hợp
+ * lệ luôn có dạng "/<Name>" — so sánh CHÍNH XÁC (không chỉ "chứa DeviceRGB")
+ * để bắt được ĐÚNG dạng lỗi "/#2FDeviceRGB" (chứa "DeviceRGB" như substring
+ * nhưng KHÔNG phải tên hợp lệ). */
+async function readColorSpaceName(buffer: Buffer, refNum: number): Promise<string | null> {
+  const doc = await PDFDocument.load(buffer, { updateMetadata: false });
+  const obj = doc.context.lookup(PDFRef.of(refNum));
+  if (!(obj instanceof PDFRawStream)) return null;
+  const cs = obj.dict.get(PDFName.of('ColorSpace'));
+  return cs ? cs.toString() : null;
+}
+
+test('replaceImageStream regression: base image ColorSpace hợp lệ "/DeviceRGB" sau optimize — KHÔNG BAO GIỜ "/#2FDeviceRGB"', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000, withSMask: true });
+  const analysis = await analyzePdf(buffer);
+  const baseRefNum = analysis.images.find(i => i.role === 'base')!.refNum;
+
+  const result = await optimizePdf(buffer, { maxRasterPixels: 1_000_000 }); // ép resize thật
+  assert.equal(result.isNoOp, false, 'test phải thực sự đi qua replaceImageStream(), không phải no-op');
+
+  const colorSpace = await readColorSpaceName(result.buffer, baseRefNum);
+  assert.equal(colorSpace, '/DeviceRGB');
+  assert.notEqual(colorSpace, '/#2FDeviceRGB', 'không được double-encode dấu "/" (bug thật đã audit)');
+});
+
+test('replaceImageStream regression: SMask ColorSpace hợp lệ "/DeviceGray" sau optimize — KHÔNG BAO GIỜ "/#2FDeviceGray"', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000, withSMask: true });
+  const analysis = await analyzePdf(buffer);
+  const maskRefNum = analysis.images.find(i => i.role === 'mask')!.refNum;
+
+  const result = await optimizePdf(buffer, { maxRasterPixels: 1_000_000 });
+  assert.equal(result.isNoOp, false);
+
+  const colorSpace = await readColorSpaceName(result.buffer, maskRefNum);
+  assert.equal(colorSpace, '/DeviceGray');
+  assert.notEqual(colorSpace, '/#2FDeviceGray', 'SMask cũng đi qua CHÍNH replaceImageStream() nên phải fix ĐỒNG THỜI với base image');
+});
+
+test('replaceImageStream regression: chuỗi byte "#2F" (hex-escape của "/") KHÔNG BAO GIỜ xuất hiện trong output đã save — chặn regression ở mức byte, không chỉ ở mức API pdf-lib', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000, withSMask: true });
+  const result = await optimizePdf(buffer, { maxRasterPixels: 1_000_000 });
+  assert.equal(result.isNoOp, false);
+  assert.equal(result.buffer.includes('#2FDevice'), false, 'output PDF không được chứa tên colorspace bị hex-escape sai (dấu hiệu byte-level của bug đã audit)');
+});
+
+test('replaceImageStream regression: PDFName.of() nhận bare name (không dấu "/") mới serialize đúng — repro độc lập xác nhận cơ chế bug + fix (không phụ thuộc optimizePdf())', () => {
+  assert.equal(PDFName.of('/DeviceRGB').toString(), '/#2FDeviceRGB', 'xác nhận CƠ CHẾ bug: truyền tên đã có "/" vào PDFName.of() double-encode');
+  assert.equal(PDFName.of('DeviceRGB').toString(), '/DeviceRGB', 'xác nhận FIX: bare name (không "/") serialize đúng — đây là cách replaceImageStream() phải gọi');
+  assert.equal(PDFName.of('DeviceGray').toString(), '/DeviceGray');
+});
+
+test('replaceImageStream regression: resize/JPEG/SMask/text/coordinate behavior hiện có KHÔNG bị ảnh hưởng bởi fix ColorSpace (full pipeline qua gates)', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000, withSMask: true });
+  const originalAnalysis = await analyzePdf(buffer);
+  const baseRefNum = originalAnalysis.images.find(i => i.role === 'base')!.refNum;
+  const maskRefNum = originalAnalysis.images.find(i => i.role === 'mask')!.refNum;
+
+  const result = await optimizePdf(buffer, { maxRasterPixels: 1_000_000 });
+
+  // Resize thật (không phải no-op) + JPEG re-encode.
+  assert.equal(result.isNoOp, false);
+  assert.equal(result.report.images.length, 2, 'phải có báo cáo cho CẢ base image lẫn SMask');
+  const baseReport = result.report.images.find(i => i.refNum === baseRefNum)!;
+  const maskReport = result.report.images.find(i => i.refNum === maskRefNum)!;
+  assert.ok(baseReport.toWidth < baseReport.fromWidth, 'base image phải giảm kích thước thật');
+  assert.ok(maskReport.toWidth < maskReport.fromWidth, 'SMask phải resize đồng bộ theo base image');
+  assert.equal(baseReport.toWidth, maskReport.toWidth, 'base image và SMask phải cùng kích thước sau resize (không lệch alpha)');
+  assert.ok(result.report.optimizedSizeBytes < result.report.originalSizeBytes);
+
+  // SMask relationship vẫn còn (đúng ref đã resize, không bị đứt liên kết).
+  const reloaded = await PDFDocument.load(result.buffer, { updateMetadata: false });
+  const baseObj = reloaded.context.lookup(PDFRef.of(baseRefNum));
+  assert.ok(baseObj instanceof PDFRawStream);
+  const smaskEntry = (baseObj as PDFRawStream).dict.get(PDFName.of('SMask'));
+  assert.ok(smaskEntry instanceof PDFRef, 'SMask reference phải còn nguyên sau optimize');
+  assert.equal((smaskEntry as PDFRef).objectNumber, maskRefNum);
+
+  // Text layer + toạ độ trang (Section 6 gates) vẫn nguyên vẹn.
+  const newAnalysis = await analyzePdf(result.buffer);
+  assert.equal(newAnalysis.hasTextLayer, true);
+  assert.equal(newAnalysis.textItemCount, originalAnalysis.textItemCount);
+  assert.equal(newAnalysis.page.width, originalAnalysis.page.width);
+  assert.equal(newAnalysis.page.height, originalAnalysis.page.height);
+
+  // Toàn bộ quality gate hiện có (không đổi) vẫn phải pass — fix KHÔNG phá gate nào.
+  const gates = await checkOptimizationQualityGates(originalAnalysis, result.buffer, buffer.length, { skipSizeReductionGate: result.isNoOp });
+  assert.equal(gates.pass, true, JSON.stringify(gates.failures));
+
+  // Và ColorSpace của cả 2 vẫn hợp lệ (lặp lại bằng pipeline đầy đủ, không chỉ unit).
+  assert.equal(await readColorSpaceName(result.buffer, baseRefNum), '/DeviceRGB');
+  assert.equal(await readColorSpaceName(result.buffer, maskRefNum), '/DeviceGray');
+});
+
+// ─── Quality gate mới: "image_colorspace_valid" (TMB fidelity root-cause audit) ─
+// Section 8 báo cáo audit: MỌI gate cũ (page_count/dimensions/rotation/
+// text_layer/text_item_count/size_reduced/opens_with_pdfjs) đều PASS trên
+// production dù ảnh nền TĐNĐ1 render sai hoàn toàn, vì opens_with_pdfjs chỉ
+// gọi analyzePdf() (đọc text/metadata, KHÔNG rasterize) — không gate nào từng
+// validate colorspace ảnh có RESOLVE ĐƯỢC hay không. Gate mới chặn ĐÚNG lớp
+// lỗi đó: tên PDFName đơn giản chứa ký tự hex-escape không hợp lệ (VD
+// "/#2FDeviceRGB") — KHÔNG cần rasterize/render (đắt, cần thêm dependency
+// canvas), vì đây là lỗi CẤU TRÚC DICT phát hiện được tất định bằng cách đọc
+// lại dict.
+
+test('isStructurallyValidImageColorSpace: tên đơn giản hợp lệ (Device*, Cal*, Lab...) -> true', () => {
+  assert.equal(isStructurallyValidImageColorSpace('/DeviceRGB'), true);
+  assert.equal(isStructurallyValidImageColorSpace('/DeviceGray'), true);
+  assert.equal(isStructurallyValidImageColorSpace('/DeviceCMYK'), true);
+  assert.equal(isStructurallyValidImageColorSpace('/CalRGB'), true);
+});
+
+test('isStructurallyValidImageColorSpace: null (không khai báo /ColorSpace) -> true, ngoài phạm vi gate', () => {
+  assert.equal(isStructurallyValidImageColorSpace(null), true);
+});
+
+test('isStructurallyValidImageColorSpace: colorspace phức hợp (indirect reference "189 0 R" cho ICCBased, array "[ /Indexed ]") -> true, KHÔNG false-positive trên ảnh hợp lệ chưa bị optimizer động vào', () => {
+  assert.equal(isStructurallyValidImageColorSpace('189 0 R'), true);
+  assert.equal(isStructurallyValidImageColorSpace('[ /Indexed 189 0 R 255 (...) ]'), true);
+});
+
+test('isStructurallyValidImageColorSpace: dạng lỗi ĐÚNG bug thật đã audit ("/#2FDeviceRGB"/"/#2FDeviceGray") -> false', () => {
+  assert.equal(isStructurallyValidImageColorSpace('/#2FDeviceRGB'), false);
+  assert.equal(isStructurallyValidImageColorSpace('/#2FDeviceGray'), false);
+});
+
+test('isStructurallyValidImageColorSpace: rỗng hoặc chỉ có "/" -> false (không phải tên hợp lệ)', () => {
+  assert.equal(isStructurallyValidImageColorSpace('/'), false);
+  assert.equal(isStructurallyValidImageColorSpace('/1BadName'), false); // PDF name không được bắt đầu bằng số theo quy ước tên hợp lệ ở đây
+});
+
+test('checkOptimizationQualityGates: gate "image_colorspace_valid" FAIL khi optimized buffer có ColorSpace bị hex-escape hỏng (mô phỏng ĐÚNG dạng bug thật, không phụ thuộc việc tự tay revert fix trong optimizePdf())', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000 });
+  const originalAnalysis = await analyzePdf(buffer);
+
+  // Build 1 PDF "optimized" giả lập ĐÚNG dạng dict bug thật đã audit — gọi
+  // PDFName.of() với chuỗi ĐÃ có dấu "/" (y hệt cơ chế bug), không phải qua
+  // optimizePdf() (đã fix) mà tự tay dựng để test ĐỘC LẬP khả năng phát hiện
+  // của gate mới.
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([originalAnalysis.page.width, originalAnalysis.page.height]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let i = 0; i < originalAnalysis.textItemCount; i++) page.drawText('BM12-05', { x: 10, y: 10 + i, size: 8, font });
+  const corruptedDict = doc.context.obj({
+    Type: 'XObject', Subtype: 'Image', Width: 10, Height: 10,
+    ColorSpace: PDFName.of('/DeviceRGB'), // <-- cơ chế bug: double-encode dấu "/"
+    BitsPerComponent: 8, Filter: 'DCTDecode', Length: 4,
+  });
+  const corruptedStream = PDFRawStream.of(corruptedDict, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  const corruptedRef = doc.context.register(corruptedStream);
+  const resources = page.node.Resources() ?? doc.context.obj({});
+  const xobjDict = doc.context.obj({});
+  xobjDict.set(PDFName.of('Im0'), corruptedRef);
+  resources.set(PDFName.of('XObject'), xobjDict);
+  page.node.set(PDFName.of('Resources'), resources);
+  const corruptedBuffer = Buffer.from(await doc.save());
+
+  const gates = await checkOptimizationQualityGates(originalAnalysis, corruptedBuffer, buffer.length, { skipSizeReductionGate: true });
+  assert.equal(gates.pass, false);
+  assert.ok(gates.failures.some(f => f.gate === 'image_colorspace_valid' && f.detail.includes('#2FDeviceRGB')));
+});
+
+test('checkOptimizationQualityGates: gate "image_colorspace_valid" PASS trên output THẬT của optimizePdf() đã fix (end-to-end, không chỉ unit test isStructurallyValidImageColorSpace)', async () => {
+  const buffer = await buildTestPdfWithHugeRasterImage({ width: 4000, height: 3000, withSMask: true });
+  const originalAnalysis = await analyzePdf(buffer);
+  const result = await optimizePdf(buffer, { maxRasterPixels: 1_000_000 });
+  const gates = await checkOptimizationQualityGates(originalAnalysis, result.buffer, buffer.length, { skipSizeReductionGate: result.isNoOp });
+  assert.equal(gates.pass, true, JSON.stringify(gates.failures));
+  assert.ok(!gates.failures.some(f => f.gate === 'image_colorspace_valid'));
+});
+
+test('checkOptimizationQualityGates: gate "image_colorspace_valid" PASS trên fixture TĐNĐ1 THẬT đã deploy (public/tmb-poc/tmb-hlx-tdnd1.pdf) — xác nhận asset hiện tại (dù còn bug cũ) được audit đúng vị trí lỗi, và ảnh Indexed/ICCBased hợp lệ khác trên trang không bị false-positive', async () => {
+  const deployedBuffer = fs.readFileSync('public/tmb-poc/tmb-hlx-tdnd1.pdf');
+  const analysis = await analyzePdf(deployedBuffer);
+  const failures = analysis.images
+    .filter(img => !isStructurallyValidImageColorSpace(img.colorSpace))
+    .map(img => ({ refNum: img.refNum, role: img.role, colorSpace: img.colorSpace }));
+  // Fixture đã deploy CHÍNH LÀ asset bị bug thật (audit trước khi fix) — gate
+  // phải phát hiện ĐÚNG 2 ảnh hỏng (base + SMask của raster nền), KHÔNG hơn
+  // KHÔNG kém, và các ảnh Indexed/ICCBased khác trên trang KHÔNG bị gắn cờ sai.
+  assert.equal(failures.length, 2, JSON.stringify(failures));
+  assert.ok(failures.every(f => f.colorSpace?.startsWith('/#2F')));
 });

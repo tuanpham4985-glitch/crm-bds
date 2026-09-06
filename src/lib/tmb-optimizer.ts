@@ -375,11 +375,49 @@ function replaceImageStream(
   newDict.delete(PDFName.of('DecodeParms'));
   newDict.set(PDFName.of('Width'), PDFNumber.of(width));
   newDict.set(PDFName.of('Height'), PDFNumber.of(height));
-  newDict.set(PDFName.of('ColorSpace'), PDFName.of(colorSpace));
+  // BUG FIXED (TMB fidelity root-cause audit): PDFName.of() expects the BARE
+  // name (no leading "/") — it adds the "/" delimiter itself on serialize and
+  // hex-escapes any "/" found INSIDE the string you give it (raw "/" can't
+  // appear literally inside a PDF name token). `colorSpace` here is already
+  // slash-prefixed ('/DeviceRGB' | '/DeviceGray', see param type below), so
+  // passing it straight into PDFName.of() double-encoded the leading slash,
+  // producing the malformed name "/#2FDeviceRGB"/"/#2FDeviceGray" in the
+  // written PDF — no renderer (pdf.js, MuPDF, ...) can resolve that as a real
+  // colorspace, so the rewritten raster (the ENTIRE TĐNĐ1 background: lake,
+  // roads, landscape) failed to render, either painting blank or as color
+  // noise. Verified via `PDFName.of('/DeviceRGB').toString() === '/#2FDeviceRGB'`
+  // and byte-for-byte matched against the deployed asset's corrupted dict.
+  // Strip the leading slash before handing the bare name to PDFName.of().
+  newDict.set(PDFName.of('ColorSpace'), PDFName.of(colorSpace.slice(1)));
   newDict.set(PDFName.of('BitsPerComponent'), PDFNumber.of(8));
   newDict.set(PDFName.of('Length'), PDFNumber.of(jpegBytes.length));
   const newStream = PDFRawStream.of(newDict, jpegBytes);
   pdfDoc.context.assign(ref, newStream);
+}
+
+/** Section 6 gate mới (TMB fidelity root-cause audit) — "image_colorspace_valid".
+ * Chỉ validate ĐÚNG shape của `/ColorSpace` khi giá trị là 1 PDFName ĐƠN GIẢN
+ * (chuỗi `.toString()` bắt đầu bằng "/") — đây CHÍNH XÁC là loại giá trị
+ * `replaceImageStream()` ghi ra (DeviceRGB/DeviceGray), và cũng là loại duy
+ * nhất bug đã audit (PDFName.of() double-encode dấu "/") có thể làm hỏng.
+ * KHÔNG áp dụng cho colorspace phức hợp (indirect reference dạng "189 0 R"
+ * cho ICCBased, hay array dạng "[ /Indexed ... ]" cho Indexed) — 2 dạng đó
+ * KHÔNG bắt đầu bằng "/" nên tự động bỏ qua, tránh false-positive trên ảnh
+ * hợp lệ không hề bị optimizer động vào (VD ảnh PNG/Indexed gặp thật trong
+ * fixture TĐNĐ1, xem báo cáo audit mục "Raster XObject before/after").
+ *
+ * Cố ý KHÔNG render/rasterize page để kiểm tra (đắt, cần thêm dependency
+ * canvas cho Node chưa có trong repo) — corruption dạng này là LỖI CẤU TRÚC
+ * DICT (tên PDF chứa ký tự hex-escape "#" không hợp lệ cho 1 tên đơn giản,
+ * VD "/#2FDeviceRGB"), phát hiện được TẤT ĐỊNH 100% chỉ bằng cách đọc lại
+ * dict đã ghi — không cần so sánh pixel. Đây là "smallest practical
+ * deterministic validation" đã audit, không phải rendering architecture mới. */
+const VALID_SIMPLE_COLORSPACE_NAME = /^\/[A-Za-z][A-Za-z0-9]*$/;
+
+export function isStructurallyValidImageColorSpace(colorSpace: string | null): boolean {
+  if (colorSpace === null) return true; // không khai báo /ColorSpace tường minh -> ngoài phạm vi gate này
+  if (!colorSpace.startsWith('/')) return true; // indirect ref ("189 0 R") hoặc array ("[ /Indexed ]") -> colorspace phức hợp, không phải dạng bug này
+  return VALID_SIMPLE_COLORSPACE_NAME.test(colorSpace);
 }
 
 export interface QualityGateFailure {
@@ -443,6 +481,18 @@ export async function checkOptimizationQualityGates(
   }
   if (!opts.skipSizeReductionGate && optimizedBuffer.length >= originalSizeBytes) {
     failures.push({ gate: 'size_reduced', detail: `${originalSizeBytes} -> ${optimizedBuffer.length} (không giảm)` });
+  }
+  // TMB fidelity root-cause audit — bug thật đã khiến ảnh nền TĐNĐ1 (hồ/đường/
+  // cảnh quan) render sai (blank hoặc nhiễu xám tuỳ renderer) dù MỌI gate phía
+  // trên đều pass, vì không gate nào từng validate colorspace ảnh có thể
+  // render được hay không. Gate này chặn CHÍNH XÁC lớp lỗi đó.
+  for (const img of optimizedAnalysis.images) {
+    if (!isStructurallyValidImageColorSpace(img.colorSpace)) {
+      failures.push({
+        gate: 'image_colorspace_valid',
+        detail: `${img.path} (refNum ${img.refNum}, role ${img.role}): ColorSpace không hợp lệ "${img.colorSpace}" — không renderer nào (pdf.js/MuPDF/...) resolve được, ảnh sẽ render sai/mất`,
+      });
+    }
   }
 
   return { pass: failures.length === 0, failures };
