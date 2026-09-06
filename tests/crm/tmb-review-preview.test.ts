@@ -143,5 +143,8 @@ test('page.tsx: lời gọi <TmbMap> của Sale không bị chỉnh sửa field 
 });
 
 test('TmbManagerPanel preview mount TmbMap với zIndex={1000} (> 900, overlay chính panel) — đảm bảo preview nổi lên trên, không bị khuất', () => {
-  assert.match(panelSource, /<TmbMap\s*\n\s*profile=\{previewMapProfile\}\s*\n\s*listRows=\{\[\]\}\s*\n\s*onOpenUnit=\{\(\) => \{\}\}\s*\n\s*onClose=\{\(\) => setPreviewMapProfile\(null\)\}\s*\n\s*zIndex=\{1000\}/);
+  // listRows đổi từ [] cứng (bản gốc) -> previewListRows (Bảng hàng SỐNG, xem
+  // TMB_PREVIEW_INVENTORY_WIRING fix + tests/crm/tmb-preview-inventory-wiring.test.ts)
+  // — chỉ field NÀY đổi, onOpenUnit vẫn no-op (preview vẫn đọc-only tuyệt đối).
+  assert.match(panelSource, /<TmbMap\s*\n\s*profile=\{previewMapProfile\}\s*\n\s*listRows=\{previewListRows\}\s*\n\s*onOpenUnit=\{\(\) => \{\}\}\s*\n\s*onClose=\{\(\) => \{ setPreviewMapProfile\(null\); setPreviewListRows\(\[\]\); \}\}\s*\n\s*zIndex=\{1000\}/);
 });

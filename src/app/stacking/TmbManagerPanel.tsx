@@ -5,6 +5,7 @@ import { X, Plus, RefreshCw, Trash2, CheckCircle, Loader2, Map as MapIcon, Uploa
 import TmbMap from './TmbMap';
 import { dbProfileToTmbMapProfile } from './tmb-map-registry';
 import type { TmbMapProfile } from './tmb-map-data';
+import type { StackingConfig, StackingListRow } from '@/lib/types';
 
 /** TMB Manager — panel Admin quản lý Tổng mặt bằng (Section 9 TMB Manager
  * spec): tạo profile, Phân tích/Tối ưu/Quét mã căn, review + mapping thủ
@@ -309,6 +310,16 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
   const [previewProfileId, setPreviewProfileId] = useState<string | null>(null);
   const [previewMapProfile, setPreviewMapProfile] = useState<TmbMapProfile | null>(null);
   const [previewError, setPreviewError] = useState<Record<string, string>>({});
+  // Bảng hàng SỐNG cho preview — CÙNG nguồn dữ liệu + cách gọi page.tsx đã
+  // dùng cho luồng Sale bình thường (fetchListRows: /api/stacking/configs rồi
+  // /api/stacking?mode=list, xem fetchPreviewListRows bên dưới), KHÔNG tạo
+  // nguồn dữ liệu thứ 2. Trước fix này luôn là [] cứng — khiến MỌI mapping
+  // (dù đúng toạ độ) resolve "unmatched" (buildMaCanIndex([]) rỗng), nên
+  // "Còn hàng" trong preview luôn ra 0 bất kể profile đã map bao nhiêu mã
+  // (xem audit "TMB_OLD_VS_NEW_ROOT_CAUSE"). Lỗi tải Bảng hàng KHÔNG được làm
+  // hỏng preview PDF (yêu cầu gốc "visual preview phải hoạt động dù mapped =
+  // 0") — fetchPreviewListRows tự nuốt lỗi, trả [] thay vì throw.
+  const [previewListRows, setPreviewListRows] = useState<StackingListRow[]>([]);
 
   // "Sao chép cấu hình decode" (xem findCopyableDecodeSourceProfiles phía
   // trên) — profile nguồn Admin đang chọn trong <select> theo từng profile.
@@ -637,16 +648,45 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
   async function openPreview(p: TmbProfileRow) {
     setPreviewError(m => ({ ...m, [p.id]: '' }));
     setPreviewProfileId(p.id);
+    setPreviewListRows([]); // reset — không để rows của lượt preview TRƯỚC lọt sang profile này
     try {
       const detailRes = await fetch(`/api/stacking/tmb-profiles/${p.id}`).then(r => r.json());
       if (!detailRes.success) throw new Error(detailRes.error || 'Không tải được chi tiết profile');
       const mapProfile = dbProfileToTmbMapProfile(detailRes.data.profile, detailRes.data.mappings);
       if (!mapProfile) throw new Error('Profile chưa có web_asset_ref (chưa Tối ưu xong) — chưa thể xem trước.');
+      // Bảng hàng SỐNG — lỗi ở bước này KHÔNG được chặn preview PDF (fetchPreviewListRows
+      // tự nuốt lỗi, trả [] — giữ đúng bất biến "visual preview phải hoạt động dù mapped = 0").
+      const rows = await fetchPreviewListRows(p.stacking_config_id);
       setPreviewMapProfile(mapProfile);
+      setPreviewListRows(rows);
     } catch (e) {
       setPreviewError(m => ({ ...m, [p.id]: e instanceof Error ? e.message : 'Lỗi tải xem trước TMB' }));
     } finally {
       setPreviewProfileId(null);
+    }
+  }
+
+  /** Bảng hàng SỐNG cho preview — 2 lời gọi CÙNG route đọc-only page.tsx đã
+   * dùng cho luồng Sale (fetchListRows): /api/stacking/configs (tìm đúng
+   * sheet_id/tab/project_code/visible_columns của stackingConfigId) rồi
+   * /api/stacking?mode=list (đúng rows sống, đúng semantics buildMaCanIndex
+   * đang dùng cho ACTIVE — KHÔNG lọc thêm theo subdivision, giống hệt Sale
+   * runtime không lọc). KHÔNG throw — lỗi mạng/config thiếu sheet_tab chỉ
+   * trả [] (preview PDF vẫn phải render được, chỉ "Còn hàng" tạm thời không
+   * có số liệu, giống hệt hành vi mapped=0 đã có từ trước). */
+  async function fetchPreviewListRows(stackingConfigId: string): Promise<StackingListRow[]> {
+    try {
+      const configsRes = await fetch('/api/stacking/configs').then(r => r.json());
+      if (!configsRes.success) return [];
+      const config = (configsRes.data as StackingConfig[]).find(c => c.id === stackingConfigId);
+      if (!config || config.loai !== 'list' || !config.sheet_tab) return [];
+      const params = new URLSearchParams({ mode: 'list', sheet_id: config.sheet_id, tab: config.sheet_tab });
+      if (config.project_code) params.set('project_code', config.project_code);
+      if (config.visible_columns && config.visible_columns.length > 0) params.set('columns', config.visible_columns.join('|'));
+      const listRes = await fetch(`/api/stacking?${params}`).then(r => r.json());
+      return listRes.success ? (listRes.data.rows as StackingListRow[]) : [];
+    } catch {
+      return [];
     }
   }
 
@@ -1035,14 +1075,19 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
     {previewMapProfile && (
       // z-index 1000 > 900 (overlay chính panel này) — TmbMap PHẢI nổi lên
       // trên, không phải khuất phía sau (xem TmbMap.tsx Props.zIndex comment).
-      // listRows=[] + onOpenUnit no-op: preview CHỈ để kiểm tra fidelity bản
-      // vẽ (Section "Preview content"), KHÔNG phải luồng nghiệp vụ click-mở-
-      // popup-căn của Sale (page.tsx) — cố ý KHÔNG lặp lại luồng đó ở đây.
+      // listRows=previewListRows (Bảng hàng SỐNG, xem fetchPreviewListRows) —
+      // để "Còn hàng"/marker phản ánh ĐÚNG trạng thái thật (trước fix này
+      // luôn [] cứng, khiến mọi mapping resolve "unmatched" dù toạ độ đúng,
+      // xem audit "TMB_OLD_VS_NEW_ROOT_CAUSE"). onOpenUnit VẪN no-op — preview
+      // vẫn đọc-only tuyệt đối, KHÔNG mở popup chi tiết/điều hướng nghiệp vụ
+      // như luồng Sale (page.tsx) — chỉ thêm đúng 1 thứ: số liệu Còn hàng +
+      // marker available đúng thật, không thêm bất kỳ hành động ghi/điều
+      // hướng nào khác.
       <TmbMap
         profile={previewMapProfile}
-        listRows={[]}
+        listRows={previewListRows}
         onOpenUnit={() => {}}
-        onClose={() => setPreviewMapProfile(null)}
+        onClose={() => { setPreviewMapProfile(null); setPreviewListRows([]); }}
         zIndex={1000}
       />
     )}
