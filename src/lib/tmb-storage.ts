@@ -37,6 +37,14 @@ export interface TmbAssetStorage {
   exists(ref: string): Promise<boolean>;
 }
 
+/** Chuyển ReadableStream (kết quả `get()` có xác thực từ '@vercel/blob') thành
+ * Buffer nguyên vẹn — TÁCH RIÊNG khỏi VercelBlobAssetStorage.get() để test
+ * được cơ chế đọc private-blob (Section "Private Blob compatibility") bằng 1
+ * stream in-memory, KHÔNG cần token/mạng thật (xem tmb-storage.test.ts). */
+export async function readableStreamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
+  return Buffer.from(await new Response(stream).arrayBuffer());
+}
+
 /** THẤY RÕ khi code gọi nhầm production mà chưa có provider — throw ngay,
  * KHÔNG fallback âm thầm về local storage (sẽ mất asset ở serverless). */
 export function assertProductionUploadAllowed(): void {
@@ -101,29 +109,56 @@ export class LocalDevAssetStorage implements TmbAssetStorage {
  * (Vercel tự cấp khi Connect 1 Blob store vào project trên dashboard — KHÔNG
  * tự set giá trị thật ở đây, xem Final Report "Required env/config").
  *
- * `ref` lưu trong Prisma = URL công khai đầy đủ Vercel Blob trả về (bắt buộc
- * dùng URL, không phải bare pathname — SDK `head()`/`del()` cần URL đầy đủ để
+ * `ref` lưu trong Prisma = URL đầy đủ Vercel Blob trả về (bắt buộc dùng URL,
+ * không phải bare pathname — SDK `head()`/`del()`/`get()` cần URL đầy đủ để
  * xác định đúng blob). `publicUrl()` vẫn LUÔN trả về route proxy nội bộ
  * (`/api/stacking/tmb-assets/{ref}`), KHÔNG trả thẳng URL Blob — browser
  * KHÔNG BAO GIỜ fetch trực tiếp Blob khi ĐỌC (chỉ khi UPLOAD, qua
  * `@vercel/blob/client` + route `tmb-profiles/upload-url` cấp token riêng),
  * giữ nguyên gate "non-admin chỉ xem asset của profile ACTIVE" ở tmb-assets/[ref]/route.ts
- * (Section 14) — proxy đọc lại bytes qua `get()` bên dưới rồi mới trả cho client. */
+ * (Section 14) — proxy đọc lại bytes qua `get()` bên dưới rồi mới trả cho client.
+ *
+ * Store thật production cấu hình access PRIVATE (đã audit) — mọi op ghi/đọc
+ * NỘI DUNG (put/get) dưới đây PHẢI khai báo `access: 'private'` khớp đúng cấu
+ * hình đó (head/del không cần — 2 op đó chỉ thao tác metadata/xoá, xác thực
+ * thuần qua Bearer token, không phụ thuộc access mode của blob). KHÔNG đổi
+ * sang 'public' — xem comment `put()` bên dưới cho root cause đầy đủ. */
 export class VercelBlobAssetStorage implements TmbAssetStorage {
   async put(ref: string, data: Buffer, opts?: { contentType?: string }): Promise<string> {
     const { put } = await import('@vercel/blob');
+    // access: 'private' — PHẢI khớp access mode của Blob store thật (production
+    // audit: store "crm-bds-blob" cấu hình Private). Vercel Blob validate
+    // access theo yêu cầu KHỚP đúng chính sách store — request 'public' trên
+    // store Private bị API từ chối; SDK client (`requestApi`, @vercel/blob/dist)
+    // coi lỗi này là "unknown_error" (không map được vào 1 mã lỗi cụ thể nào
+    // trong getBlobError()) NÊN coi là retryable và tự động gửi lại TOÀN BỘ
+    // request (kể cả body) qua `async-retry` (mặc định 10 lần) — đây CHÍNH XÁC
+    // là nguyên nhân bug "upload 100% -> tụt về 0% -> upload lại, lặp lại
+    // nhiều lần" đã audit trên production (file 206.6MB). KHÔNG đổi lại
+    // 'public' — đó là workaround sai hướng (đổi code để khớp bug thay vì
+    // khớp cấu hình store thật đã chọn Private có chủ đích).
     const blob = await put(ref, data, {
-      access: 'public',
+      access: 'private',
       addRandomSuffix: true,
       contentType: opts?.contentType ?? 'application/pdf',
     });
     return blob.url;
   }
 
+  /** Đọc asset từ Blob Private — PHẢI dùng cơ chế đọc CÓ XÁC THỰC chính thức
+   * của SDK (`get()` từ '@vercel/blob', tự đính kèm header
+   * `authorization: Bearer <BLOB_READ_WRITE_TOKEN>`), KHÔNG được `fetch(ref)`
+   * trần (fetch ẩn danh) — với store Private, Blob API trả 403/401 cho request
+   * không có Authorization hợp lệ, "fetch ẩn danh" chỉ tình cờ hoạt động khi
+   * store là Public (bug tiềm ẩn đã audit, xem Final Report "Private Blob
+   * compatibility"). */
   async get(ref: string): Promise<Buffer> {
-    const res = await fetch(ref);
-    if (!res.ok) throw new Error(`Không tải được asset từ Vercel Blob (HTTP ${res.status}): ${ref}`);
-    return Buffer.from(await res.arrayBuffer());
+    const { get } = await import('@vercel/blob');
+    const result = await get(ref, { access: 'private' });
+    if (!result || result.statusCode !== 200 || !result.stream) {
+      throw new Error(`Không tải được asset từ Vercel Blob (private, statusCode=${result?.statusCode ?? 'null'}): ${ref}`);
+    }
+    return readableStreamToBuffer(result.stream);
   }
 
   publicUrl(ref: string): string {

@@ -91,6 +91,31 @@ export function validateGlyphRemapConfig(rawText: string): { ok: true; value: un
   return { ok: true, value: parsed };
 }
 
+/** Guard tổng hợp cho "Tải lên & xử lý" — TÁCH RIÊNG khỏi handleSimpleUpload()
+ * để test được điều kiện chặn re-entrancy/duplicate-click ĐỘC LẬP với
+ * React/DOM (regression cho bug upload-loop đã audit trên production, file
+ * 206.6MB — xem comment đầy đủ tại handleSimpleUpload). `inFlight` PHẢI đọc
+ * từ 1 ref đồng bộ ở nơi gọi (uploadInFlightRef), KHÔNG phải React state —
+ * state chỉ cập nhật theo chu kỳ render nên không đủ nhanh để chặn click thứ
+ * 2 xảy ra TRƯỚC khi React kịp re-render nút disabled. */
+export function canStartSimpleUpload(opts: { inFlight: boolean; label: string; file: unknown; storageConfigured: boolean | null }): boolean {
+  if (opts.inFlight) return false;
+  if (!opts.label.trim() || !opts.file) return false;
+  if (opts.storageConfigured === false) return false;
+  return true;
+}
+
+/** Quyết định resume-point khi Admin bấm lại "Tải lên & xử lý" sau 1 lỗi:
+ * đã có `resumeProfileId` (profile đã tạo ở lượt trước, lỗi xảy ra ở 1 bước
+ * SAU upload — analyze/optimize/index) -> 'resume_processing', SKIP HẲN
+ * upload+create, KHÔNG đụng lại file gốc; chưa có -> 'start_fresh' (lượt
+ * upload đầu tiên, hoặc đã hoàn tất/đã đổi file nên bị reset về null). Tách
+ * riêng để test trực tiếp bất biến "retry sau lỗi hậu-upload KHÔNG tự upload
+ * lại file 100-300MB" mà không cần dựng React/DOM. */
+export function resolveUploadResumePoint(resumeProfileId: string | null): 'start_fresh' | 'resume_processing' {
+  return resumeProfileId ? 'resume_processing' : 'start_fresh';
+}
+
 interface AliasSuggestion {
   label: string;
   pattern: string;
@@ -122,11 +147,11 @@ interface IndexResult {
  * và có thể retry lại đúng bước lỗi qua "Chi tiết kỹ thuật" mà KHÔNG cần
  * upload lại file hay tạo trùng profile (idempotent theo thiết kế của từng
  * route — xem index/route.ts upsert theo unique normalized_unit_code). */
-type UploadStage = 'idle' | 'uploading' | 'creating' | 'analyzing' | 'optimizing' | 'indexing' | 'done' | 'error';
+type UploadStage = 'idle' | 'uploading' | 'uploaded' | 'creating' | 'analyzing' | 'optimizing' | 'indexing' | 'done' | 'error';
 const UPLOAD_STAGE_LABEL: Record<UploadStage, string> = {
-  idle: '', uploading: 'Đang tải file lên...', creating: 'Đang tạo hồ sơ...',
-  analyzing: 'Đang phân tích bản vẽ...', optimizing: 'Đang tối ưu file...', indexing: 'Đang quét mã căn...',
-  done: 'Hoàn tất', error: 'Lỗi',
+  idle: '', uploading: 'Đang tải PDF lên Blob...', uploaded: 'Đã tải PDF — đang tạo hồ sơ',
+  creating: 'Đang tạo hồ sơ...', analyzing: 'Đang phân tích bản vẽ...', optimizing: 'Đang tối ưu file...',
+  indexing: 'Đang khớp mã căn...', done: 'Sẵn sàng Review', error: 'Lỗi',
 };
 
 /** Đọc lại glyph_remap hiện có ở đúng shape TmbProfileDecodeConfig (server
@@ -199,6 +224,20 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Khoá đồng bộ (ref, KHÔNG phải state) chống re-entrancy — kiểm tra + set
+  // TRƯỚC bất kỳ await/state update nào trong handleSimpleUpload(), nên click
+  // đúp/click lặp trong lúc React chưa kịp re-render nút disabled (bug thật
+  // đã audit: race giữa DOM click event và React commit) không thể lọt qua 2
+  // lần. State (uploadStage) chỉ quyết định UI, KHÔNG đủ để chống race vì cập
+  // nhật bất đồng bộ theo chu kỳ render.
+  const uploadInFlightRef = useRef(false);
+  // Id profile ĐÃ TẠO cho lượt upload đang xử lý (nếu có) — khi 1 bước SAU
+  // upload (analyze/optimize/index) lỗi, giữ lại id này để lần bấm "Tải lên &
+  // xử lý" tiếp theo SKIP hẳn bước upload+tạo profile (không upload lại file
+  // 100-300MB, không tạo profile trùng), chỉ chạy lại analyze->optimize->index
+  // (đã idempotent theo thiết kế route hiện có — xem comment handleSimpleUpload).
+  // Reset về null khi: chọn file mới, chạy xong toàn bộ pipeline, hoặc đóng form.
+  const [resumeProfileId, setResumeProfileId] = useState<string | null>(null);
 
   // Bật/tắt "Chi tiết kỹ thuật" theo từng profile — mặc định ĐÓNG (Simple Mode
   // là mặc định của Admin thường, xem Section "Simple mode vs Technical mode").
@@ -310,46 +349,77 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
    * hết (an toàn với file 200MB+, mỗi bước tự chịu timeout riêng của Vercel
    * Function). Lỗi ở bước nào dừng ở đó, profile giữ trạng thái ERROR/đã tạo
    * -> Admin retry đúng bước đó qua "Chi tiết kỹ thuật" mà KHÔNG upload lại
-   * file/tạo trùng profile. */
+   * file/tạo trùng profile.
+   *
+   * REGRESSION FIX (upload-loop bug đã audit trên production, file 206.6MB):
+   * 2 nguyên nhân ĐỘC LẬP, cả 2 đã fix:
+   * 1. `access: 'public'` SAI khi Blob store production cấu hình Private —
+   *    Vercel Blob API từ chối request, SDK client (`requestApi`,
+   *    @vercel/blob) không map được lỗi vào 1 mã cụ thể (rơi vào nhánh
+   *    "unknown_error") NÊN coi là retryable và tự gửi lại TOÀN BỘ file qua
+   *    `async-retry` (mặc định 10 lần) — mỗi lần gửi lại là 1 request PUT MỚI
+   *    nên onUploadProgress tụt về 0% rồi leo lại, lặp tới 10 lần trước khi
+   *    thật sự fail. Fix: đổi `access` thành 'private' (khớp store thật, xem
+   *    tmb-storage.ts VercelBlobAssetStorage.put() comment đầy đủ).
+   * 2. KHÔNG có khoá chống re-entrancy — nếu Admin bấm lại nút SAU KHI 1 bước
+   *    sau-upload lỗi (analyze/optimize/index), hàm này chạy lại TỪ ĐẦU, upload
+   *    lại NGUYÊN file + tạo THÊM 1 profile mới (trùng). Fix: `uploadInFlightRef`
+   *    (khoá đồng bộ, chặn double-click/re-entry) + `resumeProfileId` (nếu đã
+   *    tạo profile cho lượt hiện tại, lần bấm lại SKIP hẳn upload+create, chỉ
+   *    chạy lại analyze->optimize->index — an toàn vì cả 3 route đó đã
+   *    idempotent theo thiết kế sẵn có, xem index/route.ts upsert theo unique
+   *    normalized_unit_code). */
   async function handleSimpleUpload() {
-    if (!simpleLabel.trim() || !simpleFile) return;
-    if (!storageConfigured) {
+    // Guard TRƯỚC mọi state/await khác — dùng CHUNG canStartSimpleUpload() với
+    // test (tests/crm/tmb-upload-flow.test.ts) để runtime/test không lệch nhau.
+    if (!canStartSimpleUpload({ inFlight: uploadInFlightRef.current, label: simpleLabel, file: simpleFile, storageConfigured })) {
+      if (uploadInFlightRef.current || !simpleLabel.trim() || !simpleFile) return; // im lặng — nút đã disabled tương ứng, hoặc double-click/re-entry
       setUploadStage('error');
       setUploadError('Chưa cấu hình Object Storage cho Tổng mặt bằng — liên hệ Admin kỹ thuật (cần env TMB_ASSET_STORAGE_PROVIDER + BLOB_READ_WRITE_TOKEN, xem tài liệu TMB Self-Service Ingestion).');
       return;
     }
     const file = simpleFile;
+    if (!file) return; // đã được canStartSimpleUpload() chặn, guard lại để TypeScript narrow đúng kiểu File
+    uploadInFlightRef.current = true;
     setUploadError('');
-    setUploadProgress(0);
     try {
-      setUploadStage('uploading');
-      const { upload } = await import('@vercel/blob/client');
-      const blob = await upload(`${stackingConfigId}/${Date.now()}-${file.name}`, file, {
-        access: 'public',
-        handleUploadUrl: '/api/stacking/tmb-profiles/upload-url',
-        onUploadProgress: (p) => setUploadProgress(Math.round(p.percentage)),
-      });
+      // resumeProfileId đã có -> lượt upload+create TRƯỚC ĐÓ đã xong, lỗi xảy
+      // ra ở 1 bước SAU đó -> SKIP hẳn upload+create, không đụng lại file gốc.
+      let id = resumeProfileId;
 
-      setUploadStage('creating');
-      const createRes = await fetch('/api/stacking/tmb-profiles', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stacking_config_id: stackingConfigId,
-          label: simpleLabel.trim(),
-          subdivision: simpleSubdivision.trim() || undefined,
-          master_asset_ref: blob.url,
-          master_size_bytes: file.size,
-        }),
-      });
-      const created = await createRes.json();
-      if (!created.success) throw new Error(created.error || 'Không tạo được hồ sơ Tổng mặt bằng');
-      const id: string = created.data.id;
-      await load();
+      if (resolveUploadResumePoint(resumeProfileId) === 'start_fresh') {
+        setUploadProgress(0);
+        setUploadStage('uploading');
+        const { upload } = await import('@vercel/blob/client');
+        const blob = await upload(`${stackingConfigId}/${Date.now()}-${file.name}`, file, {
+          access: 'private',
+          handleUploadUrl: '/api/stacking/tmb-profiles/upload-url',
+          onUploadProgress: (p) => setUploadProgress(Math.round(p.percentage)),
+        });
+        setUploadStage('uploaded');
+
+        setUploadStage('creating');
+        const createRes = await fetch('/api/stacking/tmb-profiles', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stacking_config_id: stackingConfigId,
+            label: simpleLabel.trim(),
+            subdivision: simpleSubdivision.trim() || undefined,
+            master_asset_ref: blob.url,
+            master_size_bytes: file.size,
+          }),
+        });
+        const created = await createRes.json();
+        if (!created.success) throw new Error(created.error || 'Không tạo được hồ sơ Tổng mặt bằng');
+        id = created.data.id as string;
+        setResumeProfileId(id); // đánh dấu NGAY — nếu bước sau lỗi, lần retry tới sẽ skip đúng đoạn này
+        await load();
+      }
 
       setUploadStage('analyzing');
       const analyzeRes = await fetch(`/api/stacking/tmb-profiles/${id}/analyze`, { method: 'POST' }).then(r => r.json());
       if (!analyzeRes.success) throw new Error(analyzeRes.error || 'Phân tích thất bại');
-      setLastAnalyze(m => ({ ...m, [id]: analyzeRes.data.analysis }));
+      setLastAnalyze(m => ({ ...m, [id!]: analyzeRes.data.analysis }));
 
       setUploadStage('optimizing');
       const optimizeRes = await fetch(`/api/stacking/tmb-profiles/${id}/optimize`, { method: 'POST' }).then(r => r.json());
@@ -358,17 +428,20 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
       setUploadStage('indexing');
       const indexRes = await fetch(`/api/stacking/tmb-profiles/${id}/index`, { method: 'POST' }).then(r => r.json());
       if (!indexRes.success) throw new Error(indexRes.error || 'Quét mã căn thất bại');
-      setLastIndex(m => ({ ...m, [id]: indexRes.data }));
+      setLastIndex(m => ({ ...m, [id!]: indexRes.data }));
 
       setUploadStage('done');
       setExpandedId(id);
+      setResumeProfileId(null); // pipeline xong trọn vẹn — lần bấm tiếp theo (nếu có) là 1 upload MỚI hoàn toàn
       setSimpleLabel(''); setSimpleSubdivision(''); setSimpleFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       await load();
     } catch (e) {
       setUploadStage('error');
       setUploadError(e instanceof Error ? e.message : 'Lỗi không xác định trong lúc xử lý');
-      await load(); // profile (nếu đã tạo) vẫn hiện trong danh sách với status ERROR/đúng bước đã xong — không mồ côi, không mất tiến độ
+      await load(); // profile (nếu đã tạo) vẫn hiện trong danh sách với status ERROR/đúng bước đã xong — không mồ côi, không mất tiến độ; resumeProfileId GIỮ NGUYÊN để lần bấm lại resume đúng chỗ
+    } finally {
+      uploadInFlightRef.current = false;
     }
   }
 
@@ -507,7 +580,16 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
 
             <div>
               <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-                onChange={e => setSimpleFile(e.target.files?.[0] ?? null)} />
+                onChange={e => {
+                  // Chọn file MỚI (khác lượt trước, kể cả cùng tên) -> bỏ hẳn
+                  // resumeProfileId cũ — retry chỉ được resume đúng profile
+                  // của CHÍNH file đang resume, không lỡ tay resume nhầm profile
+                  // của 1 lượt upload khác đã đổi file giữa chừng.
+                  setSimpleFile(e.target.files?.[0] ?? null);
+                  setResumeProfileId(null);
+                  setUploadStage('idle');
+                  setUploadError('');
+                }} />
               <button onClick={() => fileInputRef.current?.click()} disabled={uploadStage !== 'idle' && uploadStage !== 'done' && uploadStage !== 'error'}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 6, border: '1px dashed var(--border)', background: 'transparent', cursor: 'pointer', fontSize: '0.8rem', width: '100%', justifyContent: 'center' }}>
                 <Upload size={14} /> Chọn file PDF
@@ -528,6 +610,11 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
                 {uploadStage === 'done' && ' — xem Review bên dưới'}
               </div>
             )}
+            {uploadStage === 'error' && resumeProfileId && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-label)' }}>
+                PDF đã tải lên và hồ sơ đã tạo (ID {resumeProfileId}) — bấm "Tải lên & xử lý" lần nữa sẽ CHỈ chạy lại đúng bước lỗi, KHÔNG tải lại file.
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={handleSimpleUpload}
@@ -535,7 +622,7 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 6, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>
                 {uploadStage !== 'idle' && uploadStage !== 'done' && uploadStage !== 'error' ? 'Đang xử lý...' : 'Tải lên & xử lý'}
               </button>
-              <button onClick={() => { setShowAddForm(false); setUploadStage('idle'); setUploadError(''); }} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: '0.8rem' }}>Đóng</button>
+              <button onClick={() => { setShowAddForm(false); setUploadStage('idle'); setUploadError(''); setResumeProfileId(null); }} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: '0.8rem' }}>Đóng</button>
             </div>
 
             <button onClick={() => setShowAdvancedAdd(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'none', color: 'var(--text-label)', cursor: 'pointer', fontSize: '0.72rem', textAlign: 'left' }}>
