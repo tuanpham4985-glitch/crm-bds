@@ -12,7 +12,7 @@
 import { useEffect, useState } from 'react';
 import type { TmbMapProfile, TmbMapUnit } from './tmb-map-data';
 
-interface TmbDbProfileRow {
+export interface TmbDbProfileRow {
   id: string;
   stacking_config_id: string;
   label: string;
@@ -21,7 +21,7 @@ interface TmbDbProfileRow {
   page_number: number;
   status: string;
 }
-interface TmbDbUnitMapping {
+export interface TmbDbUnitMapping {
   unit_code: string;
   x: number;
   y: number;
@@ -37,8 +37,18 @@ function resolveWebAssetUrl(ref: string): string {
 /** `configId` ở đây dùng DB profile `id` (KHÔNG phải StackingConfig.id) —
  * TmbMap.tsx CHỈ dùng field này làm key phụ thuộc của effect (re-fetch/render
  * khi đổi profile), không dùng để resolve gì khác (xem TmbMap.tsx:336) nên an
- * toàn khi tái sử dụng làm định danh DUY NHẤT của map profile này. */
-function dbProfileToTmbMapProfile(row: TmbDbProfileRow, mappings: TmbDbUnitMapping[]): TmbMapProfile | null {
+ * toàn khi tái sử dụng làm định danh DUY NHẤT của map profile này.
+ *
+ * EXPORTED (TMB Review Preview — Admin xem trước 1 profile READY_FOR_REVIEW
+ * trước khi Kích hoạt, xem TmbManagerPanel.tsx "Xem TMB"): cùng converter DUY
+ * NHẤT dùng cho CẢ runtime ACTIVE-only registry (useDbTmbMapProfiles bên
+ * dưới) lẫn preview Admin — không viết converter thứ 2. Preview gọi hàm này
+ * TRỰC TIẾP với đúng 1 profile Admin vừa chọn (KHÔNG qua useDbTmbMapProfiles,
+ * hook đó CỐ Ý lọc status==='ACTIVE' — xem comment hook, KHÔNG nới lỏng điều
+ * kiện đó cho mục đích preview). `mappings` rỗng vẫn hợp lệ (trả về
+ * `units: []`) — TmbMap.tsx render nền PDF bình thường dù không có marker
+ * nào, đúng yêu cầu "visual fidelity review phải hoạt động dù mapped = 0". */
+export function dbProfileToTmbMapProfile(row: TmbDbProfileRow, mappings: TmbDbUnitMapping[]): TmbMapProfile | null {
   if (!row.web_asset_ref) return null; // chưa optimize xong -> chưa có gì render được
   const units: TmbMapUnit[] = mappings.map(m => ({ unitCode: m.unit_code, pdfX: m.x, pdfY: m.y }));
   return {

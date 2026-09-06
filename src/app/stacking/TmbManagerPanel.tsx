@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Plus, RefreshCw, Trash2, CheckCircle, Loader2, Map as MapIcon, Upload, FileText, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { X, Plus, RefreshCw, Trash2, CheckCircle, Loader2, Map as MapIcon, Upload, FileText, ChevronDown, ChevronRight, Sparkles, Eye } from 'lucide-react';
+import TmbMap from './TmbMap';
+import { dbProfileToTmbMapProfile } from './tmb-map-registry';
+import type { TmbMapProfile } from './tmb-map-data';
 
 /** TMB Manager — panel Admin quản lý Tổng mặt bằng (Section 9 TMB Manager
  * spec): tạo profile, Phân tích/Tối ưu/Quét mã căn, review + mapping thủ
@@ -244,6 +247,19 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
   // KHÔNG xoá bất kỳ action/field kỹ thuật nào, chỉ gấp gọn lại.
   const [technicalOpenIds, setTechnicalOpenIds] = useState<Set<string>>(new Set());
   const [reviewTabByProfile, setReviewTabByProfile] = useState<Record<string, 'matched' | 'alias' | 'unmatched' | 'ambiguous'>>({});
+
+  // ── "Xem TMB" (Review Preview) — Admin xem trước web_asset_ref của 1 profile
+  // READY_FOR_REVIEW (hoặc bất kỳ status nào đã có web_asset_ref, VD ACTIVE)
+  // TRƯỚC khi Kích hoạt, bằng ĐÚNG renderer TmbMap.tsx Sale dùng — KHÔNG viết
+  // renderer PDF thứ 2. `previewProfileId` = id đang preview (đồng bộ trạng
+  // thái loading với đúng nút đang bấm); `previewMapProfile` = kết quả đã
+  // convert (null = chưa mở/đã đóng). Đọc-only tuyệt đối: chỉ 1 lời gọi GET
+  // (route [id]/route.ts đã cho phép Admin đọc BẤT KỲ status nào, xem comment
+  // route đó "Admin xem asset của profile bất kỳ để review trước khi
+  // activate"), KHÔNG PATCH/POST/DELETE nào trong toàn bộ luồng preview.
+  const [previewProfileId, setPreviewProfileId] = useState<string | null>(null);
+  const [previewMapProfile, setPreviewMapProfile] = useState<TmbMapProfile | null>(null);
+  const [previewError, setPreviewError] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch('/api/stacking/info').then(r => r.json()).then(d => {
@@ -521,6 +537,30 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
     }
   }
 
+  /** "Xem TMB" — tải chi tiết profile (CÙNG route GET /api/stacking/tmb-profiles/[id]
+   * dùng bởi useDbTmbMapProfiles cho runtime ACTIVE-only, nhưng gọi TRỰC TIẾP
+   * cho ĐÚNG 1 profile Admin chọn, không qua hook lọc ACTIVE), convert bằng
+   * ĐÚNG dbProfileToTmbMapProfile() rồi mount TmbMap — KHÔNG đổi status, KHÔNG
+   * ghi DB. `mappings` rỗng (VD hồ sơ QA "HLX - TĐNĐ1 - Test" hiện 0/11 mapped)
+   * vẫn convert thành công (units: []) — TmbMap vẫn render nền PDF đầy đủ để
+   * kiểm tra fidelity (hồ/đường/cảnh quan), chỉ không có marker nào, ĐÚNG yêu
+   * cầu "visual preview phải hoạt động dù mapped = 0". */
+  async function openPreview(p: TmbProfileRow) {
+    setPreviewError(m => ({ ...m, [p.id]: '' }));
+    setPreviewProfileId(p.id);
+    try {
+      const detailRes = await fetch(`/api/stacking/tmb-profiles/${p.id}`).then(r => r.json());
+      if (!detailRes.success) throw new Error(detailRes.error || 'Không tải được chi tiết profile');
+      const mapProfile = dbProfileToTmbMapProfile(detailRes.data.profile, detailRes.data.mappings);
+      if (!mapProfile) throw new Error('Profile chưa có web_asset_ref (chưa Tối ưu xong) — chưa thể xem trước.');
+      setPreviewMapProfile(mapProfile);
+    } catch (e) {
+      setPreviewError(m => ({ ...m, [p.id]: e instanceof Error ? e.message : 'Lỗi tải xem trước TMB' }));
+    } finally {
+      setPreviewProfileId(null);
+    }
+  }
+
   async function saveManualMapping() {
     if (!manualForm) return;
     const x = Number(manualForm.x), y = Number(manualForm.y);
@@ -539,6 +579,7 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
   }
 
   return (
+    <>
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: 'var(--bg-card)', borderRadius: 10, width: 'min(920px, 94vw)', maxHeight: '88vh',
@@ -666,6 +707,11 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {p.web_asset_ref && (
+                      <button disabled={previewProfileId === p.id} onClick={() => openPreview(p)} title="Xem trước bản vẽ TMB (đọc-only, không đổi trạng thái)" style={actionBtnStyle}>
+                        {previewProfileId === p.id ? <Loader2 size={12} style={{ animation: 'spin 0.7s linear infinite' }} /> : <Eye size={12} />} Xem TMB
+                      </button>
+                    )}
                     {(p.status === 'READY_FOR_REVIEW' || p.status === 'ACTIVE') && (
                       <button disabled={busyId === p.id} onClick={() => toggleActivate(p)} style={{ ...actionBtnStyle, borderColor: p.status === 'ACTIVE' ? '#ef4444' : '#22c55e', color: p.status === 'ACTIVE' ? '#ef4444' : '#22c55e' }}>
                         {p.status === 'ACTIVE' ? 'Ngừng dùng' : 'Kích hoạt'}
@@ -684,6 +730,9 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
                 </div>
                 {p.error_message && (
                   <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: '#fef2f2', color: '#dc2626', fontSize: '0.78rem' }}>{p.error_message}</div>
+                )}
+                {previewError[p.id] && (
+                  <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: '#fef2f2', color: '#dc2626', fontSize: '0.78rem' }}>{previewError[p.id]}</div>
                 )}
 
                 {expandedId === p.id && (
@@ -872,6 +921,21 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
         </div>
       </div>
     </div>
+    {previewMapProfile && (
+      // z-index 1000 > 900 (overlay chính panel này) — TmbMap PHẢI nổi lên
+      // trên, không phải khuất phía sau (xem TmbMap.tsx Props.zIndex comment).
+      // listRows=[] + onOpenUnit no-op: preview CHỈ để kiểm tra fidelity bản
+      // vẽ (Section "Preview content"), KHÔNG phải luồng nghiệp vụ click-mở-
+      // popup-căn của Sale (page.tsx) — cố ý KHÔNG lặp lại luồng đó ở đây.
+      <TmbMap
+        profile={previewMapProfile}
+        listRows={[]}
+        onOpenUnit={() => {}}
+        onClose={() => setPreviewMapProfile(null)}
+        zIndex={1000}
+      />
+    )}
+    </>
   );
 }
 

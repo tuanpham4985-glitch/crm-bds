@@ -52,7 +52,12 @@ test('TmbMap: loads PDF as full bytes before pdf.js parses it to avoid range off
 
 test('TmbMap: KHÔNG hard-code PDF/unit của bất kỳ dự án nào — nhận toàn bộ qua prop `profile` (project-agnostic renderer, dùng chung cho nhiều dự án)', () => {
   assert.match(source, /profile: TmbMapProfile;/);
-  assert.match(source, /export default function TmbMap\(\{ profile, listRows, onOpenUnit, onClose \}: Props\)/);
+  // zIndex (thêm cho TMB Review Preview, TmbManagerPanel.tsx "Xem TMB") là
+  // optional với default = 700 (giá trị cũ) — [\s\S]*? cho phép match dù có
+  // hay không tham số này, miễn 4 tham số CHÍNH (profile/listRows/onOpenUnit/
+  // onClose) vẫn nguyên vẹn đúng thứ tự, giữ đúng tinh thần test này (renderer
+  // vẫn nhận toàn bộ qua props, KHÔNG hard-code theo dự án).
+  assert.match(source, /export default function TmbMap\(\{ profile, listRows, onOpenUnit, onClose[\s\S]*? \}: Props\)/);
   assert.doesNotMatch(source, /import \{ TMB_PDF_URL/, 'TmbMap.tsx không được import thẳng TMB_PDF_URL (hardcode 1 dự án) nữa');
   assert.doesNotMatch(source, /import \{[^}]*TMB_MAP_UNITS/, 'TmbMap.tsx không được import thẳng TMB_MAP_UNITS (hardcode 1 dự án) nữa');
 });

@@ -132,6 +132,13 @@ interface Props {
   listRows: StackingListRow[];
   onOpenUnit: (row: StackingListRow) => void;
   onClose: () => void;
+  /** z-index của lớp overlay ngoài cùng — mặc định 700 (hành vi hiện có,
+   * dùng bởi page.tsx cho luồng xem TMB của Sale). Cho phép override khi
+   * TmbMap được mount LỒNG bên trong 1 modal khác đã có z-index cao hơn (VD
+   * TmbManagerPanel.tsx dùng z-index 900 cho "Xem TMB" — Admin preview 1
+   * profile READY_FOR_REVIEW trước khi Kích hoạt) — KHÔNG đổi gì về
+   * zoom/pan/render, chỉ đổi lớp stacking context ngoài cùng. */
+  zIndex?: number;
 }
 
 interface RenderedUnit extends TmbUnitState {
@@ -139,7 +146,7 @@ interface RenderedUnit extends TmbUnitState {
   viewY: number;
 }
 
-export default function TmbMap({ profile, listRows, onOpenUnit, onClose }: Props) {
+export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex = 700 }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
@@ -719,7 +726,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose }: Props
   const centeringMargin = containerSize ? computeCenteringMargin(containerSize, scaledSize) : { marginX: 0, marginY: 0 };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, zIndex, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div
         style={{ width: '100%', maxWidth: 1100, height: '85vh', background: 'var(--bg-card)', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.35)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         onClick={e => e.stopPropagation()}
