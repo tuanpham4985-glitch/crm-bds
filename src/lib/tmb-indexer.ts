@@ -14,7 +14,10 @@
  * là data riêng từng profile trước đây), profile PDF encoding bình thường
  * (Saigon Park, HLX VBM1) không cần field này (giữ nguyên text pdfjs trả về).
  */
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+// pdfjs-dist Node build, ĐÃ cấu hình workerSrc đúng cho server (xem
+// tmb-pdfjs-server.ts — fix "Cannot find module .../pdf.worker.mjs" trên
+// Vercel) — KHÔNG import thẳng 'pdfjs-dist/legacy/build/pdf.mjs' ở đây nữa.
+import { pdfjsLib } from './tmb-pdfjs-server';
 import { normalizeUnitCode } from '@/app/stacking/tmb-map-matching';
 
 export type GlyphRemap = Record<string, string>;

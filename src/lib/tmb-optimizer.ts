@@ -22,9 +22,11 @@
 import { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFArray, PDFRef, PDFNumber } from 'pdf-lib';
 import zlib from 'node:zlib';
 import sharp, { type Sharp } from 'sharp';
-// pdfjs-dist Node build — dùng lại CHÍNH XÁC cách load đã dùng ở renderer
-// (xem TmbMap.tsx) để audit text layer, KHÔNG viết parser PDF text riêng.
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+// pdfjs-dist Node build, ĐÃ cấu hình workerSrc đúng cho server (xem
+// tmb-pdfjs-server.ts — fix "Cannot find module .../pdf.worker.mjs" trên
+// Vercel) — KHÔNG import thẳng 'pdfjs-dist/legacy/build/pdf.mjs' ở đây nữa,
+// tránh rơi lại default workerSrc chưa cấu hình.
+import { pdfjsLib } from './tmb-pdfjs-server';
 
 export interface PdfImageXObjectInfo {
   /** Đường dẫn lồng để debug, VD "/Fm0/Im0" — KHÔNG dùng để định danh (dùng refNum). */
