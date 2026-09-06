@@ -175,6 +175,55 @@ function decodeConfigForClient(raw: unknown): { charRemap?: Record<string, strin
   return { charRemap: obj as Record<string, string>, unitAliasRules: [] };
 }
 
+// ─── "Sao chép cấu hình decode" (TMB Alias Suggestion Fix) ─────────────────
+// Root cause đã audit: 1 số PDF xuất từ CAD có font label bị lỗi ToUnicode
+// (đã gặp thực tế trên fixture TĐNĐ1) — KHÔNG có charRemap thì extractPdfUnitLabels
+// không trích được BẤT KỲ mã căn nào đọc được (không chỉ riêng phần "Bảng
+// hàng dùng tiền tố khác PDF" mà suggestUnitAliasRules giải quyết — engine đó
+// hoạt động ĐÚNG khi có label hợp lệ để so sánh, xem tests/crm/tmb-alias-
+// suggestion-fix.test.ts). Vì charRemap là DATA RIÊNG của 1 file PDF cụ thể
+// (không suy luận/đoán được an toàn — sai 1 ký tự là mapping sai âm thầm),
+// hướng xử lý generic + an toàn nhất KHÔNG phải "tự động dò" mà là: nếu 1
+// profile CÙNG dự án (`stackingConfigId`, đã load sẵn trong `profiles`, KHÔNG
+// gọi API mới) đã có charRemap hoạt động (Admin từng tự xác nhận đúng), CHO
+// PHÉP Admin sao chép sang profile mới — vẫn cần Admin bấm xác nhận tường
+// minh, KHÔNG tự áp. Copy CHỈ charRemap (bảng giải mã ký tự) — unitAliasRules
+// KHÔNG copy theo (giữ nguyên rule đã có của CHÍNH profile này), Admin vẫn
+// phải "Chấp nhận quy tắc" riêng cho alias suggestion sau khi re-index — 2
+// khái niệm tách biệt (decode ký tự vs. luật đổi tiền tố mã căn), không gộp
+// để tránh Admin vô tình áp rule của 1 profile khác không liên quan.
+
+/** 1 profile có charRemap "hữu ích" để làm nguồn sao chép — object rỗng {}
+ * (hoặc glyph_remap null/chưa cấu hình) không giải quyết được gì. */
+export function hasUsableCharRemap(raw: unknown): boolean {
+  const cfg = decodeConfigForClient(raw);
+  return !!cfg.charRemap && Object.keys(cfg.charRemap).length > 0;
+}
+
+/** Danh sách profile khác (CÙNG dự án, đã có sẵn trong `profiles` state —
+ * KHÔNG gọi API mới) có thể làm nguồn "Sao chép cấu hình decode" cho
+ * `currentId`. Generic: KHÔNG lọc theo subdivision/label/dự án cụ thể nào —
+ * Admin tự chọn đúng nguồn phù hợp trong danh sách (thường là bản PDF cùng
+ * file/font đã từng cấu hình đúng). */
+export function findCopyableDecodeSourceProfiles(profiles: readonly TmbProfileRow[], currentId: string): TmbProfileRow[] {
+  return profiles.filter(o => o.id !== currentId && hasUsableCharRemap(o.glyph_remap));
+}
+
+/** Điều kiện đủ mạnh để gợi ý "Sao chép cấu hình decode" — CHỈ khi review vừa
+ * chạy cho kết quả KHÔNG khớp gì cả (matchedDirect=0, matchedAlias=0) VÀ
+ * suggestUnitAliasRules cũng KHÔNG đề xuất được gì (suggestedAliasRules rỗng)
+ * — đây là dấu hiệu PDF text chưa giải mã ra được mã căn đọc được nào (khác
+ * hẳn "chỉ đơn giản không có mã nào trùng", trường hợp đó suggestedAliasRules
+ * vẫn có thể có gợi ý nếu partial). KHÔNG hiện nếu không có profile nào khác
+ * để mượn cấu hình (`candidateCount === 0`) — tránh gợi ý vô nghĩa. */
+export function shouldSuggestDecodeCopy(
+  index: { summary: { matchedDirect: number; matchedAlias: number }; suggestedAliasRules: readonly unknown[] } | undefined,
+  candidateCount: number,
+): boolean {
+  if (!index || candidateCount === 0) return false;
+  return index.summary.matchedDirect === 0 && index.summary.matchedAlias === 0 && index.suggestedAliasRules.length === 0;
+}
+
 interface AnalyzeResult {
   fileSizeBytes: number;
   pageCount: number;
@@ -260,6 +309,11 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
   const [previewProfileId, setPreviewProfileId] = useState<string | null>(null);
   const [previewMapProfile, setPreviewMapProfile] = useState<TmbMapProfile | null>(null);
   const [previewError, setPreviewError] = useState<Record<string, string>>({});
+
+  // "Sao chép cấu hình decode" (xem findCopyableDecodeSourceProfiles phía
+  // trên) — profile nguồn Admin đang chọn trong <select> theo từng profile.
+  const [copySourceId, setCopySourceId] = useState<Record<string, string>>({});
+  const [copyingId, setCopyingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/stacking/info').then(r => r.json()).then(d => {
@@ -490,6 +544,41 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
       await load();
     } finally {
       setBusyId(null);
+    }
+  }
+
+  /** "Sao chép cấu hình decode & Quét lại" — Admin chọn 1 profile CÙNG dự án
+   * đã có charRemap hoạt động (`sourceId`, xem findCopyableDecodeSourceProfiles)
+   * rồi bấm xác nhận tường minh: PATCH charRemap của nguồn vào profile hiện
+   * tại (GIỮ NGUYÊN unitAliasRules đã có của CHÍNH profile này — KHÔNG copy
+   * alias rule của nguồn, xem comment đầu khối "Sao chép cấu hình decode"),
+   * rồi chạy lại "Quét mã căn" ngay để review cập nhật — cùng pattern với
+   * acceptAliasSuggestion() phía trên, KHÔNG viết luồng PATCH+re-index thứ 2. */
+  async function copyDecodeConfig(p: TmbProfileRow, sourceId: string) {
+    const source = profiles.find(o => o.id === sourceId);
+    if (!source) return;
+    const sourceConfig = decodeConfigForClient(source.glyph_remap);
+    if (!sourceConfig.charRemap || Object.keys(sourceConfig.charRemap).length === 0) return;
+    setCopyingId(p.id);
+    try {
+      const current = decodeConfigForClient(p.glyph_remap);
+      const nextConfig = { charRemap: sourceConfig.charRemap, unitAliasRules: current.unitAliasRules };
+      const patchRes = await fetch(`/api/stacking/tmb-profiles/${p.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ glyph_remap: nextConfig }),
+      }).then(r => r.json());
+      if (!patchRes.success) { setActionMsg(m => ({ ...m, [p.id]: `Lỗi: ${patchRes.error}` })); return; }
+
+      const indexRes = await fetch(`/api/stacking/tmb-profiles/${p.id}/index`, { method: 'POST' }).then(r => r.json());
+      if (indexRes.success) {
+        setLastIndex(m => ({ ...m, [p.id]: indexRes.data }));
+        setActionMsg(m => ({ ...m, [p.id]: `Đã sao chép cấu hình decode từ "${source.label}"` }));
+      } else {
+        setActionMsg(m => ({ ...m, [p.id]: `Đã lưu cấu hình nhưng quét lại lỗi: ${indexRes.error}` }));
+      }
+      await load();
+    } finally {
+      setCopyingId(null);
     }
   }
 
@@ -757,6 +846,28 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
                           <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>
                             Bảng hàng: {index.sheetInventoryCountNormalized} căn — {mappedCount}/{index.sheetInventoryCountNormalized} căn đã map
                           </div>
+
+                          {(() => {
+                            const copyCandidates = findCopyableDecodeSourceProfiles(profiles, p.id);
+                            if (!shouldSuggestDecodeCopy(index, copyCandidates.length)) return null;
+                            const selectedSourceId = copySourceId[p.id] ?? copyCandidates[0].id;
+                            return (
+                              <div style={{ padding: '8px 10px', borderRadius: 6, background: '#fff7ed', border: '1px solid #fed7aa', fontSize: '0.78rem' }}>
+                                <div style={{ fontWeight: 600, color: '#9a3412' }}>Không đọc được mã căn nào từ PDF này</div>
+                                <div style={{ marginTop: 3, color: 'var(--text-label)' }}>
+                                  Có thể font PDF bị lỗi encoding — {copyCandidates.length} profile khác cùng dự án đã có cấu hình giải mã, thử sao chép sang profile này:
+                                </div>
+                                <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                  <select value={selectedSourceId} onChange={e => setCopySourceId(m => ({ ...m, [p.id]: e.target.value }))} style={{ fontSize: '0.78rem', padding: '4px 6px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                                    {copyCandidates.map(c => <option key={c.id} value={c.id}>{c.label}{c.subdivision ? ` · ${c.subdivision}` : ''}</option>)}
+                                  </select>
+                                  <button disabled={copyingId === p.id} onClick={() => copyDecodeConfig(p, selectedSourceId)} style={{ ...actionBtnStyle, borderColor: '#ea580c', color: '#ea580c' }}>
+                                    {copyingId === p.id ? <Loader2 size={12} style={{ animation: 'spin 0.7s linear infinite' }} /> : null} Sao chép cấu hình decode & Quét lại
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {index.suggestedAliasRules.length > 0 && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
