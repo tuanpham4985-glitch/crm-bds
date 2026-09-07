@@ -3,20 +3,22 @@
 // getJWT/getSettingsSheet riêng, trùng lặp). Đây là điểm dùng chung duy nhất
 // cho mọi settings runtime nhỏ (key/value) — không phát minh feature-flag
 // system mới, không thêm bảng Postgres cho một giá trị đơn lẻ.
-import { GoogleSpreadsheet } from 'google-spreadsheet';
-import { JWT } from 'google-auth-library';
+//
+// Root cause đã audit (GOOGLE_SHEETS_429_ROOT_CAUSE_PROVEN) — file này TRƯỚC
+// ĐÂY tự dựng GoogleSpreadsheet + JWT + doc.loadInfo() RIÊNG (bỏ qua hoàn
+// toàn cache 60s cachedDoc trong google-sheets.ts), dù dùng CHÍNH
+// GOOGLE_SHEET_ID/credentials — mỗi 1 trong 4 consumer (crm-module,
+// navigation-config, settings/logo, crm-access) gọi hàm ở đây đều tốn thêm 1
+// loadInfo() thật KHÔNG CẦN THIẾT cho CÙNG 1 document đã có kết nối cache sẵn
+// ở nơi khác. Dùng LẠI getDoc() (đã export riêng cho mục đích này) — loại bỏ
+// hẳn việc tự dựng kết nối/JWT thứ 2, KHÔNG đổi bất kỳ giá trị/hành vi đọc-
+// ghi SETTINGS nào (chỉ đổi CÁCH lấy được object `doc`).
+import { getDoc } from './google-sheets';
 
 const SETTINGS_SHEET = 'SETTINGS';
 
-function getJWT(): JWT {
-  const email = process.env.GOOGLE_CLIENT_EMAIL!;
-  const key = (process.env.GOOGLE_PRIVATE_KEY ?? '').trim().replace(/^"(.*)"$/, '$1').replace(/\\n/g, '\n');
-  return new JWT({ email, key, scopes: ['https://www.googleapis.com/auth/spreadsheets'] });
-}
-
 export async function getSettingsSheet() {
-  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID!, getJWT());
-  await doc.loadInfo();
+  const doc = await getDoc();
 
   let sheet = doc.sheetsByTitle[SETTINGS_SHEET];
   if (!sheet) {

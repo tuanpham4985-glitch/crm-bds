@@ -49,7 +49,15 @@ let cachedDoc: GoogleSpreadsheet | null = null;
 let lastLoadTime = 0;
 const CACHE_DURATION = 60000; // 1 minute cache for sheet metadata
 
-async function getDoc(): Promise<GoogleSpreadsheet> {
+// EXPORTED — settings-store.ts (SETTINGS sheet key/value store) dùng LẠI
+// CHÍNH kết nối này (đã audit "GOOGLE_SHEETS_429_ROOT_CAUSE_PROVEN"): trước
+// đây settings-store.ts tự dựng GoogleSpreadsheet + doc.loadInfo() RIÊNG, bỏ
+// qua hẳn cache 60s ở đây — mỗi lần bất kỳ consumer nào (crm-module,
+// navigation-config, settings/logo, crm-access) đọc SETTINGS đều tốn thêm 1
+// loadInfo() thật dù CÙNG spreadsheet (CÙNG GOOGLE_SHEET_ID/credentials) đã
+// có sẵn kết nối cache ở đây. Export để dùng chung, KHÔNG đổi hành vi/cache
+// 60s hiện có cho 59 lời gọi nội bộ khác trong file này.
+export async function getDoc(): Promise<GoogleSpreadsheet> {
   const { sheetId } = validateEnvVars();
 
   const now = Date.now();
