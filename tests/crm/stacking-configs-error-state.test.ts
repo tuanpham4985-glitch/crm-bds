@@ -23,12 +23,12 @@ function extractLoadConfigsBlock(): string {
 
 // ─── A/B. Success path — configs/selectedConfig set đúng, configsError CLEAR ─
 
-test('A. loadConfigs — d.success=true: clear configsError, setConfigs(d.data), auto-chọn config đầu tiên nếu có (giữ NGUYÊN hành vi cũ)', () => {
+test('A. loadConfigs — d.success=true: clear configsError, setConfigs(d.data) — KHÔNG auto-chọn config nào (đổi theo yêu cầu "explicit project selection", xem stacking-explicit-project-selection.test.ts)', () => {
   const block = extractLoadConfigsBlock();
   const successBranch = block.match(/if \(d\.success\) \{[\s\S]*?\n\s*\}/)![0];
   assert.match(successBranch, /setConfigsError\(''\)/);
   assert.match(successBranch, /setConfigs\(d\.data\)/);
-  assert.match(successBranch, /if \(d\.data\.length > 0\) setSelectedConfig\(d\.data\[0\]\)/);
+  assert.doesNotMatch(successBranch, /setSelectedConfig\(d\.data\[0\]\)/, 'không được auto-chọn dự án đầu tiên — User phải chủ động chọn từ dropdown');
 });
 
 test('B. Empty-state THẬT ("Chưa có nguồn bảng hàng nào") CHỈ hiện khi !configsError && configs.length === 0 — success với data=[] vẫn ra đúng empty-state này (KHÔNG bị coi là lỗi)', () => {

@@ -70,15 +70,65 @@ export const backfillNhanVienIds      = GS.backfillNhanVienIds;
 export const getManagerForEmployee    = GS.getManagerForEmployee;
 
 // CRM — stacking (chưa có PG model)
-export const getStackingSheetList      = GS.getStackingSheetList;
-export const getStackingUnits          = GS.getStackingUnits;
-export const getStackingListRows       = GS.getStackingListRows;
-export const getStackingListColumns    = GS.getStackingListColumns;
+//
+// Root cause đã audit (GOOGLE_SHEETS_READ_AMPLIFICATION_ROOT_CAUSE_PROVEN) —
+// TRƯỚC ĐÂY 5 hàm dưới đây là pass-through TRẦN (khác hẳn getPipeline/getDuAn/
+// v.v. ở dưới, vốn đã bọc `cached()` từ lâu) — MỖI lần chọn dự án/mở Bảng
+// hàng đều đọc THẬT từ Google Sheets, KHÔNG có bảo vệ nào trước việc gọi lặp
+// lại đúng cùng 1 dữ liệu trong thời gian ngắn (VD chọn lại đúng dự án vừa
+// xem, hoặc 2 request gần như đồng thời do race/re-render). Bọc `cached()`
+// (đã nâng cấp — chia sẻ Promise ĐANG CHẠY, không chỉ cache kết quả xong, xem
+// mem-cache.ts) — TTL ngắn (20-30s), đủ giảm áp lực quota mà vẫn phản ánh
+// thay đổi gần như ngay. Cache KEY BẮT BUỘC gồm ĐỦ tham số ảnh hưởng tới kết
+// quả (sheetId + tab/project/tower + visibleColumns) — 2 dự án/sheet khác
+// nhau KHÔNG BAO GIỜ dùng chung 1 key, tránh trộn nhầm dữ liệu.
+//
+// `probeStackingSheet` CỐ Ý KHÔNG cache — đây là bước Admin bấm "Kiểm tra"
+// để xác nhận NGAY kết nối/tab hiện có của 1 Sheet (VD sau khi vừa đổi Sheet
+// ID hoặc đổi tên tab bên ngoài) — cần độ mới tuyệt đối, không phải dữ liệu
+// "không cần fresh ngay" theo đúng tinh thần yêu cầu.
+//
+// Key builder export riêng để API route (`/api/stacking`) gọi `invalidate()`
+// ĐÚNG key này khi User bấm "Làm mới" thủ công (`?refresh=1`) — bắt buộc
+// dùng LẠI cùng 1 công thức, không viết lại lần 2 (tránh lệch key).
+export const stackingListRowsCacheKey = (sheetId: string, tab: string, visibleColumns?: readonly string[]) =>
+  `gs:stacking_list:${sheetId}:${tab}:${(visibleColumns ?? []).join('|')}`;
+export const stackingUnitsCacheKey = (sheetId: string, project: string, tower: string) =>
+  `gs:stacking_units:${sheetId}:${project}:${tower}`;
+export const stackingSheetListCacheKey = (sheetId: string, projectCode?: string) =>
+  `gs:stacking_sheets:${sheetId}:${projectCode ?? ''}`;
+
+export function getStackingSheetList(sheetId: string, projectCode?: string) {
+  return cached(stackingSheetListCacheKey(sheetId, projectCode), 30_000, () => GS.getStackingSheetList(sheetId, projectCode));
+}
+export function getStackingUnits(sheetId: string, project: string, tower: string) {
+  return cached(stackingUnitsCacheKey(sheetId, project, tower), 20_000, () => GS.getStackingUnits(sheetId, project, tower));
+}
+export function getStackingListRows(sheetId: string, tab: string, visibleColumns?: readonly string[]) {
+  return cached(stackingListRowsCacheKey(sheetId, tab, visibleColumns), 20_000, () => GS.getStackingListRows(sheetId, tab, visibleColumns));
+}
+export function getStackingListColumns(sheetId: string, tab: string) {
+  return cached(`gs:stacking_columns:${sheetId}:${tab}`, 20_000, () => GS.getStackingListColumns(sheetId, tab));
+}
 export const probeStackingSheet        = GS.probeStackingSheet;
-export const getStackingConfigs        = GS.getStackingConfigs;
-export const addStackingConfig         = GS.addStackingConfig;
-export const updateStackingConfig      = GS.updateStackingConfig;
-export const deleteStackingConfig      = GS.deleteStackingConfig;
+export function getStackingConfigs() {
+  return cached('gs:stacking_configs', 30_000, () => GS.getStackingConfigs());
+}
+export async function addStackingConfig(...args: Parameters<typeof GS.addStackingConfig>) {
+  const result = await GS.addStackingConfig(...args);
+  invalidate('gs:stacking_configs');
+  return result;
+}
+export async function updateStackingConfig(...args: Parameters<typeof GS.updateStackingConfig>) {
+  const result = await GS.updateStackingConfig(...args);
+  invalidate('gs:stacking_configs');
+  return result;
+}
+export async function deleteStackingConfig(...args: Parameters<typeof GS.deleteStackingConfig>) {
+  const result = await GS.deleteStackingConfig(...args);
+  invalidate('gs:stacking_configs');
+  return result;
+}
 export const extractSheetId            = GS.extractSheetId;
 
 // CRM — phan-khach (chưa có PG model)

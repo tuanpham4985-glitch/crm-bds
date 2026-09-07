@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStackingSheetList, getStackingUnits, getStackingListRows, getStackingListColumns, getPipeline, getDuAn, probeStackingSheet } from '@/lib/data-access';
+import {
+  getStackingSheetList, getStackingUnits, getStackingListRows, getStackingListColumns, getPipeline, getDuAn, probeStackingSheet,
+  stackingListRowsCacheKey, stackingUnitsCacheKey,
+} from '@/lib/data-access';
+import { invalidate } from '@/lib/mem-cache';
 import type { DuAn, Pipeline } from '@/lib/types';
 
 // Trạng thái Còn hàng/Đang xem/Đã bán LUÔN đến từ CRM Pipeline (match theo
@@ -91,6 +95,12 @@ export async function GET(req: NextRequest) {
       const visibleColumnsParam = searchParams.get('columns');
       const visibleColumns = visibleColumnsParam ? visibleColumnsParam.split('|').filter(Boolean) : undefined;
 
+      // "Làm mới" thủ công (nút bấm, KHÔNG phải effect tự động) gửi kèm
+      // ?refresh=1 — xoá ĐÚNG entry cache này TRƯỚC khi đọc, để lần đọc này
+      // luôn ra dữ liệu THẬT mới nhất thay vì trả bản cache TTL 20s còn hạn
+      // (giữ nguyên ý nghĩa "Làm mới" — không bị cache che mất).
+      if (searchParams.get('refresh') === '1') invalidate(stackingListRowsCacheKey(sheetId, tab, visibleColumns));
+
       const [{ columns, rows }, pipelines, duAnList] = await Promise.all([
         getStackingListRows(sheetId, tab, visibleColumns),
         getPipeline(),
@@ -111,6 +121,9 @@ export async function GET(req: NextRequest) {
     if (!project || !tower) {
       return NextResponse.json({ success: false, error: 'Thiếu project hoặc tower' }, { status: 400 });
     }
+
+    // "Làm mới" thủ công — cùng lý do với nhánh mode=list ở trên.
+    if (searchParams.get('refresh') === '1') invalidate(stackingUnitsCacheKey(sheetId, project, tower));
 
     const [units, pipelines, duAnList] = await Promise.all([
       getStackingUnits(sheetId, project, tower),

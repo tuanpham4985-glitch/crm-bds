@@ -975,7 +975,12 @@ export default function StackingPage() {
         if (d.success) {
           setConfigsError('');
           setConfigs(d.data);
-          if (d.data.length > 0) setSelectedConfig(d.data[0]);
+          // KHÔNG auto-chọn configs[0] — trước đây tự chọn dự án đầu tiên
+          // (VD "The Global City") ngay khi vào trang dù User chưa hề bấm gì,
+          // kéo theo load ngay towers/list/units của dự án đó (Sheets reads
+          // không cần thiết nếu User thực ra muốn xem dự án khác). User PHẢI
+          // chủ động chọn từ dropdown — xem empty-state "Chọn dự án để xem
+          // bảng hàng" bên dưới khi selectedConfig còn null.
         } else {
           // {success:false} — lỗi THẬT từ API (VD Sheets quota 429, lỗi kết
           // nối Google Sheets...), KHÔNG phải "chưa có nguồn nào". Giữ
@@ -1028,7 +1033,12 @@ export default function StackingPage() {
   }, [selectedConfig]);
 
   // 2b. Load rows when selected config is chế độ Danh sách (biệt thự/liền kề)
-  const fetchListRows = useCallback(() => {
+  // `manual`=true CHỈ khi nút "Làm mới" gọi (KHÔNG phải effect tự động) —
+  // gửi kèm ?refresh=1 để server xoá đúng cache entry trước khi đọc (xem
+  // route.ts), đảm bảo "Làm mới" luôn ra dữ liệu THẬT mới, không bị cache
+  // TTL 20s (thêm để giảm Sheets reads, audit
+  // GOOGLE_SHEETS_READ_AMPLIFICATION_ROOT_CAUSE_PROVEN) che mất ý nghĩa nút.
+  const fetchListRows = useCallback((manual?: boolean) => {
     if (!selectedConfig || selectedConfig.loai !== 'list') return;
     if (!selectedConfig.sheet_tab) { setListError('Nguồn này chưa gán tab bảng hàng — vào "Quản lý Sheet" → "Sửa" để chọn tab.'); return; }
     setLoadingList(true); setListError(''); setListSearch(''); setListGroupFilter(''); setListSort(null);
@@ -1037,6 +1047,7 @@ export default function StackingPage() {
     if (selectedConfig.visible_columns && selectedConfig.visible_columns.length > 0) {
       params.set('columns', selectedConfig.visible_columns.join('|'));
     }
+    if (manual) params.set('refresh', '1');
     fetch(`/api/stacking?${params}`)
       .then(r => r.json())
       .then(d => {
@@ -1052,8 +1063,8 @@ export default function StackingPage() {
     fetchListRows();
   }, [selectedConfig, fetchListRows]);
 
-  // 3. Load units when tower changes
-  const fetchUnits = useCallback(() => {
+  // 3. Load units when tower changes — `manual` cùng ý nghĩa với fetchListRows ở trên.
+  const fetchUnits = useCallback((manual?: boolean) => {
     if (!selectedConfig || !project || !tower) return;
     // Guard: towers must have finished loading for THIS config before fetching units.
     // Prevents a stale call with old project/tower when config just switched.
@@ -1061,6 +1072,7 @@ export default function StackingPage() {
     setLoadingUnits(true); setSelectedUnit(null); setUnitsError('');
 
     const params = new URLSearchParams({ sheet_id: selectedConfig.sheet_id, project, tower });
+    if (manual) params.set('refresh', '1');
     fetch(`/api/stacking?${params}`)
       .then(r => r.json())
       .then(d => {
@@ -1297,7 +1309,7 @@ export default function StackingPage() {
             />
           </div>
 
-          <button onClick={fetchListRows} disabled={loadingList}
+          <button onClick={() => fetchListRows(true)} disabled={loadingList}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 6, fontSize: '0.78rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <RefreshCw size={13} style={{ animation: loadingList ? 'spin 1s linear infinite' : 'none' }} />
             Làm mới
@@ -1576,10 +1588,13 @@ export default function StackingPage() {
         <Grid3x3 size={18} color="var(--primary)" />
         <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-title)' }}>Bảng hàng</span>
 
-        {/* Config selector */}
+        {/* Config selector — KHÔNG auto-chọn dự án nào (xem loadConfigs), value=""
+            là placeholder "Chọn dự án..." thật sự (option value rỗng), KHÔNG
+            phải config[0] bị chọn ngầm. */}
         {configs.length > 0 ? (
           <div style={{ position: 'relative' }}>
             <select value={selectedConfig?.id || ''} onChange={e => setSelectedConfig(configs.find(c => c.id === e.target.value) || null)} style={selectStyle}>
+              <option value="">Chọn dự án...</option>
               {configs.map(c => <option key={c.id} value={c.id}>{c.ten_hien_thi}</option>)}
             </select>
             <ChevronDown size={13} style={chevronStyle} />
@@ -1610,7 +1625,7 @@ export default function StackingPage() {
 
         {loadingTowers && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-muted)' }} />}
 
-        <button onClick={fetchUnits} disabled={loadingUnits || !selectedConfig || towers.length === 0}
+        <button onClick={() => fetchUnits(true)} disabled={loadingUnits || !selectedConfig || towers.length === 0}
           style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 6, fontSize: '0.78rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}>
           <RefreshCw size={13} style={{ animation: loadingUnits ? 'spin 1s linear infinite' : 'none' }} />
           Làm mới
@@ -1680,6 +1695,16 @@ export default function StackingPage() {
                   Liên hệ Admin để cấu hình nguồn bảng hàng.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Empty state: đã có nguồn nhưng CHƯA chọn dự án nào — không auto-
+              chọn configs[0] nữa (xem loadConfigs), tránh load Sheets reads
+              không cần thiết cho dự án User không hề muốn xem. */}
+          {!configsError && configs.length > 0 && !selectedConfig && (
+            <div style={{ textAlign: 'center', paddingTop: 80 }}>
+              <Grid3x3 size={48} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.2 }} />
+              <p style={{ color: 'var(--text-title)', fontWeight: 600, marginBottom: 6 }}>Chọn dự án để xem bảng hàng</p>
             </div>
           )}
 
