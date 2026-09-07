@@ -919,6 +919,14 @@ export default function StackingPage() {
   const { isAdmin } = useAuth();
 
   const [configs, setConfigs]               = useState<StackingConfig[]>([]);
+  // Riêng biệt với configs.length === 0 (rỗng THẬT — nguồn chưa cấu hình) —
+  // configsError chỉ set khi GET /api/stacking/configs THẤT BẠI (network,
+  // JSON không hợp lệ, hoặc {success:false} — VD lỗi 429 quota Google Sheets,
+  // đã audit thực tế xảy ra trên production). Trước đây 2 trường hợp này bị
+  // gộp làm một (mọi lỗi -> configs giữ nguyên []) khiến User thấy "Chưa có
+  // nguồn nào" dù nguồn vẫn tồn tại, chỉ là lượt tải đó lỗi — xem audit
+  // "MOBILE_STACKING_SOURCE_ROOT_CAUSE_PROVEN".
+  const [configsError, setConfigsError]     = useState('');
   const [selectedConfig, setSelectedConfig] = useState<StackingConfig | null>(null);
   const [towers, setTowers]                 = useState<StackingSheetMeta[]>([]);
   const [towersError, setTowersError]       = useState('');
@@ -954,19 +962,33 @@ export default function StackingPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const zoomWrapperRef     = useRef<HTMLDivElement>(null);
 
-  // 1. Load config list on mount
-  useEffect(() => {
+  // 1. Load config list — TÁCH RIÊNG thành hàm tái sử dụng được (mount +
+  // nút "Thử lại" khi configsError, KHÔNG duplicate logic fetch). Không tự
+  // động lặp lại retry (không setTimeout/interval) — CHỈ chạy lại khi mount
+  // hoặc User bấm nút, đúng yêu cầu "no automatic retry loop".
+  const loadConfigs = useCallback(() => {
+    setLoadingConfigs(true);
+    setConfigsError('');
     fetch('/api/stacking/configs')
       .then(r => r.json())
       .then(d => {
         if (d.success) {
+          setConfigsError('');
           setConfigs(d.data);
           if (d.data.length > 0) setSelectedConfig(d.data[0]);
+        } else {
+          // {success:false} — lỗi THẬT từ API (VD Sheets quota 429, lỗi kết
+          // nối Google Sheets...), KHÔNG phải "chưa có nguồn nào". Giữ
+          // nguyên configs cũ (nếu "Thử lại" sau khi đã có dữ liệu trước đó)
+          // thay vì xoá về [] — chỉ báo lỗi, không xoá dữ liệu đang hiển thị.
+          setConfigsError(d.error || 'Không tải được danh sách nguồn');
         }
       })
-      .catch(() => {})
+      .catch(() => setConfigsError('Không tải được danh sách nguồn — kiểm tra kết nối mạng'))
       .finally(() => setLoadingConfigs(false));
   }, []);
+
+  useEffect(() => { loadConfigs(); }, [loadConfigs]);
 
   // 2. Load towers when selected config changes (CHỈ chế độ Lưới — chế độ
   // Danh sách không có khái niệm tower, xem effect riêng bên dưới)
@@ -1562,6 +1584,8 @@ export default function StackingPage() {
             </select>
             <ChevronDown size={13} style={chevronStyle} />
           </div>
+        ) : configsError ? (
+          <span style={{ fontSize: '0.8rem', color: '#dc2626' }} title={configsError}>Lỗi tải nguồn</span>
         ) : (
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Chưa có nguồn nào</span>
         )}
@@ -1619,8 +1643,26 @@ export default function StackingPage() {
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <div ref={scrollContainerRef} className="stacking-scroll" style={{ height: '100%', overflow: 'auto', padding: '0 12px 14px 12px' }}>
 
-          {/* Empty state: no configs */}
-          {configs.length === 0 && (
+          {/* Configs LOAD FAILED — khác hẳn "chưa có nguồn nào" (xem audit
+              "MOBILE_STACKING_SOURCE_ROOT_CAUSE_PROVEN"): lỗi fetch/API
+              {success:false} (VD Sheets quota 429), KHÔNG PHẢI nguồn rỗng
+              thật — không được hiện illustration/CTA "thêm nguồn" gây hiểu
+              lầm là chưa cấu hình gì. "Thử lại" CHỈ chạy lại đúng loadConfigs
+              (không tự động lặp lại, không polling). */}
+          {configsError && (
+            <div style={{ textAlign: 'center', paddingTop: 80 }}>
+              <AlertCircle size={48} style={{ margin: '0 auto 12px', display: 'block', color: '#dc2626', opacity: 0.6 }} />
+              <p style={{ color: 'var(--text-title)', fontWeight: 600, marginBottom: 6 }}>Không tải được danh sách nguồn</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 20 }}>{configsError}</p>
+              <button onClick={loadConfigs} disabled={loadingConfigs} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, fontWeight: 600, fontSize: '0.875rem', border: 'none', background: 'var(--primary)', color: '#fff', cursor: loadingConfigs ? 'default' : 'pointer', opacity: loadingConfigs ? 0.6 : 1 }}>
+                <RefreshCw size={15} style={{ animation: loadingConfigs ? 'spin 1s linear infinite' : 'none' }} /> Thử lại
+              </button>
+            </div>
+          )}
+
+          {/* Empty state: no configs (CHỈ khi load THÀNH CÔNG với 0 dòng —
+              nguồn rỗng THẬT, không phải lỗi tải) */}
+          {!configsError && configs.length === 0 && (
             <div style={{ textAlign: 'center', paddingTop: 80 }}>
               <Grid3x3 size={48} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.2 }} />
               <p style={{ color: 'var(--text-title)', fontWeight: 600, marginBottom: 6 }}>Chưa có nguồn bảng hàng nào</p>
