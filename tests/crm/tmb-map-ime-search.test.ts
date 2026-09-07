@@ -62,18 +62,20 @@ test('D. resolveTrimmedUnitSearch("BM55-09", false/true) — mã ASCII thuần: 
 
 // ─── G. Backspace/Delete/hyphen không làm hỏng buffer composition ──────────
 
-test('G. Trình xử lý cập nhật state tìm kiếm KHÔNG biến đổi ký tự nào (không uppercase/trim/replace ngay trên giá trị DOM) — Backspace/Delete/"-" đi qua y nguyên, KHÔNG có logic nào can thiệp giữa DOM và state khiến buffer IME bị ghi đè. (Đã đổi từ onChange={e => setUnitSearch(e.target.value)} sang onInput={e => setUnitSearch(e.currentTarget.value)} — input giờ UNCONTROLLED, xem TMB_UNIKEY_CONTROLLED_INPUT_FIX + tests/crm/tmb-map-unikey-input.test.ts — nhưng bất biến "không transform" vẫn giữ nguyên.)', () => {
-  assert.match(source, /onInput=\{e => setUnitSearch\(e\.currentTarget\.value\)\}/);
-  const onInputLine = source.match(/onInput=\{[^}]*\}/)![0];
-  assert.ok(!onInputLine.includes('toUpperCase'));
-  assert.ok(!onInputLine.includes('replace('));
-  assert.ok(!onInputLine.includes('trim('));
+test('G. onChange KHÔNG biến đổi ký tự nào (không uppercase/trim/replace ngay trên e.target.value) — Backspace/Delete/"-" đi qua onChange y nguyên, KHÔNG có logic nào can thiệp giữa DOM và state khiến buffer IME bị ghi đè', () => {
+  assert.match(source, /onChange=\{e => setUnitSearch\(e\.target\.value\)\}/);
+  // Đảm bảo KHÔNG có biến thể "sửa" nào (uppercase/replace) được thêm vào onChange.
+  const onChangeLine = source.match(/onChange=\{[^}]*\}/)![0];
+  assert.ok(!onChangeLine.includes('toUpperCase'));
+  assert.ok(!onChangeLine.includes('replace('));
+  assert.ok(!onChangeLine.includes('trim('));
 });
 
-test('G2. Không hardcode sửa ký tự nào kiểu "TDD"->"TĐ"/"DD"->"Đ" — fix hoàn toàn generic, không chứa bất kỳ literal thay thế ký tự tiếng Việt cụ thể nào. ("TDD" CÓ xuất hiện trong file — chỉ trong comment giải thích root cause UniKey bằng ví dụ, xem tests/crm/tmb-map-unikey-input.test.ts test "C" kiểm tra kỹ hơn phần code thật.)', () => {
+test('G2. Không hardcode sửa ký tự nào kiểu "TDD"->"TĐ"/"DD"->"Đ" — fix hoàn toàn generic, không chứa bất kỳ literal thay thế ký tự tiếng Việt cụ thể nào', () => {
   assert.ok(!source.includes("'DD'"));
   assert.ok(!source.includes('"DD"'));
   assert.ok(!source.includes("replace(/D/g"));
+  assert.ok(!source.includes('TDD'));
 });
 
 // ─── Composition wiring có mặt đúng vị trí, đúng hành vi ───────────────────

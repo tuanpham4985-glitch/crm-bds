@@ -152,32 +152,10 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   const [retryKey, setRetryKey] = useState(0);
   const [zoomMultiplier, setZoomMultiplier] = useState(DEFAULT_ZOOM_MULT);
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
-  // Ô tìm mã căn — UNCONTROLLED (xem searchInputRef bên dưới): `unitSearch` ở
-  // đây CHỈ là state ĐÃ QUAN SÁT được từ DOM (qua onInput/onCompositionEnd),
-  // dùng để DẪN XUẤT kết quả tìm kiếm (matchedUnit/zoom) — KHÔNG BAO GIỜ được
-  // gán ngược vào prop `value` của <input> (input không nhận `value`/`onChange`
-  // nữa, chỉ `ref` + `onInput`). Lý do (root cause UniKey Telex đã audit —
-  // xem TMB_UNIKEY_CONTROLLED_INPUT_FIX): UniKey (khác IME chuẩn Windows TSF)
-  // KHÔNG dùng Composition API — nó hook bàn phím ở mức hệ điều hành rồi TỰ
-  // mô phỏng Backspace + ký tự thay thế (VD "D"+"D" -> gửi Backspace rồi gửi
-  // "Đ") để tạo dấu, hoàn toàn NGOÀI compositionstart/compositionend (đã audit
-  // + chứng minh trong Final Report — 2 sự kiện đó KHÔNG BAO GIỜ fire với
-  // UniKey). Fix trước (9b07377, dựa vào isComposing) vì vậy là no-op với
-  // UniKey. Với input CONTROLLED (value={state}), MỖI native input event ->
-  // setState -> re-render -> React ghi lại `.value` của input theo state MỚI
-  // — chuỗi ghi-lại liên tục này race với chuỗi Backspace+chèn-lại mà UniKey
-  // đang tự thực hiện trên CHÍNH DOM node đó (UniKey không biết gì về React,
-  // chỉ gửi phím tới control đang focus), khiến buffer UniKey theo dõi lệch
-  // khỏi DOM thật -> corrupt ("TĐ55-11" gõ dở thành "TDD-"). Bỏ hẳn `value=`
-  // (uncontrolled) loại bỏ HOÀN TOÀN vòng ghi-lại đó — DOM/UniKey toàn quyền
-  // sở hữu buffer đang gõ, React chỉ ĐỌC (onInput) chứ không bao giờ GHI lại.
+  // Ô tìm mã căn IME-safe (gõ tiếng Việt/Telex, xem resolveTrimmedUnitSearch
+  // trong tmb-map-matching.ts) — true trong khoảng compositionstart..compositionend,
+  // KHÔNG chặn/biến đổi gì input, chỉ trì hoãn lúc search/zoom được phép chạy.
   const [unitSearch, setUnitSearch] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  // Vẫn giữ composition tracking (CHO IME chuẩn Composition API — Windows IME
-  // tiếng Việt built-in, macOS, Linux...) — KHÔNG liên quan gì tới việc sửa
-  // UniKey ở trên (UniKey không fire các sự kiện này nên không bị ảnh hưởng
-  // bởi cờ này), chỉ để tránh search/zoom chạy trên text tạm giữa chừng đối
-  // với NHỮNG IME thật sự dùng Composition API.
   const [isComposing, setIsComposing] = useState(false);
   const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState<{ w: number; h: number } | null>(null);
@@ -782,20 +760,15 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
               <input
                 type="text"
                 className="tmb-search-input"
-                ref={searchInputRef}
-                // KHÔNG có `value=`/`onChange=` — uncontrolled có chủ đích
-                // (xem comment searchInputRef ở khai báo state phía trên, root
-                // cause UniKey Telex). onInput fire cho MỌI thay đổi giá trị
-                // DOM (gõ tay THẬT lẫn ký tự UniKey tự mô phỏng chèn/xoá) —
-                // chỉ ĐỌC để cập nhật state tìm kiếm, KHÔNG ghi ngược lại DOM.
-                onInput={e => setUnitSearch(e.currentTarget.value)}
+                value={unitSearch}
+                onChange={e => setUnitSearch(e.target.value)}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={e => {
-                  // Với IME dùng đúng Composition API (KHÔNG phải UniKey, xem
-                  // trên) — đồng bộ lại state search từ giá trị DOM hiện tại
-                  // ngay khi composition kết thúc, cho phép search/zoom chạy
-                  // lại (isComposing=false). KHÔNG ghi gì vào input — input đã
-                  // uncontrolled, DOM tự giữ đúng text, ở đây chỉ ĐỌC.
+                  // Đồng bộ lại state từ ĐÚNG giá trị DOM hiện có (thay vì tin
+                  // e.data — không phải mọi engine IME đều điền field đó đúng
+                  // ý nghĩa "chuỗi cuối cùng") NGAY trước khi cho phép
+                  // search/zoom chạy lại (isComposing=false) — compositionend
+                  // luôn là sự kiện CUỐI của 1 lượt gõ tiếng Việt.
                   setIsComposing(false);
                   setUnitSearch(e.currentTarget.value);
                 }}
@@ -808,13 +781,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
                 }}
               />
               {unitSearch && (
-                <button onClick={() => {
-                  // Xoá lập trình — input uncontrolled nên PHẢI tự ghi rỗng
-                  // vào DOM qua ref (không có `value=` để React tự đồng bộ),
-                  // RỒI mới cập nhật state tìm kiếm theo cùng giá trị đó.
-                  if (searchInputRef.current) searchInputRef.current.value = '';
-                  setUnitSearch('');
-                }} title="Xoá tìm kiếm" style={{
+                <button onClick={() => setUnitSearch('')} title="Xoá tìm kiếm" style={{
                   position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)',
                   background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex',
                 }}>
