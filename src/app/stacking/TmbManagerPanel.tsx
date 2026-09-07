@@ -247,10 +247,19 @@ function fmtMB(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel, onClose }: {
+export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel, onClose, onProfilesChanged }: {
   stackingConfigId: string;
   stackingConfigLabel: string;
   onClose: () => void;
+  /** Tuỳ chọn — gọi SAU KHI 1 mutation THÀNH CÔNG có thể đổi profile ACTIVE
+   * mà runtime Sale (page.tsx, useDbTmbMapProfiles) đang thấy — hiện CHỈ
+   * activate/deactivate (toggleActivate) gọi field này (xem audit
+   * "TMB_RUNTIME_ASSET_ROOT_CAUSE": panel này KHÔNG tự khiến hook runtime của
+   * page.tsx load lại, vì 2 bên là component riêng và stackingConfigId không
+   * đổi khi chỉ đổi status 1 profile). KHÔNG gọi khi mutation lỗi. Các thao
+   * tác khác (sửa mapping/glyph_remap/alias/xoá...) CỐ Ý không gọi field này
+   * — ngoài phạm vi fix hiện tại (xem Final Report). */
+  onProfilesChanged?: () => void;
 }) {
   const [profiles, setProfiles] = useState<TmbProfileRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -630,7 +639,14 @@ export default function TmbManagerPanel({ stackingConfigId, stackingConfigLabel,
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
       });
       const d = await r.json();
-      if (!d.success) setActionMsg(m => ({ ...m, [profile.id]: `Lỗi: ${d.error}` }));
+      if (!d.success) {
+        setActionMsg(m => ({ ...m, [profile.id]: `Lỗi: ${d.error}` }));
+      } else {
+        // Thành công (activate HOẶC deactivate) — báo runtime Sale (page.tsx)
+        // load lại đúng profile ACTIVE mới nhất, KHÔNG cần reload trang. CHỈ
+        // gọi ở nhánh success (xem comment onProfilesChanged ở Props).
+        onProfilesChanged?.();
+      }
       await load();
     } finally {
       setBusyId(null);

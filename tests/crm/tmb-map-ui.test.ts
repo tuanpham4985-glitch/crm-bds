@@ -79,7 +79,11 @@ test('page.tsx: resolve ĐÚNG TmbMapProfile theo StackingConfig đang chọn (r
 
 test('page.tsx: hỗ trợ 0..N map profile/project — cộng profile DB-managed (ACTIVE) vào cùng danh sách với profile tĩnh, KHÔNG thay thế', () => {
   assert.match(pageSource, /import \{ useDbTmbMapProfiles \} from '\.\/tmb-map-registry';/);
-  assert.match(pageSource, /const dbTmbProfiles = useDbTmbMapProfiles\(selectedConfig\?\.id\);/);
+  // useDbTmbMapProfiles trả về { profiles, refresh } (thêm refresh() cho TMB
+  // Runtime Profile Refresh fix, xem tests/crm/tmb-runtime-profile-refresh.test.ts)
+  // — destructure `profiles` thành dbTmbProfiles, giữ nguyên tên biến dùng
+  // tiếp bên dưới (list = [...dbTmbProfiles] không đổi).
+  assert.match(pageSource, /const \{ profiles: dbTmbProfiles, refresh: refreshDbTmbProfiles \} = useDbTmbMapProfiles\(selectedConfig\?\.id\);/);
   assert.match(pageSource, /if \(staticTmbProfile && !list\.some\(p => p\.configId === staticTmbProfile\.configId\)\) list\.unshift\(staticTmbProfile\);/);
 });
 

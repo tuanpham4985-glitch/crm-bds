@@ -9,7 +9,7 @@
  * ở đây chọn KHÔNG migrate vì không cần thiết cho mục tiêu hiện tại). Hook
  * này CHỈ cộng thêm profile DB-managed (status ACTIVE) vào danh sách.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { TmbMapProfile, TmbMapUnit } from './tmb-map-data';
 
 export interface TmbDbProfileRow {
@@ -60,12 +60,29 @@ export function dbProfileToTmbMapProfile(row: TmbDbProfileRow, mappings: TmbDbUn
   };
 }
 
+export interface UseDbTmbMapProfilesResult {
+  profiles: TmbMapProfile[];
+  /** Chạy lại ĐÚNG luồng load hiện có (không viết lại fetch/convert lần 2) —
+   * dùng khi Admin vừa activate/deactivate 1 profile CÙNG project (TmbManagerPanel,
+   * component RIÊNG, KHÔNG tự động re-render lại hook này vì stackingConfigId
+   * không đổi) để runtime Sale (page.tsx) thấy ĐÚNG profile ACTIVE mới nhất mà
+   * KHÔNG cần reload trang (xem audit "TMB_RUNTIME_ASSET_ROOT_CAUSE" — hook
+   * này trước đây CHỈ load lại khi stackingConfigId đổi, gây stale state đúng
+   * kịch bản đó). Stable reference (useCallback deps rỗng) — an toàn truyền
+   * xuống làm callback prop mà không gây re-render thừa. */
+  refresh: () => void;
+}
+
 /** Danh sách profile DB-managed đang ACTIVE cho 1 StackingConfig — rỗng nếu
  * chưa Admin nào Kích hoạt map nào cho project này (KHÔNG lỗi, KHÔNG giả vờ
  * generic). Non-admin chỉ nhận ACTIVE (đã enforce server-side ở API route,
  * hook này không lặp lại kiểm tra quyền). */
-export function useDbTmbMapProfiles(stackingConfigId: string | undefined | null): TmbMapProfile[] {
+export function useDbTmbMapProfiles(stackingConfigId: string | undefined | null): UseDbTmbMapProfilesResult {
   const [profiles, setProfiles] = useState<TmbMapProfile[]>([]);
+  // Bump để CHẠY LẠI đúng effect load bên dưới theo yêu cầu (refresh()),
+  // KHÔNG duplicate logic fetch/convert — CHỈ thêm 1 dependency phụ.
+  const [refreshToken, setRefreshToken] = useState(0);
+  const refresh = useCallback(() => setRefreshToken(t => t + 1), []);
 
   useEffect(() => {
     if (!stackingConfigId) { setProfiles([]); return; }
@@ -90,7 +107,7 @@ export function useDbTmbMapProfiles(stackingConfigId: string | undefined | null)
     })();
 
     return () => { cancelled = true; };
-  }, [stackingConfigId]);
+  }, [stackingConfigId, refreshToken]);
 
-  return profiles;
+  return { profiles, refresh };
 }

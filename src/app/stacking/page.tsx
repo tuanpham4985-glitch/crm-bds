@@ -1194,7 +1194,7 @@ export default function StackingPage() {
   // tmb-map-registry.ts). Nhiều dự án dùng CHUNG 1 renderer (TmbMap), chỉ
   // khác profile truyền vào — KHÔNG if/else theo project ở đây.
   const staticTmbProfile = resolveTmbMapProfile(selectedConfig);
-  const dbTmbProfiles = useDbTmbMapProfiles(selectedConfig?.id);
+  const { profiles: dbTmbProfiles, refresh: refreshDbTmbProfiles } = useDbTmbMapProfiles(selectedConfig?.id);
   const tmbProfiles = useMemo(() => {
     const list = [...dbTmbProfiles];
     if (staticTmbProfile && !list.some(p => p.configId === staticTmbProfile.configId)) list.unshift(staticTmbProfile);
@@ -1517,6 +1517,12 @@ export default function StackingPage() {
             stackingConfigId={selectedConfig.id}
             stackingConfigLabel={selectedConfig.ten_hien_thi}
             onClose={() => setShowTmbManager(false)}
+            // Runtime TMB (useDbTmbMapProfiles) chỉ tự load lại khi đổi
+            // stackingConfigId — activate/deactivate xảy ra TRONG panel này
+            // (component RIÊNG) không tự khiến nó load lại, gây stale profile
+            // ACTIVE cho tới khi reload trang (xem audit "TMB_RUNTIME_ASSET_ROOT_CAUSE").
+            // onProfilesChanged nối 2 bên lại — CHỈ báo khi mutation THÀNH CÔNG.
+            onProfilesChanged={refreshDbTmbProfiles}
           />
         )}
 
