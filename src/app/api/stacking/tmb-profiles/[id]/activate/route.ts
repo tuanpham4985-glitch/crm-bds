@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireTmbAdmin } from '@/lib/tmb-admin-guard';
-import { getTmbMapProfile, updateTmbMapProfile } from '@/lib/tmb-repository';
+import { getTmbMapProfile, updateTmbMapProfile, activateTmbMapProfile } from '@/lib/tmb-repository';
 
 // POST /api/stacking/tmb-profiles/[id]/activate  body: { action: 'activate' | 'deactivate' }
 // admin-only. ACTIVATE cần đã optimize xong (web_asset_ref tồn tại) — profile
@@ -20,7 +20,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!profile.web_asset_ref) {
         return NextResponse.json({ success: false, error: 'Chưa có web asset — chạy "Tối ưu" trước khi kích hoạt' }, { status: 400 });
       }
-      const updated = await updateTmbMapProfile(id, { status: 'ACTIVE', error_message: null });
+      // activateTmbMapProfile (tmb-repository.ts) tự deactivate MỌI sibling
+      // ACTIVE cùng slot (stacking_config_id+subdivision) trong 1 transaction
+      // SERIALIZABLE — đảm bảo bất biến "tối đa 1 ACTIVE mỗi slot", xem audit
+      // + comment đầy đủ tại hàm đó (TMB_ACTIVATION_INVARIANT_FIX).
+      const updated = await activateTmbMapProfile(id);
       return NextResponse.json({ success: true, data: updated });
     }
     if (action === 'deactivate') {
