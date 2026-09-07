@@ -96,7 +96,23 @@ export function computeMaxRenderScale(
 /** Quyết định cuối cùng: renderScale cần re-render canvas tới, tính từ
  * effectiveScale hiển thị hiện tại (geometry authority, KHÔNG đổi) + DPR +
  * kích thước canvas gốc — đã bucket hoá + kẹp hard cap. Không bao giờ < 1
- * (canvas gốc đã ở scale=1 sẵn, không cần render lại thấp hơn). */
+ * (canvas gốc đã ở scale=1 sẵn, không cần render lại thấp hơn).
+ *
+ * ROOT CAUSE đã audit (TMB_MOBILE_LOAD_ROOT_CAUSE_PROVEN) — idealScale TRƯỚC
+ * ĐÂY là `Math.max(1, effectiveScale) * dpr`: floor effectiveScale về tối
+ * thiểu 1 TRƯỚC khi nhân dpr khiến MỌI thiết bị dpr>=2 (tức hầu hết điện
+ * thoại) bị ép render ít nhất ở ĐỘ PHÂN GIẢI GỐC × dpr, BẤT KỂ content đang
+ * hiển thị nhỏ hơn gốc rất nhiều lần (VD mobile fit-to-view effectiveScale
+ * ~0.10 — TMB chỉ hiển thị ~10% kích thước gốc) — gây alloc canvas ~32MP
+ * (~123MB) hoàn toàn không cần thiết ngay khi mở TMB trên mobile, rủi ro OOM
+ * (desktop dpr=1 không bao giờ gặp vì Math.max(1,...)*1 luôn = 1). Bỏ floor
+ * TRƯỚC khi nhân dpr — để effectiveScale THẬT quyết định idealScale — rồi
+ * chuyển floor "không bao giờ < 1" xuống SAU CÙNG (áp dụng cho KẾT QUẢ, không
+ * áp dụng cho effectiveScale đầu vào) — vẫn giữ đúng bất biến "canvas không
+ * bao giờ render lại thấp hơn scale=1 gốc", nhưng không còn ép nâng chất
+ * lượng khi effectiveScale thực tế đang rất nhỏ (fit/zoom nhẹ trên màn hình
+ * bé) — logic THUẦN TOÁN HỌC theo effectiveScale/dpr, KHÔNG thêm bất kỳ
+ * device/UA detection hay ngưỡng mobile riêng nào. */
 export function computeRenderQuality(
   effectiveScale: number,
   devicePixelRatio: number,
@@ -104,10 +120,10 @@ export function computeRenderQuality(
   caps: RenderQualityCaps = DEFAULT_RENDER_QUALITY_CAPS,
 ): number {
   const dpr = clampDevicePixelRatio(devicePixelRatio, caps.maxDpr);
-  const idealScale = Math.max(1, effectiveScale) * dpr;
+  const idealScale = effectiveScale * dpr;
   const bucketed = snapToRenderQualityBucket(idealScale, caps.buckets);
   const maxAllowed = computeMaxRenderScale(nativeSize, caps);
-  return Math.min(bucketed, maxAllowed);
+  return Math.max(1, Math.min(bucketed, maxAllowed));
 }
 
 /** "Không downgrade vô lý" — chỉ coi là cần re-render khi quality mục tiêu
