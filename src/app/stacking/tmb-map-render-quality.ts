@@ -93,6 +93,35 @@ export function computeMaxRenderScale(
   return Math.max(1, Math.min(byDimension, byTotalPixels));
 }
 
+/** Scale render cho LƯỢT VẼ CANVAS ĐẦU TIÊN (base render, TRƯỚC bất kỳ
+ * high-res upgrade nào) — generic theo đúng 2 giới hạn (maxDimensionPx/
+ * maxTotalPixels, CÙNG bộ cap dùng cho renderHighRes) nhưng KHÔNG được gọi
+ * computeMaxRenderScale ở trên: hàm đó CỐ Ý sàn ở 1 ("canvas gốc đã ở
+ * scale=1 sẵn, không cần render lại thấp hơn" — đúng cho use case NÂNG scale
+ * từ native lên khi zoom sâu), nên `Math.min(1, computeMaxRenderScale(...))`
+ * sẽ LUÔN LUÔN = 1 bất kể trang lớn cỡ nào (sàn ở trong đã che mất giá trị
+ * < 1 cần dùng ở đây) — bug này đã bắt được trước khi release.
+ *
+ * ROOT CAUSE đã audit (TMB_MOBILE_HLX_ROOT_CAUSE_PROVEN): canvas raster ban
+ * đầu TRƯỚC ĐÂY luôn = kích thước NATIVE trang PDF ở BASE_SCALE=1, không hề
+ * có cap, bất kể trang lớn/nhỏ — PDF trang nhỏ (VD Sài Gòn Park ~8MP) an
+ * toàn mọi thiết bị, nhưng PDF raster nặng (trang native lớn, VD HLX/TĐNĐ1)
+ * có thể alloc canvas vượt xa ngân sách bộ nhớ an toàn trên mobile NGAY LÚC
+ * MỞ TMB — xảy ra TRƯỚC CẢ bước renderHighRes/DPR (đã fix riêng, không liên
+ * quan). Hàm này KHÔNG BAO GIỜ vượt 1 (không tự "upscale" ban đầu — việc đó
+ * thuộc renderHighRes SAU KHI đã fit-to-view) nhưng CÓ THỂ < 1 khi trang
+ * native vượt ngân sách — thuần theo kích thước trang thật, KHÔNG hard-code
+ * project/profile, KHÔNG detect mobile/UA. */
+export function computeInitialRenderScale(
+  nativeSize: NativeSize,
+  caps: Pick<RenderQualityCaps, 'maxTotalPixels' | 'maxDimensionPx'> = DEFAULT_RENDER_QUALITY_CAPS,
+): number {
+  if (nativeSize.w <= 0 || nativeSize.h <= 0) return 1;
+  const byDimension = Math.min(caps.maxDimensionPx / nativeSize.w, caps.maxDimensionPx / nativeSize.h);
+  const byTotalPixels = Math.sqrt(caps.maxTotalPixels / (nativeSize.w * nativeSize.h));
+  return Math.min(1, byDimension, byTotalPixels);
+}
+
 /** Quyết định cuối cùng: renderScale cần re-render canvas tới, tính từ
  * effectiveScale hiển thị hiện tại (geometry authority, KHÔNG đổi) + DPR +
  * kích thước canvas gốc — đã bucket hoá + kẹp hard cap. Không bao giờ < 1

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import {
-  clampDevicePixelRatio, snapToRenderQualityBucket, computeMaxRenderScale,
+  clampDevicePixelRatio, snapToRenderQualityBucket, computeMaxRenderScale, computeInitialRenderScale,
   computeRenderQuality, shouldUpgradeRenderQuality, DEFAULT_RENDER_QUALITY_CAPS,
   type RenderQualityCaps,
 } from '../../src/app/stacking/tmb-map-render-quality';
@@ -74,6 +74,48 @@ test('computeMaxRenderScale: số liệu THẬT của PDF TMB + cap mặc địn
   // byDimension = min(16384/3370.39, 16384/2383.94) ≈ 4.86 (không chặn)
   // byTotalPixels = sqrt(40_000_000 / (3370.39*2383.94)) ≈ 2.23 (chặn — bên nhỏ hơn thắng)
   assert.ok(scale > 2.2 && scale < 2.3, `expected ~2.23, got ${scale}`);
+});
+
+// ─── computeInitialRenderScale (TMB_MOBILE_HLX_ROOT_CAUSE_PROVEN fix) ──────
+// Scale cho lượt vẽ canvas ĐẦU TIÊN — PHẢI khác computeMaxRenderScale (hàm đó
+// sàn ở 1, không phù hợp để HẠ scale xuống dưới native cho trang PDF quá lớn).
+
+test('A. computeInitialRenderScale: kích thước THẬT Sài Gòn Park + cap mặc định -> đúng 1 (KHÔNG đổi hành vi cho PDF trang nhỏ)', () => {
+  const scale = computeInitialRenderScale(REAL_NATIVE_SIZE, DEFAULT_RENDER_QUALITY_CAPS);
+  assert.equal(scale, 1);
+});
+
+test('A2. computeInitialRenderScale: dùng cap mặc định khi KHÔNG truyền caps (default param) -> vẫn = 1 cho Sài Gòn Park', () => {
+  const scale = computeInitialRenderScale(REAL_NATIVE_SIZE);
+  assert.equal(scale, 1);
+});
+
+test('B. computeInitialRenderScale: trang PDF native LỚN hơn ngân sách (VD raster nặng kiểu HLX/TĐNĐ1) -> scale < 1 (KHÁC computeMaxRenderScale — hàm đó sẽ sàn về đúng 1, che mất bug)', () => {
+  const oversized = { w: 10000, h: 10000 }; // 100MP ở scale=1 — vượt xa 40MP cap mặc định
+  const initial = computeInitialRenderScale(oversized, DEFAULT_RENDER_QUALITY_CAPS);
+  const maxRenderScaleWronglyReused = computeMaxRenderScale(oversized, DEFAULT_RENDER_QUALITY_CAPS);
+  assert.ok(initial < 1, `expected scale < 1 for oversized native page, got ${initial}`);
+  assert.equal(maxRenderScaleWronglyReused, 1, 'computeMaxRenderScale SÀN ở 1 — dùng nhầm hàm này thay computeInitialRenderScale sẽ luôn ra 1, không cap được gì (bug đã bắt trước khi release)');
+});
+
+test('C. computeInitialRenderScale: canvas kết quả (native × scale) PHẢI nằm trong đúng cap maxTotalPixels/maxDimensionPx', () => {
+  const oversized = { w: 10000, h: 10000 };
+  const caps = DEFAULT_RENDER_QUALITY_CAPS;
+  const scale = computeInitialRenderScale(oversized, caps);
+  const w = oversized.w * scale, h = oversized.h * scale;
+  assert.ok(w * h <= caps.maxTotalPixels + 1e-6, `canvas ${w}x${h} = ${w * h}px vượt maxTotalPixels ${caps.maxTotalPixels}`);
+  assert.ok(w <= caps.maxDimensionPx + 1e-6 && h <= caps.maxDimensionPx + 1e-6, `canvas ${w}x${h} vượt maxDimensionPx ${caps.maxDimensionPx}`);
+});
+
+test('D. computeInitialRenderScale: KHÔNG BAO GIỜ vượt 1 dù trang native rất NHỎ (khác computeMaxRenderScale — hàm đó CHO PHÉP > 1 để phục vụ upscale khi zoom)', () => {
+  const tiny = { w: 100, h: 100 }; // byDimension/byTotalPixels đều >> 1 cho trang bé
+  const scale = computeInitialRenderScale(tiny, DEFAULT_RENDER_QUALITY_CAPS);
+  assert.equal(scale, 1, 'lượt render ĐẦU TIÊN không được tự ý upscale — đó là việc của renderHighRes sau khi đã fit-to-view');
+});
+
+test('computeInitialRenderScale: kích thước 0/âm -> fallback 1, không NaN/Infinity (cùng guard với computeMaxRenderScale)', () => {
+  assert.equal(computeInitialRenderScale({ w: 0, h: 100 }), 1);
+  assert.equal(computeInitialRenderScale({ w: 100, h: 0 }), 1);
 });
 
 // ─── computeRenderQuality ───────────────────────────────────────────────────

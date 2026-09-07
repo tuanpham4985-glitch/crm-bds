@@ -9,7 +9,9 @@ import { buildMaCanIndex, resolveTmbUnitState, resolveTrimmedUnitSearch, type Tm
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
 import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, computeCenteringMargin } from './tmb-map-pan';
-import { computeRenderQuality, shouldUpgradeRenderQuality, VIEWPORT_RENDER_QUALITY_CAPS } from './tmb-map-render-quality';
+import {
+  computeRenderQuality, shouldUpgradeRenderQuality, computeInitialRenderScale, VIEWPORT_RENDER_QUALITY_CAPS,
+} from './tmb-map-render-quality';
 import {
   computeVisibleContentRect, applyOverscan, clampRectToPageBounds, rectSize, rectContains, rectToDisplayBox,
   OVERSCAN_FRACTION, type Rect,
@@ -52,8 +54,13 @@ import type { PDFPageProxy, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
  *
  * ── Adaptive whole-page rendering (canvasRef — FALLBACK/background) ──────
  * Canvas backing store (canvas.width/height, độ phân giải RASTER thật) ban
- * đầu chỉ vẽ 1 lần ở BASE_SCALE=1 (~3370×2384px, đo thật bằng pdf.js) — CSS
- * width/height (scaledSize, hiển thị) phóng bitmap CỐ ĐỊNH đó lên tới 20x,
+ * đầu vẽ 1 lần ở `initialRenderScale` — THƯỜNG = BASE_SCALE=1 (VD Sài Gòn
+ * Park, ~3370×2384px, đo thật bằng pdf.js), nhưng bị kẹp XUỐNG DƯỚI 1 (dùng
+ * lại computeMaxRenderScale) nếu trang PDF native đủ lớn để vượt ngân sách
+ * canvas an toàn (root cause mobile OOM đã audit trên PDF raster nặng, xem
+ * TMB_MOBILE_HLX_ROOT_CAUSE_PROVEN) — viewport BASE_SCALE=1 vẫn LUÔN là
+ * geometry authority (marker/canvasSize), hoàn toàn tách biệt khỏi renderScale
+ * raster này. CSS width/height (scaledSize, hiển thị) phóng bitmap CỐ ĐỊNH đó lên tới 20x,
  * gây mờ ở zoom sâu (browser upscale, không có thêm điểm ảnh). Sau khi zoom
  * ổn định (debounce, xem RENDER_DEBOUNCE_MS), gọi lại pdf.js page.render()
  * (page giữ trong pageRef, KHÔNG re-fetch/re-parse PDF) ở renderScale cao
@@ -282,23 +289,55 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
 
         const page = await doc.getPage(profile.pdfPageNumber);
         if (timedOut || cancelled) return;
+        // GEOMETRY AUTHORITY — LUÔN ở BASE_SCALE=1, KHÔNG BAO GIỜ đổi. Marker
+        // (points bên dưới) + canvasSize (content-space cho fitScale/effectiveScale)
+        // đều lấy từ viewport NÀY, độc lập hoàn toàn với renderViewport (raster
+        // thật) bên dưới — cùng "geometry guard" đã áp dụng cho renderHighRes.
         const viewport = page.getViewport({ scale: BASE_SCALE, rotation: page.rotate });
         log('bước 4/5: getPage() OK, viewport =', viewport.width, 'x', viewport.height, 'rotation', viewport.rotation);
 
+        // Root cause đã audit (TMB_MOBILE_HLX_ROOT_CAUSE_PROVEN) — canvas RASTER
+        // (backing store) ban đầu TRƯỚC ĐÂY luôn = kích thước NATIVE trang PDF ở
+        // BASE_SCALE=1, KHÔNG hề có cap, bất kể trang PDF lớn/nhỏ thế nào. Với
+        // PDF trang nhỏ (VD Sài Gòn Park, ~3370×2384 ≈ 8MP) canvas ~30MB — an
+        // toàn mọi thiết bị. Với PDF raster nặng (VD HLX/TĐNĐ1, trang native lớn
+        // hơn nhiều) canvas ban đầu có thể vượt xa ngân sách bộ nhớ canvas an
+        // toàn trên mobile — XẢY RA TRƯỚC CẢ khi chạm tới renderHighRes/DPR
+        // (fix trước đó chỉ sửa đường nâng cấp DPR, KHÔNG chạm bước render ban
+        // đầu này). computeInitialRenderScale (tmb-map-render-quality.ts) tính
+        // scale raster AN TOÀN cho lượt render ĐẦU TIÊN — thuần theo kích thước
+        // trang THẬT, KHÔNG hard-code theo tên dự án/profile, KHÔNG detect
+        // mobile/UA (KHÔNG dùng computeMaxRenderScale trực tiếp ở đây — hàm đó
+        // sàn ở 1, không phù hợp cho việc HẠ scale xuống dưới native).
+        const initialRenderScale = computeInitialRenderScale({ w: viewport.width, h: viewport.height });
+        // renderViewport CHỈ dùng để rasterize canvas (canvas.width/height +
+        // page.render()) — KHÔNG BAO GIỜ dùng để tính marker/points hay
+        // canvasSize (2 việc đó luôn dùng `viewport` ở BASE_SCALE=1 phía trên).
+        const renderViewport = initialRenderScale === BASE_SCALE
+          ? viewport
+          : page.getViewport({ scale: initialRenderScale, rotation: page.rotate });
+        if (initialRenderScale < BASE_SCALE) {
+          log('bước 4/5: trang PDF lớn hơn ngân sách canvas an toàn — render ban đầu ở scale', initialRenderScale,
+            '(', Math.ceil(renderViewport.width), 'x', Math.ceil(renderViewport.height), 'px) thay vì scale 1 gốc');
+        }
+
         const canvas = canvasRef.current;
         if (!canvas || cancelled || timedOut) return;
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
+        canvas.width = Math.ceil(renderViewport.width);
+        canvas.height = Math.ceil(renderViewport.height);
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error('Không khởi tạo được canvas context (getContext("2d") trả về null)');
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         log('bước 5/5: page.render() bắt đầu...');
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
         if (cancelled || timedOut) return;
         log('bước 5/5: page.render() hoàn tất');
 
+        // Marker luôn tính từ `viewport` (BASE_SCALE=1, KHÔNG PHẢI renderViewport)
+        // — vị trí marker hoàn toàn độc lập với renderScale raster thật, đúng
+        // geometry guard của file này.
         const points = profile.units.map(h => {
           const [vx, vy] = viewport.convertToViewportPoint(h.pdfX, h.pdfY);
           return { unitCode: h.unitCode, viewX: vx, viewY: vy };
@@ -306,12 +345,22 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
 
         // Giữ page SỐNG (không .cleanup() ở đây) để adaptive high-res render
         // sau này gọi lại CHÍNH page này ở scale cao hơn khi zoom sâu — không
-        // re-fetch/re-parse file 13MB. renderedRenderScaleRef đã reset =
-        // BASE_SCALE ở đầu effect, đúng bằng scale vừa render.
+        // re-fetch/re-parse file 13MB. renderedRenderScaleRef PHẢI ghi ĐÚNG
+        // initialRenderScale vừa dùng (KHÔNG PHẢI luôn BASE_SCALE như trước) —
+        // nếu không, renderHighRes sau này (shouldUpgradeRenderQuality so với
+        // giá trị SAI) có thể nghĩ canvas đã ở scale=1 dù thực tế đang thấp
+        // hơn, bỏ lỡ lượt nâng chất lượng cần thiết khi User zoom vào.
         pageRef.current = page;
+        renderedRenderScaleRef.current = initialRenderScale;
 
         clearTimeout(timeoutId);
-        setCanvasSize({ w: canvas.width, h: canvas.height });
+        // canvasSize LUÔN là kích thước NATIVE (viewport BASE_SCALE=1) — content-
+        // space authority cho fitScale/effectiveScale/marker, KHÔNG PHẢI kích
+        // thước raster thật (canvas.width/height, có thể nhỏ hơn nếu bị cap ở
+        // trên). Tách 2 khái niệm này đúng như renderHighRes đã làm cho lượt
+        // nâng cấp sau — canvas hiển thị (CSS scaledSize) tự phóng bitmap nhỏ
+        // hơn lên đúng kích thước cần, trình duyệt tự làm, không cần code thêm.
+        setCanvasSize({ w: Math.ceil(viewport.width), h: Math.ceil(viewport.height) });
         setViewportPoints(points);
         setZoomMultiplier(DEFAULT_ZOOM_MULT); // mở ở fit-to-view, không auto-zoom khu Còn hàng
         setLoading(false);
