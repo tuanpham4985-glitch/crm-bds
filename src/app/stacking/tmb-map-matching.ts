@@ -27,6 +27,20 @@ export function buildMaCanIndex(rows: readonly StackingListRow[]): Map<string, S
   return idx;
 }
 
+/** Ô "Tìm mã căn" (TmbMap.tsx) — trong lúc IME đang composition (gõ tiếng
+ * Việt/Telex, VD "T" + "D" + "D" -> "Đ"), giá trị input CÓ THỂ đang ở dạng
+ * TRUNG GIAN chưa hoàn chỉnh (VD "TDD" trước khi engine gộp thành "TĐ") —
+ * KHÔNG được coi là mã cần tìm, tránh: (1) tự động zoom/pan tới vị trí sai
+ * giữa chừng lúc User còn đang gõ, (2) flash "Không tìm thấy căn Còn hàng"
+ * trên text tạm thời chưa xong. Trả về '' (= "chưa tìm gì") khi đang
+ * composing; KHÔNG composing thì trả về ĐÚNG y hệt logic cũ (unitSearch.trim())
+ * — không đổi ngữ nghĩa search sau khi composition kết thúc. KHÔNG hard-code
+ * sửa ký tự nào (VD "TDD" -> "TĐ") — hoàn toàn generic, chỉ trì hoãn thời
+ * điểm đánh giá tới khi trình duyệt xác nhận đã gõ xong. */
+export function resolveTrimmedUnitSearch(unitSearch: string, isComposing: boolean): string {
+  return isComposing ? '' : unitSearch.trim();
+}
+
 export type TmbMatchResult =
   | { kind: 'matched'; row: StackingListRow }
   | { kind: 'unmatched' }

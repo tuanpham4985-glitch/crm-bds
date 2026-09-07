@@ -5,7 +5,7 @@ import { X, Loader2, AlertCircle, Plus, Minus, RefreshCw, Maximize2, Locate, Sea
 import type { StackingListRow } from '@/lib/types';
 import { fmtGia, fmtArea } from './format';
 import { TMB_PDF_WORKER_URL, tmbShortLabel, type TmbMapProfile } from './tmb-map-data';
-import { buildMaCanIndex, resolveTmbUnitState, type TmbUnitState } from './tmb-map-matching';
+import { buildMaCanIndex, resolveTmbUnitState, resolveTrimmedUnitSearch, type TmbUnitState } from './tmb-map-matching';
 import { buildTmbPreview } from './tmb-map-preview';
 import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
 import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, computeCenteringMargin } from './tmb-map-pan';
@@ -153,6 +153,10 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   const [zoomMultiplier, setZoomMultiplier] = useState(DEFAULT_ZOOM_MULT);
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const [unitSearch, setUnitSearch] = useState('');
+  // Ô tìm mã căn IME-safe (gõ tiếng Việt/Telex, xem resolveTrimmedUnitSearch
+  // trong tmb-map-matching.ts) — true trong khoảng compositionstart..compositionend,
+  // KHÔNG chặn/biến đổi gì input, chỉ trì hoãn lúc search/zoom được phép chạy.
+  const [isComposing, setIsComposing] = useState(false);
   const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState<{ w: number; h: number } | null>(null);
   const [viewportPoints, setViewportPoints] = useState<{ unitCode: string; viewX: number; viewY: number }[]>([]);
@@ -684,7 +688,11 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   // hiển thị/tương tác" của toàn bộ map (xem đầu file). So khớp CHÍNH XÁC
   // (trim + không phân biệt hoa/thường) — mã căn là định danh cố định, không
   // cần fuzzy/partial match, tránh nhảy tới nhầm căn khi đang gõ dở.
-  const trimmedUnitSearch = unitSearch.trim();
+  // resolveTrimmedUnitSearch: trong lúc IME đang composition (gõ tiếng Việt/
+  // Telex, VD "TĐ55-11"), giá trị input có thể tạm ở dạng trung gian chưa
+  // hoàn chỉnh — coi như "" (chưa tìm gì) tới khi compositionend, tránh tự
+  // zoom/pan hoặc flash "Không tìm thấy" giữa chừng lúc User còn đang gõ.
+  const trimmedUnitSearch = resolveTrimmedUnitSearch(unitSearch, isComposing);
   const matchedUnit = useMemo(() => {
     if (!trimmedUnitSearch) return null;
     const norm = trimmedUnitSearch.toLowerCase();
@@ -754,6 +762,16 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
                 className="tmb-search-input"
                 value={unitSearch}
                 onChange={e => setUnitSearch(e.target.value)}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={e => {
+                  // Đồng bộ lại state từ ĐÚNG giá trị DOM hiện có (thay vì tin
+                  // e.data — không phải mọi engine IME đều điền field đó đúng
+                  // ý nghĩa "chuỗi cuối cùng") NGAY trước khi cho phép
+                  // search/zoom chạy lại (isComposing=false) — compositionend
+                  // luôn là sự kiện CUỐI của 1 lượt gõ tiếng Việt.
+                  setIsComposing(false);
+                  setUnitSearch(e.currentTarget.value);
+                }}
                 disabled={loading}
                 placeholder="Tìm mã căn..."
                 title="Nhập ĐÚNG mã căn Còn hàng để tự động phóng tới vị trí, marker sẽ đổi màu đỏ"
