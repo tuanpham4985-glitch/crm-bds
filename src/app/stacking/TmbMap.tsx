@@ -17,6 +17,15 @@ import {
   OVERSCAN_FRACTION, type Rect,
 } from './tmb-map-viewport';
 import type { PDFPageProxy, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
+// TEMPORARY — TMB_HLX_MOBILE_FAILURE_STAGE audit (xoá sau khi có kết luận,
+// xem tmb-diag.ts): chỉ log khi ?tmbdiag=1, không đổi hành vi mặc định.
+// CỐ Ý KHÔNG import từ './tmb-map-load-watchdog' — đó là 1 candidate THAY ĐỔI
+// HÀNH VI timeout riêng (progress-aware watchdog), tách biệt hoàn toàn khỏi
+// candidate diagnostic-only này (xem tmb-map-load-watchdog.ts, vẫn còn trong
+// working tree nhưng KHÔNG được dùng ở đây — giữ nguyên LOAD_TIMEOUT_MS phẳng
+// cũ bên dưới, đúng hành vi đã release, để diagnostic không lẫn với 1 thay đổi
+// hành vi chưa được duyệt riêng).
+import { isTmbDiagEnabled, diagMark, canvasMB, attachGlobalDiagListenersOnce, mountDiagOverlayOnce } from './tmb-diag';
 
 /** Tổng mặt bằng (TMB) — render trang TMB (PDF thật) làm nền + marker theo
  * toạ độ text layer, click marker -> lookup Mã căn trong Bảng hàng hiện có
@@ -109,7 +118,10 @@ const FOCUS_PADDING = 1.6;   // "Tới khu Còn hàng": chừa viền quanh boun
 const SEARCH_FOCUS_ZOOM = 6;
 // Không được spinner vô hạn — nếu pdf.js (network/worker) treo quá lâu, tự
 // chuyển sang error state thay vì chờ mãi. 20s đủ rộng cho file 13MB trên
-// mạng chậm, đủ hẹp để không làm User nghĩ app bị đứng.
+// mạng chậm, đủ hẹp để không làm User nghĩ app bị đứng. (Giữ NGUYÊN hành vi
+// đã release — candidate diagnostic-only này KHÔNG đổi timeout, xem import ở
+// đầu file: progress-aware watchdog trong tmb-map-load-watchdog.ts là 1
+// candidate khác, chưa dùng ở đây.)
 const LOAD_TIMEOUT_MS = 20000;
 // Kéo dưới ngưỡng này vẫn coi là click (mở popup căn) — vượt ngưỡng mới
 // khoá thành drag/pan và chặn click phát sinh ngoài ý muốn trên marker.
@@ -154,6 +166,26 @@ interface RenderedUnit extends TmbUnitState {
 }
 
 export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex = 700 }: Props) {
+  // TEMPORARY — TMB_HLX_MOBILE_FAILURE_STAGE audit: log mount/unmount CỦA
+  // CHÍNH component này + gắn listener beforeunload/pagehide/pageshow/
+  // visibilitychange 1 lần (attachGlobalDiagListenersOnce cũng tự log 1 dòng
+  // "=== NEW PAGE LOAD ===" kèm navigationType/pathname/search/serviceWorker
+  // controller lần đầu tiên được gọi trong phiên tải trang này, xem tmb-diag.ts)
+  // — nếu log unmount KHÔNG BAO GIỜ xuất hiện trước khi mất kết nối Console,
+  // đó là bằng chứng cả TAB bị OS/browser reload/kill (không phải React tự
+  // đóng modal). Xoá khối này sau khi có kết luận.
+  useEffect(() => {
+    if (!isTmbDiagEnabled()) return;
+    attachGlobalDiagListenersOnce();
+    mountDiagOverlayOnce();
+    diagMark(profile.configId, 'MOUNT', {
+      label: profile.label, pdfUrl: profile.pdfUrl, pdfPageNumber: profile.pdfPageNumber, unitsCount: profile.units.length,
+      pathname: window.location.pathname, search: window.location.search,
+    });
+    return () => diagMark(profile.configId, 'UNMOUNT');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
@@ -228,6 +260,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   // Render PDF (không phụ thuộc listRows — spatial data cố định). retryKey
   // đổi khi bấm "Thử lại" -> effect chạy lại từ đầu.
   useEffect(() => {
+    const diagOn = isTmbDiagEnabled(); // TEMPORARY — TMB_HLX_MOBILE_FAILURE_STAGE audit
     let cancelled = false;
     let timedOut = false;
     let loadedDoc: PDFDocumentProxy | null = null;
@@ -259,6 +292,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
     const timeoutId = setTimeout(() => {
       timedOut = true;
       log('TIMEOUT sau', LOAD_TIMEOUT_MS, 'ms — pdf.js không phản hồi (khả năng cao: worker không load được)');
+      if (diagOn) diagMark(profile.configId, 'LOAD-TIMEOUT', { afterMs: LOAD_TIMEOUT_MS });
       if (!cancelled) {
         setError(`Quá thời gian chờ (${LOAD_TIMEOUT_MS / 1000}s) khi tải bản vẽ TMB — kiểm tra Console (log "[TmbMap]") và tab Network cho "${profile.pdfUrl}" / "${TMB_PDF_WORKER_URL}".`);
         setLoading(false);
@@ -267,8 +301,12 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
 
     (async () => {
       try {
+        if (diagOn) diagMark(profile.configId, 'profile-resolved', { pdfUrl: profile.pdfUrl, pdfPageNumber: profile.pdfPageNumber });
         log('bước 1/5: import pdfjs-dist...');
+        if (diagOn) diagMark(profile.configId, 'pdfjs-import:start');
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        if (diagOn) diagMark(profile.configId, 'pdfjs-import:done');
+        if (timedOut || cancelled) return;
 
         pdfjs.GlobalWorkerOptions.workerSrc = TMB_PDF_WORKER_URL;
         log('bước 2/5: workerSrc =', TMB_PDF_WORKER_URL, '— fetch toàn bộ PDF:', profile.pdfUrl);
@@ -276,18 +314,31 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
         // Vercel phục vụ PDF với Accept-Ranges; pdf.js đôi khi đọc range/stream
         // bị lệch offset ("Bad end offset") trên asset lớn. Với file TMB ~13MB,
         // tải trọn file rồi truyền bytes cho pdf.js ổn định hơn và vẫn đủ nhanh.
+        if (diagOn) diagMark(profile.configId, 'asset-fetch:start', { url: profile.pdfUrl });
         const pdfResponse = await fetch(profile.pdfUrl, { cache: 'no-store' });
+        if (diagOn) diagMark(profile.configId, 'asset-fetch:response-headers', {
+          status: pdfResponse.status, ok: pdfResponse.ok,
+          contentLength: pdfResponse.headers.get('content-length'),
+          contentType: pdfResponse.headers.get('content-type'),
+          cacheControl: pdfResponse.headers.get('cache-control'),
+        });
         if (!pdfResponse.ok) throw new Error(`Không tải được file TMB (${pdfResponse.status})`);
         const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
+        if (diagOn) diagMark(profile.configId, 'asset-fetch:full-bytes-received', { byteLength: pdfBytes.byteLength, MB: (pdfBytes.byteLength / (1024 * 1024)).toFixed(2) });
+        if (timedOut || cancelled) return;
         log('tải PDF hoàn tất:', pdfBytes.byteLength, 'bytes');
 
+        if (diagOn) diagMark(profile.configId, 'getDocument:start');
         const loadingTask = pdfjs.getDocument({ data: pdfBytes });
         const doc = await loadingTask.promise;
+        if (diagOn) diagMark(profile.configId, 'getDocument:done', { numPages: doc.numPages });
         if (timedOut || cancelled) return;
         loadedDoc = doc;
         log('bước 3/5: getDocument() OK, numPages =', doc.numPages);
 
+        if (diagOn) diagMark(profile.configId, 'getPage:start', { pageNumber: profile.pdfPageNumber });
         const page = await doc.getPage(profile.pdfPageNumber);
+        if (diagOn) diagMark(profile.configId, 'getPage:done');
         if (timedOut || cancelled) return;
         // GEOMETRY AUTHORITY — LUÔN ở BASE_SCALE=1, KHÔNG BAO GIỜ đổi. Marker
         // (points bên dưới) + canvasSize (content-space cho fitScale/effectiveScale)
@@ -295,6 +346,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
         // thật) bên dưới — cùng "geometry guard" đã áp dụng cho renderHighRes.
         const viewport = page.getViewport({ scale: BASE_SCALE, rotation: page.rotate });
         log('bước 4/5: getPage() OK, viewport =', viewport.width, 'x', viewport.height, 'rotation', viewport.rotation);
+        if (diagOn) diagMark(profile.configId, 'geometry-viewport', { w: viewport.width, h: viewport.height, rotation: viewport.rotation, nativeMP: ((viewport.width * viewport.height) / 1_000_000).toFixed(2) });
 
         // Root cause đã audit (TMB_MOBILE_HLX_ROOT_CAUSE_PROVEN) — canvas RASTER
         // (backing store) ban đầu TRƯỚC ĐÂY luôn = kích thước NATIVE trang PDF ở
@@ -320,6 +372,10 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
           log('bước 4/5: trang PDF lớn hơn ngân sách canvas an toàn — render ban đầu ở scale', initialRenderScale,
             '(', Math.ceil(renderViewport.width), 'x', Math.ceil(renderViewport.height), 'px) thay vì scale 1 gốc');
         }
+        if (diagOn) diagMark(profile.configId, 'initial-raster-scale', {
+          initialRenderScale, renderW: Math.ceil(renderViewport.width), renderH: Math.ceil(renderViewport.height),
+          estimatedCanvasMB: canvasMB(Math.ceil(renderViewport.width), Math.ceil(renderViewport.height)),
+        });
 
         const canvas = canvasRef.current;
         if (!canvas || cancelled || timedOut) return;
@@ -329,9 +385,12 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
         if (!ctx) throw new Error('Không khởi tạo được canvas context (getContext("2d") trả về null)');
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (diagOn) diagMark(profile.configId, 'canvas-allocated', { width: canvas.width, height: canvas.height, estimatedMB: canvasMB(canvas.width, canvas.height) });
 
         log('bước 5/5: page.render() bắt đầu...');
+        if (diagOn) diagMark(profile.configId, 'page.render:start');
         await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+        if (diagOn) diagMark(profile.configId, 'page.render:complete');
         if (cancelled || timedOut) return;
         log('bước 5/5: page.render() hoàn tất');
 
@@ -342,6 +401,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
           const [vx, vy] = viewport.convertToViewportPoint(h.pdfX, h.pdfY);
           return { unitCode: h.unitCode, viewX: vx, viewY: vy };
         });
+        if (diagOn) diagMark(profile.configId, 'marker-overlay-computed', { pointsCount: points.length });
 
         // Giữ page SỐNG (không .cleanup() ở đây) để adaptive high-res render
         // sau này gọi lại CHÍNH page này ở scale cao hơn khi zoom sâu — không
@@ -364,10 +424,12 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
         setViewportPoints(points);
         setZoomMultiplier(DEFAULT_ZOOM_MULT); // mở ở fit-to-view, không auto-zoom khu Còn hàng
         setLoading(false);
+        if (diagOn) diagMark(profile.configId, 'STABLE-OPEN-STATE-REACHED', { canvasNativeSize: `${Math.ceil(viewport.width)}x${Math.ceil(viewport.height)}` });
       } catch (err) {
         clearTimeout(timeoutId);
         const msg = err instanceof Error ? err.message : String(err);
         log('LỖI:', msg, err);
+        if (diagOn) diagMark(profile.configId, 'CAUGHT-ERROR', { message: msg, cancelled, timedOut });
         if (!cancelled && !timedOut) {
           setError(msg || 'Lỗi tải/dựng TMB (không rõ nguyên nhân)');
           setLoading(false);
@@ -433,14 +495,16 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
     offCtx.fillStyle = '#ffffff';
     offCtx.fillRect(0, 0, off.width, off.height);
 
+    if (isTmbDiagEnabled()) diagMark(profile.configId, 'renderHighRes:start', { targetScale, offW: off.width, offH: off.height, estimatedMB: canvasMB(off.width, off.height) });
     setSharpening(true);
     const task = page.render({ canvasContext: offCtx, viewport });
     activeRenderTaskRef.current = task;
     try {
       await task.promise;
-    } catch {
+    } catch (err) {
       // RenderingCancelledException do bị .cancel() bởi lượt render mới hơn
       // — hành vi bình thường, không phải lỗi, im lặng bỏ qua.
+      if (isTmbDiagEnabled()) diagMark(profile.configId, 'renderHighRes:caught', { message: err instanceof Error ? err.message : String(err) });
       if (renderVersionRef.current === myVersion) setSharpening(false);
       return;
     }
@@ -453,9 +517,14 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
       ctx.drawImage(off, 0, 0);
       renderedRenderScaleRef.current = targetScale;
       log('adaptive render: đã render lại canvas ở scale', targetScale, '(', off.width, 'x', off.height, 'px)');
+      if (isTmbDiagEnabled()) diagMark(profile.configId, 'renderHighRes:complete', { targetScale, width: off.width, height: off.height });
     }
     if (activeRenderTaskRef.current === task) activeRenderTaskRef.current = null;
     setSharpening(false);
+    // profile.configId cố ý KHÔNG thêm vào deps (chỉ dùng cho diagMark, TEMPORARY
+    // — renderHighRes phải giữ NGUYÊN reference ổn định [] vì được dùng làm
+    // dependency của effect khác, đổi deps ở đây sẽ đổi hành vi effect đó).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Debounce theo effectiveScale — chỉ render high-res SAU KHI zoom đứng yên
@@ -467,9 +536,18 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   useEffect(() => {
     if (!canvasSize || !pageRef.current) return;
     const target = computeRenderQuality(effectiveScale, getDevicePixelRatio(), canvasSize);
+    if (isTmbDiagEnabled()) {
+      diagMark(profile.configId, 'post-render-upgrade-check', {
+        effectiveScale, dpr: getDevicePixelRatio(), canvasSize, target, current: renderedRenderScaleRef.current,
+        willUpgrade: shouldUpgradeRenderQuality(target, renderedRenderScaleRef.current),
+      });
+    }
     if (!shouldUpgradeRenderQuality(target, renderedRenderScaleRef.current)) return;
     const timer = setTimeout(() => { void renderHighRes(target); }, RENDER_DEBOUNCE_MS);
     return () => clearTimeout(timer);
+    // profile.configId cố ý KHÔNG thêm vào deps (chỉ dùng cho diagMark, TEMPORARY
+    // — thêm vào sẽ đổi thời điểm effect chạy lại, vi phạm "no behavior change").
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveScale, canvasSize, renderHighRes]);
 
   // ── Viewport high-resolution overlay ─────────────────────────────────────
@@ -783,7 +861,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   const centeringMargin = containerSize ? computeCenteringMargin(containerSize, scaledSize) : { marginX: 0, marginY: 0 };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, zIndex, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => { if (isTmbDiagEnabled()) diagMark(profile.configId, 'onClose:backdrop-click'); onClose(); }}>
       <div
         style={{ width: '100%', maxWidth: 1100, height: '85vh', background: 'var(--bg-card)', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.35)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         onClick={e => e.stopPropagation()}
@@ -873,7 +951,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
                 <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> Đang làm nét…
               </span>
             )}
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: 'var(--text-muted)', borderRadius: 8, marginLeft: 6 }}>
+            <button onClick={() => { if (isTmbDiagEnabled()) diagMark(profile.configId, 'onClose:X-button-click'); onClose(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: 'var(--text-muted)', borderRadius: 8, marginLeft: 6 }}>
               <X size={18} />
             </button>
           </div>
