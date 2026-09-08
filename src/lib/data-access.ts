@@ -10,8 +10,10 @@
 
 import { unstable_cache, revalidateTag } from 'next/cache';
 import * as GS from './google-sheets';
-import { isPostgresEnabled } from './db/feature-flags';
+import { isPostgresEnabled, isStackingConfigPgReadsEnabled } from './db/feature-flags';
+import { isShadowWriteEnabled } from './db/shadow-write-flags';
 import { cached, invalidate } from './mem-cache';
+import { readStackingConfigMirror, upsertStackingConfigMirror, deleteStackingConfigMirror } from './stacking-config-mirror';
 import {
   getEmployeeRepository,
   getCustomerRepository,
@@ -111,22 +113,70 @@ export function getStackingListColumns(sheetId: string, tab: string) {
   return cached(`gs:stacking_columns:${sheetId}:${tab}`, 20_000, () => GS.getStackingListColumns(sheetId, tab));
 }
 export const probeStackingSheet        = GS.probeStackingSheet;
+
+// PROPOSED — audit STACKING_CONFIG_QUOTA_INDEPENDENCE (migration Postgres
+// `StackingConfig` CHƯA apply, xem prisma/schema.prisma + stacking-config-mirror.ts).
+// Google Sheets VẪN LÀ WRITE AUTHORITY DUY NHẤT bất kể flag — 'stacking' chỉ
+// đổi ĐỌC (GET) sang Postgres khi PG_ENABLED_MODULES có 'stacking'; mọi write
+// (add/update/delete) LUÔN ghi Sheets TRƯỚC y hệt hôm nay, sau đó mirror-sync
+// Postgres KHI module 'stacking' đang ở giai đoạn SHADOW hoặc PG_ENABLED (tái
+// dùng CHÍNH 2 flag/lifecycle sẵn có ở feature-flags.ts/shadow-write-flags.ts
+// — KHÔNG tạo flag mới). Mirror-sync lỗi CHỈ log (KHÔNG throw/fail request —
+// Sheets write đã thành công là đủ để trả success, giống triết lý
+// shadow-write.ts hiện có) nhưng ghi log RÕ RÀNG (không nuốt lỗi im lặng) để
+// vận hành phát hiện + resyncStackingConfigMirror() thủ công khi cần.
+function stackingMirrorWriteEnabled(): boolean {
+  return isPostgresEnabled('stacking') || isShadowWriteEnabled('stacking');
+}
+
 export function getStackingConfigs() {
+  // isStackingConfigPgReadsEnabled() — dedicated STACKING_CONFIG_PG_READS=1
+  // flag, ĐỘC LẬP hoàn toàn với PG_ENABLED_MODULES (xem feature-flags.ts cho
+  // lý do: PG_ENABLED_MODULES là 1 Vercel Secret không đọc lại được plaintext,
+  // append 'stacking' an toàn vào đó cần biết giá trị hiện có mà không có
+  // cách nào xác nhận — audit PG_ENABLED_MODULES safe cutover). Giữ NGUYÊN
+  // isPostgresEnabled('stacking') song song — nếu sau này Admin tự xác nhận +
+  // thêm 'stacking' vào PG_ENABLED_MODULES qua dashboard, nhánh đó vẫn hoạt
+  // động đúng như thiết kế gốc, không bị thay thế.
+  if (isPostgresEnabled('stacking') || isStackingConfigPgReadsEnabled()) return readStackingConfigMirror();
   return cached('gs:stacking_configs', 30_000, () => GS.getStackingConfigs());
 }
 export async function addStackingConfig(...args: Parameters<typeof GS.addStackingConfig>) {
   const result = await GS.addStackingConfig(...args);
   invalidate('gs:stacking_configs');
+  if (stackingMirrorWriteEnabled()) {
+    upsertStackingConfigMirror(result).catch(err =>
+      console.error('[StackingConfigMirror] sync after addStackingConfig failed (Sheets write already succeeded, mirror is now stale):', err));
+  }
   return result;
 }
 export async function updateStackingConfig(...args: Parameters<typeof GS.updateStackingConfig>) {
+  const [id] = args;
   const result = await GS.updateStackingConfig(...args);
   invalidate('gs:stacking_configs');
+  if (result && stackingMirrorWriteEnabled()) {
+    // updateStackingConfig() gốc chỉ trả boolean — đọc lại 1 lần TRỰC TIẾP từ
+    // Sheets (KHÔNG qua cache) để lấy đúng row ĐẦY ĐỦ sau khi ghi, mirror mới
+    // đồng bộ đúng. Đây là 1 Sheets read PHỤ trên WRITE PATH (không phải mỗi
+    // lần tải trang) — không tái tạo lại vấn đề quota trên critical path đọc.
+    GS.getStackingConfigs()
+      .then(fresh => {
+        const row = fresh.find(c => c.id === id);
+        if (row) return upsertStackingConfigMirror(row);
+      })
+      .catch(err =>
+        console.error('[StackingConfigMirror] sync after updateStackingConfig failed (Sheets write already succeeded, mirror is now stale):', err));
+  }
   return result;
 }
 export async function deleteStackingConfig(...args: Parameters<typeof GS.deleteStackingConfig>) {
+  const [id] = args;
   const result = await GS.deleteStackingConfig(...args);
   invalidate('gs:stacking_configs');
+  if (result && stackingMirrorWriteEnabled()) {
+    deleteStackingConfigMirror(id).catch(err =>
+      console.error('[StackingConfigMirror] sync after deleteStackingConfig failed (Sheets write already succeeded, mirror is now stale):', err));
+  }
   return result;
 }
 export const extractSheetId            = GS.extractSheetId;

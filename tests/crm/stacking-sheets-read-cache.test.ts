@@ -61,7 +61,13 @@ test('5f. stackingSheetListCacheKey: khác projectCode -> khác key; projectCode
 // ─── Wiring: data-access.ts bọc cached() cho đúng các hàm stacking, TTL ngắn ─
 
 test('getStackingConfigs/getStackingListRows/getStackingUnits/getStackingSheetList/getStackingListColumns đều bọc cached() — KHÔNG còn pass-through trần', () => {
-  assert.match(dataAccessSource, /export function getStackingConfigs\(\) \{\s*\n\s*return cached\('gs:stacking_configs', 30_000/);
+  // getStackingConfigs() giờ có 1 early-return branch TRƯỚC (đọc Postgres mirror
+  // khi module 'stacking' bật — xem audit STACKING_CONFIG_QUOTA_INDEPENDENCE,
+  // stacking-config-quota-independence.test.ts) — nhánh Sheets mặc định (flag
+  // tắt) VẪN PHẢI bọc cached('gs:stacking_configs', 30_000, ...) y hệt trước,
+  // chỉ không còn là statement ĐẦU TIÊN trong thân hàm nữa.
+  const getConfigsBody = dataAccessSource.match(/export function getStackingConfigs\(\) \{[\s\S]*?\n\}/)![0];
+  assert.match(getConfigsBody, /return cached\('gs:stacking_configs', 30_000, \(\) => GS\.getStackingConfigs\(\)\);/);
   assert.match(dataAccessSource, /export function getStackingListRows\([^)]*\) \{\s*\n\s*return cached\(stackingListRowsCacheKey/);
   assert.match(dataAccessSource, /export function getStackingUnits\([^)]*\) \{\s*\n\s*return cached\(stackingUnitsCacheKey/);
   assert.match(dataAccessSource, /export function getStackingSheetList\([^)]*\) \{\s*\n\s*return cached\(stackingSheetListCacheKey/);

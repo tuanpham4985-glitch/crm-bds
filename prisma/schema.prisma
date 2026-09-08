@@ -898,13 +898,72 @@ model TmActivityLog {
   @@map("tm_activity_logs")
 }
 
+// ─── STACKING CONFIG (nguồn/dự án Bảng hàng) ───────────────────────────────
+// PROPOSED — audit STACKING_CONFIG_QUOTA_INDEPENDENCE, CHƯA APPLY migration
+// (xem prisma/migrations/<timestamp>_add_stacking_config/migration.sql, viết
+// tay CHỜ duyệt, KHÔNG chạy `prisma migrate` trong audit này). Mirror của
+// Google Sheets tab "STACKING_CONFIG" (getStackingConfigs trong
+// google-sheets.ts VẪN LÀ nguồn dữ liệu gốc) — mục tiêu DUY NHẤT: loại bỏ
+// live Google Sheets read khỏi critical path GET /api/stacking/configs (root
+// cause 429 "Read requests per minute per user" khiến /stacking không tải
+// được cả danh sách nguồn, xem Final Report).
+//
+// AUTHORITY: Google Sheets VẪN LÀ WRITE AUTHORITY DUY NHẤT — mọi add/update/
+// delete (Manage Sheet UI, /api/stacking/configs POST/PATCH/DELETE) ghi
+// xuống Sheets TRƯỚC, y hệt hành vi hiện tại (validation/audit trail không
+// đổi). Bảng này CHỈ được ghi NGAY SAU KHI Sheets write đã thành công (mirror
+// đồng bộ, awaited — KHÔNG fire-and-forget như shadow-write pattern hiện có ở
+// src/lib/repository/shadow-write.ts, vì mirror CẦN fresh ngay để phục vụ đọc
+// — khác mục tiêu "chỉ validate PG cho di trú tương lai" của pattern đó).
+// KHÔNG BAO GIỜ ghi bảng này TRỰC TIẾP từ nơi khác mà không qua Sheets trước
+// — chỉ 1 write path duy nhất (src/lib/stacking-config-mirror.ts), tránh 2
+// nguồn ghi độc lập gây phân kỳ không kiểm soát được.
+//
+// READ: GET /api/stacking/configs đọc TỪ ĐÂY (không đọc Sheets) khi module
+// 'stacking' nằm trong PG_ENABLED_MODULES (tái dùng CHÍNH flag/lifecycle đã
+// có ở src/lib/db/feature-flags.ts — KHÔNG tạo flag mới). Mặc định (module
+// CHƯA bật) hành vi giữ NGUYÊN 100% — đọc/ghi Sheets như hôm nay, bảng này
+// không được đọc/ghi gì cả.
+//
+// id GIỮ NGUYÊN CHÍNH XÁC id string đã sinh từ Sheets ("SC_<timestamp>") —
+// TUYỆT ĐỐI không tự sinh id mới khi mirror (nhiều nơi hard-code các id cụ
+// thể — TMB_MAP_CONFIG_ID, TMB_HLX_VBM_CONFIG_ID trong tmb-map-data.ts —
+// phải khớp tuyệt đối, xem @id String KHÔNG @default(...) bên dưới).
+model StackingConfig {
+  id              String   @id
+  ten_hien_thi    String
+  sheet_id        String
+  project_code    String?
+  trang_thai      String   @default("active")
+  ngay_tao        String
+  loai            String   @default("grid")
+  sheet_tab       String?
+  // string[] gốc (xem StackingConfig.visible_columns trong src/lib/types.ts)
+  // — lưu Json (không phải cột riêng) để khớp CHÍNH XÁC parseVisibleColumns()
+  // hiện có (JSON array trong 1 cell Sheet), không tạo bảng con.
+  visible_columns Json?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // KHÔNG @@index([trang_thai]) — audit xác nhận trường này chưa từng được
+  // filter/query ở bất kỳ đâu trong codebase (page.tsx/API route đọc TOÀN BỘ
+  // rồi để UI tự quyết định hiển thị gì), và bảng này dự kiến chỉ vài chục
+  // dòng — 1 index không phục vụ query nào là overhead thuần, không phải
+  // "useful index". Thêm lại nếu sau này thực sự có query WHERE trang_thai.
+  @@map("stacking_config")
+}
+
 // ─── TMB MANAGER (Tổng mặt bằng — reusable masterplan map capability) ──────
-// StackingConfig ("nguồn"/dự án) sống trong Google Sheets, KHÔNG trong
-// Postgres (xem getStackingConfigs trong google-sheets.ts) — stacking_config_id
-// dưới đây là tham chiếu ngoài (string), KHÔNG phải FK thật, vì không có bảng
-// StackingConfig trong Postgres để FK vào. 1 dự án có thể có 0..N map profile
-// (renderer TmbMap.tsx dùng chung, xem tmb-map-data.ts) — KHÔNG giả định 1
-// dự án = 1 PDF.
+// StackingConfig ("nguồn"/dự án) — nguồn dữ liệu GỐC vẫn là Google Sheets
+// (xem getStackingConfigs trong google-sheets.ts); model StackingConfig ở
+// trên (PROPOSED, chưa apply migration) là mirror READ-ONLY cho quota
+// independence, KHÔNG PHẢI authority ghi — stacking_config_id dưới đây CỐ Ý
+// vẫn KHÔNG dùng Prisma @relation (tham chiếu ngoài dạng string thuần), vì
+// mirror có thể tạm thời lệch/rỗng (trước lần sync đầu, hoặc nếu mirror sync
+// lỗi) — 1 FK cứng vào bảng có thể chưa đủ dữ liệu sẽ vỡ ghi TmbMapProfile
+// không liên quan gì tới việc StackingConfig có mirror hay chưa. 1 dự án có
+// thể có 0..N map profile (renderer TmbMap.tsx dùng chung, xem
+// tmb-map-data.ts) — KHÔNG giả định 1 dự án = 1 PDF.
 model TmbMapProfile {
   id                 String    @id @default(cuid())
   stacking_config_id String
