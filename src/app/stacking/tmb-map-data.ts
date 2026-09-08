@@ -110,6 +110,14 @@ export interface TmbMapProfile {
   pdfUrl: string;
   pdfPageNumber: number;
   units: TmbMapUnit[];
+  /** Tổng số PDF content-stream operator (fnArray.length từ
+   * `page.getOperatorList()`) của trang, đo OFFLINE 1 LẦN bằng pdfjs-dist
+   * trực tiếp trên file — CÙNG triết lý pdfX/pdfY (audit sẵn, KHÔNG tính lại
+   * runtime trong browser User, xem tmb-map-render-fallback.ts cho lý do:
+   * gọi getOperatorList() trong browser tốn 11-21s, chậm hơn cả render()).
+   * Optional — undefined nghĩa là CHƯA audit (mặc định coi là an toàn, giữ
+   * nguyên hành vi render đầy đủ hiện có, không suy đoán). */
+  knownOperatorCount?: number;
 }
 
 const SAIGON_PARK_TMB_PROFILE: TmbMapProfile = {
@@ -159,6 +167,10 @@ const HLX_VBM_TMB_PROFILE: TmbMapProfile = {
   pdfUrl: TMB_HLX_VBM_PDF_URL,
   pdfPageNumber: 1,
   units: TMB_HLX_VBM_UNITS,
+  // Đo bằng pdfjs-dist getOperatorList() trực tiếp trên file — dưới
+  // HEAVY_RENDER_OPERATOR_THRESHOLD (tmb-map-render-fallback.ts), production
+  // ổn định — xem so sánh đầy đủ với TĐNĐ1 ở comment field TĐNĐ1 bên dưới.
+  knownOperatorCount: 96_498,
 };
 
 /** Identity ỔN ĐỊNH của CHÍNH profile TĐNĐ1 (KHÔNG PHẢI StackingConfig.id —
@@ -207,6 +219,16 @@ const HLX_TDND1_TMB_PROFILE: TmbMapProfile = {
   pdfUrl: TMB_HLX_TDND1_PDF_URL,
   pdfPageNumber: 1,
   units: TMB_HLX_TDND1_UNITS,
+  // TMB_HLX_MOBILE_FAILURE_STAGE audit — đo bằng pdfjs-dist getOperatorList()
+  // trực tiếp trên file: 207,250 operator (70,426 showText), ~2.15x VBM1
+  // (96,498) dù cùng kích thước trang (1600×1200) + cùng 10 font gốc, không
+  // Type3 font/OCG layer nào khác biệt — chênh lệch DUY NHẤT là volume nội
+  // dung vẽ. Vượt HEAVY_RENDER_OPERATOR_THRESHOLD (tmb-map-render-fallback.ts)
+  // -> trên thiết bị có tín hiệu bộ nhớ hạn chế (navigator.deviceMemory),
+  // TmbMap.tsx bỏ qua render nền PDF raster (giữ marker/label DOM, vẫn xem/
+  // bấm được bình thường) thay vì chạy page.render() rủi ro crash tab đã xác
+  // nhận thật trên mobile (?tmbdiag=1: dừng đúng tại page.render:start).
+  knownOperatorCount: 207_250,
 };
 
 /** Registry — thêm profile mới ở đây khi mở thêm dự án/phân khu (sau khi đã

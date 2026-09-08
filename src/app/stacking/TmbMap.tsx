@@ -12,6 +12,7 @@ import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, compute
 import {
   computeRenderQuality, shouldUpgradeRenderQuality, computeInitialRenderScale, VIEWPORT_RENDER_QUALITY_CAPS,
 } from './tmb-map-render-quality';
+import { shouldSkipPdfBackgroundRender } from './tmb-map-render-fallback';
 import {
   computeVisibleContentRect, applyOverscan, clampRectToPageBounds, rectSize, rectContains, rectToDisplayBox,
   OVERSCAN_FRACTION, type Rect,
@@ -142,6 +143,19 @@ function getDevicePixelRatio(): number {
   return typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
 }
 
+// navigator.deviceMemory (Device Memory API, GB, chỉ có trên Chromium/Android
+// Chrome — đúng nền tảng đã quan sát crash "Không thể mở trang này") — đọc AN
+// TOÀN (SSR/browser không hỗ trợ trả undefined, KHÔNG throw/suy đoán giá trị
+// mặc định). Giá trị THÔ này chỉ dùng làm input cho
+// shouldSkipPdfBackgroundRender (tmb-map-render-fallback.ts) — bản thân hàm
+// đó KHÔNG đọc navigator, giữ đúng ranh giới "đọc môi trường ở component,
+// quyết định thuần hàm ở module logic" đã áp dụng cho getDevicePixelRatio().
+function getDeviceMemoryGB(): number | undefined {
+  if (typeof navigator === 'undefined') return undefined;
+  const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  return typeof deviceMemory === 'number' ? deviceMemory : undefined;
+}
+
 interface Props {
   /** Dữ liệu riêng dự án (PDF + spatial mapping) — xem TmbMapProfile trong
    * tmb-map-data.ts. Renderer này KHÔNG hard-code PDF/unit nào, hoàn toàn
@@ -185,6 +199,21 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
     return () => diagMark(profile.configId, 'UNMOUNT');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // TMB_HLX_MOBILE_FAILURE_STAGE mitigation — profile.knownOperatorCount +
+  // devicePixelRatio đều ổn định trong vòng đời 1 lượt mount (đổi dự án luôn
+  // remount toàn bộ component qua key/configId ở page.tsx) nên tính 1 LẦN,
+  // KHÔNG phụ thuộc zoom/pan — xem tmb-map-render-fallback.ts cho lý do đầy
+  // đủ (đã loại trừ giảm scale/useRequestAnimationFrame/probe runtime, đo
+  // thật bằng browser bench + đọc trực tiếp nguồn pdfjs-dist). true nghĩa là
+  // CẢ 3 lượt page.render() bên dưới (initial + renderHighRes +
+  // renderViewportHighRes) đều bị bỏ qua cho đúng profile+thiết bị này —
+  // canvas nền giữ nguyên trắng (đã fill sẵn trước lượt render), marker/label
+  // DOM vẫn tính từ viewport BASE_SCALE=1 y hệt, không đổi geometry.
+  const skipPdfBackground = useMemo(
+    () => shouldSkipPdfBackgroundRender(profile.knownOperatorCount, getDeviceMemoryGB()),
+    [profile.knownOperatorCount]
+  );
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -387,12 +416,21 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         if (diagOn) diagMark(profile.configId, 'canvas-allocated', { width: canvas.width, height: canvas.height, estimatedMB: canvasMB(canvas.width, canvas.height) });
 
-        log('bước 5/5: page.render() bắt đầu...');
-        if (diagOn) diagMark(profile.configId, 'page.render:start');
-        await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
-        if (diagOn) diagMark(profile.configId, 'page.render:complete');
-        if (cancelled || timedOut) return;
-        log('bước 5/5: page.render() hoàn tất');
+        if (skipPdfBackground) {
+          // Bỏ qua raster nền — canvas giữ nguyên trắng đã fill ở trên (kích
+          // thước/vị trí vẫn đúng cho marker/label DOM, xem skipPdfBackground
+          // + tmb-map-render-fallback.ts). KHÔNG gọi page.render() nên không
+          // có rủi ro workload nặng của chính profile này trên thiết bị này.
+          log('bước 5/5: bỏ qua page.render() — profile workload nặng + thiết bị tín hiệu bộ nhớ hạn chế (skipPdfBackground)');
+          if (diagOn) diagMark(profile.configId, 'page.render:skipped-heavy-workload', { knownOperatorCount: profile.knownOperatorCount });
+        } else {
+          log('bước 5/5: page.render() bắt đầu...');
+          if (diagOn) diagMark(profile.configId, 'page.render:start');
+          await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+          if (diagOn) diagMark(profile.configId, 'page.render:complete');
+          if (cancelled || timedOut) return;
+          log('bước 5/5: page.render() hoàn tất');
+        }
 
         // Marker luôn tính từ `viewport` (BASE_SCALE=1, KHÔNG PHẢI renderViewport)
         // — vị trí marker hoàn toàn độc lập với renderScale raster thật, đúng
@@ -476,6 +514,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   // RASTER thật) + vẽ đè nội dung mới, nên marker/pan/zoom hoàn toàn không bị
   // ảnh hưởng (xem geometry guard ở đầu file).
   const renderHighRes = useCallback(async (targetScale: number) => {
+    if (skipPdfBackground) return; // xem skipPdfBackground — không render nền raster cho profile+thiết bị này ở BẤT KỲ scale nào.
     const page = pageRef.current;
     const canvas = canvasRef.current;
     if (!page || !canvas) return;
@@ -558,6 +597,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   // thị bình thường dù overlay chưa render/render fail — không có trạng thái
   // "map hỏng" nào phụ thuộc overlay.
   const renderViewportHighRes = useCallback(async (rect: Rect, targetScale: number) => {
+    if (skipPdfBackground) return; // xem skipPdfBackground — cùng lý do renderHighRes phía trên.
     const page = pageRef.current;
     if (!page) return;
 
@@ -879,6 +919,15 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
             </div>
             <div style={{ fontSize: '0.8rem', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: '#15803d', fontWeight: 700 }}>Còn hàng: {availableCount} căn</span>
+              {/* Chỉ hiện khi skipPdfBackground=true (profile workload nặng +
+                  thiết bị tín hiệu bộ nhớ hạn chế, xem tmb-map-render-fallback.ts)
+                  — giải thích vì sao nền bản vẽ trống, tránh User tưởng lỗi
+                  tải/mất dữ liệu. Marker/mã căn vẫn xem/bấm bình thường. */}
+              {!loading && skipPdfBackground && (
+                <span style={{ color: 'var(--text-muted)' }} title="Bản vẽ nền quá nặng để hiển thị an toàn trên thiết bị này — mã căn vẫn xem/bấm được bình thường">
+                  Đã tắt nền bản vẽ trên thiết bị này
+                </span>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
