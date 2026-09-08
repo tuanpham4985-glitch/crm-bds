@@ -145,7 +145,37 @@ const SAIGON_PARK_TMB_PROFILE: TmbMapProfile = {
  * CÙNG lý do dùng config.id (không phải sheet_id) với TMB_MAP_CONFIG_ID. */
 export const TMB_HLX_VBM_CONFIG_ID = 'SC_1788510325994';
 
+/** PDF authoritative gốc của VBM1 (10,261,927 bytes, chưa optimize — GIỮ LẠI
+ * trên đĩa public/tmb-poc/tmb-hlx-vbm1.pdf làm nguồn tham chiếu/để rasterize
+ * lại nếu cần chất lượng khác sau này) — KHÔNG CÒN được TmbMap.tsx fetch/
+ * render ở production. Đường pdf.js client-side cho VBM1 đã xác nhận GÂY
+ * CRASH THẬT trên cùng iPhone production đã crash với TĐNĐ1 (page.render()
+ * không hoàn tất — đã audit trực tiếp: PDF nhúng 1 ảnh raster nền 12000×7978px
+ * (~96MP, gấp đôi tổng số qua 1 XObject thứ 2 không được
+ * src/lib/tmb-optimizer.ts phát hiện vì nằm ngoài page.Resources) khiến
+ * page.render() không hoàn tất được ngay cả trên desktop mạnh, thử nhiều
+ * scale/đã downsample ảnh vẫn không giải quyết được — xem
+ * TMB_HLX_VBM_STATIC_IMAGE_URL cho hướng thay thế đã dùng). Không gắn field
+ * pdfUrl vào profile nữa, giữ hằng số này chỉ để tham chiếu. */
 export const TMB_HLX_VBM_PDF_URL = '/tmb-poc/tmb-hlx-vbm1.pdf';
+
+/** Ảnh nền TĨNH của VBM1 — rasterize OFFLINE (do page.render() không hoàn tất
+ * được cho PDF này qua pdf.js client-side dù đã thử downsample ảnh nhúng, xem
+ * comment TMB_HLX_VBM_PDF_URL) — nguồn chính xác từ CHÍNH file
+ * TMB_HLX_VBM_PDF_URL (đã verify checksum khớp bản trên đĩa của User), 3200×
+ * 2400px (gấp đôi trang gốc 1600×1200, cùng thông số đã dùng cho TĐNĐ1) WebP
+ * 899,472 bytes. TmbMap.tsx chỉ tải + vẽ 1 lần lên canvas — KHÔNG chạy bất kỳ
+ * pdf.js API nào cho profile này, cùng kiến trúc TĐNĐ1 (xem
+ * tmb-map-static-background.ts cho cách marker pdfX/pdfY vẫn map đúng). */
+export const TMB_HLX_VBM_STATIC_IMAGE_URL = '/tmb-poc/tmb-hlx-vbm1.webp';
+
+/** Kích thước content-space (BASE_SCALE=1) của VBM1 — ĐÚNG kích thước trang
+ * PDF gốc (page.view=[0,0,1600,1200], rotation=0 — SAME geometry đã verify
+ * cho TĐNĐ1, cả 2 PDF HLX dùng chung khổ trang), giữ NGUYÊN hệ toạ độ pdfX/
+ * pdfY hiện có (TMB_HLX_VBM_UNITS bên dưới, 5 mã đã audit trước đây — công
+ * thức mapPdfPointToStaticImagePoint đã verify khớp CHÍNH XÁC pdf.js cho cả 5
+ * điểm này, xem tests) — KHÔNG PHẢI kích thước pixel ảnh WebP (3200×2400). */
+export const TMB_HLX_VBM_NATIVE_SIZE = { w: 1600, h: 1200 };
 
 /**
  * 5 mã = TOÀN BỘ phân khu "VBM1" hiện có trong Bảng hàng nguồn "Vinhomes
@@ -175,12 +205,14 @@ const HLX_VBM_TMB_PROFILE: TmbMapProfile = {
   configId: TMB_HLX_VBM_CONFIG_ID,
   stackingConfigId: TMB_HLX_VBM_CONFIG_ID,
   label: 'Vinhomes Global Gate HLX · VBM1',
-  pdfUrl: TMB_HLX_VBM_PDF_URL,
-  pdfPageNumber: 1,
   units: TMB_HLX_VBM_UNITS,
-  // VBM1 vẫn dùng đường pdf.js client-side y hệt trước — PDF này ổn định
-  // trên production (KHÔNG có báo cáo crash nào), không đổi kiến trúc profile
-  // này (xem TĐNĐ1 bên dưới cho profile ĐÃ đổi sang static-image).
+  // STATIC-IMAGE architecture (thay pdf.js client-side) — xác nhận trên
+  // production: VBM1 gây crash/reload trên CÙNG iPhone đã crash với TĐNĐ1
+  // (page.render() không hoàn tất, xem comment TMB_HLX_VBM_PDF_URL). CÙNG
+  // kiến trúc đã dùng cho TĐNĐ1, KHÔNG có đường render pdf.js thứ 2 nào còn
+  // lại cho HLX — cả 2 phân khu giờ đều là ảnh tĩnh.
+  staticBackgroundImageUrl: TMB_HLX_VBM_STATIC_IMAGE_URL,
+  nativeSize: TMB_HLX_VBM_NATIVE_SIZE,
 };
 
 /** Identity ỔN ĐỊNH của CHÍNH profile TĐNĐ1 (KHÔNG PHẢI StackingConfig.id —

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import {
   resolveTmbMapProfiles, resolveTmbMapProfile, isTmbAvailableForConfig,
-  TMB_HLX_VBM_CONFIG_ID, TMB_HLX_VBM_PDF_URL, TMB_HLX_VBM_UNITS,
+  TMB_HLX_VBM_CONFIG_ID, TMB_HLX_VBM_STATIC_IMAGE_URL, TMB_HLX_VBM_NATIVE_SIZE, TMB_HLX_VBM_UNITS,
   TMB_HLX_TDND1_PROFILE_ID, TMB_HLX_TDND1_STATIC_IMAGE_URL, TMB_HLX_TDND1_NATIVE_SIZE, TMB_HLX_TDND1_UNITS,
   TMB_MAP_CONFIG_ID, TMB_PDF_URL,
 } from '../../src/app/stacking/tmb-map-data';
@@ -13,6 +13,12 @@ import {
 // cho TĐNĐ1 (nguồn nghi ngờ gây "out" trên mobile, xem audit trước). Registry
 // tĩnh giờ hỗ trợ NHIỀU profile CÙNG 1 project (stackingConfigId) — test này
 // chứng minh đúng 8 yêu cầu bắt buộc của task (Section E).
+//
+// CẢ 2 phân khu HLX (TĐNĐ1, VBM1) đều đã chuyển sang static-image
+// architecture — page.render() không hoàn tất được cho CẢ 2 file PDF qua
+// pdf.js client-side (đã audit + xác nhận crash thật trên production iPhone
+// cho cả 2), thay bằng ảnh WebP rasterize offline, xem tmb-map-data.ts.
+// Saigon Park (project khác) KHÔNG đổi, vẫn pdf.js client-side như cũ.
 
 // ─── 1/2. HLX + TĐNĐ1 / HLX + VBM1 resolve ĐÚNG asset riêng, không lẫn lộn ──
 
@@ -23,17 +29,18 @@ test('1. HLX + TĐNĐ1: resolveTmbMapProfiles(HLX) chứa ĐÚNG 1 profile confi
   assert.equal(tdnd1!.staticBackgroundImageUrl, TMB_HLX_TDND1_STATIC_IMAGE_URL);
   assert.deepEqual(tdnd1!.nativeSize, TMB_HLX_TDND1_NATIVE_SIZE);
   assert.equal(tdnd1!.pdfUrl, undefined, 'TĐNĐ1 KHÔNG còn pdfUrl — đã chuyển sang static-image architecture, TmbMap.tsx không chạm pdf.js cho profile này');
-  assert.notEqual(tdnd1!.staticBackgroundImageUrl, TMB_HLX_VBM_PDF_URL, 'TĐNĐ1 KHÔNG được dùng asset VBM1');
+  assert.notEqual(tdnd1!.staticBackgroundImageUrl, TMB_HLX_VBM_STATIC_IMAGE_URL, 'TĐNĐ1 KHÔNG được dùng asset VBM1');
   assert.equal(tdnd1!.stackingConfigId, TMB_HLX_VBM_CONFIG_ID);
 });
 
-test('2. HLX + VBM1: resolveTmbMapProfiles(HLX) chứa ĐÚNG 1 profile configId=TMB_HLX_VBM_CONFIG_ID, pdfUrl=TMB_HLX_VBM_PDF_URL — KHÔNG lẫn asset TĐNĐ1, vẫn dùng đường pdf.js client-side như trước (không đổi kiến trúc VBM1)', () => {
+test('2. HLX + VBM1: resolveTmbMapProfiles(HLX) chứa ĐÚNG 1 profile configId=TMB_HLX_VBM_CONFIG_ID, staticBackgroundImageUrl=TMB_HLX_VBM_STATIC_IMAGE_URL — KHÔNG lẫn asset TĐNĐ1, KHÔNG còn dùng pdfUrl (đường pdf.js client-side cũng gây crash thật trên production iPhone, đã đổi sang static-image cùng kiến trúc TĐNĐ1)', () => {
   const profiles = resolveTmbMapProfiles({ id: TMB_HLX_VBM_CONFIG_ID });
   const vbm1 = profiles.find(p => p.configId === TMB_HLX_VBM_CONFIG_ID);
   assert.ok(vbm1, 'phải resolve được profile VBM1 cho project HLX');
-  assert.equal(vbm1!.pdfUrl, TMB_HLX_VBM_PDF_URL);
-  assert.equal(vbm1!.staticBackgroundImageUrl, undefined, 'VBM1 KHÔNG dùng static-image architecture — vẫn pdf.js client-side');
-  assert.notEqual(vbm1!.pdfUrl, TMB_HLX_TDND1_STATIC_IMAGE_URL, 'VBM1 KHÔNG được dùng asset TĐNĐ1');
+  assert.equal(vbm1!.staticBackgroundImageUrl, TMB_HLX_VBM_STATIC_IMAGE_URL);
+  assert.deepEqual(vbm1!.nativeSize, TMB_HLX_VBM_NATIVE_SIZE);
+  assert.equal(vbm1!.pdfUrl, undefined, 'VBM1 KHÔNG còn pdfUrl — đã chuyển sang static-image architecture, TmbMap.tsx không chạm pdf.js cho profile này');
+  assert.notEqual(vbm1!.staticBackgroundImageUrl, TMB_HLX_TDND1_STATIC_IMAGE_URL, 'VBM1 KHÔNG được dùng asset TĐNĐ1');
   assert.equal(vbm1!.units, TMB_HLX_VBM_UNITS, 'CÙNG reference — không copy/duplicate/trộn dữ liệu unit');
 });
 
@@ -127,9 +134,9 @@ test('8. TmbMap chỉ nhận ĐÚNG 1 `profile` tại 1 thời điểm (prop đ�
   assert.ok(!/tmbProfiles\.map\([\s\S]{0,80}fetch/.test(tmbMapSource), 'không được có vòng lặp fetch qua danh sách nhiều profile');
 });
 
-// ─── TĐNĐ1 production display path KHÔNG còn chạm pdf.js client-side ──────
+// ─── TĐNĐ1 + VBM1 production display path KHÔNG còn chạm pdf.js client-side ─
 
-test('9. profile.staticBackgroundImageUrl khi set -> effect return SỚM, TRƯỚC khi chạm bất kỳ pdf.js API nào (import pdfjs-dist/getDocument/getPage/render) — TĐNĐ1 production display path không invoke heavy client-side PDF raster rendering', () => {
+test('9. profile.staticBackgroundImageUrl khi set -> effect return SỚM, TRƯỚC khi chạm bất kỳ pdf.js API nào (import pdfjs-dist/getDocument/getPage/render) — áp dụng CHUNG cho CẢ TĐNĐ1 lẫn VBM1 (cùng 1 nhánh generic trong TmbMap.tsx, không phải 2 đường render riêng)', () => {
   const tmbMapSource = fs.readFileSync('src/app/stacking/TmbMap.tsx', 'utf8');
   const staticBranchIdx = tmbMapSource.indexOf('if (profile.staticBackgroundImageUrl && profile.nativeSize)');
   const pdfjsImportIdx = tmbMapSource.indexOf("await import('pdfjs-dist/legacy/build/pdf.mjs')");
@@ -147,11 +154,22 @@ test('9. profile.staticBackgroundImageUrl khi set -> effect return SỚM, TRƯ�
   }
 });
 
-test('10. TĐNĐ1 profile (registry tĩnh) thực sự dùng đường static-image — profile-level proof (bổ sung cho test 9 ở mức source code)', () => {
+test('10. TĐNĐ1 + VBM1 profile (registry tĩnh) đều thực sự dùng đường static-image — profile-level proof (bổ sung cho test 9 ở mức source code)', () => {
   const profiles = resolveTmbMapProfiles({ id: TMB_HLX_VBM_CONFIG_ID });
   const tdnd1 = profiles.find(p => p.configId === TMB_HLX_TDND1_PROFILE_ID);
+  const vbm1 = profiles.find(p => p.configId === TMB_HLX_VBM_CONFIG_ID);
   assert.ok(tdnd1?.staticBackgroundImageUrl, 'TĐNĐ1 phải có staticBackgroundImageUrl set — đây là điều kiện effect dùng để rẽ nhánh static-image, bỏ qua pdf.js');
   assert.ok(tdnd1?.nativeSize, 'TĐNĐ1 phải có nativeSize set — bắt buộc đi kèm staticBackgroundImageUrl để nhánh static-image kích hoạt (điều kiện && trong TmbMap.tsx)');
+  assert.ok(vbm1?.staticBackgroundImageUrl, 'VBM1 phải có staticBackgroundImageUrl set — đây là điều kiện effect dùng để rẽ nhánh static-image, bỏ qua pdf.js');
+  assert.ok(vbm1?.nativeSize, 'VBM1 phải có nativeSize set — bắt buộc đi kèm staticBackgroundImageUrl để nhánh static-image kích hoạt (điều kiện && trong TmbMap.tsx)');
+});
+
+test('11. KHÔNG còn profile HLX nào dùng pdfUrl (đường pdf.js client-side) — cả TĐNĐ1 lẫn VBM1 đều đã chuyển sang static-image, không còn 2 kiến trúc render cạnh tranh nhau cho HLX', () => {
+  const profiles = resolveTmbMapProfiles({ id: TMB_HLX_VBM_CONFIG_ID });
+  for (const p of profiles) {
+    assert.equal(p.pdfUrl, undefined, `profile "${p.label}" (HLX) không được còn pdfUrl`);
+    assert.equal(p.pdfPageNumber, undefined, `profile "${p.label}" (HLX) không được còn pdfPageNumber`);
+  }
 });
 
 test('8b. page.tsx: TmbMap chỉ mount khi showTmbMap && tmbProfile (1 profile ĐANG active) — component (và effect fetch bên trong) KHÔNG mount cho tới khi User bấm "Xem TMB", nên phân khu chưa chọn không kích hoạt fetch nào', () => {
@@ -208,4 +226,26 @@ test('TMB_HLX_TDND1_STATIC_IMAGE_URL: đúng định dạng ảnh (WebP magic by
 
 test('TMB_HLX_TDND1_NATIVE_SIZE giữ ĐÚNG kích thước trang PDF gốc (1600×1200, đã audit rotation=0/mediabox [0,0,1600,1200] trước khi rasterize) — content-space marker KHÔNG đổi dù ảnh raster ở scale/pixel khác', () => {
   assert.deepEqual(TMB_HLX_TDND1_NATIVE_SIZE, { w: 1600, h: 1200 });
+});
+
+// ─── Asset VBM1 tồn tại thật trên đĩa, đúng path production sẽ serve ───────
+
+test('TMB_HLX_VBM_STATIC_IMAGE_URL: file tồn tại thật trong public/ (đúng path Next.js serve static, KHÔNG qua route proxy) — asset production sẽ tải được', () => {
+  const diskPath = 'public' + TMB_HLX_VBM_STATIC_IMAGE_URL; // '/tmb-poc/tmb-hlx-vbm1.webp' -> 'public/tmb-poc/tmb-hlx-vbm1.webp'
+  assert.ok(fs.existsSync(diskPath), `asset không tồn tại trên đĩa: ${diskPath}`);
+  const stat = fs.statSync(diskPath);
+  assert.ok(stat.isFile(), `${diskPath} phải là file, không phải thư mục`);
+  assert.ok(stat.size > 10_000, `asset quá nhỏ (${stat.size} bytes) — nghi ngờ file hỏng/rỗng`);
+  assert.ok(stat.size < 8 * 1024 * 1024, `asset ${(stat.size / 1024 / 1024).toFixed(2)}MB — lớn bất thường so với mục tiêu "không tạo raster khổng lồ"`);
+});
+
+test('TMB_HLX_VBM_STATIC_IMAGE_URL: đúng định dạng ảnh (WebP magic bytes "RIFF"...."WEBP")', () => {
+  const diskPath = 'public' + TMB_HLX_VBM_STATIC_IMAGE_URL;
+  const buf = fs.readFileSync(diskPath);
+  assert.equal(buf.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(buf.subarray(8, 12).toString('ascii'), 'WEBP');
+});
+
+test('TMB_HLX_VBM_NATIVE_SIZE giữ ĐÚNG kích thước trang PDF gốc (1600×1200, cùng khổ trang đã verify cho TĐNĐ1 — cả 2 PDF HLX cùng template) — content-space marker (5 mã VBM1 hiện có) KHÔNG đổi dù ảnh raster ở scale/pixel khác', () => {
+  assert.deepEqual(TMB_HLX_VBM_NATIVE_SIZE, { w: 1600, h: 1200 });
 });

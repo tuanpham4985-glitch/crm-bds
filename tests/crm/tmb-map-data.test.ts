@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   isTmbAvailableForConfig, TMB_MAP_CONFIG_ID, TMB_MAP_UNITS, TMB_PDF_URL, TMB_PDF_PAGE_NUMBER,
-  resolveTmbMapProfile, TMB_HLX_VBM_CONFIG_ID, TMB_HLX_VBM_UNITS, TMB_HLX_VBM_PDF_URL,
+  resolveTmbMapProfile, TMB_HLX_VBM_CONFIG_ID, TMB_HLX_VBM_UNITS, TMB_HLX_VBM_STATIC_IMAGE_URL, TMB_HLX_VBM_NATIVE_SIZE,
 } from '../../src/app/stacking/tmb-map-data';
 
 // ─── isTmbAvailableForConfig: identity ổn định (config.id), KHÔNG phụ thuộc
@@ -45,12 +45,13 @@ test('resolveTmbMapProfile: Saigon Park (TMB_MAP_CONFIG_ID) -> đúng profile, K
   assert.equal(profile.label, 'Vinhomes Sài Gòn Park');
 });
 
-test('resolveTmbMapProfile: HLX VBM1 (TMB_HLX_VBM_CONFIG_ID) -> đúng profile mới thêm', () => {
+test('resolveTmbMapProfile: HLX VBM1 (TMB_HLX_VBM_CONFIG_ID) -> đúng profile mới thêm (static-image architecture, KHÔNG còn pdfUrl)', () => {
   const profile = resolveTmbMapProfile({ id: TMB_HLX_VBM_CONFIG_ID });
   assert.ok(profile);
   assert.equal(profile.configId, TMB_HLX_VBM_CONFIG_ID);
-  assert.equal(profile.pdfUrl, TMB_HLX_VBM_PDF_URL);
-  assert.equal(profile.pdfPageNumber, 1);
+  assert.equal(profile.staticBackgroundImageUrl, TMB_HLX_VBM_STATIC_IMAGE_URL);
+  assert.deepEqual(profile.nativeSize, TMB_HLX_VBM_NATIVE_SIZE);
+  assert.equal(profile.pdfUrl, undefined, 'VBM1 KHÔNG còn pdfUrl — đã chuyển sang static-image architecture (page.render() không hoàn tất được cho PDF này)');
   assert.equal(profile.units, TMB_HLX_VBM_UNITS);
   assert.match(profile.label, /HLX/);
 });
