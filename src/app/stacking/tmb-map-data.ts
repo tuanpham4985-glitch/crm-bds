@@ -89,9 +89,21 @@ export const TMB_MAP_UNITS: TmbMapUnit[] = [
 // đụng renderer.
 
 export interface TmbMapProfile {
-  /** StackingConfig.id — CÙNG stable identity đã dùng cho TMB_MAP_CONFIG_ID
-   * (không đổi qua update Sheet, xem comment TMB_MAP_CONFIG_ID). */
+  /** Identity ỔN ĐỊNH của CHÍNH 1 profile/map này (KHÔNG PHẢI luôn luôn bằng
+   * StackingConfig.id — xem `stackingConfigId` bên dưới cho việc đó). TmbMap.tsx
+   * CHỈ dùng field này làm dependency key khi re-fetch/render (đổi profile ->
+   * load lại đúng PDF/unit mới) + nhãn phân biệt log diagnostic, KHÔNG dùng để
+   * resolve gì khác — an toàn để 2 profile CÙNG 1 project (VD nhiều phân khu,
+   * xem HLX_TDND1_TMB_PROFILE/HLX_VBM_TMB_PROFILE) có `configId` KHÁC NHAU
+   * (mỗi profile 1 identity riêng, giống hệt cách profile DB-managed đã làm —
+   * xem `configId: row.id` trong tmb-map-registry.ts, KHÔNG PHẢI stacking_config_id). */
   configId: string;
+  /** StackingConfig.id của PROJECT (nguồn) mà profile này thuộc về — dùng để
+   * resolve "project đang chọn có (những) map nào" (xem resolveTmbMapProfiles).
+   * 1 project CÓ THỂ có NHIỀU profile cùng `stackingConfigId` (nhiều phân khu,
+   * VD HLX có cả TĐNĐ1 lẫn VBM1) — identity DUY NHẤT quyết định asset nào hiện
+   * cho project nào, KHÔNG BAO GIỜ suy đoán/fallback qua tên hay thứ tự mảng. */
+  stackingConfigId: string;
   /** Tên hiển thị trong header TmbMap khi có >1 profile (phân biệt đang xem
    * TMB của dự án nào). */
   label: string;
@@ -102,6 +114,7 @@ export interface TmbMapProfile {
 
 const SAIGON_PARK_TMB_PROFILE: TmbMapProfile = {
   configId: TMB_MAP_CONFIG_ID,
+  stackingConfigId: TMB_MAP_CONFIG_ID,
   label: 'Vinhomes Sài Gòn Park',
   pdfUrl: TMB_PDF_URL,
   pdfPageNumber: TMB_PDF_PAGE_NUMBER,
@@ -141,21 +154,84 @@ export const TMB_HLX_VBM_UNITS: TmbMapUnit[] = [
 
 const HLX_VBM_TMB_PROFILE: TmbMapProfile = {
   configId: TMB_HLX_VBM_CONFIG_ID,
+  stackingConfigId: TMB_HLX_VBM_CONFIG_ID,
   label: 'Vinhomes Global Gate HLX · VBM1',
   pdfUrl: TMB_HLX_VBM_PDF_URL,
   pdfPageNumber: 1,
   units: TMB_HLX_VBM_UNITS,
 };
 
-/** Registry — thêm profile mới ở đây khi mở thêm dự án/phân khu (sau khi đã
- * audit PDF thật + verify từng mã căn, xem comment 2 profile trên). */
-const TMB_MAP_PROFILES: readonly TmbMapProfile[] = [SAIGON_PARK_TMB_PROFILE, HLX_VBM_TMB_PROFILE];
+/** Identity ỔN ĐỊNH của CHÍNH profile TĐNĐ1 (KHÔNG PHẢI StackingConfig.id —
+ * "Vinhomes Global Gate HLX" là 1 project DUY NHẤT có NHIỀU phân khu/map, xem
+ * `TmbMapProfile.configId` vs `stackingConfigId`). Không dùng format "SC_..."
+ * (dành riêng cho StackingConfig.id thật) để không bao giờ nhầm lẫn 2 loại id. */
+export const TMB_HLX_TDND1_PROFILE_ID = 'tmb-static-hlx-tdnd1';
 
-/** Resolve profile theo config.id (ổn định) — null nếu dự án chưa có TMB
- * profile nào (KHÔNG suy đoán/fallback về profile khác). */
+/** Asset TĐNĐ1 SERVE STATIC — audit chọn (HLX_STATIC_TMB, xem Final Report):
+ * cùng pattern Saigon Park/VBM1 (file public/ commit sẵn vào git, serve trực
+ * tiếp, KHÔNG qua route proxy/object storage) thay vì DB-managed profile cũ
+ * (Vercel Blob Private + buffer toàn bộ trong serverless function) — ổn định
+ * hơn trên mobile (không cold-start Vercel function + Prisma + Blob fetch có
+ * xác thực trước khi byte đầu tiên tới client) VÀ khớp đúng yêu cầu "TMB static
+ * ổn định tương tự Saigon Park".
+ *
+ * File này là derivative ĐÃ TẠO SẴN từ commit fef868b ("feat(stacking): add
+ * optimized TĐNĐ1 web asset for HLX TMB Manager fixture", 2026-09-05) —
+ * downsampled/re-encoded từ PDF authoritative gốc "VHGG Hạ Long_TMB Tiện
+ * ích&mã căn TĐNĐ1(1).pdf" (206.6MB, page 1, 1600×1200pt) bằng optimizer sẵn
+ * có (src/lib/tmb-optimizer.ts) — giảm 95.3% dung lượng (206.6MB -> 9.76MB,
+ * 10,238,869 bytes thực đo trên disk), text layer (mã căn) đã verify BYTE-
+ * IDENTICAL trước/sau optimize (quality gate của chính optimizer, xem
+ * tmb-optimizer.test.ts) — KHÔNG crop/move/redraw nội dung, KHÔNG sửa mã căn,
+ * KHÔNG OCR/reconstruct, giữ nguyên toàn bộ extent + aspect ratio trang gốc.
+ * File PDF authoritative gốc KHÔNG bị overwrite/mutate — optimizer luôn ĐỌC
+ * nguồn, GHI derivative riêng, KHÔNG BAO GIỜ ghi đè ngược lại. */
+export const TMB_HLX_TDND1_PDF_URL = '/tmb-poc/tmb-hlx-tdnd1.pdf';
+
+/** CHƯA CÓ toạ độ marker/unit mapping authoritative cho TĐNĐ1 — DB-managed
+ * profile cũ (nếu còn) giữ unit_mappings riêng trong Postgres, KHÔNG mang
+ * theo được sang registry tĩnh này (không có quyền truy cập production DB từ
+ * audit này để trích xuất, xem HLX_STATIC_TMB Final Report). ĐÃ CỐ TÌNH để
+ * rỗng thay vì suy đoán/tự tạo toạ độ — TmbMap.tsx render nền PDF bình thường
+ * dù `units: []` (đã verify hành vi này qua dbProfileToTmbMapProfile, xem
+ * tmb-map-registry.ts). Đây là gap CÓ CHỦ ĐÍCH, tách biệt hoàn toàn khỏi việc
+ * fix nền TMB (background rendering) — bổ sung mapping unit là 1 audit/task
+ * RIÊNG (cần lại quyền truy cập DB hoặc audit PDF trực tiếp bằng pdfjs-dist,
+ * CÙNG phương pháp đã dùng cho TMB_HLX_VBM_UNITS/TMB_MAP_UNITS). */
+export const TMB_HLX_TDND1_UNITS: TmbMapUnit[] = [];
+
+const HLX_TDND1_TMB_PROFILE: TmbMapProfile = {
+  configId: TMB_HLX_TDND1_PROFILE_ID,
+  stackingConfigId: TMB_HLX_VBM_CONFIG_ID,
+  label: 'Vinhomes Global Gate HLX · TĐNĐ1',
+  pdfUrl: TMB_HLX_TDND1_PDF_URL,
+  pdfPageNumber: 1,
+  units: TMB_HLX_TDND1_UNITS,
+};
+
+/** Registry — thêm profile mới ở đây khi mở thêm dự án/phân khu (sau khi đã
+ * audit PDF thật + verify từng mã căn, xem comment 2 profile trên). 1 project
+ * (stackingConfigId) CÓ THỂ xuất hiện NHIỀU LẦN trong mảng này (nhiều phân
+ * khu, VD HLX_VBM_TMB_PROFILE + HLX_TDND1_TMB_PROFILE CÙNG stackingConfigId
+ * nhưng configId RIÊNG) — resolveTmbMapProfiles trả về TẤT CẢ, KHÔNG PHẢI 1. */
+const TMB_MAP_PROFILES: readonly TmbMapProfile[] = [SAIGON_PARK_TMB_PROFILE, HLX_VBM_TMB_PROFILE, HLX_TDND1_TMB_PROFILE];
+
+/** Resolve TẤT CẢ profile tĩnh thuộc 1 project (theo stackingConfigId, ổn
+ * định) — mảng RỖNG (KHÔNG phải fallback/suy đoán) nếu project chưa có TMB
+ * tĩnh nào. Đây là authority DUY NHẤT quyết định "project X có (những) map
+ * tĩnh nào" — page.tsx merge kết quả này với dbTmbProfiles (DB-managed), KHÔNG
+ * BAO GIỜ chọn theo vị trí mảng/state cũ/project khác. */
+export function resolveTmbMapProfiles(config: { id: string } | null | undefined): TmbMapProfile[] {
+  if (!config) return [];
+  return TMB_MAP_PROFILES.filter(p => p.stackingConfigId === config.id);
+}
+
+/** Resolve 1 profile "chính" (đầu tiên khai báo trong registry) theo project —
+ * null nếu chưa có profile tĩnh nào. Giữ lại cho các call site CHỈ cần biết
+ * "project này CÓ TMB tĩnh không" (VD isTmbAvailableForConfig) — với project
+ * nhiều phân khu (VD HLX), dùng resolveTmbMapProfiles (số nhiều) để lấy ĐỦ. */
 export function resolveTmbMapProfile(config: { id: string } | null | undefined): TmbMapProfile | null {
-  if (!config) return null;
-  return TMB_MAP_PROFILES.find(p => p.configId === config.id) ?? null;
+  return resolveTmbMapProfiles(config)[0] ?? null;
 }
 
 /** TMB chỉ hiện cho nguồn ĐÃ CÓ profile (đã audit spatial mapping) — so theo
@@ -163,7 +239,7 @@ export function resolveTmbMapProfile(config: { id: string } | null | undefined):
  * Tách hàm riêng để 3 nơi gọi (nút mở TMB, margin layout, mount TmbMap) luôn
  * dùng CHUNG 1 điều kiện, không lệch nhau. */
 export function isTmbAvailableForConfig(config: { id: string } | null | undefined): boolean {
-  return resolveTmbMapProfile(config) !== null;
+  return resolveTmbMapProfiles(config).length > 0;
 }
 
 /** Rút gọn `TmbMapProfile.label` để hiển thị ở nơi cần gọn (dropdown chọn TMB

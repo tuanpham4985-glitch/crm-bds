@@ -10,7 +10,7 @@ import type { StackingUnit, StackingSheetMeta, StackingConfig, StackingListRow }
 import { useAuth } from '@/hooks/useAuth';
 import TmbMap from './TmbMap';
 import TmbManagerPanel from './TmbManagerPanel';
-import { resolveTmbMapProfile, tmbShortLabel } from './tmb-map-data';
+import { resolveTmbMapProfiles, tmbShortLabel } from './tmb-map-data';
 import { useDbTmbMapProfiles } from './tmb-map-registry';
 import { fmtGia, fmtArea, fmtGiaFull } from './format';
 import {
@@ -1223,17 +1223,30 @@ export default function StackingPage() {
   const maCanInTable = useMemo(() => tableColumns.some(c => c.trim().toLowerCase() === 'mã căn'), [tableColumns]);
 
   // Tổng mặt bằng — 1 project có thể có 0..N map (Section 10 TMB Manager):
-  // profile TĨNH (hard-code, xem tmb-map-data.ts — Saigon Park/HLX VBM1,
-  // KHÔNG đổi) CỘNG profile ADMIN-MANAGED đang ACTIVE lưu Postgres (xem
+  // profile TĨNH (hard-code, xem tmb-map-data.ts — Saigon Park/HLX VBM1/HLX
+  // TĐNĐ1, KHÔNG đổi) CỘNG profile ADMIN-MANAGED đang ACTIVE lưu Postgres (xem
   // tmb-map-registry.ts). Nhiều dự án dùng CHUNG 1 renderer (TmbMap), chỉ
-  // khác profile truyền vào — KHÔNG if/else theo project ở đây.
-  const staticTmbProfile = resolveTmbMapProfile(selectedConfig);
+  // khác profile truyền vào — KHÔNG if/else theo project ở đây. resolveTmbMapProfiles
+  // (số nhiều, xem HLX_STATIC_TMB audit) trả về TẤT CẢ profile tĩnh của
+  // selectedConfig — 1 project như HLX có thể có nhiều phân khu cùng lúc
+  // (TĐNĐ1 + VBM1), key theo stackingConfigId (ổn định), KHÔNG theo vị trí
+  // mảng/state cũ nào. useMemo key theo selectedConfig?.id (không phải cả
+  // object) để giữ reference ổn định giữa các render, tránh tmbProfiles tính
+  // lại thừa mỗi lần selectedConfig object đổi reference mà id không đổi.
+  const staticTmbProfiles = useMemo(() => resolveTmbMapProfiles(selectedConfig), [selectedConfig?.id]);
   const { profiles: dbTmbProfiles, refresh: refreshDbTmbProfiles } = useDbTmbMapProfiles(selectedConfig?.id);
   const tmbProfiles = useMemo(() => {
-    const list = [...dbTmbProfiles];
-    if (staticTmbProfile && !list.some(p => p.configId === staticTmbProfile.configId)) list.unshift(staticTmbProfile);
-    return list;
-  }, [staticTmbProfile, dbTmbProfiles]);
+    // Static registry THẮNG cho CÙNG phân khu — loại DB-managed profile trùng
+    // phân khu (so theo tmbShortLabel, CÙNG cách suy ra phân khu đã dùng cho
+    // dropdown hiển thị, KHÔNG hard-code tên "TĐNĐ1"/"VBM1") để không hiện 2
+    // lựa chọn giống hệt nhau khi 1 phân khu vừa được chuyển sang static (VD
+    // HLX TĐNĐ1 — audit HLX_STATIC_TMB). Phân khu KHÁC (chưa có static) vẫn
+    // giữ nguyên DB-managed, không bị ảnh hưởng.
+    const staticShortLabels = new Set(staticTmbProfiles.map(p => tmbShortLabel(p.label)));
+    const dbList = dbTmbProfiles.filter(p => !staticShortLabels.has(tmbShortLabel(p.label)));
+    const newStatics = staticTmbProfiles.filter(sp => !dbList.some(p => p.configId === sp.configId));
+    return [...newStatics, ...dbList];
+  }, [staticTmbProfiles, dbTmbProfiles]);
   const [selectedTmbProfileIdx, setSelectedTmbProfileIdx] = useState(0);
   useEffect(() => { setSelectedTmbProfileIdx(0); }, [selectedConfig?.id]);
   const tmbProfile = tmbProfiles[selectedTmbProfileIdx] ?? tmbProfiles[0] ?? null;

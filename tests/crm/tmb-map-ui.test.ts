@@ -68,26 +68,29 @@ test('TmbMap: dùng profile.units/profile.pdfPageNumber cho spatial mapping + pa
   assert.match(source, /profile\.units\.map\(h => resolveTmbUnitState\(h\.unitCode, maCanIndex\)\)/);
 });
 
-test('page.tsx: resolve ĐÚNG TmbMapProfile theo StackingConfig đang chọn (resolveTmbMapProfile) rồi truyền xuống TmbMap qua prop `profile` — KHÔNG if/else theo project trong component', () => {
+test('page.tsx: resolve ĐÚNG (những) TmbMapProfile tĩnh theo StackingConfig đang chọn (resolveTmbMapProfiles, số nhiều — HLX_STATIC_TMB audit: 1 project có thể có nhiều phân khu) rồi truyền xuống TmbMap qua prop `profile` — KHÔNG if/else theo project trong component', () => {
   const pageSource = fs.readFileSync('src/app/stacking/page.tsx', 'utf8');
-  assert.match(pageSource, /import \{ resolveTmbMapProfile, tmbShortLabel \} from '\.\/tmb-map-data';/);
-  assert.match(pageSource, /const staticTmbProfile = resolveTmbMapProfile\(selectedConfig\);/);
+  assert.match(pageSource, /import \{ resolveTmbMapProfiles, tmbShortLabel \} from '\.\/tmb-map-data';/);
+  assert.match(pageSource, /const staticTmbProfiles = useMemo\(\(\) => resolveTmbMapProfiles\(selectedConfig\), \[selectedConfig\?\.id\]\);/);
   assert.match(pageSource, /<TmbMap[\s\S]*?profile=\{tmbProfile\}/);
 });
 
 // ─── TMB Manager v1: 0..N map profile/project (DB-managed CỘNG THÊM profile tĩnh) ─
 
-test('page.tsx: hỗ trợ 0..N map profile/project — cộng profile DB-managed (ACTIVE) vào cùng danh sách với profile tĩnh, KHÔNG thay thế', () => {
+test('page.tsx: hỗ trợ 0..N map profile/project — cộng profile DB-managed (ACTIVE) vào cùng danh sách với (những) profile tĩnh, KHÔNG thay thế; static THẮNG cho cùng phân khu (HLX_STATIC_TMB)', () => {
   assert.match(pageSource, /import \{ useDbTmbMapProfiles \} from '\.\/tmb-map-registry';/);
   // useDbTmbMapProfiles trả về { profiles, refresh } (thêm refresh() cho TMB
   // Runtime Profile Refresh fix, xem tests/crm/tmb-runtime-profile-refresh.test.ts)
   // — destructure `profiles` thành dbTmbProfiles, giữ nguyên tên biến dùng
-  // tiếp bên dưới (list = [...dbTmbProfiles] không đổi).
+  // tiếp bên dưới.
   assert.match(pageSource, /const \{ profiles: dbTmbProfiles, refresh: refreshDbTmbProfiles \} = useDbTmbMapProfiles\(selectedConfig\?\.id\);/);
-  assert.match(pageSource, /if \(staticTmbProfile && !list\.some\(p => p\.configId === staticTmbProfile\.configId\)\) list\.unshift\(staticTmbProfile\);/);
+  assert.match(pageSource, /const staticShortLabels = new Set\(staticTmbProfiles\.map\(p => tmbShortLabel\(p\.label\)\)\);/);
+  assert.match(pageSource, /const dbList = dbTmbProfiles\.filter\(p => !staticShortLabels\.has\(tmbShortLabel\(p\.label\)\)\);/);
+  assert.match(pageSource, /const newStatics = staticTmbProfiles\.filter\(sp => !dbList\.some\(p => p\.configId === sp\.configId\)\);/);
+  assert.match(pageSource, /return \[\.\.\.newStatics, \.\.\.dbList\];/);
 });
 
-test('page.tsx: >1 map profile -> hiện dropdown chọn map; chỉ 1 map (Saigon Park/HLX VBM1 hiện tại) -> KHÔNG hiện dropdown, giữ nguyên UX cũ', () => {
+test('page.tsx: >1 map profile -> hiện dropdown chọn map (VD HLX nay có 2 phân khu tĩnh TĐNĐ1 + VBM1); 1 map (Saigon Park) -> KHÔNG hiện dropdown, giữ nguyên UX cũ', () => {
   assert.match(pageSource, /\{tmbProfiles\.length > 1 && \(/);
   assert.match(pageSource, /<select[\s\S]*?value=\{selectedTmbProfileIdx\}/);
 });

@@ -133,9 +133,9 @@ test('H2. dbProfileToTmbMapProfile() KHÔNG đổi chữ ký/logic — vẫn nh�
   assert.match(registrySource, /pdfUrl: resolveWebAssetUrl\(row\.web_asset_ref\),/);
 });
 
-test('H3. tmbProfiles (danh sách kết hợp static+DB) và selectedTmbProfileIdx trong page.tsx vẫn dùng dbTmbProfiles (đã destructure từ profiles) y hệt trước — không đổi cách chọn map hiển thị', () => {
-  assert.match(pageSource, /const list = \[\.\.\.dbTmbProfiles\];/);
-  assert.match(pageSource, /if \(staticTmbProfile && !list\.some\(p => p\.configId === staticTmbProfile\.configId\)\) list\.unshift\(staticTmbProfile\);/);
+test('H3. tmbProfiles (danh sách kết hợp static+DB) và selectedTmbProfileIdx trong page.tsx vẫn dùng dbTmbProfiles (đã destructure từ profiles) — merge logic đổi sang hỗ trợ NHIỀU profile tĩnh/project (HLX_STATIC_TMB, xem tmb-hlx-static-subdivision.test.ts) nhưng vẫn CỘNG THÊM (không thay thế) dbTmbProfiles', () => {
+  assert.match(pageSource, /const \{ profiles: dbTmbProfiles, refresh: refreshDbTmbProfiles \} = useDbTmbMapProfiles\(selectedConfig\?\.id\);/);
+  assert.match(pageSource, /const dbList = dbTmbProfiles\.filter\(p => !staticShortLabels\.has\(tmbShortLabel\(p\.label\)\)\);/);
 });
 
 test('H4. requireTmbAdmin/authorization của route activate KHÔNG đổi — fix này thuần client-side (React state), không sửa bất kỳ API route nào', () => {

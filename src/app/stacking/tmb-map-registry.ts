@@ -53,6 +53,7 @@ export function dbProfileToTmbMapProfile(row: TmbDbProfileRow, mappings: TmbDbUn
   const units: TmbMapUnit[] = mappings.map(m => ({ unitCode: m.unit_code, pdfX: m.x, pdfY: m.y }));
   return {
     configId: row.id,
+    stackingConfigId: row.stacking_config_id,
     label: row.subdivision ? `${row.label} · ${row.subdivision}` : row.label,
     pdfUrl: resolveWebAssetUrl(row.web_asset_ref),
     pdfPageNumber: row.page_number,
