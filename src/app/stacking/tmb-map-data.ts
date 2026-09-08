@@ -255,17 +255,58 @@ export const TMB_HLX_TDND1_STATIC_IMAGE_URL = '/tmb-poc/tmb-hlx-tdnd1.webp';
  * TmbMap.tsx (canvasSize vs canvas.width/height). */
 export const TMB_HLX_TDND1_NATIVE_SIZE = { w: 1600, h: 1200 };
 
-/** CHƯA CÓ toạ độ marker/unit mapping authoritative cho TĐNĐ1 — DB-managed
- * profile cũ (nếu còn) giữ unit_mappings riêng trong Postgres, KHÔNG mang
- * theo được sang registry tĩnh này (không có quyền truy cập production DB từ
- * audit này để trích xuất, xem HLX_STATIC_TMB Final Report). ĐÃ CỐ TÌNH để
- * rỗng thay vì suy đoán/tự tạo toạ độ — TmbMap.tsx render nền PDF bình thường
- * dù `units: []` (đã verify hành vi này qua dbProfileToTmbMapProfile, xem
- * tmb-map-registry.ts). Đây là gap CÓ CHỦ ĐÍCH, tách biệt hoàn toàn khỏi việc
- * fix nền TMB (background rendering) — bổ sung mapping unit là 1 audit/task
- * RIÊNG (cần lại quyền truy cập DB hoặc audit PDF trực tiếp bằng pdfjs-dist,
- * CÙNG phương pháp đã dùng cho TMB_HLX_VBM_UNITS/TMB_MAP_UNITS). */
-export const TMB_HLX_TDND1_UNITS: TmbMapUnit[] = [];
+/**
+ * 12 mã = TOÀN BỘ mã căn TĐNĐ1 đã audit trực tiếp qua getStackingListRows()
+ * với credentials thật (KHÔNG qua HTTP) tại thời điểm audit (tab "DQ", PHÂN
+ * KHU bắt đầu bằng "TĐNĐ1" — gồm cả TĐNĐ1.1 lẫn TĐNĐ1.2) — CÙNG phương pháp
+ * đã dùng cho TMB_HLX_VBM_UNITS/TMB_MAP_UNITS, dùng lại NGUYÊN pipeline
+ * src/lib/tmb-indexer.ts (extractPdfUnitLabels + classifySheetInventoryWithAliases,
+ * KHÔNG viết matcher riêng). Đây là spatial mapping TĨNH — KHÔNG mã hoá trạng
+ * thái Còn hàng/Đã bán vào đây (kể cả NĐ11-60, tại thời điểm audit là "Đã
+ * bán") — trạng thái LUÔN lookup SỐNG từ Bảng hàng lúc render (đúng nguyên
+ * tắc PDF/mapping = spatial authority, Bảng hàng = business/status authority,
+ * xem TmbMap.tsx đầu file). Bảng hàng thêm căn TĐNĐ1 mới sau audit này sẽ
+ * KHÔNG tự có marker cho tới khi mapping được audit bổ sung thủ công (không
+ * tạo hotspot cho mã không có toạ độ đã biết — cùng giới hạn v1 đã áp dụng
+ * cho TMB_MAP_UNITS).
+ *
+ * Toạ độ trích xuất TRỰC TIẾP từ text layer PDF public/tmb-poc/tmb-hlx-tdnd1.pdf
+ * (page 1, rotation=0, đơn vị PDF user-space KHÔNG xoay/scale — CÙNG hệ toạ
+ * độ TMB_HLX_TDND1_NATIVE_SIZE/mapPdfPointToStaticImagePoint đã dùng cho nền
+ * ảnh tĩnh) bằng pdfjs-dist qua glyphRemap (font CAD export lỗi ToUnicode —
+ * mỗi mã hiện ra dạng ký tự điều khiển thay vì text đọc được, xem
+ * tmb-optimizer.ts comment đầu file) + 2 alias rule profile-scoped:
+ *
+ *   TĐ<n>-<m> (mã kinh doanh, Bảng hàng) -> BM<n>-<m> (mã bản vẽ PDF)
+ *   NĐ<n>-<m> (mã kinh doanh, Bảng hàng) -> NM<n>-<m> (mã bản vẽ PDF)
+ *
+ * Rule "NĐ → NM" xác nhận qua kiểm tra thị giác TRỰC TIẾP trên chính ảnh nền
+ * TĐNĐ1 (public/tmb-poc/tmb-hlx-tdnd1.webp, đã rasterize từ CHÍNH file PDF
+ * này) tại toạ độ đích của cả 4 mã NĐ — glyph "N" (mã glyph 49) là 1 gia
+ * đình prefix hoàn toàn RIÊNG BIỆT với "B" (mã glyph 55, gia đình BM), KHÔNG
+ * phải lỗi font/trùng lặp: cùng 1 phần số (VD "11-13") xuất hiện ĐỘC LẬP ở 2
+ * vị trí vật lý khác nhau hẳn cho gia đình B và gia đình N — đã verify cả 2
+ * gia đình KHÔNG collision toạ độ trên toàn bộ 12 mã (xem test).
+ *
+ * Cả 12/12 mã Bảng hàng hiện có đều MATCHED CHÍNH XÁC 1 LẦN DUY NHẤT (0
+ * unmatched, 0 ambiguous) — double-stroke (label vẽ lặp lại, cùng vị trí
+ * trong dung sai 1pt) đã tự loại bởi dedupePositions() trong tmb-indexer.ts,
+ * KHÔNG cần xử lý thủ công. KHÔNG fuzzy match — số phải khớp CHÍNH XÁC.
+ */
+export const TMB_HLX_TDND1_UNITS: TmbMapUnit[] = [
+  { unitCode: 'NĐ11-60', pdfX: 767.1511116999998, pdfY: 743.5426770999994 },
+  { unitCode: 'NĐ11-62', pdfX: 764.5132529999998, pdfY: 744.5825319999996 },
+  { unitCode: 'NĐ18-20', pdfX: 1013.067529699998, pdfY: 692.699447600003 },
+  { unitCode: 'NĐ19-16', pdfX: 1027.7101925000004, pdfY: 676.7474558000005 },
+  { unitCode: 'TĐ19-29', pdfX: 774.0906951000015, pdfY: 580.9916172000022 },
+  { unitCode: 'TĐ15-13', pdfX: 696.2600339999995, pdfY: 690.8170223000008 },
+  { unitCode: 'TĐ11-13', pdfX: 735.8339384999997, pdfY: 675.7560086000021 },
+  { unitCode: 'TĐ55-11', pdfX: 394.3302935000005, pdfY: 499.7263245000001 },
+  { unitCode: 'TĐ56-21', pdfX: 366.956706000004, pdfY: 508.42743300000325 },
+  { unitCode: 'TĐ56-35', pdfX: 346.7393620000008, pdfY: 496.8061520000003 },
+  { unitCode: 'TĐ55-09', pdfX: 399.7699305000003, pdfY: 502.7138575000001 },
+  { unitCode: 'TĐ43-19', pdfX: 664.5468919999954, pdfY: 294.5763613999953 },
+];
 
 const HLX_TDND1_TMB_PROFILE: TmbMapProfile = {
   configId: TMB_HLX_TDND1_PROFILE_ID,

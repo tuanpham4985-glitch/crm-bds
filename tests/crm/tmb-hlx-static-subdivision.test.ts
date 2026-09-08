@@ -177,13 +177,14 @@ test('8b. page.tsx: TmbMap chỉ mount khi showTmbMap && tmbProfile (1 profile �
   assert.match(pageSource, /\{showTmbMap && tmbProfile && \(/);
 });
 
-// ─── Không invent coordinate cho TĐNĐ1 — background rendering fix tách biệt khỏi marker data ─
+// ─── TĐNĐ1 marker data — đã populate, xem tmb-tdnd1-unit-reconciliation.test.ts ─
 
-test('D. TMB_HLX_TDND1_UNITS = mảng RỖNG có chủ đích (không có toạ độ authoritative) — TmbMap vẫn phải render được nền (nay là ảnh tĩnh, trước đây là PDF) dù units=[] (đã verify hành vi này ở dbProfileToTmbMapProfile/tmb-map-registry.ts, KHÔNG phải hành vi mới)', () => {
-  assert.deepEqual(TMB_HLX_TDND1_UNITS, []);
+test('D. TMB_HLX_TDND1_UNITS đã được populate (12 mã, đã audit + reconcile — xem tmb-tdnd1-unit-reconciliation.test.ts cho chứng minh đầy đủ) — KHÔNG còn rỗng, nhưng render nền (ảnh tĩnh) vẫn hoạt động độc lập với units.length (đã verify hành vi này ở dbProfileToTmbMapProfile/tmb-map-registry.ts, KHÔNG phải hành vi mới)', () => {
+  assert.ok(TMB_HLX_TDND1_UNITS.length > 0, 'TMB_HLX_TDND1_UNITS phải đã được populate');
+  assert.equal(TMB_HLX_TDND1_UNITS.length, 12);
 });
 
-test('D2. isTmbAvailableForConfig(HLX) vẫn true dù TĐNĐ1 chưa có marker — availability chỉ cần CÓ profile (background render được), không yêu cầu units.length > 0', () => {
+test('D2. isTmbAvailableForConfig(HLX) vẫn true — availability chỉ cần CÓ profile (background render được), không yêu cầu units.length > 0 (vẫn đúng dù giờ TĐNĐ1 đã có marker)', () => {
   assert.equal(isTmbAvailableForConfig({ id: TMB_HLX_VBM_CONFIG_ID }), true);
 });
 
