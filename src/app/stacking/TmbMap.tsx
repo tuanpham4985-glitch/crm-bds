@@ -12,7 +12,7 @@ import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, compute
 import {
   computeRenderQuality, shouldUpgradeRenderQuality, computeInitialRenderScale, VIEWPORT_RENDER_QUALITY_CAPS,
 } from './tmb-map-render-quality';
-import { shouldSkipPdfBackgroundRender } from './tmb-map-render-fallback';
+import { mapPdfPointToStaticImagePoint } from './tmb-map-static-background';
 import {
   computeVisibleContentRect, applyOverscan, clampRectToPageBounds, rectSize, rectContains, rectToDisplayBox,
   OVERSCAN_FRACTION, type Rect,
@@ -143,19 +143,6 @@ function getDevicePixelRatio(): number {
   return typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
 }
 
-// navigator.deviceMemory (Device Memory API, GB, chỉ có trên Chromium/Android
-// Chrome — đúng nền tảng đã quan sát crash "Không thể mở trang này") — đọc AN
-// TOÀN (SSR/browser không hỗ trợ trả undefined, KHÔNG throw/suy đoán giá trị
-// mặc định). Giá trị THÔ này chỉ dùng làm input cho
-// shouldSkipPdfBackgroundRender (tmb-map-render-fallback.ts) — bản thân hàm
-// đó KHÔNG đọc navigator, giữ đúng ranh giới "đọc môi trường ở component,
-// quyết định thuần hàm ở module logic" đã áp dụng cho getDevicePixelRatio().
-function getDeviceMemoryGB(): number | undefined {
-  if (typeof navigator === 'undefined') return undefined;
-  const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-  return typeof deviceMemory === 'number' ? deviceMemory : undefined;
-}
-
 interface Props {
   /** Dữ liệu riêng dự án (PDF + spatial mapping) — xem TmbMapProfile trong
    * tmb-map-data.ts. Renderer này KHÔNG hard-code PDF/unit nào, hoàn toàn
@@ -199,21 +186,6 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
     return () => diagMark(profile.configId, 'UNMOUNT');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // TMB_HLX_MOBILE_FAILURE_STAGE mitigation — profile.knownOperatorCount +
-  // devicePixelRatio đều ổn định trong vòng đời 1 lượt mount (đổi dự án luôn
-  // remount toàn bộ component qua key/configId ở page.tsx) nên tính 1 LẦN,
-  // KHÔNG phụ thuộc zoom/pan — xem tmb-map-render-fallback.ts cho lý do đầy
-  // đủ (đã loại trừ giảm scale/useRequestAnimationFrame/probe runtime, đo
-  // thật bằng browser bench + đọc trực tiếp nguồn pdfjs-dist). true nghĩa là
-  // CẢ 3 lượt page.render() bên dưới (initial + renderHighRes +
-  // renderViewportHighRes) đều bị bỏ qua cho đúng profile+thiết bị này —
-  // canvas nền giữ nguyên trắng (đã fill sẵn trước lượt render), marker/label
-  // DOM vẫn tính từ viewport BASE_SCALE=1 y hệt, không đổi geometry.
-  const skipPdfBackground = useMemo(
-    () => shouldSkipPdfBackgroundRender(profile.knownOperatorCount, getDeviceMemoryGB()),
-    [profile.knownOperatorCount]
-  );
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -318,19 +290,89 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
     if (viewportDebounceTimerRef.current) { clearTimeout(viewportDebounceTimerRef.current); viewportDebounceTimerRef.current = null; }
     setViewportOverlayRect(null);
 
+    // assetUrl + assetHint: thông báo lỗi timeout phải nêu đúng asset đang
+    // tải cho ĐÚNG đường (ảnh tĩnh KHÔNG liên quan pdf.js worker, xem 2 nhánh
+    // trong effect bên dưới) — KHÔNG hard-code theo tên dự án.
+    const assetUrl = profile.staticBackgroundImageUrl ?? profile.pdfUrl ?? '(không rõ)';
+    const assetHint = profile.staticBackgroundImageUrl ? '' : ` / "${TMB_PDF_WORKER_URL}"`;
     const timeoutId = setTimeout(() => {
       timedOut = true;
-      log('TIMEOUT sau', LOAD_TIMEOUT_MS, 'ms — pdf.js không phản hồi (khả năng cao: worker không load được)');
+      log('TIMEOUT sau', LOAD_TIMEOUT_MS, 'ms — tải/dựng TMB không phản hồi');
       if (diagOn) diagMark(profile.configId, 'LOAD-TIMEOUT', { afterMs: LOAD_TIMEOUT_MS });
       if (!cancelled) {
-        setError(`Quá thời gian chờ (${LOAD_TIMEOUT_MS / 1000}s) khi tải bản vẽ TMB — kiểm tra Console (log "[TmbMap]") và tab Network cho "${profile.pdfUrl}" / "${TMB_PDF_WORKER_URL}".`);
+        setError(`Quá thời gian chờ (${LOAD_TIMEOUT_MS / 1000}s) khi tải bản vẽ TMB — kiểm tra Console (log "[TmbMap]") và tab Network cho "${assetUrl}"${assetHint}.`);
         setLoading(false);
       }
     }, LOAD_TIMEOUT_MS);
 
     (async () => {
       try {
-        if (diagOn) diagMark(profile.configId, 'profile-resolved', { pdfUrl: profile.pdfUrl, pdfPageNumber: profile.pdfPageNumber });
+        // ── STATIC-IMAGE PATH ──────────────────────────────────────────────
+        // Profile có staticBackgroundImageUrl (hiện chỉ TĐNĐ1, xem tmb-map-
+        // data.ts) — KHÔNG chạm pdf.js API NÀO (không import pdfjs-dist,
+        // không getDocument/getPage/render) — chỉ tải 1 ảnh raster đã
+        // rasterize OFFLINE sẵn rồi vẽ 1 lần lên canvas. Loại bỏ hoàn toàn
+        // rủi ro thực thi PDF content-stream operator list nặng (TĐNĐ1 ~207K
+        // operator, đã audit + xác nhận gây crash thật trên iPhone production
+        // qua ?tmbdiag=1 — dừng đúng tại page.render:start). canvasSize dùng
+        // profile.nativeSize (content-space BASE_SCALE=1, ĐÚNG kích thước
+        // trang PDF gốc — KHÔNG PHẢI kích thước pixel ảnh thật, xem
+        // tmb-map-data.ts) nên fitScale/zoom/pan/marker phía dưới hoạt động Y
+        // HỆT đường pdf.js, không cần đổi logic downstream nào. pageRef.current
+        // CỐ Ý không bao giờ được gán ở nhánh này — renderHighRes/
+        // renderViewportHighRes (đường nâng cấp DPR/zoom) đã có sẵn guard
+        // `if (!page) return;`, tự động no-op, không cần thêm điều kiện riêng.
+        if (profile.staticBackgroundImageUrl && profile.nativeSize) {
+          const imageUrl = profile.staticBackgroundImageUrl;
+          const nativeSize = profile.nativeSize;
+          log('bước 1/2: tải ảnh nền tĩnh...', imageUrl);
+          if (diagOn) diagMark(profile.configId, 'static-image:start', { url: imageUrl, nativeSize });
+
+          const img = new Image();
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error(`Không tải được ảnh nền TMB ("${imageUrl}")`));
+            img.src = imageUrl;
+          });
+          if (timedOut || cancelled) return;
+          if (diagOn) diagMark(profile.configId, 'static-image:loaded', { naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+
+          const canvas = canvasRef.current;
+          if (!canvas || cancelled || timedOut) return;
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('Không khởi tạo được canvas context (getContext("2d") trả về null)');
+          ctx.drawImage(img, 0, 0);
+          log('bước 2/2: đã vẽ ảnh nền tĩnh lên canvas', canvas.width, 'x', canvas.height);
+          if (diagOn) diagMark(profile.configId, 'static-image:drawn', { width: canvas.width, height: canvas.height });
+
+          // Marker dùng phép Y-flip thuần đã verify khớp pdf.js.
+          // convertToViewportPoint() cho ĐÚNG trang PDF gốc này (xem
+          // tmb-map-static-background.ts) — KHÔNG dùng pdf.js ở nhánh này.
+          const points = profile.units.map(h => {
+            const { viewX, viewY } = mapPdfPointToStaticImagePoint(h.pdfX, h.pdfY, nativeSize.h);
+            return { unitCode: h.unitCode, viewX, viewY };
+          });
+          if (diagOn) diagMark(profile.configId, 'marker-overlay-computed', { pointsCount: points.length });
+
+          clearTimeout(timeoutId);
+          setCanvasSize({ w: nativeSize.w, h: nativeSize.h });
+          setViewportPoints(points);
+          setZoomMultiplier(DEFAULT_ZOOM_MULT);
+          setLoading(false);
+          if (diagOn) diagMark(profile.configId, 'STABLE-OPEN-STATE-REACHED', { canvasNativeSize: `${nativeSize.w}x${nativeSize.h}` });
+          return;
+        }
+
+        // ── pdf.js PATH (VBM1, Saigon Park, mọi profile DB-managed) ─────────
+        if (!profile.pdfUrl || profile.pdfPageNumber === undefined) {
+          throw new Error(`TmbMapProfile "${profile.configId}" thiếu cả pdfUrl lẫn staticBackgroundImageUrl — dữ liệu profile không hợp lệ`);
+        }
+        const pdfUrl = profile.pdfUrl;
+        const pdfPageNumber = profile.pdfPageNumber;
+
+        if (diagOn) diagMark(profile.configId, 'profile-resolved', { pdfUrl, pdfPageNumber });
         log('bước 1/5: import pdfjs-dist...');
         if (diagOn) diagMark(profile.configId, 'pdfjs-import:start');
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -338,13 +380,13 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
         if (timedOut || cancelled) return;
 
         pdfjs.GlobalWorkerOptions.workerSrc = TMB_PDF_WORKER_URL;
-        log('bước 2/5: workerSrc =', TMB_PDF_WORKER_URL, '— fetch toàn bộ PDF:', profile.pdfUrl);
+        log('bước 2/5: workerSrc =', TMB_PDF_WORKER_URL, '— fetch toàn bộ PDF:', pdfUrl);
 
         // Vercel phục vụ PDF với Accept-Ranges; pdf.js đôi khi đọc range/stream
         // bị lệch offset ("Bad end offset") trên asset lớn. Với file TMB ~13MB,
         // tải trọn file rồi truyền bytes cho pdf.js ổn định hơn và vẫn đủ nhanh.
-        if (diagOn) diagMark(profile.configId, 'asset-fetch:start', { url: profile.pdfUrl });
-        const pdfResponse = await fetch(profile.pdfUrl, { cache: 'no-store' });
+        if (diagOn) diagMark(profile.configId, 'asset-fetch:start', { url: pdfUrl });
+        const pdfResponse = await fetch(pdfUrl, { cache: 'no-store' });
         if (diagOn) diagMark(profile.configId, 'asset-fetch:response-headers', {
           status: pdfResponse.status, ok: pdfResponse.ok,
           contentLength: pdfResponse.headers.get('content-length'),
@@ -365,8 +407,8 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
         loadedDoc = doc;
         log('bước 3/5: getDocument() OK, numPages =', doc.numPages);
 
-        if (diagOn) diagMark(profile.configId, 'getPage:start', { pageNumber: profile.pdfPageNumber });
-        const page = await doc.getPage(profile.pdfPageNumber);
+        if (diagOn) diagMark(profile.configId, 'getPage:start', { pageNumber: pdfPageNumber });
+        const page = await doc.getPage(pdfPageNumber);
         if (diagOn) diagMark(profile.configId, 'getPage:done');
         if (timedOut || cancelled) return;
         // GEOMETRY AUTHORITY — LUÔN ở BASE_SCALE=1, KHÔNG BAO GIỜ đổi. Marker
@@ -416,21 +458,12 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         if (diagOn) diagMark(profile.configId, 'canvas-allocated', { width: canvas.width, height: canvas.height, estimatedMB: canvasMB(canvas.width, canvas.height) });
 
-        if (skipPdfBackground) {
-          // Bỏ qua raster nền — canvas giữ nguyên trắng đã fill ở trên (kích
-          // thước/vị trí vẫn đúng cho marker/label DOM, xem skipPdfBackground
-          // + tmb-map-render-fallback.ts). KHÔNG gọi page.render() nên không
-          // có rủi ro workload nặng của chính profile này trên thiết bị này.
-          log('bước 5/5: bỏ qua page.render() — profile workload nặng + thiết bị tín hiệu bộ nhớ hạn chế (skipPdfBackground)');
-          if (diagOn) diagMark(profile.configId, 'page.render:skipped-heavy-workload', { knownOperatorCount: profile.knownOperatorCount });
-        } else {
-          log('bước 5/5: page.render() bắt đầu...');
-          if (diagOn) diagMark(profile.configId, 'page.render:start');
-          await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
-          if (diagOn) diagMark(profile.configId, 'page.render:complete');
-          if (cancelled || timedOut) return;
-          log('bước 5/5: page.render() hoàn tất');
-        }
+        log('bước 5/5: page.render() bắt đầu...');
+        if (diagOn) diagMark(profile.configId, 'page.render:start');
+        await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+        if (diagOn) diagMark(profile.configId, 'page.render:complete');
+        if (cancelled || timedOut) return;
+        log('bước 5/5: page.render() hoàn tất');
 
         // Marker luôn tính từ `viewport` (BASE_SCALE=1, KHÔNG PHẢI renderViewport)
         // — vị trí marker hoàn toàn độc lập với renderScale raster thật, đúng
@@ -514,7 +547,6 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   // RASTER thật) + vẽ đè nội dung mới, nên marker/pan/zoom hoàn toàn không bị
   // ảnh hưởng (xem geometry guard ở đầu file).
   const renderHighRes = useCallback(async (targetScale: number) => {
-    if (skipPdfBackground) return; // xem skipPdfBackground — không render nền raster cho profile+thiết bị này ở BẤT KỲ scale nào.
     const page = pageRef.current;
     const canvas = canvasRef.current;
     if (!page || !canvas) return;
@@ -597,7 +629,6 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   // thị bình thường dù overlay chưa render/render fail — không có trạng thái
   // "map hỏng" nào phụ thuộc overlay.
   const renderViewportHighRes = useCallback(async (rect: Rect, targetScale: number) => {
-    if (skipPdfBackground) return; // xem skipPdfBackground — cùng lý do renderHighRes phía trên.
     const page = pageRef.current;
     if (!page) return;
 
@@ -919,15 +950,6 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
             </div>
             <div style={{ fontSize: '0.8rem', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: '#15803d', fontWeight: 700 }}>Còn hàng: {availableCount} căn</span>
-              {/* Chỉ hiện khi skipPdfBackground=true (profile workload nặng +
-                  thiết bị tín hiệu bộ nhớ hạn chế, xem tmb-map-render-fallback.ts)
-                  — giải thích vì sao nền bản vẽ trống, tránh User tưởng lỗi
-                  tải/mất dữ liệu. Marker/mã căn vẫn xem/bấm bình thường. */}
-              {!loading && skipPdfBackground && (
-                <span style={{ color: 'var(--text-muted)' }} title="Bản vẽ nền quá nặng để hiển thị an toàn trên thiết bị này — mã căn vẫn xem/bấm được bình thường">
-                  Đã tắt nền bản vẽ trên thiết bị này
-                </span>
-              )}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

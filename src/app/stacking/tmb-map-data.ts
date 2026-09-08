@@ -107,17 +107,28 @@ export interface TmbMapProfile {
   /** Tên hiển thị trong header TmbMap khi có >1 profile (phân biệt đang xem
    * TMB của dự án nào). */
   label: string;
-  pdfUrl: string;
-  pdfPageNumber: number;
+  /** Optional — CHỈ profile dùng đường pdf.js client-side (render trực tiếp
+   * PDF trong browser) mới cần pdfUrl/pdfPageNumber. Profile dùng
+   * `staticBackgroundImageUrl` (bên dưới) KHÔNG cần 2 field này — TmbMap.tsx
+   * không bao giờ fetch/parse PDF cho profile đó (xem HLX_TDND1_TMB_PROFILE:
+   * PDF ~207K operator gây crash mobile thật, đã audit + thay bằng ảnh raster
+   * offline). 1 profile LUÔN CHỈ dùng ĐÚNG 1 trong 2 đường — không đồng thời. */
+  pdfUrl?: string;
+  pdfPageNumber?: number;
+  /** Ảnh nền TĨNH (rasterize offline 1 lần, WebP/PNG/JPEG — xem comment tại
+   * TMB_HLX_TDND1_STATIC_IMAGE_URL bên dưới cho quy trình rasterize đã dùng)
+   * thay cho render pdf.js client-side. Khi set (kèm `nativeSize` bên dưới),
+   * TmbMap.tsx bỏ qua HOÀN TOÀN pdf.js (không getDocument/getPage/render) —
+   * chỉ tải ảnh + vẽ 1 lần lên canvas, xem tmb-map-static-background.ts cho
+   * cách marker pdfX/pdfY vẫn map đúng dù không còn pdf.js. */
+  staticBackgroundImageUrl?: string;
+  /** Kích thước content-space (BASE_SCALE=1, ĐÚNG kích thước trang PDF gốc đã
+   * audit lúc rasterize — KHÔNG PHẢI kích thước pixel thật của ảnh raster,
+   * ảnh có thể render ở scale cao hơn để nét hơn) — dùng cho canvasSize/
+   * fitScale/marker, giữ NGUYÊN cùng hệ toạ độ pdfX/pdfY hiện có (xem
+   * tmb-map-static-background.ts). BẮT BUỘC đi kèm staticBackgroundImageUrl. */
+  nativeSize?: { w: number; h: number };
   units: TmbMapUnit[];
-  /** Tổng số PDF content-stream operator (fnArray.length từ
-   * `page.getOperatorList()`) của trang, đo OFFLINE 1 LẦN bằng pdfjs-dist
-   * trực tiếp trên file — CÙNG triết lý pdfX/pdfY (audit sẵn, KHÔNG tính lại
-   * runtime trong browser User, xem tmb-map-render-fallback.ts cho lý do:
-   * gọi getOperatorList() trong browser tốn 11-21s, chậm hơn cả render()).
-   * Optional — undefined nghĩa là CHƯA audit (mặc định coi là an toàn, giữ
-   * nguyên hành vi render đầy đủ hiện có, không suy đoán). */
-  knownOperatorCount?: number;
 }
 
 const SAIGON_PARK_TMB_PROFILE: TmbMapProfile = {
@@ -167,10 +178,9 @@ const HLX_VBM_TMB_PROFILE: TmbMapProfile = {
   pdfUrl: TMB_HLX_VBM_PDF_URL,
   pdfPageNumber: 1,
   units: TMB_HLX_VBM_UNITS,
-  // Đo bằng pdfjs-dist getOperatorList() trực tiếp trên file — dưới
-  // HEAVY_RENDER_OPERATOR_THRESHOLD (tmb-map-render-fallback.ts), production
-  // ổn định — xem so sánh đầy đủ với TĐNĐ1 ở comment field TĐNĐ1 bên dưới.
-  knownOperatorCount: 96_498,
+  // VBM1 vẫn dùng đường pdf.js client-side y hệt trước — PDF này ổn định
+  // trên production (KHÔNG có báo cáo crash nào), không đổi kiến trúc profile
+  // này (xem TĐNĐ1 bên dưới cho profile ĐÃ đổi sang static-image).
 };
 
 /** Identity ỔN ĐỊNH của CHÍNH profile TĐNĐ1 (KHÔNG PHẢI StackingConfig.id —
@@ -179,26 +189,39 @@ const HLX_VBM_TMB_PROFILE: TmbMapProfile = {
  * (dành riêng cho StackingConfig.id thật) để không bao giờ nhầm lẫn 2 loại id. */
 export const TMB_HLX_TDND1_PROFILE_ID = 'tmb-static-hlx-tdnd1';
 
-/** Asset TĐNĐ1 SERVE STATIC — audit chọn (HLX_STATIC_TMB, xem Final Report):
- * cùng pattern Saigon Park/VBM1 (file public/ commit sẵn vào git, serve trực
- * tiếp, KHÔNG qua route proxy/object storage) thay vì DB-managed profile cũ
- * (Vercel Blob Private + buffer toàn bộ trong serverless function) — ổn định
- * hơn trên mobile (không cold-start Vercel function + Prisma + Blob fetch có
- * xác thực trước khi byte đầu tiên tới client) VÀ khớp đúng yêu cầu "TMB static
- * ổn định tương tự Saigon Park".
- *
- * File này là derivative ĐÃ TẠO SẴN từ commit fef868b ("feat(stacking): add
- * optimized TĐNĐ1 web asset for HLX TMB Manager fixture", 2026-09-05) —
- * downsampled/re-encoded từ PDF authoritative gốc "VHGG Hạ Long_TMB Tiện
- * ích&mã căn TĐNĐ1(1).pdf" (206.6MB, page 1, 1600×1200pt) bằng optimizer sẵn
- * có (src/lib/tmb-optimizer.ts) — giảm 95.3% dung lượng (206.6MB -> 9.76MB,
- * 10,238,869 bytes thực đo trên disk), text layer (mã căn) đã verify BYTE-
- * IDENTICAL trước/sau optimize (quality gate của chính optimizer, xem
- * tmb-optimizer.test.ts) — KHÔNG crop/move/redraw nội dung, KHÔNG sửa mã căn,
- * KHÔNG OCR/reconstruct, giữ nguyên toàn bộ extent + aspect ratio trang gốc.
- * File PDF authoritative gốc KHÔNG bị overwrite/mutate — optimizer luôn ĐỌC
- * nguồn, GHI derivative riêng, KHÔNG BAO GIỜ ghi đè ngược lại. */
+/** PDF authoritative gốc của TĐNĐ1 (derivative đã optimize, 10,238,869 bytes —
+ * xem lịch sử đầy đủ trong git blame field này trước bản sửa hiện tại) — GIỮ
+ * LẠI trên đĩa (public/tmb-poc/tmb-hlx-tdnd1.pdf) làm nguồn tham chiếu/để
+ * rasterize lại nếu cần chất lượng khác sau này, nhưng KHÔNG CÒN được
+ * TmbMap.tsx fetch/render ở production (xem TMB_HLX_TDND1_STATIC_IMAGE_URL +
+ * comment HLX_TDND1_TMB_PROFILE bên dưới cho lý do đổi kiến trúc).
+ * Không export field pdfUrl trong profile nữa vì đường pdf.js client-side đã
+ * NGỪNG dùng cho TĐNĐ1 — giữ hằng số này chỉ để tham chiếu/tái sử dụng nếu
+ * cần rasterize lại, KHÔNG gắn vào bất kỳ TmbMapProfile nào. */
 export const TMB_HLX_TDND1_PDF_URL = '/tmb-poc/tmb-hlx-tdnd1.pdf';
+
+/** Ảnh nền TĨNH của TĐNĐ1 — rasterize OFFLINE 1 LẦN bằng CHÍNH pdf.js (cùng
+ * renderer TmbMap.tsx vẫn dùng cho profile khác, đảm bảo khớp thị giác) trên
+ * TMB_HLX_TDND1_PDF_URL ở scale=2 (3200×2400px, gấp đôi trang gốc 1600×1200 —
+ * đủ nét cho zoom thực tế, không phải chất lượng in ấn), export WebP q=0.72 —
+ * 1,543,626 bytes thực đo trên đĩa (giảm ~85% so với PDF gốc 10,238,869
+ * bytes). TmbMap.tsx chỉ tải + vẽ 1 lần lên canvas — KHÔNG getDocument/
+ * getPage/render pdf.js, loại bỏ hoàn toàn rủi ro thực thi ~207,250 PDF
+ * content-stream operator (70,426 showText) đã audit + xác nhận gây crash
+ * thật trên iPhone production (?tmbdiag=1: log dừng đúng tại
+ * page.render:start, không có page.render:complete/STABLE-OPEN-STATE-REACHED
+ * sau đó) — xem tmb-map-static-background.ts cho cách marker pdfX/pdfY vẫn
+ * map đúng toạ độ dù không còn pdf.js ở đường này. */
+export const TMB_HLX_TDND1_STATIC_IMAGE_URL = '/tmb-poc/tmb-hlx-tdnd1.webp';
+
+/** Kích thước content-space (BASE_SCALE=1) của TĐNĐ1 — ĐÚNG kích thước trang
+ * PDF gốc (page.view=[0,0,1600,1200], rotation=0 — đã verify trực tiếp bằng
+ * pdfjs-dist trước khi rasterize), giữ NGUYÊN hệ toạ độ pdfX/pdfY hiện có
+ * (TMB_HLX_TDND1_UNITS bên dưới, dù hiện đang rỗng) — KHÔNG PHẢI kích thước
+ * pixel thật của ảnh WebP (3200×2400, gấp đôi để nét hơn khi zoom). Tách 2
+ * khái niệm này đúng triết lý content-space vs raster đã áp dụng xuyên suốt
+ * TmbMap.tsx (canvasSize vs canvas.width/height). */
+export const TMB_HLX_TDND1_NATIVE_SIZE = { w: 1600, h: 1200 };
 
 /** CHƯA CÓ toạ độ marker/unit mapping authoritative cho TĐNĐ1 — DB-managed
  * profile cũ (nếu còn) giữ unit_mappings riêng trong Postgres, KHÔNG mang
@@ -216,19 +239,21 @@ const HLX_TDND1_TMB_PROFILE: TmbMapProfile = {
   configId: TMB_HLX_TDND1_PROFILE_ID,
   stackingConfigId: TMB_HLX_VBM_CONFIG_ID,
   label: 'Vinhomes Global Gate HLX · TĐNĐ1',
-  pdfUrl: TMB_HLX_TDND1_PDF_URL,
-  pdfPageNumber: 1,
   units: TMB_HLX_TDND1_UNITS,
-  // TMB_HLX_MOBILE_FAILURE_STAGE audit — đo bằng pdfjs-dist getOperatorList()
-  // trực tiếp trên file: 207,250 operator (70,426 showText), ~2.15x VBM1
-  // (96,498) dù cùng kích thước trang (1600×1200) + cùng 10 font gốc, không
-  // Type3 font/OCG layer nào khác biệt — chênh lệch DUY NHẤT là volume nội
-  // dung vẽ. Vượt HEAVY_RENDER_OPERATOR_THRESHOLD (tmb-map-render-fallback.ts)
-  // -> trên thiết bị có tín hiệu bộ nhớ hạn chế (navigator.deviceMemory),
-  // TmbMap.tsx bỏ qua render nền PDF raster (giữ marker/label DOM, vẫn xem/
-  // bấm được bình thường) thay vì chạy page.render() rủi ro crash tab đã xác
-  // nhận thật trên mobile (?tmbdiag=1: dừng đúng tại page.render:start).
-  knownOperatorCount: 207_250,
+  // STATIC-IMAGE architecture (thay pdf.js client-side) — TĐNĐ1 PDF có
+  // 207,250 content-stream operator (70,426 showText, ~2.15x VBM1's 96,498)
+  // dù cùng kích thước trang (1600×1200) + cùng font gốc — đã audit + xác
+  // nhận GÂY CRASH THẬT trên iPhone production (?tmbdiag=1: log dừng đúng
+  // tại page.render:start, browser/tab bị kill/reload trước
+  // page.render:complete). Một mitigation trước đó (deviceMemory + operator-
+  // count runtime gate, xem git history field knownOperatorCount) KHÔNG giải
+  // quyết được case iPhone thật — thay bằng kiến trúc đơn giản hơn: rasterize
+  // OFFLINE 1 LẦN thành ảnh WebP tĩnh (xem TMB_HLX_TDND1_STATIC_IMAGE_URL),
+  // TmbMap.tsx không còn chạy BẤT KỲ pdf.js API nào (không getDocument/
+  // getPage/getOperatorList/render) cho profile này — mobile chỉ tải 1 ảnh
+  // tĩnh ~1.5MB, KHÔNG BAO GIỜ thực thi operator list nặng nói trên.
+  staticBackgroundImageUrl: TMB_HLX_TDND1_STATIC_IMAGE_URL,
+  nativeSize: TMB_HLX_TDND1_NATIVE_SIZE,
 };
 
 /** Registry — thêm profile mới ở đây khi mở thêm dự án/phân khu (sau khi đã

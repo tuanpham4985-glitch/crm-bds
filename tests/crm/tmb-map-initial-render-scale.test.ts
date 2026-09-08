@@ -20,7 +20,7 @@ function extractLoadEffectBlock(): string {
   // bất kỳ marker nào của watchdog WIP (VD markProgress('page')) — đoạn WIP
   // đó chưa release, anchor phải khớp CẢ khi watchdog đã release/xoá lẫn khi
   // chưa (candidate cô lập không có watchdog).
-  const m = source.match(/const page = await doc\.getPage\(profile\.pdfPageNumber\);[\s\S]*?setViewportPoints\(points\);/);
+  const m = source.match(/const page = await doc\.getPage\(pdfPageNumber\);[\s\S]*?setViewportPoints\(points\);/);
   assert.ok(m, 'không tìm thấy đoạn load PDF (getPage -> render -> setCanvasSize)');
   return m![0];
 }

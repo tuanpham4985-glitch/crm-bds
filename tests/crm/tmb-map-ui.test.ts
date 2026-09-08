@@ -42,10 +42,17 @@ test('TmbMap: clicking a matched available marker opens the list-detail popup ro
 });
 
 test('TmbMap: loads PDF as full bytes before pdf.js parses it to avoid range offset errors', () => {
-  assert.match(source, /fetch\(profile\.pdfUrl, \{ cache: 'no-store' \}\)/);
+  // pdfUrl narrow trực tiếp từ profile.pdfUrl (xem test "dùng profile.units/
+  // pdfPageNumber..." bên dưới + tmb-hlx-static-subdivision.test.ts #8) — chỉ
+  // áp dụng cho đường pdf.js (VBM1/Saigon Park), profile static-image (TĐNĐ1)
+  // không chạy qua đây (return sớm hơn, xem test #9 trong
+  // tmb-hlx-static-subdivision.test.ts).
+  assert.match(source, /const pdfUrl = profile\.pdfUrl;/);
+  assert.match(source, /fetch\(pdfUrl, \{ cache: 'no-store' \}\)/);
   assert.match(source, /new Uint8Array\(await pdfResponse\.arrayBuffer\(\)\)/);
   assert.match(source, /pdfjs\.getDocument\(\{ data: pdfBytes \}\)/);
   assert.doesNotMatch(source, /pdfjs\.getDocument\(profile\.pdfUrl\)/);
+  assert.doesNotMatch(source, /pdfjs\.getDocument\(pdfUrl\)/);
 });
 
 // ─── Multi-project TMB profile (task hiện tại) ──────────────────────────────
@@ -62,9 +69,10 @@ test('TmbMap: KHÔNG hard-code PDF/unit của bất kỳ dự án nào — nhậ
   assert.doesNotMatch(source, /import \{[^}]*TMB_MAP_UNITS/, 'TmbMap.tsx không được import thẳng TMB_MAP_UNITS (hardcode 1 dự án) nữa');
 });
 
-test('TmbMap: dùng profile.units/profile.pdfPageNumber cho spatial mapping + page load, KHÔNG còn hằng số 1 dự án', () => {
+test('TmbMap: dùng profile.units/profile.pdfPageNumber (narrow qua pdfPageNumber local) cho spatial mapping + page load, KHÔNG còn hằng số 1 dự án', () => {
   assert.match(source, /profile\.units\.map\(h => \{/);
-  assert.match(source, /doc\.getPage\(profile\.pdfPageNumber\)/);
+  assert.match(source, /const pdfPageNumber = profile\.pdfPageNumber;/);
+  assert.match(source, /doc\.getPage\(pdfPageNumber\)/);
   assert.match(source, /profile\.units\.map\(h => resolveTmbUnitState\(h\.unitCode, maCanIndex\)\)/);
 });
 
