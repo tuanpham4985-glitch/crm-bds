@@ -7,7 +7,7 @@ import { fmtGia, fmtArea } from './format';
 import { TMB_PDF_WORKER_URL, tmbShortLabel, type TmbMapProfile } from './tmb-map-data';
 import { buildMaCanIndex, resolveTmbUnitState, resolveTrimmedUnitSearch, type TmbUnitState } from './tmb-map-matching';
 import { buildTmbPreview } from './tmb-map-preview';
-import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll } from './tmb-map-zoom';
+import { applyWheelZoom, screenPointToContentPoint, contentPointToScroll, touchDistance, touchMidpoint, applyPinchZoom } from './tmb-map-zoom';
 import { exceedsDragThreshold, applyPanScroll, computeScaledContentSize, computeCenteringMargin } from './tmb-map-pan';
 import {
   computeRenderQuality, shouldUpgradeRenderQuality, computeInitialRenderScale, VIEWPORT_RENDER_QUALITY_CAPS,
@@ -242,6 +242,11 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   // kết thúc — pointerup xảy ra TRƯỚC click nên không thể đọc dragStateRef
   // (đã bị xoá) tại thời điểm click; ref riêng này sống sót qua khoảng đó.
   const suppressNextClickRef = useRef(false);
+  // Pinch-to-zoom (2 ngón tay, mobile) — theo dõi TẤT CẢ pointer đang chạm
+  // (Pointer Events: mỗi ngón có pointerId riêng biệt, không cần lib gesture
+  // riêng). pinchStateRef chỉ set khi đúng 2 ngón đang chạm CÙNG LÚC.
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStateRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
 
   // Đo kích thước container liên tục — bắt buộc để fit-to-view đúng khi
   // resize modal/browser (yêu cầu: "resize modal/browser → fit vẫn đúng").
@@ -813,6 +818,20 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
     if (e.button !== 0) return; // chỉ chuột trái (touch/pen primary cũng = 0)
     const container = scrollRef.current;
     if (!container) return;
+    container.setPointerCapture(e.pointerId);
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointersRef.current.size === 2) {
+      // Ngón thứ 2 vừa chạm xuống -> chuyển từ pan 1 ngón sang pinch 2 ngón.
+      // Huỷ drag 1 ngón đang dở (nếu có) để tránh 2 cơ chế cùng ghi scroll.
+      dragStateRef.current = null;
+      setIsDragging(false);
+      const pts = Array.from(activePointersRef.current.values());
+      pinchStateRef.current = { startDistance: touchDistance(pts[0], pts[1]), startZoom: zoomMultiplier };
+      return;
+    }
+    if (activePointersRef.current.size > 2) return; // ngón thứ 3+ — bỏ qua, giữ pinch 2 ngón đang có
+
     dragStateRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -821,13 +840,32 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
       startScrollTop: container.scrollTop,
       dragged: false,
     };
-    container.setPointerCapture(e.pointerId);
-  }, [loading, error, canvasSize]);
+  }, [loading, error, canvasSize, zoomMultiplier]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragStateRef.current;
     const container = scrollRef.current;
-    if (!drag || !container || drag.pointerId !== e.pointerId) return;
+    if (!container) return;
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    const pinch = pinchStateRef.current;
+    if (pinch && activePointersRef.current.size === 2) {
+      const pts = Array.from(activePointersRef.current.values());
+      const dist = touchDistance(pts[0], pts[1]);
+      if (dist <= 0) return; // dữ liệu lỗi/ngón trùng vị trí — bỏ qua lần đọc này
+      const mid = touchMidpoint(pts[0], pts[1]);
+      const rect = container.getBoundingClientRect();
+      const midX = mid.x - rect.left;
+      const midY = mid.y - rect.top;
+      const { x: nativeX, y: nativeY } = screenPointToContentPoint(container.scrollLeft, container.scrollTop, midX, midY, effectiveScale);
+      pendingScrollTargetRef.current = { x: nativeX, y: nativeY, anchorX: midX, anchorY: midY };
+      setZoomMultiplier(applyPinchZoom(pinch.startZoom, pinch.startDistance, dist, { min: MIN_ZOOM_MULT, max: MAX_ZOOM_MULT }));
+      return;
+    }
+
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
     if (!drag.dragged && exceedsDragThreshold(dx, dy, DRAG_THRESHOLD_PX)) {
@@ -839,7 +877,7 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
       container.scrollLeft = scrollLeft;
       container.scrollTop = scrollTop;
     }
-  }, []);
+  }, [effectiveScale]);
 
   // Dùng chung cho pointerup/pointercancel/pointerleave — PHẢI dọn state ở
   // cả 3 để không bao giờ kẹt "đang kéo" (VD chuột rời khỏi cửa sổ trình
@@ -847,10 +885,25 @@ export default function TmbMap({ profile, listRows, onOpenUnit, onClose, zIndex 
   // suppressNextClickRef để click phát sinh ngay sau đó trên marker (nếu có)
   // không vô tình mở popup ngoài ý muốn.
   const endDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== e.pointerId) return;
     const container = scrollRef.current;
     if (container?.hasPointerCapture(e.pointerId)) container.releasePointerCapture(e.pointerId);
+    const wasTracked = activePointersRef.current.delete(e.pointerId);
+
+    if (pinchStateRef.current) {
+      if (activePointersRef.current.size < 2) {
+        // Kết thúc pinch (1 hoặc cả 2 ngón nhấc lên). CỐ Ý không "hồi sinh"
+        // pan 1 ngón cho ngón còn lại — bắt buộc chạm mới — để tránh giật
+        // scroll đột ngột do lệch startX/startY (yêu cầu "avoid accidental
+        // pan jump after pinch finishes").
+        pinchStateRef.current = null;
+        suppressNextClickRef.current = true;
+      }
+      return;
+    }
+
+    if (!wasTracked) return;
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
     if (drag.dragged) suppressNextClickRef.current = true;
     dragStateRef.current = null;
     setIsDragging(false);

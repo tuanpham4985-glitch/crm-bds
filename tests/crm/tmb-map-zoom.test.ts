@@ -5,6 +5,9 @@ import {
   applyWheelZoom,
   screenPointToContentPoint,
   contentPointToScroll,
+  touchDistance,
+  touchMidpoint,
+  applyPinchZoom,
 } from '../../src/app/stacking/tmb-map-zoom';
 
 const RANGE = { min: 1, max: 20 };
@@ -74,4 +77,56 @@ test('contentPointToScroll: marker vẫn derive đúng effectiveScale (vị trí
   const { scrollLeft, scrollTop } = contentPointToScroll(nativeX, nativeY, effectiveScale, 0, 0);
   assert.equal(scrollLeft, displayX);
   assert.equal(scrollTop, displayY);
+});
+
+// ─── pinch-to-zoom (2 ngón tay) ─────────────────────────────────────────────
+
+test('touchDistance: khoảng cách Euclid giữa 2 điểm', () => {
+  assert.equal(touchDistance({ x: 0, y: 0 }, { x: 3, y: 4 }), 5);
+  assert.equal(touchDistance({ x: 10, y: 10 }, { x: 10, y: 10 }), 0);
+});
+
+test('touchMidpoint: trung điểm giữa 2 ngón tay', () => {
+  assert.deepEqual(touchMidpoint({ x: 0, y: 0 }, { x: 10, y: 20 }), { x: 5, y: 10 });
+  assert.deepEqual(touchMidpoint({ x: -10, y: 5 }, { x: 10, y: 5 }), { x: 0, y: 5 });
+});
+
+test('applyPinchZoom: 2 ngón tách xa hơn lúc bắt đầu -> tăng zoom', () => {
+  const next = applyPinchZoom(2, 100, 200, RANGE);
+  assert.ok(next > 2, `expected > 2, got ${next}`);
+  assert.equal(next, 4);
+});
+
+test('applyPinchZoom: 2 ngón gần lại hơn lúc bắt đầu -> giảm zoom', () => {
+  const next = applyPinchZoom(4, 200, 100, RANGE);
+  assert.ok(next < 4, `expected < 4, got ${next}`);
+  assert.equal(next, 2);
+});
+
+test('applyPinchZoom: currentDistance === startDistance -> giữ nguyên startZoom (không nhảy đột ngột lúc bắt đầu pinch)', () => {
+  assert.equal(applyPinchZoom(3, 150, 150, RANGE), 3);
+});
+
+test('applyPinchZoom: kẹp về max khi pinch-out mạnh vượt giới hạn', () => {
+  const next = applyPinchZoom(RANGE.max - 0.5, 100, 1000, RANGE);
+  assert.equal(next, RANGE.max);
+});
+
+test('applyPinchZoom: kẹp về min khi pinch-in mạnh dưới giới hạn', () => {
+  const next = applyPinchZoom(RANGE.min + 0.5, 1000, 10, RANGE);
+  assert.equal(next, RANGE.min);
+});
+
+test('applyPinchZoom: distance <=0 (dữ liệu lỗi/ngón tay trùng vị trí) -> giữ nguyên startZoom đã clamp, không chia cho 0', () => {
+  assert.equal(applyPinchZoom(3, 0, 100, RANGE), 3);
+  assert.equal(applyPinchZoom(3, 100, 0, RANGE), 3);
+  assert.equal(applyPinchZoom(999, 0, 0, RANGE), RANGE.max);
+});
+
+test('applyPinchZoom: nhiều bước pinch-out liên tiếp cùng 1 mốc (startZoom/startDistance) tăng đơn điệu theo tỉ lệ, không tích luỹ sai số', () => {
+  const startZoom = 1, startDistance = 100;
+  const z1 = applyPinchZoom(startZoom, startDistance, 120, RANGE);
+  const z2 = applyPinchZoom(startZoom, startDistance, 150, RANGE);
+  const z3 = applyPinchZoom(startZoom, startDistance, 200, RANGE);
+  assert.ok(z1 < z2 && z2 < z3, `expected monotonic increase, got ${z1}, ${z2}, ${z3}`);
 });
