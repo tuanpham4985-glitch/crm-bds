@@ -236,14 +236,27 @@ export const TMB_HLX_TDND1_PDF_URL = '/tmb-poc/tmb-hlx-tdnd1.pdf';
  * renderer TmbMap.tsx vẫn dùng cho profile khác, đảm bảo khớp thị giác) trên
  * TMB_HLX_TDND1_PDF_URL ở scale=2 (3200×2400px, gấp đôi trang gốc 1600×1200 —
  * đủ nét cho zoom thực tế, không phải chất lượng in ấn), export WebP q=0.72 —
- * 1,543,626 bytes thực đo trên đĩa (giảm ~85% so với PDF gốc 10,238,869
+ * 1,156,584 bytes thực đo trên đĩa (giảm ~89% so với PDF gốc 10,238,869
  * bytes). TmbMap.tsx chỉ tải + vẽ 1 lần lên canvas — KHÔNG getDocument/
  * getPage/render pdf.js, loại bỏ hoàn toàn rủi ro thực thi ~207,250 PDF
  * content-stream operator (70,426 showText) đã audit + xác nhận gây crash
  * thật trên iPhone production (?tmbdiag=1: log dừng đúng tại
  * page.render:start, không có page.render:complete/STABLE-OPEN-STATE-REACHED
  * sau đó) — xem tmb-map-static-background.ts cho cách marker pdfX/pdfY vẫn
- * map đúng toạ độ dù không còn pdf.js ở đường này. */
+ * map đúng toạ độ dù không còn pdf.js ở đường này.
+ *
+ * GRAY-WATER FIDELITY FIX (Sep 9 audit): asset đầu tiên (1,543,626 bytes)
+ * rasterize từ public/tmb-poc/tmb-hlx-tdnd1.pdf lúc file đó VẪN mang lỗi đã
+ * fix ở 80dc042 ("fix(tmb): preserve PDF image colorspace fidelity", Sep 6)
+ * — file PDF derivative này được tạo (fef868b, Sep 5) TRƯỚC fix đó và
+ * KHÔNG BAO GIỜ được optimize lại sau khi fix, nên vẫn giữ nguyên `/ColorSpace`
+ * hỏng (`/#2FDeviceRGB`/`/#2FDeviceGray` do PDFName.of() double-encode dấu
+ * "/") trên 2 image XObject nền (ref 199/200, 7757×5157) — pdf.js không
+ * resolve được colorspace hỏng nên render ra màu xám/sai (hồ nước, vốn phải
+ * xanh dương/xanh lá, thành xám). Fix: sửa TRỰC TIẾP 2 entry `/ColorSpace`
+ * hỏng trong CHÍNH file PDF đã commit (chỉ đổi tên dict, KHÔNG đổi/re-encode
+ * lại bytes ảnh JPEG — ít rủi ro nhất, không cần chạy lại toàn bộ pipeline
+ * downsample) rồi rasterize lại — KHÔNG đổi cách rasterize/scale/quality. */
 export const TMB_HLX_TDND1_STATIC_IMAGE_URL = '/tmb-poc/tmb-hlx-tdnd1.webp';
 
 /** Kích thước content-space (BASE_SCALE=1) của TĐNĐ1 — ĐÚNG kích thước trang
