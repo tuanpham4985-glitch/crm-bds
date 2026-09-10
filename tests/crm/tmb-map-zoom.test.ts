@@ -94,13 +94,25 @@ test('touchMidpoint: trung điểm giữa 2 ngón tay', () => {
 test('applyPinchZoom: 2 ngón tách xa hơn lúc bắt đầu -> tăng zoom', () => {
   const next = applyPinchZoom(2, 100, 200, RANGE);
   assert.ok(next > 2, `expected > 2, got ${next}`);
-  assert.equal(next, 4);
 });
 
 test('applyPinchZoom: 2 ngón gần lại hơn lúc bắt đầu -> giảm zoom', () => {
   const next = applyPinchZoom(4, 200, 100, RANGE);
   assert.ok(next < 4, `expected < 4, got ${next}`);
-  assert.equal(next, 2);
+});
+
+// ─── khuếch đại độ nhạy (fix "chỉ nhích nhẹ" — báo cáo User trên iPhone thật) ─
+
+test('applyPinchZoom: zoom in được KHUẾCH ĐẠI — LỚN HƠN hẳn tỉ lệ 1:1 vật lý thẳng (cùng khoảng ngón tay di chuyển phải đạt zoom sâu hơn nhiều, không chỉ nhích nhẹ)', () => {
+  const linear1to1 = 1 * (300 / 100); // = 3 nếu KHÔNG khuếch đại
+  const next = applyPinchZoom(1, 100, 300, RANGE);
+  assert.ok(next > linear1to1, `expected khuếch đại > tỉ lệ thẳng (${linear1to1}), got ${next}`);
+});
+
+test('applyPinchZoom: zoom out cũng được khuếch đại tương tự — NHỎ HƠN hẳn tỉ lệ 1:1 vật lý thẳng', () => {
+  const linear1to1 = 4 * (100 / 300); // ratio 1/3 nếu KHÔNG khuếch đại
+  const next = applyPinchZoom(4, 300, 100, RANGE);
+  assert.ok(next < linear1to1, `expected khuếch đại < tỉ lệ thẳng (${linear1to1}), got ${next}`);
 });
 
 test('applyPinchZoom: currentDistance === startDistance -> giữ nguyên startZoom (không nhảy đột ngột lúc bắt đầu pinch)', () => {
