@@ -263,6 +263,16 @@ export default function DashboardPage() {
   const [compare, setCompare] = useState('');
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  // "Biểu đồ" (KPI grid/TongHopTables/Hà Nội-TPHCM/đường xu hướng, admin-only)
+  // đóng mặc định — KHÔNG fetch/tính phần này cho tới khi User bấm "Hiển thị
+  // biểu đồ" (xem fetchData: gửi lite=1 khi chartsOpen=false). chartsLoaded
+  // phản ánh ĐÚNG data hiện có trong state `data` có phải bản ĐẦY ĐỦ hay
+  // không (đặt lại false mỗi khi 1 fetch lite chạy — kể cả khi đổi period lúc
+  // đang đóng — để lần mở lại sau không lầm tưởng data cũ còn hợp lệ).
+  const [chartsOpen, setChartsOpen] = useState(false);
+  const [chartsLoaded, setChartsLoaded] = useState(false);
+  const chartsOpenRef = useRef(false);
+  useEffect(() => { chartsOpenRef.current = chartsOpen; }, [chartsOpen]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -282,7 +292,12 @@ export default function DashboardPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchData = useCallback(async () => {
+  // includeCharts: khi omit, tự đọc chartsOpenRef (dùng cho effect period/
+  // compare/month/year — luôn fetch ĐÚNG phạm vi hiện tại, mở hay đóng).
+  // Truyền tường minh `true` CHỈ ở đúng 1 chỗ: handleToggleCharts, lần đầu mở
+  // biểu đồ trong phiên (xem bên dưới).
+  const fetchData = useCallback(async (includeCharts?: boolean) => {
+    const wantCharts = includeCharts ?? chartsOpenRef.current;
     setLoading(true);
     try {
       const params = new URLSearchParams({ period });
@@ -297,9 +312,20 @@ export default function DashboardPage() {
         params.set('to', `${selectedYear}-12-31`);
       }
       if (compare) params.set('compare', compare);
+      // lite=1 = bỏ qua tonghop/nhan_su_bien_dong/crm_totals + 3 fetch
+      // CongViec/HopDong/NhanSuReport phía server (xem /api/dashboard) — CHỈ
+      // gửi khi biểu đồ đang đóng, để không tính/tải phần "biểu đồ" cho tới
+      // khi User thực sự mở.
+      if (!wantCharts) params.set('lite', '1');
       const res = await fetch(`/api/dashboard?${params}`);
       const result = await res.json();
-      if (result.success) setData(result.data);
+      if (result.success) {
+        setData(result.data);
+        // Đặt lại THEO ĐÚNG kết quả fetch vừa rồi (không chỉ khi true) — nếu
+        // 1 fetch lite chạy trong lúc biểu đồ đang đóng (VD đổi period), data
+        // hiện tại KHÔNG còn tonghop hợp lệ nữa dù trước đó đã từng mở 1 lần.
+        setChartsLoaded(wantCharts);
+      }
     } catch (err) {
       console.error('Dashboard fetch error:', err);
     } finally {
@@ -309,11 +335,27 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Bấm "Hiển thị biểu đồ"/"Ẩn biểu đồ" — đóng: chỉ ẩn (unmount), KHÔNG fetch
+  // gì. Mở: nếu data hiện có ĐÃ là bản đầy đủ (chartsLoaded, VD mở lại trong
+  // cùng phiên mà không đổi filter nào) thì tái dùng nguyên state `data`,
+  // không refetch trùng lặp — chỉ fetch(true) khi thực sự cần bù dữ liệu
+  // biểu đồ còn thiếu.
+  const handleToggleCharts = useCallback(() => {
+    setChartsOpen(prev => {
+      const next = !prev;
+      if (next && !chartsLoaded) fetchData(true);
+      return next;
+    });
+  }, [chartsLoaded, fetchData]);
+
   // Fetch riêng cho CỰC CHIẾN 2026: tính từ ngày thành lập công ty (23/12/2025)
-  // Bao gồm cả các deal ký cuối tháng 12/2025 (23/12, 26/12) vào cuộc đua
+  // Bao gồm cả các deal ký cuối tháng 12/2025 (23/12, 26/12) vào cuộc đua.
+  // lite=1: widget này chỉ cần doanh_thu_theo_sale (có sẵn ở cả 2 chế độ) —
+  // không cần kéo theo tonghop/nhan_su_bien_dong/crm_totals của toàn bộ
+  // khoảng ngày từ lúc thành lập công ty.
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
-    fetch(`/api/dashboard?from=${RACE_START_DATE}&to=${today}`)
+    fetch(`/api/dashboard?from=${RACE_START_DATE}&to=${today}&lite=1`)
       .then(r => r.json())
       .then(result => {
         if (result.success) setRaceData(result.data.doanh_thu_theo_sale);
@@ -549,10 +591,25 @@ export default function DashboardPage() {
               Báo cáo
             </button>
           )}
+          {/* Biểu đồ nặng (TongHopTables + Hà Nội/TPHCM + đường xu hướng) —
+              đóng mặc định, KHÔNG fetch/tính cho tới khi bấm mở (xem
+              fetchData/handleToggleCharts) — admin only, cùng phạm vi với
+              các nút trên vì chỉ isAdmin mới thấy các khối này. */}
+          {isAdmin && (
+            <button
+              className={`btn ${chartsOpen ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+              onClick={handleToggleCharts}
+              title={chartsOpen ? 'Ẩn biểu đồ' : 'Hiển thị biểu đồ'}
+            >
+              <BarChart3 size={16} />
+              {chartsOpen ? 'Ẩn biểu đồ' : 'Hiển thị biểu đồ'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* KPI Grid — admin only */}
+      {/* KPI Grid — admin only (dùng data.kpi khi biểu đồ đang đóng, tonghop
+          khi đã mở — luôn có số hiển thị ngay, không phụ thuộc chartsOpen) */}
       {isAdmin && (
         <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
           {renderKpiCard(
@@ -583,13 +640,15 @@ export default function DashboardPage() {
       )}
 
 
-      {/* ── Bảng tổng hợp so sánh — admin only ── */}
-      {isAdmin && data.tonghop && (
+      {/* ── Bảng tổng hợp so sánh — admin only, CHỈ khi đã mở "Hiển thị biểu
+          đồ" (chartsOpen) — unmount thật khi đóng, không chỉ ẩn CSS ── */}
+      {isAdmin && chartsOpen && data.tonghop && (
         <TongHopTables tonghop={data.tonghop} isMobile={isMobile} />
       )}
 
-      {/* Hà Nội vs TP.HCM + Doanh thu theo thời gian — cùng hàng */}
-      {isAdmin && (
+      {/* Hà Nội vs TP.HCM + Doanh thu theo thời gian — cùng hàng, CHỈ khi đã
+          mở biểu đồ (unmount khi đóng — LineChart/recharts không giữ trong DOM) */}
+      {isAdmin && chartsOpen && (
         <div className="charts-grid" style={{ marginBottom: 16 }}>
           {(() => {
             const kv = data.tonghop?.khu_vuc ?? [];

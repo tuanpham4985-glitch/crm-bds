@@ -321,7 +321,8 @@ test('regression: /api/khach-hang, /api/campaigns/[id]/distribute business autho
   assert.match(distributeSrc, /canManageCampaign\(user, campaign\)/);
 });
 
-test('regression: transitionHandoffTransactional accept-branch cache-invalidation fix (commit 43da3e7) vẫn còn nguyên vẹn', () => {
+test('regression: transitionHandoffTransactional accept-branch cache-invalidation fix (commit 43da3e7) vẫn còn nguyên vẹn — Batch 1 item 2 mở rộng invalidate "kh" sang cả handoff/reject (guard đổi thành 3 action), accept vẫn nằm trong guard đó + vẫn riêng invalidate "pl"', () => {
   const src = readFileSync(resolve('src/lib/crm-funnel/transactional-workflow.ts'), 'utf8');
-  assert.match(src, /if \(input\.action === 'accept'\) \{\s*\n\s*revalidateTag\('kh', \{\}\); invalidate\('gs:kh'\);/);
+  assert.match(src, /if \(input\.action === 'accept' \|\| input\.action === 'handoff' \|\| input\.action === 'reject'\) \{\s*\n\s*revalidateTag\('kh', \{\}\); invalidate\('gs:kh'\);/);
+  assert.match(src, /if \(input\.action === 'accept'\) \{\s*\n\s*revalidateTag\('pl', \{\}\); invalidate\('gs:pl'\);/);
 });

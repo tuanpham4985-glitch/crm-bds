@@ -104,7 +104,7 @@ export async function recordInteractionTransactional(input: {
   nextContact?: string;
   directManager: DirectManager;
 }) {
-  return serializable(async tx => {
+  const result = await serializable(async tx => {
     const customer = await tx.khachHang.findUnique({ where: { id_khach_hang: input.customerId } });
     if (!customer) throw new Error('CUSTOMER_NOT_FOUND');
     const history = parseJsonList<CrmChamSocEntry>(customer.lich_su_cham_soc ?? undefined);
@@ -185,6 +185,16 @@ export async function recordInteractionTransactional(input: {
     }
     return { customer: updated, handoff: null, idempotent: false };
   });
+  // Cache-invalidation gap remediation (Batch 1, item 2) — cùng root cause đã
+  // fix cho nhánh 'accept' của transitionHandoffTransactional (audit
+  // 2026-08-27): hàm này ghi Customer (trang_thai_cham_soc/muc_do_quan_tam/
+  // so_lan_lien_he/... + có thể cả sale_nhan_khach/trang_thai_ban_giao khi tự
+  // động tạo Handoff) qua raw tx.* TRONG transaction, không đi qua wrapper
+  // data-access.ts (updateKhachHang) nên trước đây KHÔNG tự invalidate cache
+  // 'kh'. Invalidate SAU KHI transaction đã commit — cùng cách 'accept' đã
+  // làm, không phân biệt idempotent/không (đơn giản, nhất quán với fix gốc).
+  revalidateTag('kh', {}); invalidate('gs:kh');
+  return result;
 }
 
 export async function updateQualificationTransactional(input: {
@@ -194,7 +204,7 @@ export async function updateQualificationTransactional(input: {
   patch: Pick<KhachHang, 'du_an' | 'san_pham_quan_tam' | 'nhu_cau' | 'ngan_sach_min' | 'ngan_sach_max' | 'muc_dich' | 'thoi_gian_du_kien' | 'phuong_an_tai_chinh' | 'khu_vuc_yeu_cau' | 'muc_do_quan_tam' | 'hanh_dong_tiep_theo' | 'nguon'>;
   directManager: DirectManager;
 }) {
-  return serializable(async tx => {
+  const result = await serializable(async tx => {
     const customer = await tx.khachHang.findUnique({ where: { id_khach_hang: input.customerId } });
     if (!customer) throw new Error('CUSTOMER_NOT_FOUND');
     const existingHistory = parseJsonList<LeadScoreHistoryEntry>(customer.lead_score_history ?? undefined);
@@ -260,6 +270,12 @@ export async function updateQualificationTransactional(input: {
     });
     return { customer: withHandoff, handoff, score: result };
   });
+  // Cache-invalidation gap remediation (Batch 1, item 2) — cùng root cause
+  // như recordInteractionTransactional ở trên: ghi Customer (du_an/nhu_cau/
+  // qualification_status/... + có thể sale_nhan_khach/trang_thai_ban_giao khi
+  // tự động tạo Handoff) qua raw tx.*, không tự invalidate cache 'kh'.
+  revalidateTag('kh', {}); invalidate('gs:kh');
+  return result;
 }
 
 async function ensurePipeline(tx: Tx, customer: Awaited<ReturnType<Tx['khachHang']['findUnique']>> & {}) {
@@ -448,27 +464,37 @@ export async function transitionHandoffTransactional(input: {
     }
     return { customer: updated, handoff: active, pipeline: null };
   });
-  // Cache-invalidation gap (production defect, audit 2026-08-27): nhánh accept
-  // ghi Customer.sale_phu_trach/trang_thai_ban_giao + Pipeline qua raw tx.*
-  // TRONG transaction, không đi qua wrapper data-access.ts (updateKhachHang/
-  // addPipeline) nên không tự invalidate cache 'kh'/'pl' như convention còn
-  // lại của repo. Invalidate SAU KHI transaction đã commit thành công (chạy
-  // tới đây nghĩa là serializable() ở trên không throw) — không invalidate
-  // trước/trong transaction để tránh lộ uncommitted/failed state. Phạm vi CHỈ
-  // accept — handoff/reject không mutate ownership/Pipeline nên không cần
-  // invalidate 2 tag này (ngoài phạm vi remediation).
-  if (input.action === 'accept') {
+  // Cache-invalidation gap (production defect, audit 2026-08-27, mở rộng
+  // Batch 1 item 2): CẢ 3 action ('handoff'/'accept'/'reject') đều ghi
+  // Customer.sale_nhan_khach/trang_thai_ban_giao/... qua raw tx.* TRONG
+  // transaction, không đi qua wrapper data-access.ts (updateKhachHang) nên
+  // không tự invalidate cache 'kh'. Bản fix gốc (2026-08-27) chỉ áp dụng cho
+  // 'accept', dựa trên giả định "handoff/reject không mutate ownership" —
+  // SAI: nhánh 'handoff' (dòng ~401) VÀ 'reject' (dòng ~438) đều có
+  // tx.khachHang.update ghi trang_thai_ban_giao/sale_nhan_khach y hệt accept,
+  // chỉ riêng Pipeline (ensurePipeline + tx.pipeline.update) là ĐÚNG CHỈ chạy
+  // ở accept — nên tag 'pl' vẫn giữ nguyên phạm vi accept-only. Invalidate
+  // SAU KHI transaction đã commit thành công (chạy tới đây nghĩa là
+  // serializable() ở trên không throw) — không invalidate trước/trong
+  // transaction để tránh lộ uncommitted/failed state.
+  if (input.action === 'accept' || input.action === 'handoff' || input.action === 'reject') {
     revalidateTag('kh', {}); invalidate('gs:kh');
+  }
+  if (input.action === 'accept') {
     revalidateTag('pl', {}); invalidate('gs:pl');
   }
   return result;
 }
 
 export async function assignTelesaleTransactional(input: { customerId: string; telesaleName: string; actor: CrmSessionUser }) {
-  return serializable(async tx => {
+  const result = await serializable(async tx => {
     const customer = await tx.khachHang.findUnique({ where: { id_khach_hang: input.customerId } });
     if (!customer) throw new Error('CUSTOMER_NOT_FOUND');
     if (isOwnershipLocked(customer.trang_thai_ban_giao)) throw new Error('OWNERSHIP_LOCKED');
     return tx.khachHang.update({ where: { id_khach_hang: input.customerId }, data: { telesale_phu_trach: input.telesaleName || null, row_version: { increment: 1 } } });
   });
+  // Cache-invalidation gap remediation (Batch 1, item 2) — cùng root cause:
+  // ghi Customer.telesale_phu_trach qua raw tx.*, không tự invalidate 'kh'.
+  revalidateTag('kh', {}); invalidate('gs:kh');
+  return result;
 }

@@ -187,10 +187,11 @@ test('Campaign/Handoff API routes (distribute, campaigns handoff, telesale hando
   assert.match(telesaleSrc, /canActOnHandoff\(/);
 });
 
-test('transactional-workflow.ts (M1B.2 Handoff/Pipeline transaction + cache-invalidation fix commit 43da3e7) không bị đụng bởi CRM Module Toggle — vẫn còn nguyên nhánh accept invalidate kh/pl', () => {
+test('transactional-workflow.ts (M1B.2 Handoff/Pipeline transaction + cache-invalidation fix commit 43da3e7, mở rộng Batch 1 item 2) không bị đụng bởi CRM Module Toggle — vẫn còn nguyên accept invalidate kh/pl (nay cùng guard "kh" với handoff/reject)', () => {
   const src = readFileSync(resolve('src/lib/crm-funnel/transactional-workflow.ts'), 'utf8');
   assert.doesNotMatch(src, /crm-module|isCrmModuleEnabled/, 'transactional-workflow.ts không liên quan module toggle, không được import nó');
-  assert.match(src, /if \(input\.action === 'accept'\) \{\s*\n\s*revalidateTag\('kh', \{\}\); invalidate\('gs:kh'\);/, 'fix cache-invalidation trước đó (commit 43da3e7) phải còn nguyên vẹn');
+  assert.match(src, /if \(input\.action === 'accept' \|\| input\.action === 'handoff' \|\| input\.action === 'reject'\) \{\s*\n\s*revalidateTag\('kh', \{\}\); invalidate\('gs:kh'\);/, 'fix cache-invalidation trước đó (commit 43da3e7) phải còn nguyên vẹn cho accept, nay mở rộng cùng guard sang handoff/reject');
+  assert.match(src, /if \(input\.action === 'accept'\) \{\s*\n\s*revalidateTag\('pl', \{\}\); invalidate\('gs:pl'\);/, 'invalidate "pl" vẫn giữ nguyên phạm vi accept-only');
 });
 
 test('src/app/api/khach-hang/route.ts: business authorization (isCrmAdmin cho POST, canManageCustomer/canViewCustomer cho GET/PUT/DELETE) không bị nới lỏng hay thay bằng crm-module check', () => {

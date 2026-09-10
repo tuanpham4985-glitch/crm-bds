@@ -6,6 +6,24 @@ import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoTha
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 import { buildTravelSalesLeaderboard } from '@/lib/dashboard-travel-sales';
+import { cached } from '@/lib/mem-cache';
+
+// Batch 1 item 1 — Dashboard "double-fetch": trang Dashboard (page.tsx) tự
+// bắn 2 request /api/dashboard gần như đồng thời lúc mount (fetchData chính
+// + fetch riêng cho CỰC CHIẾN, xem raceData) VÀ nhiều người xem Dashboard
+// cùng lúc đều rơi vào view mặc định (period=month, không compare) — cache
+// NGUYÊN kết quả đã tính (không chỉ từng bảng nguồn riêng lẻ như
+// unstable_cache ở data-access.ts) theo đúng tổ hợp tham số ảnh hưởng tới
+// output, TTL ngắn để không đổi cảm giác "gần như real-time" hiện có. KHÔNG
+// merge 2 request main/race thành 1 — chúng cần 2 khoảng ngày KHÁC NHAU
+// (period đang chọn vs từ ngày thành lập công ty) phục vụ 2 widget khác
+// nhau, gộp lại đòi thay đổi hợp đồng API (nhận nhiều khoảng ngày/trả nhiều
+// bộ số cùng lúc) — vượt phạm vi cho phép của Batch 1 (không redesign API).
+// Cache này giúp ĐÚNG trường hợp request TRÙNG khoá thật sự (cùng
+// period/compare/report_mode/from/to/lite/isAdmin) không phải tính lại: 2
+// tab/2 người xem cùng view mặc định trong cùng cửa sổ TTL, hoặc double-fetch
+// do React StrictMode (dev) gọi effect 2 lần.
+const DASHBOARD_RESPONSE_TTL_MS = 20_000;
 
 async function getIsAdmin(): Promise<boolean> {
   try {
@@ -424,7 +442,26 @@ export async function GET(request: NextRequest) {
         : 'default';
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
+    // Dashboard "biểu đồ" section (KPI grid/TongHopTables/Hà Nội-TPHCM/đường xu
+    // hướng) đóng mặc định — client chỉ truyền lite=1 cho lần tải ĐẦU (trước
+    // khi User bấm "Hiển thị biểu đồ"). Không đổi behavior cho bất kỳ caller
+    // nào KHÔNG gửi lite=1 (VD /bao-cao, hoặc Dashboard SAU KHI đã mở biểu đồ)
+    // — mặc định vẫn tính đủ như cũ khi thiếu tham số này.
+    const lite = searchParams.get('lite') === '1';
+    // Toàn bộ dữ liệu "biểu đồ nặng" (tonghop/nhan_su_bien_dong/crm_totals) đã
+    // luôn isAdmin-only — wantCharts CHỈ thu hẹp thêm theo lite, không mở rộng
+    // ra ngoài phạm vi isAdmin đã có.
+    const wantCharts = isAdmin && !lite;
 
+    // Khoá cache PHẢI gồm ĐỦ mọi tham số ảnh hưởng tới output — thiếu 1 cái
+    // sẽ trả nhầm response cache của tổ hợp khác (VD isAdmin: admin/non-admin
+    // nhận SHAPE response khác hẳn nhau, tuyệt đối không được lẫn).
+    const dashboardCacheKey = [
+      'dashboard', period, compare, reportMode, fromParam ?? '', toParam ?? '',
+      lite ? 'lite' : 'full', isAdmin ? 'admin' : 'user',
+    ].join(':');
+
+    const data = await cached(dashboardCacheKey, DASHBOARD_RESPONSE_TTL_MS, async (): Promise<DashboardData> => {
     // Compute date range BEFORE Promise.all so tongHop can run in parallel
     const dateRange = getDateRange(period);
     if (fromParam && toParam) {
@@ -434,13 +471,19 @@ export async function GET(request: NextRequest) {
     const useDepositDateForRevenue = reportMode === 'race';
     const revenueDateSource = useDepositDateForRevenue ? 'deposit' : 'signed';
 
+    // getCongViec()/getHopDong()/getDataNhanSuForReport() CHỈ phục vụ
+    // crm_totals.cv_*/nhan_su_bien_dong (cả 2 đều thuộc "biểu đồ" isAdmin-only
+    // và KHÔNG được /page.tsx Dashboard render — chỉ /bao-cao dùng) — bỏ qua
+    // hoàn toàn 2 lần đọc bảng CongViec/HopDong khi wantCharts=false, KHÔNG
+    // đụng tới getPipeline/getKhachHang/getNhanVien/getTongHopGiaoDich (những
+    // fetch này còn phục vụ kpi/Bảng xếp hạng/sinh nhật — LUÔN cần dù đóng biểu đồ).
     const [allPipelines, allCustomers, allEmployeesRaw, allCongViec, allContracts, hrBienDongData, tongHopRows] = await Promise.all([
       getPipeline(),
       getKhachHang(),
       getNhanVien(),
-      getCongViec(),
-      getHopDong(),
-      isAdmin ? getDataNhanSuForReport().catch((): HrEmployeeRecord[] => []) : Promise.resolve([] as HrEmployeeRecord[]),
+      wantCharts ? getCongViec() : Promise.resolve([] as Awaited<ReturnType<typeof getCongViec>>),
+      wantCharts ? getHopDong() : Promise.resolve([] as Awaited<ReturnType<typeof getHopDong>>),
+      wantCharts ? getDataNhanSuForReport().catch((): HrEmployeeRecord[] => []) : Promise.resolve([] as HrEmployeeRecord[]),
       reportMode !== 'standard'
         ? getTongHopGiaoDich(dateRange.from, dateRange.to, revenueDateSource).catch(() => [] as Awaited<ReturnType<typeof getTongHopGiaoDich>>)
         : Promise.resolve([] as Awaited<ReturnType<typeof getTongHopGiaoDich>>),
@@ -490,20 +533,6 @@ export async function GET(request: NextRequest) {
       }, [])
       .sort((a, b) => a.ngay - b.ngay);
 
-    // Debug: log first 3 pipelines to trace what data arrives from Sheets
-    if (allPipelines.length > 0) {
-      console.log('[Dashboard] Sample pipeline rows:',
-        allPipelines.slice(0, 3).map(p => ({
-          id: p.id_pipeline,
-          giai_doan: p.giai_doan,
-          ngay_cap_nhat: p.ngay_cap_nhat,
-          thang: p.thang,
-          sale: p.sale_phu_trach,
-          gia_tri: p.gia_tri_thuc_te,
-        }))
-      );
-    }
-
     // Extend "to" by 1 day buffer to absorb UTC+7 timezone offset.
     // (Deals created at e.g. 11:00 VN time = 04:00 UTC, so server's "now" at 04:50 UTC
     //  would place a 11:00 VN deal *in the future* if naively compared in UTC)
@@ -540,8 +569,6 @@ export async function GET(request: NextRequest) {
       }
       return isInRange(d, dateRange.prevFrom, dateRange.prevTo);
     }) : [];
-
-    console.log(`[Dashboard] Period: ${period}, current: ${currentPipelines.length} pipelines, prevPipelines: ${prevPipelines.length}`);
 
     // KPI calculations
     const daKy = currentPipelines.filter(pl =>
@@ -935,10 +962,10 @@ export async function GET(request: NextRequest) {
       });
     const raceDuAn = buildRaceDuAn(tongHopRows);
     const raceTheoThang = buildRaceTheoThang(tongHopRows);
-    const tonghop = isAdmin
+    const tonghop = wantCharts
       ? buildTongHopStats(reportMode !== 'standard')
       : undefined;
-    const nhanSuBienDong = isAdmin
+    const nhanSuBienDong = wantCharts
       ? (process.env.NHAN_SU_SHEET_ID
           ? buildNhanSuFromHrData(hrBienDongData, dateRange.from, dateRange.to)
           : buildNhanSuTheoThang(allEmployeesRaw, allContracts, dateRange.from, dateRange.to))
@@ -989,7 +1016,7 @@ export async function GET(request: NextRequest) {
           } : {}),
         };
 
-    const data: DashboardData = isAdmin ? {
+    return isAdmin ? {
       kpi: selectedKpi,
       doanh_thu_theo_sale: selectedLeaderboard,
       doanh_thu_theo_du_an: selectedDuAn,
@@ -997,7 +1024,11 @@ export async function GET(request: NextRequest) {
       nguon_khach_hang: nguonKhachHang,
       sinh_nhat_thang_nay: sinhNhatThangNay,
       pipeline_funnel,
-      crm_totals,
+      // crm_totals.cv_* được tính từ allCongViec — mảng này CỐ Ý rỗng khi
+      // wantCharts=false (xem Promise.all phía trên) nên PHẢI ẩn crm_totals
+      // luôn ở response lite, tránh trả số liệu cv_total/cv_by_status sai
+      // (0/rỗng) trông như dữ liệu thật cho bất kỳ caller nào lỡ đọc field này.
+      crm_totals: wantCharts ? crm_totals : undefined,
       tonghop,
       nhan_su_bien_dong: nhanSuBienDong,
       report_mode: reportMode,
@@ -1012,6 +1043,7 @@ export async function GET(request: NextRequest) {
       nhan_su_bien_dong: [],
       report_mode: reportMode,
     };
+    });
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
