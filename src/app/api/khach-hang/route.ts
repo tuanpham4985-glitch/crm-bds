@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDuAn, getKhachHang, getNhanVien, getPipeline, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/data-access';
+import { getDuAn, getKhachHang, findKhachHangById, getNhanVien, getPipeline, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/data-access';
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
 import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds } from '@/lib/crm-funnel/campaign';
 import { getDatasetMembershipCustomerRefs } from '@/lib/crm-funnel/dataset';
@@ -8,6 +8,10 @@ import { buildCustomerGroupBadges } from '@/lib/private-group-auth';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { matchesCampaignStatusFilter, summarizeCampaignMembership, type CampaignStatusFilter } from '@/lib/khach-hang-campaign-status';
+import { buildKhachHangBaseWhere, type KhachHangListFilters } from '@/lib/khach-hang-list-query';
+import { prisma } from '@/lib/db/client';
+import { toKhachHang } from '@/lib/repository/postgresql/customer.repo';
+import type { Prisma } from '@/generated/prisma/client';
 import type { KhachHang } from '@/lib/types';
 
 const CAMPAIGN_STATUS_FILTERS = new Set<string>(['all', 'in_campaign', 'not_in_campaign']);
@@ -34,8 +38,8 @@ export async function GET(request: NextRequest) {
     // trả về distinct customer_id đã có >=1 CampaignMembership qua ĐÚNG 1 query
     // (đã dùng sẵn cho delete-guard ở DELETE bên dưới) — KHÔNG query
     // CampaignMembership theo từng customer (N+1) dù dataset có hàng nghìn dòng.
-    const [projects, employees, allCustomers, membershipRefs] = await Promise.all([
-      getDuAn(), getNhanVien(), getKhachHang(), getCampaignMembershipCustomerRefs(),
+    const [projects, employees, membershipRefs] = await Promise.all([
+      getDuAn(), getNhanVien(), getCampaignMembershipCustomerRefs(),
     ]);
     const membershipSet = new Set(membershipRefs.map(ref => ref.customer_id));
     // CUSTOMER DATASET — query RIÊNG (không gộp vào Promise.all trên, giữ
@@ -50,49 +54,92 @@ export async function GET(request: NextRequest) {
     // file) — 3 query cố định, KHÔNG phụ thuộc allCustomers.length nên KHÔNG
     // N+1. Guard-trả-rỗng khi Postgres CRM tắt (route vẫn luôn chạy).
     const privateGroupVisibleIds = await getPrivateGroupVisibleCustomerIdsForEmployee(user.id_nhan_vien);
-    // Visibility = existing CRM ownership (canViewCustomer/isDirectManager,
-    // KHÔNG đổi) OR private-group-membership (privateGroupVisibleIds) — Nhóm
-    // riêng CHỈ CỘNG THÊM đường xem, không thay thế authority cũ.
-    let data = allCustomers.filter(customer => canViewCustomer(user, customer, projects)
-      || isDirectManager(user, customer, employees)
-      || privateGroupVisibleIds.has(customer.id_khach_hang));
+    const isAdmin = isCrmAdmin(user);
 
-    if (id) data = data.filter(kh => kh.id_khach_hang === id);
-    // Apply filters
-    if (search) {
-      const q = search.toLowerCase();
-      data = data.filter(kh =>
-        kh.ten_KH.toLowerCase().includes(q) ||
-        kh.so_dien_thoai.includes(q) ||
-        kh.email.toLowerCase().includes(q)
-      );
-    }
-    if (nguon) data = data.filter(kh => kh.nguon === nguon);
-    if (sale === '__none__') data = data.filter(kh => !kh.sale_phu_trach);
-    else if (sale) data = data.filter(kh => kh.sale_phu_trach === sale);
-    if (du_an) data = data.filter(kh => kh.du_an === du_an);
-    if (from) data = data.filter(kh => new Date(kh.ngay_tao) >= new Date(from));
-    if (to) data = data.filter(kh => new Date(kh.ngay_tao) <= new Date(to + 'T23:59:59'));
-
-    // "total" giữ NGUYÊN ý nghĩa cũ (khớp mọi filter phía trên, KHÔNG tính
-    // campaignStatus) — Customer Range trên client (validateListRangeAgainstTotal)
-    // và "Chọn tất cả N phù hợp bộ lọc" đều dựa vào đúng con số này, và
-    // resolveCustomerIdsByRange/resolveCustomerIdsByFilter (Locked authority)
-    // cũng KHÔNG biết gì về campaignStatus — đổi ý nghĩa "total" ở đây sẽ làm
-    // range/select-all lệch với dữ liệu server thật sự resolve khi submit.
-    const total = data.length;
-    const campaignSummary = summarizeCampaignMembership(data.map(kh => kh.id_khach_hang), membershipSet);
-
-    // campaignStatus là filter MỚI, tách biệt hoàn toàn khỏi total/scope ở
-    // trên — chỉ thu hẹp tập hiển thị + phân trang, không đụng "total".
-    data = data.filter(kh => matchesCampaignStatusFilter(kh.id_khach_hang, membershipSet, campaignStatus));
-    // CUSTOMER DATASET — cùng tinh thần campaignStatus: filter MỚI, không đụng
-    // "total" (đã tính ở trên trước khi áp dụng cả 2 filter này).
-    if (datasetId) data = data.filter(kh => datasetMembershipSet.has(kh.id_khach_hang));
-
-    const filteredTotal = data.length;
+    let total: number;
+    let filteredTotal: number;
+    let campaignSummary: { inCampaign: number; notInCampaign: number };
+    let paginatedData: KhachHang[];
     const start = (page - 1) * limit;
-    const paginatedData = data.slice(start, start + limit);
+
+    // Batch 2 — Postgres path: WHERE/count/skip/take THẬT trên DB thay vì
+    // getKhachHang() (load NGUYÊN bảng) -> JS filter -> slice. Google Sheets
+    // path (isPostgresEnabled('crm') === false) giữ NGUYÊN 100% code cũ bên
+    // dưới — Sheets không có SQL, không thể đẩy where/pagination xuống được,
+    // và route PHẢI luôn hoạt động dù Postgres CRM tắt (xem toàn bộ guard-
+    // trả-rỗng ở các hàm private-group/dataset phía trên).
+    if (isPostgresEnabled('crm')) {
+      const filters: KhachHangListFilters = { id, search, nguon, sale, du_an, from, to };
+      const baseWhere = buildKhachHangBaseWhere(user, isAdmin, projects, employees, privateGroupVisibleIds, filters);
+
+      // campaignStatus/datasetId là filter MỚI, tách biệt hoàn toàn khỏi
+      // total/campaignSummary (tính trên baseWhere, KHÔNG gồm 2 filter này) —
+      // giữ ĐÚNG ý nghĩa "total" đã khoá (xem comment gốc: Customer Range +
+      // "Chọn tất cả N phù hợp bộ lọc" phụ thuộc con số này).
+      const extraConditions: Prisma.KhachHangWhereInput[] = [];
+      if (campaignStatus === 'in_campaign') extraConditions.push({ id_khach_hang: { in: [...membershipSet] } });
+      else if (campaignStatus === 'not_in_campaign') extraConditions.push({ id_khach_hang: { notIn: [...membershipSet] } });
+      if (datasetId) extraConditions.push({ id_khach_hang: { in: [...datasetMembershipSet] } });
+      const filteredWhere = extraConditions.length > 0 ? { AND: [baseWhere, ...extraConditions] } : baseWhere;
+
+      const [totalCount, inCampaignCount, filteredTotalCount, rows] = await Promise.all([
+        prisma.khachHang.count({ where: baseWhere }),
+        membershipSet.size > 0
+          ? prisma.khachHang.count({ where: { AND: [baseWhere, { id_khach_hang: { in: [...membershipSet] } }] } })
+          : Promise.resolve(0),
+        prisma.khachHang.count({ where: filteredWhere }),
+        prisma.khachHang.findMany({ where: filteredWhere, orderBy: { ngay_tao: 'desc' }, skip: start, take: limit }),
+      ]);
+
+      total = totalCount;
+      campaignSummary = { inCampaign: inCampaignCount, notInCampaign: total - inCampaignCount };
+      filteredTotal = filteredTotalCount;
+      paginatedData = rows.map(toKhachHang);
+    } else {
+      const allCustomers = await getKhachHang();
+      // Visibility = existing CRM ownership (canViewCustomer/isDirectManager,
+      // KHÔNG đổi) OR private-group-membership (privateGroupVisibleIds) — Nhóm
+      // riêng CHỈ CỘNG THÊM đường xem, không thay thế authority cũ.
+      let data = allCustomers.filter(customer => canViewCustomer(user, customer, projects)
+        || isDirectManager(user, customer, employees)
+        || privateGroupVisibleIds.has(customer.id_khach_hang));
+
+      if (id) data = data.filter(kh => kh.id_khach_hang === id);
+      // Apply filters
+      if (search) {
+        const q = search.toLowerCase();
+        data = data.filter(kh =>
+          kh.ten_KH.toLowerCase().includes(q) ||
+          kh.so_dien_thoai.includes(q) ||
+          kh.email.toLowerCase().includes(q)
+        );
+      }
+      if (nguon) data = data.filter(kh => kh.nguon === nguon);
+      if (sale === '__none__') data = data.filter(kh => !kh.sale_phu_trach);
+      else if (sale) data = data.filter(kh => kh.sale_phu_trach === sale);
+      if (du_an) data = data.filter(kh => kh.du_an === du_an);
+      if (from) data = data.filter(kh => new Date(kh.ngay_tao) >= new Date(from));
+      if (to) data = data.filter(kh => new Date(kh.ngay_tao) <= new Date(to + 'T23:59:59'));
+
+      // "total" giữ NGUYÊN ý nghĩa cũ (khớp mọi filter phía trên, KHÔNG tính
+      // campaignStatus) — Customer Range trên client (validateListRangeAgainstTotal)
+      // và "Chọn tất cả N phù hợp bộ lọc" đều dựa vào đúng con số này, và
+      // resolveCustomerIdsByRange/resolveCustomerIdsByFilter (Locked authority)
+      // cũng KHÔNG biết gì về campaignStatus — đổi ý nghĩa "total" ở đây sẽ làm
+      // range/select-all lệch với dữ liệu server thật sự resolve khi submit.
+      total = data.length;
+      campaignSummary = summarizeCampaignMembership(data.map(kh => kh.id_khach_hang), membershipSet);
+
+      // campaignStatus là filter MỚI, tách biệt hoàn toàn khỏi total/scope ở
+      // trên — chỉ thu hẹp tập hiển thị + phân trang, không đụng "total".
+      data = data.filter(kh => matchesCampaignStatusFilter(kh.id_khach_hang, membershipSet, campaignStatus));
+      // CUSTOMER DATASET — cùng tinh thần campaignStatus: filter MỚI, không đụng
+      // "total" (đã tính ở trên trước khi áp dụng cả 2 filter này).
+      if (datasetId) data = data.filter(kh => datasetMembershipSet.has(kh.id_khach_hang));
+
+      filteredTotal = data.length;
+      paginatedData = data.slice(start, start + limit);
+    }
     // Badge/tooltip "Đã vào Campaign": chỉ query tên Campaign cho id CỦA TRANG
     // ĐANG HIỂN THỊ (tối đa `limit` dòng) đã có membership — 1 query duy nhất,
     // không tải toàn bộ CampaignMembership/Customer object nào khác về.
@@ -262,8 +309,11 @@ export async function PUT(request: NextRequest) {
     const user = await getCrmSessionUser();
     if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     const body = await request.json();
-    const [customers, projects, employees] = await Promise.all([getKhachHang(), getDuAn(), getNhanVien()]);
-    const current = customers.find(customer => customer.id_khach_hang === body.id_khach_hang);
+    // Batch 2 — point lookup (findKhachHangById, PG: findUnique thật) thay vì
+    // getKhachHang() nguyên bảng rồi .find() 1 dòng. projects/employees VẪN
+    // load đủ (2 bảng nhỏ, không đổi) — canManageCustomer/isDirectManager cần
+    // toàn bộ để check quyền, không phải chỉ 1 dòng.
+    const [current, projects, employees] = await Promise.all([findKhachHangById(body.id_khach_hang), getDuAn(), getNhanVien()]);
     if (!current) return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng' }, { status: 404 });
     if (!canManageCustomer(user, current, projects) && !isDirectManager(user, current, employees)) {
       return NextResponse.json({ success: false, error: 'Không có quyền cập nhật khách hàng' }, { status: 403 });
@@ -302,10 +352,13 @@ export async function DELETE(request: NextRequest) {
     const user = await getCrmSessionUser();
     if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     const { id } = await request.json();
-    const [customers, projects, employees, pipelines, campaignMemberships] = await Promise.all([
-      getKhachHang(), getDuAn(), getNhanVien(), getPipeline(), getCampaignMembershipCustomerRefs(),
+    // Batch 2 — point lookup thay vì getKhachHang() nguyên bảng. pipelines/
+    // campaignMemberships VẪN load đủ (customerDeleteBlockReason dùng chung
+    // cho single-delete lẫn bulk-delete, đổi signature/scope của nó ngoài
+    // phạm vi Batch 2 — xem Final Report mục "occurrences NOT converted").
+    const [current, projects, employees, pipelines, campaignMemberships] = await Promise.all([
+      findKhachHangById(id), getDuAn(), getNhanVien(), getPipeline(), getCampaignMembershipCustomerRefs(),
     ]);
-    const current = customers.find(customer => customer.id_khach_hang === id);
     if (!current) return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng' }, { status: 404 });
     if (!canManageCustomer(user, current, projects) && !isDirectManager(user, current, employees)) {
       return NextResponse.json({ success: false, error: 'Không có quyền xóa khách hàng' }, { status: 403 });

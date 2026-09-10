@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDuAn, getKhachHang, getNhanVien } from '@/lib/data-access';
+import { getDuAn, findKhachHangById, getNhanVien } from '@/lib/data-access';
 import { canManageCustomer, getCrmSessionUser, isDirectManager, isTelesale } from '@/lib/crm-auth';
 import { recordInteractionTransactional, TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import type { MucDoQuanTam, TrangThaiChamSoc } from '@/lib/types';
@@ -21,8 +21,11 @@ export async function POST(request: NextRequest) {
     if (body.muc_do_quan_tam && !INTERESTS.includes(body.muc_do_quan_tam)) {
       return NextResponse.json({ success: false, error: 'Mức độ quan tâm không hợp lệ' }, { status: 400 });
     }
-    const [customers, projects, employees] = await Promise.all([getKhachHang(), getDuAn(), getNhanVien()]);
-    const customer = customers.find(item => item.id_khach_hang === body.customer_id);
+    // Batch 2 — point lookup (findKhachHangById) thay vì getKhachHang() nguyên
+    // bảng rồi .find() 1 dòng. projects/employees vẫn load đủ (2 bảng nhỏ) —
+    // canManageCustomer/isDirectManager + tìm quản lý trực tiếp bên dưới cần
+    // toàn bộ, không phải chỉ 1 dòng.
+    const [customer, projects, employees] = await Promise.all([findKhachHangById(body.customer_id), getDuAn(), getNhanVien()]);
     if (!customer) return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng' }, { status: 404 });
     const isAssignee = customer.telesale_phu_trach === user.ho_ten;
     if (!isAssignee && !canManageCustomer(user, customer, projects) && !isDirectManager(user, customer, employees)) {

@@ -126,12 +126,25 @@ test('khach-hang/page.tsx: label Dataset count nằm TRONG cùng khối {dataset
   assert.ok(selectIdx > blockStart && labelIdx > selectIdx, 'label count phải nằm ngay sau <select> Dataset, trong cùng khối điều kiện');
 });
 
-test('route.ts (GET /api/khach-hang): filteredTotal (nguồn của Dataset count UX) tiếp tục kết hợp ĐÚNG cả campaignStatus lẫn datasetId — không regression từ milestone Dataset trước (giữ nguyên hành vi đã khoá)', () => {
+test('route.ts (GET /api/khach-hang): filteredTotal (nguồn của Dataset count UX) tiếp tục kết hợp ĐÚNG cả campaignStatus lẫn datasetId ở CẢ 2 nhánh PostgreSQL/Google Sheets — không regression từ milestone Dataset trước (giữ nguyên hành vi đã khoá)', () => {
   const src = readFileSync(resolve(KHACH_HANG_ROUTE_PATH), 'utf8');
+  // PostgreSQL: filteredWhere phải gộp CẢ campaignStatus (in/notIn membershipSet)
+  // lẫn datasetId (in datasetMembershipSet) vào CÙNG 1 mảng extraConditions
+  // (AND với baseWhere) — filteredTotal đếm trên filteredWhere này.
+  const campaignConditionIdx = src.indexOf('extraConditions.push({ id_khach_hang: { in: [...membershipSet] } });');
+  const datasetConditionIdx = src.indexOf('if (datasetId) extraConditions.push({ id_khach_hang: { in: [...datasetMembershipSet] } });');
+  const filteredWhereIdx = src.indexOf('const filteredWhere = extraConditions.length > 0');
+  assert.ok(campaignConditionIdx >= 0 && datasetConditionIdx > campaignConditionIdx && filteredWhereIdx > datasetConditionIdx,
+    'PostgreSQL: filteredWhere phải gộp CẢ campaignStatus lẫn datasetId vào extraConditions');
+  const pgFilteredTotalIdx = src.indexOf('filteredTotal = filteredTotalCount;');
+  assert.ok(pgFilteredTotalIdx > filteredWhereIdx, 'PostgreSQL: filteredTotal phải gán từ count trên filteredWhere (đã gộp cả 2 filter)');
+  // Google Sheets: giữ nguyên thứ tự cũ — campaignStatus filter -> datasetId
+  // filter -> filteredTotal (hành vi cũ 100%).
   const campaignFilterIdx = src.indexOf('data = data.filter(kh => matchesCampaignStatusFilter(');
   const datasetFilterIdx = src.indexOf('if (datasetId) data = data.filter(');
-  const filteredTotalIdx = src.indexOf('const filteredTotal = data.length;');
-  assert.ok(campaignFilterIdx >= 0 && datasetFilterIdx > campaignFilterIdx && filteredTotalIdx > datasetFilterIdx);
+  const filteredTotalIdx = src.indexOf('filteredTotal = data.length;');
+  assert.ok(campaignFilterIdx >= 0 && datasetFilterIdx > campaignFilterIdx && filteredTotalIdx > datasetFilterIdx,
+    'Google Sheets: filteredTotal phải tính SAU cả campaignStatus lẫn datasetId filter');
 });
 
 test('regression: fetchData dependency array vẫn gồm cả campaignStatus và datasetFilter (không bị milestone này thu hẹp lại)', () => {

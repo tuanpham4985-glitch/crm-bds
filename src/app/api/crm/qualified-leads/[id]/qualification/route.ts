@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDuAn, getKhachHang, getNhanVien } from '@/lib/data-access';
+import { getDuAn, findKhachHangById, getNhanVien } from '@/lib/data-access';
 import { canManageCustomer, getCrmSessionUser, isDirectManager, isTelesale } from '@/lib/crm-auth';
 import { updateQualificationTransactional, TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import type { KhachHang } from '@/lib/types';
@@ -39,8 +39,10 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     if (!idempotencyKey) return NextResponse.json({ success: false, error: 'Thiếu idempotency_key' }, { status: 400 });
     const validationError = validateQualificationInput(body);
     if (validationError) return NextResponse.json({ success: false, error: validationError }, { status: 400 });
-    const [customers, projects, employees] = await Promise.all([getKhachHang(), getDuAn(), getNhanVien()]);
-    const customer = customers.find(item => item.id_khach_hang === id);
+    // Batch 2 — point lookup thay vì getKhachHang() nguyên bảng.
+    // projects/employees vẫn load đủ (canManageCustomer/isDirectManager +
+    // tìm quản lý trực tiếp bên dưới cần toàn bộ 2 bảng nhỏ này).
+    const [customer, projects, employees] = await Promise.all([findKhachHangById(id), getDuAn(), getNhanVien()]);
     if (!customer) return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng' }, { status: 404 });
     const assignee = customer.telesale_phu_trach === user.ho_ten;
     if (!assignee && !canManageCustomer(user, customer, projects) && !isDirectManager(user, customer, employees)) {

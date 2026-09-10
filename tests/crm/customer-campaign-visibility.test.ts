@@ -73,27 +73,55 @@ test('summarizeCampaignMembership: danh sách rỗng -> {0,0}, không lỗi', ()
 
 // --- B. Wiring: GET /api/khach-hang ---
 
-test('route.ts: GET dùng getCampaignMembershipCustomerRefs() ĐÚNG 1 lần trong Promise.all cùng getDuAn/getNhanVien/getKhachHang — KHÔNG query CampaignMembership riêng theo từng customer (N+1)', () => {
+test('route.ts: GET dùng getCampaignMembershipCustomerRefs() ĐÚNG 1 lần trong Promise.all cùng getDuAn/getNhanVien — KHÔNG query CampaignMembership riêng theo từng customer (N+1); nhánh PostgreSQL (Batch 2) KHÔNG còn load getKhachHang() nguyên bảng, nhánh Google Sheets vẫn giữ getKhachHang() (đã cached) y hệt cũ', () => {
   const src = readFileSync(resolve(ROUTE_PATH), 'utf8');
   const getStart = src.indexOf('export async function GET');
   const postStart = src.indexOf('export async function POST');
   const getBody = src.slice(getStart, postStart);
-  assert.match(getBody, /Promise\.all\(\[\s*getDuAn\(\), getNhanVien\(\), getKhachHang\(\), getCampaignMembershipCustomerRefs\(\),?\s*\]\)/);
+  // Batch 2 — Promise.all đầu GET KHÔNG còn kèm getKhachHang() (bỏ full-table
+  // load khỏi đường chung cho cả 2 nhánh) — GS fallback tự gọi getKhachHang()
+  // RIÊNG bên trong nhánh else, kiểm tra ở dưới.
+  assert.match(getBody, /Promise\.all\(\[\s*getDuAn\(\), getNhanVien\(\), getCampaignMembershipCustomerRefs\(\),?\s*\]\)/);
   assert.doesNotMatch(getBody, /allCustomers\.map[\s\S]{0,80}getCampaignMembership/, 'không được gọi truy vấn CampaignMembership bên trong .map/.forEach theo từng customer');
+  const pgBranchStart = getBody.indexOf("if (isPostgresEnabled('crm'))");
+  const elseBranchStart = getBody.indexOf('} else {', pgBranchStart);
+  assert.ok(pgBranchStart >= 0 && elseBranchStart > pgBranchStart, 'phải tìm được nhánh if (isPostgresEnabled) / else trong GET');
+  const pgBranchBody = getBody.slice(pgBranchStart, elseBranchStart);
+  assert.doesNotMatch(pgBranchBody, /getKhachHang\(\)/, 'nhánh PostgreSQL KHÔNG được load nguyên bảng qua getKhachHang() — đây chính là mục tiêu Batch 2 (WHERE/count/skip/take thật trên DB)');
+  const elseBranchBody = getBody.slice(elseBranchStart);
+  assert.match(elseBranchBody, /const allCustomers = await getKhachHang\(\);/, 'nhánh Google Sheets vẫn phải gọi getKhachHang() (hành vi cũ, giữ nguyên)');
 });
 
-test('route.ts: "total" (dùng cho Customer Range + "Chọn tất cả") được tính TRƯỚC khi áp campaignStatus filter — campaignStatus KHÔNG được làm lệch total khỏi scope search/nguon/sale/du_an/date hiện có', () => {
+test('route.ts: "total" (dùng cho Customer Range + "Chọn tất cả") được tính ĐỘC LẬP với campaignStatus filter ở CẢ 2 nhánh — PostgreSQL đếm trên baseWhere (không gồm campaignStatus/datasetId), Google Sheets gán total TRƯỚC khi filter theo campaignStatus — campaignStatus KHÔNG được làm lệch total khỏi scope search/nguon/sale/du_an/date hiện có', () => {
   const src = readFileSync(resolve(ROUTE_PATH), 'utf8');
-  const totalIdx = src.indexOf('const total = data.length;');
-  const filterIdx = src.indexOf('data = data.filter(kh => matchesCampaignStatusFilter(');
-  assert.ok(totalIdx >= 0 && filterIdx > totalIdx, 'const total phải được gán TRƯỚC dòng filter theo campaignStatus');
+  // PostgreSQL: total phải đếm bằng baseWhere (KHÔNG áp campaignStatus/datasetId
+  // — 2 filter đó chỉ nằm trong filteredWhere, tách biệt hoàn toàn).
+  const pgBaseCountIdx = src.indexOf('prisma.khachHang.count({ where: baseWhere })');
+  const pgTotalAssignIdx = src.indexOf('total = totalCount;');
+  assert.ok(pgBaseCountIdx >= 0 && pgTotalAssignIdx > pgBaseCountIdx,
+    'PostgreSQL: total phải gán từ totalCount, là kết quả count trên baseWhere (không gồm campaignStatus/datasetId)');
+  // Google Sheets: total = data.length (hành vi cũ) phải đứng TRƯỚC dòng
+  // filter theo campaignStatus.
+  const gsTotalIdx = src.indexOf('total = data.length;');
+  const gsFilterIdx = src.indexOf('data = data.filter(kh => matchesCampaignStatusFilter(');
+  assert.ok(gsTotalIdx >= 0 && gsFilterIdx > gsTotalIdx, 'Google Sheets: total phải được gán TRƯỚC dòng filter theo campaignStatus');
 });
 
-test('route.ts: campaignSummary tính trên CÙNG scope với "total" (trước khi áp campaignStatus) — 3 số Tổng/Đã vào/Chưa vào không đổi theo tab đang chọn', () => {
+test('route.ts: campaignSummary tính trên CÙNG scope với "total" (KHÔNG áp campaignStatus) ở CẢ 2 nhánh — 3 số Tổng/Đã vào/Chưa vào không đổi theo tab đang chọn', () => {
   const src = readFileSync(resolve(ROUTE_PATH), 'utf8');
-  const summaryIdx = src.indexOf('const campaignSummary = summarizeCampaignMembership(');
-  const filterIdx = src.indexOf('data = data.filter(kh => matchesCampaignStatusFilter(');
-  assert.ok(summaryIdx >= 0 && summaryIdx < filterIdx, 'campaignSummary phải tính TRƯỚC khi data bị lọc lại theo campaignStatus');
+  // PostgreSQL: inCampaignCount phải đếm trên baseWhere AND membership —
+  // KHÔNG dùng filteredWhere (đã gồm campaignStatus/datasetId), nếu không sẽ
+  // tạo vòng lặp tự tham chiếu vô nghĩa (summary phụ thuộc chính campaignStatus
+  // nó đang mô tả).
+  const inCampaignCountIdx = src.indexOf('{ AND: [baseWhere, { id_khach_hang: { in: [...membershipSet] } }] }');
+  const campaignSummaryPgIdx = src.indexOf('campaignSummary = { inCampaign: inCampaignCount, notInCampaign: total - inCampaignCount };');
+  assert.ok(inCampaignCountIdx >= 0 && campaignSummaryPgIdx > inCampaignCountIdx,
+    'PostgreSQL: campaignSummary phải gán từ inCampaignCount (đếm trên baseWhere AND membership) và total (cũng trên baseWhere)');
+  // Google Sheets: campaignSummary (hành vi cũ) phải tính TRƯỚC khi data bị
+  // lọc lại theo campaignStatus.
+  const gsSummaryIdx = src.indexOf('campaignSummary = summarizeCampaignMembership(');
+  const gsFilterIdx = src.indexOf('data = data.filter(kh => matchesCampaignStatusFilter(');
+  assert.ok(gsSummaryIdx >= 0 && gsSummaryIdx < gsFilterIdx, 'Google Sheets: campaignSummary phải tính TRƯỚC khi data bị lọc lại theo campaignStatus');
 });
 
 test('route.ts: response trả cả filteredTotal (đếm SAU campaignStatus, dùng phân trang bảng) lẫn total (KHÔNG đổi ý nghĩa) — client có đủ cả 2 con số', () => {

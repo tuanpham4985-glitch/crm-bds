@@ -340,6 +340,33 @@ export function getKhachHang(): Promise<KhachHang[]> {
   });
 }
 
+/**
+ * Batch 2 — điểm tra cứu 1 khách hàng theo id, thay cho pattern
+ * "(await getKhachHang()).find(...)" từng lặp lại ở nhiều route write/
+ * validation (telesale interaction/assign/handoff, qualification,
+ * khach-hang PUT/DELETE). PG: findUnique thật (KHÔNG qua unstable_cache —
+ * point lookup theo id cần tươi ngay, không cần cache 30s của danh sách
+ * đầy đủ). GS: giữ NGUYÊN hành vi cũ — gọi getKhachHang() (đã cached ở
+ * mem-cache.ts, cùng cơ chế chống "Google Sheets read amplification") rồi
+ * .find() trong JS, KHÔNG gọi getCustomerRepository().findById() cho nhánh
+ * GS vì repo đó tự đọc GS.getKhachHang() RAW (google-sheets.ts), bỏ qua lớp
+ * cache của data-access.ts — sẽ tăng số lần gọi Google Sheets API thật cho
+ * mỗi lần tra cứu, đúng root cause đã audit + fix trước đây.
+ */
+export async function findKhachHangById(id: string): Promise<KhachHang | null> {
+  if (!isPostgresEnabled('crm')) {
+    const all = await getKhachHang();
+    return all.find(kh => kh.id_khach_hang === id) ?? null;
+  }
+  try {
+    return await getCustomerRepository().findById(id);
+  } catch (e) {
+    console.error('[PG:crm:findKhachHangById] error, falling back to GS:', e instanceof Error ? e.message : e);
+    const all = await getKhachHang();
+    return all.find(kh => kh.id_khach_hang === id) ?? null;
+  }
+}
+
 export function addKhachHang(data: KhachHang): Promise<void> {
   revalidateTag('kh', {}); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.addKhachHang(data);

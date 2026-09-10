@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDuAn, getKhachHang, getNhanVien } from '@/lib/data-access';
+import { getDuAn, findKhachHangById, getNhanVien } from '@/lib/data-access';
 import { canManageCustomer, getCrmSessionUser, isDirectManager, isTelesale } from '@/lib/crm-auth';
 import { assignTelesaleTransactional, TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 
@@ -9,8 +9,10 @@ export async function POST(request: NextRequest) {
   try {
     const { customer_id, telesale } = await request.json() as { customer_id?: string; telesale?: string };
     if (!customer_id) return NextResponse.json({ success: false, error: 'Thiếu customer_id' }, { status: 400 });
-    const [customers, projects, employees] = await Promise.all([getKhachHang(), getDuAn(), getNhanVien()]);
-    const customer = customers.find(item => item.id_khach_hang === customer_id);
+    // Batch 2 — point lookup thay vì getKhachHang() nguyên bảng.
+    // projects/employees vẫn load đủ (canManageCustomer/isDirectManager +
+    // tìm target telesale bên dưới cần toàn bộ 2 bảng nhỏ này).
+    const [customer, projects, employees] = await Promise.all([findKhachHangById(customer_id), getDuAn(), getNhanVien()]);
     if (!customer) return NextResponse.json({ success: false, error: 'Không tìm thấy khách hàng' }, { status: 404 });
     if (!canManageCustomer(user, customer, projects) && !isDirectManager(user, customer, employees)) {
       return NextResponse.json({ success: false, error: 'Bạn không có quyền phân data khách này' }, { status: 403 });
