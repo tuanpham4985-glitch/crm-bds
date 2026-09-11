@@ -21,7 +21,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { bucketOf, CSKH_BUCKETS, isOverdue, type MembershipBucket } from '@/lib/campaign-cskh-bucket';
 import {
   isMembershipAssigned, matchesMembershipQueueFilter, membershipAssignmentBreakdown, resolveMembershipRange,
-  type MembershipAssignmentFilter,
+  summarizeMembersBySale, type MembershipAssignmentFilter, type SaleProgressSummary,
 } from '@/lib/campaign-cskh-range';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
@@ -51,6 +51,24 @@ const statusColors: Record<string, { bg: string; color: string }> = {
   'Sai số': { bg: '#fdf2f8', color: '#be185d' },
 };
 
+// CSKH Sale Progress (V1) — LOCKED mapping (ChatGPT Architecture Review):
+// 'Gọi lại hôm nay' CHỈ gộp vào 'Đang chăm sóc' ở summary này, KHÔNG đổi
+// bucketOf()/detail queue. `buckets` = filter additive dùng cho drill-down
+// (matchesMembershipQueueFilter, campaign-cskh-range.ts) — "Đã giao" không
+// set buckets (không giới hạn bucket khi click).
+const SALE_PROGRESS_METRICS: readonly {
+  key: 'assigned' | 'unprocessed' | 'inProgress' | 'overdue' | 'interested' | 'completed';
+  label: string;
+  buckets?: MembershipBucket[];
+}[] = [
+  { key: 'assigned', label: 'Đã giao' },
+  { key: 'unprocessed', label: 'Chưa xử lý', buckets: ['Chưa gọi'] },
+  { key: 'inProgress', label: 'Đang chăm sóc', buckets: ['Đang chăm sóc', 'Gọi lại hôm nay'] },
+  { key: 'overdue', label: 'Quá lịch', buckets: ['Quá lịch'] },
+  { key: 'interested', label: 'Quan tâm', buckets: ['Quan tâm'] },
+  { key: 'completed', label: 'Hoàn tất/KPH', buckets: ['Hoàn tất / Không phù hợp'] },
+];
+
 function parseList<T>(raw?: string | null): T[] {
   if (!raw) return [];
   try { const value: unknown = JSON.parse(raw); return Array.isArray(value) ? value as T[] : []; } catch { return []; }
@@ -78,6 +96,11 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   const [bucketFilter, setBucketFilter] = useState<MembershipBucket | ''>('');
   // Addendum — "Tất cả | Chưa chia | Đã chia": lọc thêm theo CampaignMembership.telesale_id.
   const [assignmentFilter, setAssignmentFilter] = useState<MembershipAssignmentFilter>('all');
+  // CSKH Sale Progress (V1) — drill-down từ bảng "Tiến độ Sale": click 1 ô
+  // metric của 1 Sale set filter này (telesaleId exact-match + buckets gộp,
+  // xem campaign-cskh-range.ts). Độc lập với search/bucketFilter/assignmentFilter
+  // — click lại ĐÚNG ô đang active để tắt (cùng convention toggle với bucketFilter).
+  const [summaryFilter, setSummaryFilter] = useState<{ telesaleId: string; telesaleName: string; metricLabel: string; buckets?: MembershipBucket[] } | null>(null);
   const [notice, setNotice] = useState<{ type: 'ok' | 'error' | 'warn'; text: string } | null>(null);
   const [interactionMember, setInteractionMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [qualificationMember, setQualificationMember] = useState<CampaignMembershipWithCustomer | null>(null);
@@ -131,8 +154,11 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // server thật sự resolve khi bấm "Chia đều" (không có 2 định nghĩa filter
   // lệch nhau). "members" đã sort created_at asc từ server (getCampaignMembersWithCustomers) — đây là thứ tự "Từ/Đến" tham chiếu.
   const filtered = useMemo(
-    () => members.filter(member => matchesMembershipQueueFilter(member, { search, bucket: bucketFilter, assignment: assignmentFilter })),
-    [members, search, bucketFilter, assignmentFilter],
+    () => members.filter(member => matchesMembershipQueueFilter(member, {
+      search, bucket: bucketFilter, assignment: assignmentFilter,
+      telesaleId: summaryFilter?.telesaleId, buckets: summaryFilter?.buckets,
+    })),
+    [members, search, bucketFilter, assignmentFilter, summaryFilter],
   );
 
   // CSKH TABLE UX — 50/trang, reset về trang 1 khi Campaign/search/bucket/
@@ -142,7 +168,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // tách biệt khỏi rangeResult/rangeBreakdown/stats/assignmentSummary bên dưới
   // (những cái đó vẫn phải tính trên "members"/"filtered" toàn bộ).
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [campaignId, search, bucketFilter, assignmentFilter]);
+  useEffect(() => { setPage(1); }, [campaignId, search, bucketFilter, assignmentFilter, summaryFilter]);
   const pageWindow = useMemo(() => paginate(filtered, page, MEMBERS_PAGE_SIZE), [filtered, page]);
 
   const stats = useMemo(() => {
@@ -157,6 +183,12 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // thấy đúng bức tranh tổng, độc lập với việc đang lọc gì.
   const assignmentSummary = useMemo(() => membershipAssignmentBreakdown(members), [members]);
 
+  // CSKH Sale Progress (V1) — cùng tinh thần assignmentSummary: tính trên
+  // TOÀN "members" (không phụ thuộc search/bucketFilter/assignmentFilter/
+  // summaryFilter hiện tại), derive-only từ dữ liệu ĐÃ fetch sẵn cho detail
+  // queue — KHÔNG fetch/query thêm (NEON_TRANSFER_AUDIT: zero incremental cost).
+  const saleProgress = useMemo(() => summarizeMembersBySale(members), [members]);
+
   const replaceMember = (updated: CampaignMembershipWithCustomer) => {
     setMembers(current => current.map(item => item.id === updated.id ? updated : item));
     setHistoryMember(current => current?.id === updated.id ? updated : current);
@@ -164,6 +196,17 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
 
   function canActOn(member: CampaignMembershipWithCustomer): boolean {
     return canActOnMembership(user, isAdmin, member, selectedCampaign, employees);
+  }
+
+  // CSKH Sale Progress (V1) drill-down — click lại ĐÚNG ô (Sale + metric)
+  // đang active để tắt filter (cùng convention toggle với bucketFilter phía
+  // trên). Không fetch lại — chỉ đổi filter áp lên `members` đã có sẵn.
+  function toggleSummaryFilter(sale: SaleProgressSummary, metricLabel: string, buckets?: MembershipBucket[]) {
+    setSummaryFilter(current =>
+      current && current.telesaleId === sale.telesaleId && current.metricLabel === metricLabel
+        ? null
+        : { telesaleId: sale.telesaleId, telesaleName: sale.telesaleName, metricLabel, buckets },
+    );
   }
 
   function openInteraction(member: CampaignMembershipWithCustomer) {
@@ -362,6 +405,59 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
           </button>
         ))}
       </div>
+
+      {/* CSKH Sale Progress (V1) — chỉ Admin/Leader phụ trách Campaign này
+          (canManageThisCampaign, cùng authority với action "Phân Sale" phía
+          trên) mới thấy bảng cross-Sale — Sale/CSKH thường không được thấy
+          tiến độ của Sale khác (khớp /api/campaigns/[id]/members: nhánh
+          non-manager chỉ trả về đúng membership của chính mình). Derive-only
+          từ `members` đã fetch sẵn — KHÔNG gọi API/DB nào thêm. */}
+      {canManageThisCampaign && saleProgress.length > 0 && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: 13.5 }}>Tiến độ Sale</strong>
+            {summaryFilter && (
+              <span style={{ fontSize: 12, color: 'var(--text-label)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                Đang lọc: <strong style={{ color: 'var(--text-title)' }}>{summaryFilter.telesaleName}</strong> · {summaryFilter.metricLabel}
+                <button className="btn btn-ghost btn-sm" onClick={() => setSummaryFilter(null)}>Xóa lọc</button>
+              </span>
+            )}
+          </div>
+          <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+            <table className="data-table cskh-compact" style={{ minWidth: 780 }}>
+              <thead><tr>
+                <th>Sale CSKH</th>
+                {SALE_PROGRESS_METRICS.map(metric => <th key={metric.key} style={{ textAlign: 'right' }}>{metric.label}</th>)}
+                <th style={{ width: 140 }}>Tiến độ</th>
+              </tr></thead>
+              <tbody>{saleProgress.map(sale => (
+                <tr key={sale.telesaleId} style={summaryFilter?.telesaleId === sale.telesaleId ? { background: '#f8fafc' } : undefined}>
+                  <td style={{ fontWeight: 600 }}>{sale.telesaleName}</td>
+                  {SALE_PROGRESS_METRICS.map(metric => {
+                    const active = summaryFilter?.telesaleId === sale.telesaleId && summaryFilter?.metricLabel === metric.label;
+                    return <td key={metric.key} style={{ textAlign: 'right' }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontWeight: active ? 750 : 500, color: active ? 'var(--primary)' : undefined, textDecoration: active ? 'underline' : undefined }}
+                        onClick={() => toggleSummaryFilter(sale, metric.label, metric.buckets)}
+                      >{sale[metric.key]}</button>
+                    </td>;
+                  })}
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#e2e8f0', overflow: 'hidden' }}>
+                        <div style={{ width: `${sale.progressPercent}%`, height: '100%', background: 'var(--primary)' }} />
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 650, minWidth: 34, textAlign: 'right' }}>{sale.progressPercent}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="card" style={{ padding: 12, marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <div className="search-wrapper" style={{ flex: 1, minWidth: 240 }}><Search size={15} className="search-icon" /><input className="form-input" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tìm tên, số điện thoại hoặc Sale..." /></div>

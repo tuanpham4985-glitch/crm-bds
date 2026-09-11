@@ -6,7 +6,7 @@
 // Module thuần (không đụng DB/next-headers) để UI (preview ngay khi gõ số,
 // non-authoritative) và server (resolve thật trước khi ghi, campaign.ts) dùng
 // chung 1 định nghĩa — tránh 2 nơi tính khác nhau -> off-by-one/lệch kết quả.
-import { bucketOf } from './campaign-cskh-bucket';
+import { bucketOf, type MembershipBucket } from './campaign-cskh-bucket';
 import { resolveListRange, type ListRangeInput, type ListRangeResult } from './list-range';
 
 // Addendum — Assigned Customer Visibility + Overlap Protection: authority
@@ -47,6 +47,20 @@ export interface MembershipQueueFilter {
   bucket?: string;
   /** Filter "Tất cả | Chưa chia | Đã chia" — bỏ qua/'all' = không lọc theo assignment. */
   assignment?: MembershipAssignmentFilter;
+  /**
+   * CSKH Sale Progress (V1) drill-down — exact-match Sale identity theo
+   * CampaignMembership.telesale_id (KHÔNG dùng telesale_name/fuzzy search,
+   * tránh trùng tên hiển thị của 2 nhân viên khác nhau). Độc lập với `search`.
+   */
+  telesaleId?: string;
+  /**
+   * CSKH Sale Progress (V1) drill-down — additive multi-bucket match, dùng
+   * khi 1 cột summary (VD "Đang chăm sóc") gộp NHIỀU bucket gốc của
+   * bucketOf() (ở đây: 'Đang chăm sóc' + 'Gọi lại hôm nay') mà KHÔNG đổi ý
+   * nghĩa/single-value của `bucket` ở trên — 2 field độc lập, dùng riêng
+   * hoặc cùng lúc đều được (AND với nhau nếu cả 2 cùng có mặt).
+   */
+  buckets?: readonly MembershipBucket[];
 }
 
 export interface MembershipQueueFilterable extends MembershipAssignable {
@@ -65,10 +79,13 @@ export function matchesMembershipQueueFilter(
   const q = (filter.search || '').trim().toLowerCase();
   const matchesSearch = !q || [member.customer?.ten_KH, member.customer?.so_dien_thoai, member.telesale_name]
     .some(value => (value || '').toLowerCase().includes(q));
-  const matchesBucket = !filter.bucket || bucketOf(member, now) === filter.bucket;
+  const bucket = bucketOf(member, now);
+  const matchesBucket = !filter.bucket || bucket === filter.bucket;
+  const matchesBuckets = !filter.buckets || filter.buckets.length === 0 || filter.buckets.includes(bucket);
   const matchesAssignment = !filter.assignment || filter.assignment === 'all'
     || (filter.assignment === 'assigned' ? isMembershipAssigned(member) : !isMembershipAssigned(member));
-  return matchesSearch && matchesBucket && matchesAssignment;
+  const matchesTelesale = !filter.telesaleId || member.telesale_id === filter.telesaleId;
+  return matchesSearch && matchesBucket && matchesBuckets && matchesAssignment && matchesTelesale;
 }
 
 // REMEDIATION (Customer Range Selection): validate+slice thuần chuyển sang
@@ -80,3 +97,83 @@ export function matchesMembershipQueueFilter(
 export type MembershipRangeInput = ListRangeInput;
 export type MembershipRangeResult<T> = ListRangeResult<T>;
 export const resolveMembershipRange = resolveListRange;
+
+// ── CSKH Sale Progress (V1) ────────────────────────────────────────────────
+// Bảng "Tiến độ Sale" trong CampaignCskhWorkQueue — audit đã xác nhận: aggregate
+// CLIENT-SIDE từ đúng `members` (CampaignMembership) đã fetch sẵn cho detail
+// queue, KHÔNG fetch/query thêm (tránh tái tạo vấn đề Neon Network Transfer đã
+// xử lý ở KhachHang/attendance). Semantics LOCKED theo ChatGPT Architecture
+// Review — KHÔNG tạo predicate cạnh tranh với bucketOf()/isMembershipAssigned():
+//   - assigned    = isMembershipAssigned(member) (telesale_id, KHÔNG dùng
+//                   assignment_status — cùng authority với membershipAssignmentBreakdown).
+//   - unprocessed = assigned && bucketOf() === 'Chưa gọi'.
+//   - inProgress  = assigned && bucketOf() IN ('Đang chăm sóc', 'Gọi lại hôm nay')
+//                   — GỘP 2 bucket gốc CHỈ ở summary này, KHÔNG đổi bucketOf()/
+//                   detail queue.
+//   - overdue     = assigned && bucketOf() === 'Quá lịch'.
+//   - interested  = assigned && bucketOf() === 'Quan tâm'.
+//   - completed   = assigned && bucketOf() === 'Hoàn tất / Không phù hợp'.
+//   - processed   = assigned - unprocessed (Quá lịch/Quan tâm/Hoàn tất đều tính
+//                   là đã xử lý — chỉ 'Chưa gọi' mới là chưa xử lý).
+//   - progressPercent = assigned > 0 ? round(processed / assigned * 100) : 0.
+export interface SaleProgressSummary {
+  telesaleId: string;
+  telesaleName: string;
+  assigned: number;
+  unprocessed: number;
+  inProgress: number;
+  overdue: number;
+  interested: number;
+  completed: number;
+  processed: number;
+  progressPercent: number;
+}
+
+/**
+ * Group theo telesale_id (identity đáng tin cậy — KHÔNG group theo
+ * telesale_name để tránh trộn nhầm 2 nhân viên trùng tên hiển thị).
+ * telesale_name chỉ dùng làm display label (lấy giá trị không rỗng gần nhất
+ * gặp trong `members` cho cùng 1 telesale_id). KHÔNG mutate `members`.
+ * Output sort ổn định theo telesaleName rồi telesaleId (tie-break) — không
+ * ranking/scoring.
+ */
+export function summarizeMembersBySale(
+  members: readonly MembershipQueueFilterable[],
+  now: Date = new Date(),
+): SaleProgressSummary[] {
+  interface Accum {
+    telesaleName: string;
+    assigned: number; unprocessed: number; inProgress: number;
+    overdue: number; interested: number; completed: number;
+  }
+  const byTelesaleId = new Map<string, Accum>();
+  for (const member of members) {
+    if (!isMembershipAssigned(member)) continue;
+    const telesaleId = member.telesale_id as string;
+    const entry = byTelesaleId.get(telesaleId) ?? {
+      telesaleName: member.telesale_name || telesaleId,
+      assigned: 0, unprocessed: 0, inProgress: 0, overdue: 0, interested: 0, completed: 0,
+    };
+    entry.assigned += 1;
+    if (member.telesale_name) entry.telesaleName = member.telesale_name;
+    switch (bucketOf(member, now)) {
+      case 'Chưa gọi': entry.unprocessed += 1; break;
+      case 'Đang chăm sóc': case 'Gọi lại hôm nay': entry.inProgress += 1; break;
+      case 'Quá lịch': entry.overdue += 1; break;
+      case 'Quan tâm': entry.interested += 1; break;
+      case 'Hoàn tất / Không phù hợp': entry.completed += 1; break;
+    }
+    byTelesaleId.set(telesaleId, entry);
+  }
+  const rows: SaleProgressSummary[] = [...byTelesaleId.entries()].map(([telesaleId, entry]) => {
+    const processed = entry.assigned - entry.unprocessed;
+    return {
+      telesaleId, telesaleName: entry.telesaleName,
+      assigned: entry.assigned, unprocessed: entry.unprocessed, inProgress: entry.inProgress,
+      overdue: entry.overdue, interested: entry.interested, completed: entry.completed,
+      processed, progressPercent: entry.assigned > 0 ? Math.round((processed / entry.assigned) * 100) : 0,
+    };
+  });
+  rows.sort((a, b) => a.telesaleName.localeCompare(b.telesaleName) || a.telesaleId.localeCompare(b.telesaleId));
+  return rows;
+}

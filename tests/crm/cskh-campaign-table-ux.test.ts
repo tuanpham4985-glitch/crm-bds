@@ -81,7 +81,10 @@ test('CampaignCskhWorkQueue.tsx: pageWindow = paginate(filtered, page, MEMBERS_P
 
 test('CampaignCskhWorkQueue.tsx: "filtered" useMemo KHÔNG bị đổi bởi pagination (vẫn members.filter(...) y nguyên) — khoá cùng regex với campaign-range-distribution.test.ts để 2 test không lệch nhau', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  assert.match(src, /const filtered = useMemo\(\s*\(\) => members\.filter\(member => matchesMembershipQueueFilter\(member, \{ search, bucket: bucketFilter, assignment: assignmentFilter \}\)\)/);
+  // CSKH Sale Progress (V1) mở rộng thêm telesaleId/buckets (drill-down) vào
+  // ĐÚNG useMemo này — vẫn members.filter(member => matchesMembershipQueueFilter(...)),
+  // KHÔNG viết lại pagination hay tạo filter riêng thứ 2.
+  assert.match(src, /const filtered = useMemo\(\s*\(\) => members\.filter\(member => matchesMembershipQueueFilter\(member, \{\s*search, bucket: bucketFilter, assignment: assignmentFilter,/);
 });
 
 test('CampaignCskhWorkQueue.tsx: stats/assignmentSummary VẪN tính trên "members" (TOÀN campaign) — không bị đổi sang "filtered" hay "pageWindow.items" bởi pagination', () => {
@@ -101,9 +104,12 @@ test('CampaignCskhWorkQueue.tsx: MembershipTable nhận members={pageWindow.item
   assert.match(src, /members=\{pageWindow\.items\}/);
 });
 
-test('CampaignCskhWorkQueue.tsx: reset về trang 1 khi campaignId/search/bucketFilter/assignmentFilter đổi (dataset "filtered" đổi) — không giữ trang cũ sai nghĩa', () => {
+test('CampaignCskhWorkQueue.tsx: reset về trang 1 khi campaignId/search/bucketFilter/assignmentFilter/summaryFilter đổi (dataset "filtered" đổi) — không giữ trang cũ sai nghĩa', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  assert.match(src, /useEffect\(\(\) => \{ setPage\(1\); \}, \[campaignId, search, bucketFilter, assignmentFilter\]\);/);
+  // CSKH Sale Progress (V1) thêm summaryFilter (drill-down) vào deps — "filtered"
+  // cũng đổi theo summaryFilter (xem test filtered useMemo ở trên) nên trang
+  // phải reset cùng lúc, không phải regression.
+  assert.match(src, /useEffect\(\(\) => \{ setPage\(1\); \}, \[campaignId, search, bucketFilter, assignmentFilter, summaryFilter\]\);/);
 });
 
 test('CampaignCskhWorkQueue.tsx: STT hiển thị = startIndex + idx + 1 (tiếp tục qua các trang, VD trang 2 bắt đầu 51) — không phải idx + 1 (sẽ reset về 1 mỗi trang)', () => {
@@ -221,8 +227,13 @@ test('CampaignCskhWorkQueue.tsx: badge Bàn giao (Đã nhận/Chờ nhận) gi�
 
 test('CampaignCskhWorkQueue.tsx: thêm cột STT (mới) đứng đầu bảng, các cột dữ liệu nghiệp vụ cũ (Khách hàng/Sale CSKH/Trạng thái/Mức độ tiềm năng/Điểm-Xếp hạng/Lịch tiếp theo/Bàn giao/Thao tác) vẫn đủ, không bị xoá cột nào', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  const theadStart = src.indexOf('<thead><tr>');
-  const theadEnd = src.indexOf('</tr></thead>');
+  // CSKH Sale Progress (V1) thêm 1 bảng "Tiến độ Sale" (có <thead><tr> riêng)
+  // TRƯỚC MembershipTable trong source — scope tìm kiếm vào ĐÚNG hàm
+  // MembershipTable để không nhầm sang thead của bảng summary mới.
+  const memberTableStart = src.indexOf('function MembershipTable(');
+  assert.ok(memberTableStart >= 0);
+  const theadStart = src.indexOf('<thead><tr>', memberTableStart);
+  const theadEnd = src.indexOf('</tr></thead>', theadStart);
   const thead = src.slice(theadStart, theadEnd);
   assert.match(thead, />STT<\/th>/);
   assert.match(thead, />Khách hàng<\/th>/);
@@ -253,8 +264,12 @@ test('globals.css: .data-table.cskh-compact thead th / tbody td co padding xuố
 
 test('CampaignCskhWorkQueue.tsx: width hint theo đúng thứ tự ưu tiên — STT/Bàn giao rất hẹp (<=76px), Trạng thái/Mức độ tiềm năng/Điểm-Xếp hạng/Lịch tiếp theo hẹp (<=120px), Khách hàng/Sale CSKH vừa, Thao tác không set width cứng lớn (giảm từ 230 xuống <=160, dựa vào flexWrap để không ép cột rộng)', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  const theadStart = src.indexOf('<thead><tr>');
-  const theadEnd = src.indexOf('</tr></thead>');
+  // CSKH Sale Progress (V1) thêm 1 bảng "Tiến độ Sale" riêng (thead riêng)
+  // TRƯỚC MembershipTable trong source — scope vào ĐÚNG hàm MembershipTable.
+  const memberTableStart = src.indexOf('function MembershipTable(');
+  assert.ok(memberTableStart >= 0);
+  const theadStart = src.indexOf('<thead><tr>', memberTableStart);
+  const theadEnd = src.indexOf('</tr></thead>', theadStart);
   const thead = src.slice(theadStart, theadEnd);
   const widthOf = (label: string): number => {
     const labelIdx = thead.indexOf(`>${label}<`);

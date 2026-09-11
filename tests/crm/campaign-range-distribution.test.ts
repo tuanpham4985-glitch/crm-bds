@@ -278,9 +278,18 @@ test('campaign.ts + distribute route: không có bất kỳ lệnh gọi crmHand
 // Addendum (Assigned Customer Visibility) mở rộng filter/request với field
 // "assignment" — cập nhật các assertion dưới đây theo đúng cấu trúc mới,
 // không phải regression.
-test('CampaignCskhWorkQueue.tsx: filtered dùng matchesMembershipQueueFilter (module dùng chung với server), kèm assignmentFilter (addendum) — không còn tự viết search/bucket filter riêng (tránh lệch với server)', () => {
+// CSKH Sale Progress (V1) mở rộng thêm telesaleId/buckets (drill-down từ
+// bảng Tiến độ Sale, xem campaign-cskh-sale-progress.test.ts) — cùng tinh
+// thần: assertion cập nhật theo cấu trúc filter object mới, KHÔNG phải
+// regression (matchesMembershipQueueFilter vẫn là nguồn filter DUY NHẤT).
+test('CampaignCskhWorkQueue.tsx: filtered dùng matchesMembershipQueueFilter (module dùng chung với server), kèm assignmentFilter (addendum) + telesaleId/buckets (CSKH Sale Progress drill-down) — không còn tự viết search/bucket filter riêng (tránh lệch với server)', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  assert.match(src, /const filtered = useMemo\(\s*\(\) => members\.filter\(member => matchesMembershipQueueFilter\(member, \{ search, bucket: bucketFilter, assignment: assignmentFilter \}\)\)/);
+  const fnStart = src.indexOf('const filtered = useMemo(');
+  assert.ok(fnStart >= 0);
+  const fnBody = src.slice(fnStart, fnStart + 400);
+  assert.match(fnBody, /members\.filter\(member => matchesMembershipQueueFilter\(member, \{/, 'phải reuse matchesMembershipQueueFilter, không viết lại filter');
+  assert.match(fnBody, /search, bucket: bucketFilter, assignment: assignmentFilter,/, 'phải giữ NGUYÊN 3 field filter gốc (search/bucket/assignment)');
+  assert.match(fnBody, /telesaleId: summaryFilter\?\.telesaleId, buckets: summaryFilter\?\.buckets,/, 'phải merge drill-down filter (CSKH Sale Progress) vào ĐÚNG useMemo này, không tạo useMemo/filter riêng thứ 2');
 });
 
 test('CampaignCskhWorkQueue.tsx: distributeRange() gửi membership_range (from/to/search/bucket/assignment) + mode round_robin + telesale_names = TOÀN BỘ eligibleSales (chia đều tự động, không cần Admin/Leader tick từng Sale) tới ĐÚNG POST /api/campaigns/[id]/distribute hiện có', () => {
