@@ -15,7 +15,29 @@
 
 import type { Prisma } from '../generated/prisma/client';
 import type { CrmSessionUser } from './crm-auth';
-import type { DuAn, NhanVien } from './types';
+import type { DuAn, NhanVien, KhachHang } from './types';
+import type { CustomerAssignmentFields, CustomerDashboardFields } from './repository';
+
+// NEON_TRANSFER_AUDIT P0 — narrow-projection mappers dùng bởi GS fallback
+// path của getKhachHangCrmAccessFields()/getKhachHangDashboardFields()
+// (data-access.ts): khi Postgres tắt hoặc lỗi, rút gọn KhachHang đầy đủ (đã
+// có sẵn từ getKhachHang(), cached) xuống đúng field consumer cần — thay vì
+// gọi lại full findAll(). Đặt ở đây (thuần, không đụng Prisma/next runtime)
+// để test trực tiếp được, không cần load data-access.ts (đụng Prisma client
+// generated → lỗi môi trường compile-verify đã biết, không liên quan code).
+export function toAssignmentFields(kh: KhachHang): CustomerAssignmentFields {
+  return {
+    telesale_phu_trach: kh.telesale_phu_trach,
+    sale_nhan_khach: kh.sale_nhan_khach,
+    sale_phu_trach: kh.sale_phu_trach,
+    du_an: kh.du_an,
+    trang_thai_ban_giao: kh.trang_thai_ban_giao,
+  };
+}
+
+export function toDashboardFields(kh: KhachHang): CustomerDashboardFields {
+  return { nguon: kh.nguon, sale_phu_trach: kh.sale_phu_trach, ngay_tao: kh.ngay_tao };
+}
 
 export interface KhachHangListFilters {
   id?: string;

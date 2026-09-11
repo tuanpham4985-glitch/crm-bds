@@ -21,11 +21,14 @@ export class PostgresAttendanceOutsideRepository
     return row ? toChamCongNgoai(row) : null;
   }
 
-  async countPending(employeeId?: string): Promise<number> {
+  async countPending(employeeId?: string, qlTrucTiep?: string, excludeEmployeeId?: string): Promise<number> {
     return prisma.chamCongNgoai.count({
       where: {
         trang_thai: 'cho_duyet',
-        ...(employeeId ? { id_nhan_vien: employeeId } : {}),
+        ...(employeeId
+          ? { id_nhan_vien: employeeId }
+          : excludeEmployeeId ? { id_nhan_vien: { not: excludeEmployeeId } } : {}),
+        ...(qlTrucTiep ? { ql_truc_tiep: qlTrucTiep } : {}),
       },
     });
   }

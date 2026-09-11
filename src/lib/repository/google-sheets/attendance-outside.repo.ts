@@ -20,9 +20,9 @@ export class GoogleSheetsAttendanceOutsideRepository
     return all.find(c => c.id === id) ?? null;
   }
 
-  async countPending(employeeId?: string): Promise<number> {
-    const all = await getChamCongNgoai(employeeId);
-    return all.filter(c => c.trang_thai === 'cho_duyet').length;
+  async countPending(employeeId?: string, qlTrucTiep?: string, excludeEmployeeId?: string): Promise<number> {
+    const all = await getChamCongNgoai(employeeId, qlTrucTiep);
+    return all.filter(c => c.trang_thai === 'cho_duyet' && (!excludeEmployeeId || c.id_nhan_vien !== excludeEmployeeId)).length;
   }
 
   create(

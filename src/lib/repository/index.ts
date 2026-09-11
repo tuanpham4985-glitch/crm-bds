@@ -49,6 +49,8 @@ export type {
   ICrmRepositories,
   PayrollBatchEntry,
   BangLuongUpdateFields,
+  CustomerAssignmentFields,
+  CustomerDashboardFields,
 } from './interfaces';
 
 // ── Helpers ───────────────────────────────────────────────────

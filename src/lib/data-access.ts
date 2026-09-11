@@ -24,6 +24,8 @@ import {
   getAttendanceOutsideRepository,
   getPayrollRepository,
 } from './repository';
+import type { CustomerAssignmentFields, CustomerDashboardFields } from './repository';
+import { toAssignmentFields, toDashboardFields } from './khach-hang-list-query';
 import type {
   NhanVien, KhachHang, Pipeline, DuAn,
   CongViec, HopDong, ChamCongNgoai,
@@ -37,6 +39,13 @@ export type * from './google-sheets';
 // not in process memory — so they outlive container restarts.
 const _pgNhanVien  = unstable_cache(() => getEmployeeRepository().findAll(),  ['nv'],  { revalidate: 60,  tags: ['nv']  });
 const _pgKhachHang = unstable_cache(() => getCustomerRepository().findAll(),  ['kh'],  { revalidate: 30,  tags: ['kh']  });
+// NEON_TRANSFER_AUDIT P0 — narrow projections of KhachHang for crm-access/
+// dashboard (xem getKhachHangCrmAccessFields/getKhachHangDashboardFields
+// bên dưới). Payload nhỏ hơn nhiều so với _pgKhachHang (full 48 cột, gồm
+// text lịch sử không giới hạn độ dài) nên unstable_cache ở đây thực sự ghi
+// được (không rơi vào giới hạn >2MB/item đã audit chứng minh với _pgKhachHang).
+const _pgKhachHangAssignmentFields = unstable_cache(() => getCustomerRepository().findAssignmentFields(), ['kh-assignment-fields'], { revalidate: 30, tags: ['kh'] });
+const _pgKhachHangDashboardFields  = unstable_cache(() => getCustomerRepository().findDashboardFields(),  ['kh-dashboard-fields'],  { revalidate: 30, tags: ['kh'] });
 const _pgPipeline  = unstable_cache(() => getPipelineRepository().findAll(),  ['pl'],  { revalidate: 30,  tags: ['pl']  });
 const _pgCongViec  = unstable_cache(() => getCrmTaskRepository().findAll(),   ['cv'],  { revalidate: 30,  tags: ['cv']  });
 const _pgHopDong   = unstable_cache(() => getContractRepository().findAll(),  ['hd'],  { revalidate: 60,  tags: ['hd']  });
@@ -367,6 +376,58 @@ export async function findKhachHangById(id: string): Promise<KhachHang | null> {
   }
 }
 
+// NEON_TRANSFER_AUDIT P0 — narrow reads cho 2 consumer chỉ cần vài field
+// nhỏ (KHÔNG phải full KhachHang, xem CustomerAssignmentFields/
+// CustomerDashboardFields trong repository/interfaces.ts): /api/crm-access
+// (nhánh non-admin: telesale_phu_trach/sale_nhan_khach/sale_phu_trach/du_an
+// để tính projectNamesFromAssignments + trang_thai_ban_giao cho handoffCount)
+// và /api/dashboard (nguon/sale_phu_trach/ngay_tao cho các thống kê kh_*).
+// GS: vẫn giữ NGUYÊN cơ chế cache cũ của getKhachHang() (đã cached ở
+// mem-cache.ts) rồi rút gọn field trong JS — Sheets không có projection thật.
+export async function getKhachHangCrmAccessFields(): Promise<CustomerAssignmentFields[]> {
+  if (!isPostgresEnabled('crm')) {
+    const all = await getKhachHang();
+    return all.map(toAssignmentFields);
+  }
+  try {
+    return await _pgKhachHangAssignmentFields();
+  } catch (e) {
+    console.error('[PG:crm:getKhachHangCrmAccessFields] error, falling back to GS:', e instanceof Error ? e.message : e);
+    const all = await getKhachHang();
+    return all.map(toAssignmentFields);
+  }
+}
+
+export async function getKhachHangDashboardFields(): Promise<CustomerDashboardFields[]> {
+  if (!isPostgresEnabled('crm')) {
+    const all = await getKhachHang();
+    return all.map(toDashboardFields);
+  }
+  try {
+    return await _pgKhachHangDashboardFields();
+  } catch (e) {
+    console.error('[PG:crm:getKhachHangDashboardFields] error, falling back to GS:', e instanceof Error ? e.message : e);
+    const all = await getKhachHang();
+    return all.map(toDashboardFields);
+  }
+}
+
+// crm-access nhánh Admin: chỉ cần ĐẾM khách trang_thai_ban_giao === status
+// (mặc định 'Chờ xác nhận') — count() trên DB, KHÔNG load bất kỳ dòng nào.
+export async function getKhachHangHandoffPendingCount(status = 'Chờ xác nhận'): Promise<number> {
+  if (!isPostgresEnabled('crm')) {
+    const all = await getKhachHang();
+    return all.filter(kh => kh.trang_thai_ban_giao === status).length;
+  }
+  try {
+    return await getCustomerRepository().countByHandoffStatus(status);
+  } catch (e) {
+    console.error('[PG:crm:getKhachHangHandoffPendingCount] error, falling back to GS:', e instanceof Error ? e.message : e);
+    const all = await getKhachHang();
+    return all.filter(kh => kh.trang_thai_ban_giao === status).length;
+  }
+}
+
 export function addKhachHang(data: KhachHang): Promise<void> {
   revalidateTag('kh', {}); invalidate('gs:kh');
   if (!isPostgresEnabled('crm')) return GS.addKhachHang(data);
@@ -615,6 +676,28 @@ export function getChamCongNgoai(
   return withPgFallback('attendance', 'getChamCongNgoai',
     () => getAttendanceOutsideRepository().findAll(idNhanVien, qlTrucTiep),
     () => GS.getChamCongNgoai(idNhanVien, qlTrucTiep),
+  );
+}
+
+// NEON_TRANSFER_AUDIT P0 — /api/cham-cong-ngoai/pending-count chỉ cần 1 số
+// đếm, KHÔNG cần full rows (kể cả field hinh_anh base64) — dùng
+// countPending() (đã có sẵn trong repo, trước đây không ai gọi) thay vì
+// getChamCongNgoai() + .filter().length. Giữ NGUYÊN 2 use-case hiện có:
+// Admin/HR đếm tất cả 'cho_duyet'; Quản lý đếm theo qlTrucTiep, loại trừ
+// đơn của chính mình (excludeEmployeeId).
+export function getChamCongNgoaiPendingCount(
+  employeeId?: string,
+  qlTrucTiep?: string,
+  excludeEmployeeId?: string,
+): Promise<number> {
+  if (!isPostgresEnabled('attendance')) {
+    return GS.getChamCongNgoai(employeeId, qlTrucTiep).then(rows =>
+      rows.filter(r => r.trang_thai === 'cho_duyet' && (!excludeEmployeeId || r.id_nhan_vien !== excludeEmployeeId)).length);
+  }
+  return withPgFallback('attendance', 'getChamCongNgoaiPendingCount',
+    () => getAttendanceOutsideRepository().countPending(employeeId, qlTrucTiep, excludeEmployeeId),
+    () => GS.getChamCongNgoai(employeeId, qlTrucTiep).then(rows =>
+      rows.filter(r => r.trang_thai === 'cho_duyet' && (!excludeEmployeeId || r.id_nhan_vien !== excludeEmployeeId)).length),
   );
 }
 

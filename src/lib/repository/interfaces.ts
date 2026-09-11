@@ -25,6 +25,17 @@ export interface IEmployeeRepository {
 
 // ─── CUSTOMER (CRM) ──────────────────────────────────────────
 
+// Narrow field projections — NEON_TRANSFER_AUDIT P0: crm-access và dashboard
+// trước đây gọi findAll() (mọi cột, gồm nhiều cột lịch sử/JSON không giới
+// hạn độ dài) chỉ để đọc 3-5 field scalar nhỏ. 2 kiểu dưới đây giới hạn
+// đúng field từng consumer thực sự dùng (trace trực tiếp từ source, xem
+// crm-access/route.ts và dashboard/route.ts) — KHÔNG đổi field shape/kiểu
+// so với KhachHang gốc (dùng Pick<> để tự động khớp).
+export type CustomerAssignmentFields = Pick<KhachHang,
+  'telesale_phu_trach' | 'sale_nhan_khach' | 'sale_phu_trach' | 'du_an' | 'trang_thai_ban_giao'>;
+
+export type CustomerDashboardFields = Pick<KhachHang, 'nguon' | 'sale_phu_trach' | 'ngay_tao'>;
+
 export interface ICustomerRepository {
   findAll(): Promise<KhachHang[]>;
   findById(id: string): Promise<KhachHang | null>;
@@ -32,6 +43,9 @@ export interface ICustomerRepository {
   createBatch(data: KhachHang[]): Promise<void>;
   update(data: KhachHang): Promise<boolean>;
   delete(id: string): Promise<boolean>;
+  countByHandoffStatus(status: string): Promise<number>;
+  findAssignmentFields(): Promise<CustomerAssignmentFields[]>;
+  findDashboardFields(): Promise<CustomerDashboardFields[]>;
 }
 
 // ─── PIPELINE (CRM) ──────────────────────────────────────────
@@ -81,7 +95,11 @@ export interface IContractRepository {
 export interface IAttendanceOutsideRepository {
   findAll(employeeId?: string, qlTrucTiep?: string): Promise<ChamCongNgoai[]>;
   findById(id: string): Promise<ChamCongNgoai | null>;
-  countPending(employeeId?: string): Promise<number>;
+  // qlTrucTiep + excludeEmployeeId: hỗ trợ đúng use-case "Quản lý xem đơn
+  // nhóm mình chờ duyệt, KHÔNG tính đơn của chính mình" của
+  // /api/cham-cong-ngoai/pending-count (NEON_TRANSFER_AUDIT P0) mà không
+  // cần load full rows (kể cả field ảnh hinh_anh) chỉ để .filter().length.
+  countPending(employeeId?: string, qlTrucTiep?: string, excludeEmployeeId?: string): Promise<number>;
   create(
     data: Omit<ChamCongNgoai, 'id' | 'created_at' | 'trang_thai' | 'nguoi_duyet' | 'ghi_chu_duyet'>
   ): Promise<ChamCongNgoai>;

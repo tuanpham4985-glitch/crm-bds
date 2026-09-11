@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getChamCongNgoai } from '@/lib/data-access';
+import { getChamCongNgoaiPendingCount } from '@/lib/data-access';
 
 interface SessionUser {
   id_nhan_vien: string;
@@ -31,16 +31,12 @@ export async function GET() {
     const isAdminOrHR = user.vai_tro === 'Admin' || user.vai_tro === 'HR';
 
     if (isAdminOrHR) {
-      const all = await getChamCongNgoai();
-      const count = all.filter(r => r.trang_thai === 'cho_duyet').length;
+      const count = await getChamCongNgoaiPendingCount();
       return NextResponse.json({ count });
     }
 
     // Quản lý: đơn của nhóm mình đang chờ (không tính đơn chính mình)
-    const managed = await getChamCongNgoai(undefined, user.ho_ten);
-    const count = managed.filter(
-      r => r.trang_thai === 'cho_duyet' && r.id_nhan_vien !== user.id_nhan_vien,
-    ).length;
+    const count = await getChamCongNgoaiPendingCount(undefined, user.ho_ten, user.id_nhan_vien);
     return NextResponse.json({ count });
   } catch {
     return NextResponse.json({ count: 0 });

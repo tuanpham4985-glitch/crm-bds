@@ -1,4 +1,4 @@
-import type { ICustomerRepository } from '../interfaces';
+import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardFields } from '../interfaces';
 import type { KhachHang } from '../../types';
 import { prisma } from '../../db/client';
 
@@ -11,6 +11,42 @@ export class PostgresCustomerRepository implements ICustomerRepository {
   async findById(id: string): Promise<KhachHang | null> {
     const row = await prisma.khachHang.findUnique({ where: { id_khach_hang: id } });
     return row ? toKhachHang(row) : null;
+  }
+
+  // NEON_TRANSFER_AUDIT P0 — narrow select() projections, xem interfaces.ts
+  // (CustomerAssignmentFields/CustomerDashboardFields) cho lý do/consumer.
+  async countByHandoffStatus(status: string): Promise<number> {
+    return prisma.khachHang.count({ where: { trang_thai_ban_giao: status } });
+  }
+
+  async findAssignmentFields(): Promise<CustomerAssignmentFields[]> {
+    const rows = await prisma.khachHang.findMany({
+      select: {
+        telesale_phu_trach: true,
+        sale_nhan_khach: true,
+        sale_phu_trach: true,
+        du_an: true,
+        trang_thai_ban_giao: true,
+      },
+    });
+    return rows.map(row => ({
+      telesale_phu_trach: row.telesale_phu_trach ?? undefined,
+      sale_nhan_khach: row.sale_nhan_khach ?? undefined,
+      sale_phu_trach: row.sale_phu_trach,
+      du_an: row.du_an ?? undefined,
+      trang_thai_ban_giao: (row.trang_thai_ban_giao ?? undefined) as CustomerAssignmentFields['trang_thai_ban_giao'],
+    }));
+  }
+
+  async findDashboardFields(): Promise<CustomerDashboardFields[]> {
+    const rows = await prisma.khachHang.findMany({
+      select: { nguon: true, sale_phu_trach: true, ngay_tao: true },
+    });
+    return rows.map(row => ({
+      nguon: row.nguon ?? '',
+      sale_phu_trach: row.sale_phu_trach,
+      ngay_tao: row.ngay_tao,
+    }));
   }
 
   async create(data: KhachHang): Promise<void> {

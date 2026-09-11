@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, getKhachHang, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong, getDataNhanSuForReport } from '@/lib/data-access';
+import { getPipeline, getKhachHangDashboardFields, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong, getDataNhanSuForReport } from '@/lib/data-access';
 import type { HrEmployeeRecord } from '@/lib/data-access';
 import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
@@ -479,7 +479,7 @@ export async function GET(request: NextRequest) {
     // fetch này còn phục vụ kpi/Bảng xếp hạng/sinh nhật — LUÔN cần dù đóng biểu đồ).
     const [allPipelines, allCustomers, allEmployeesRaw, allCongViec, allContracts, hrBienDongData, tongHopRows] = await Promise.all([
       getPipeline(),
-      getKhachHang(),
+      getKhachHangDashboardFields(),
       getNhanVien(),
       wantCharts ? getCongViec() : Promise.resolve([] as Awaited<ReturnType<typeof getCongViec>>),
       wantCharts ? getHopDong() : Promise.resolve([] as Awaited<ReturnType<typeof getHopDong>>),

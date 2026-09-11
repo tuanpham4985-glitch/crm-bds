@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getDuAn, getKhachHang, getNhanVien } from '@/lib/data-access';
+import { getDuAn, getKhachHangCrmAccessFields, getKhachHangHandoffPendingCount, getNhanVien } from '@/lib/data-access';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 import { buildCrmManagerScope } from '@/lib/crm-auth';
 import { hasCampaignCskhAccess } from '@/lib/crm-funnel/campaign';
@@ -19,17 +19,16 @@ export async function GET() {
       (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(userData.employee_type || '');
 
     if (isAdmin) {
-      const customers = await getKhachHang();
       return NextResponse.json({
         canKH: true,
         phanKhachIds: null,
         canQualityDashboard: true,
-        handoffCount: customers.filter(customer => customer.trang_thai_ban_giao === 'Chờ xác nhận').length,
+        handoffCount: await getKhachHangHandoffPendingCount(),
       }); // null = all projects
     }
 
     // Find projects this user is involved in (trưởng nhóm or team member)
-    const [projects, customers, employees] = await Promise.all([getDuAn(), getKhachHang(), getNhanVien()]);
+    const [projects, customers, employees] = await Promise.all([getDuAn(), getKhachHangCrmAccessFields(), getNhanVien()]);
     const directReports = new Set(employees.filter(employee => employee.ql_truc_tiep === userData.ho_ten).map(employee => employee.ho_ten));
     const projectNamesFromAssignments = new Set(customers
       .filter(customer => customer.telesale_phu_trach === userData.ho_ten
