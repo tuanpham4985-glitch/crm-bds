@@ -1,4 +1,4 @@
-import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardFields } from '../interfaces';
+import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields } from '../interfaces';
 import type { KhachHang } from '../../types';
 import { prisma } from '../../db/client';
 
@@ -47,6 +47,17 @@ export class PostgresCustomerRepository implements ICustomerRepository {
       sale_phu_trach: row.sale_phu_trach,
       ngay_tao: row.ngay_tao,
     }));
+  }
+
+  // IMPORT_DUPLICATE_CHECK_P0 — dùng bởi getKhachHangImportDedupFields()
+  // (data-access.ts) để thay getKhachHang() (full ~48 cột) trong Import Excel
+  // duplicate-check. so_dien_thoai nullable trên schema (String?) — coalesce
+  // ?? '' giống hệt toKhachHang() phía trên, khớp KhachHang.so_dien_thoai: string.
+  async findDedupFields(): Promise<CustomerDedupFields[]> {
+    const rows = await prisma.khachHang.findMany({
+      select: { id_khach_hang: true, so_dien_thoai: true },
+    });
+    return rows.map(row => ({ id_khach_hang: row.id_khach_hang, so_dien_thoai: row.so_dien_thoai ?? '' }));
   }
 
   async create(data: KhachHang): Promise<void> {

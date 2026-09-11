@@ -36,6 +36,13 @@ export type CustomerAssignmentFields = Pick<KhachHang,
 
 export type CustomerDashboardFields = Pick<KhachHang, 'nguon' | 'sale_phu_trach' | 'ngay_tao'>;
 
+// IMPORT_DUPLICATE_CHECK_P0 — Import Excel duplicate-check (import-excel/
+// route.ts) chỉ đọc so_dien_thoai (phoneKey dedup) + id_khach_hang (map
+// phoneKey -> customer id cho nhánh "already_exists" ghi Dataset membership)
+// từ TOÀN BỘ customer hiện có — trace trực tiếp từ source (đã audit: 2 field
+// này là DUY NHẤT được đọc từ biến `existing`, không field nào khác).
+export type CustomerDedupFields = Pick<KhachHang, 'id_khach_hang' | 'so_dien_thoai'>;
+
 export interface ICustomerRepository {
   findAll(): Promise<KhachHang[]>;
   findById(id: string): Promise<KhachHang | null>;
@@ -46,6 +53,7 @@ export interface ICustomerRepository {
   countByHandoffStatus(status: string): Promise<number>;
   findAssignmentFields(): Promise<CustomerAssignmentFields[]>;
   findDashboardFields(): Promise<CustomerDashboardFields[]>;
+  findDedupFields(): Promise<CustomerDedupFields[]>;
 }
 
 // ─── PIPELINE (CRM) ──────────────────────────────────────────

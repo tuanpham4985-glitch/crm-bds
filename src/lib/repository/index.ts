@@ -51,6 +51,7 @@ export type {
   BangLuongUpdateFields,
   CustomerAssignmentFields,
   CustomerDashboardFields,
+  CustomerDedupFields,
 } from './interfaces';
 
 // ── Helpers ───────────────────────────────────────────────────

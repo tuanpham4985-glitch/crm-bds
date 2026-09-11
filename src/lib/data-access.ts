@@ -24,8 +24,8 @@ import {
   getAttendanceOutsideRepository,
   getPayrollRepository,
 } from './repository';
-import type { CustomerAssignmentFields, CustomerDashboardFields } from './repository';
-import { toAssignmentFields, toDashboardFields } from './khach-hang-list-query';
+import type { CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields } from './repository';
+import { toAssignmentFields, toDashboardFields, toDedupFields } from './khach-hang-list-query';
 import type {
   NhanVien, KhachHang, Pipeline, DuAn,
   CongViec, HopDong, ChamCongNgoai,
@@ -46,6 +46,10 @@ const _pgKhachHang = unstable_cache(() => getCustomerRepository().findAll(),  ['
 // được (không rơi vào giới hạn >2MB/item đã audit chứng minh với _pgKhachHang).
 const _pgKhachHangAssignmentFields = unstable_cache(() => getCustomerRepository().findAssignmentFields(), ['kh-assignment-fields'], { revalidate: 30, tags: ['kh'] });
 const _pgKhachHangDashboardFields  = unstable_cache(() => getCustomerRepository().findDashboardFields(),  ['kh-dashboard-fields'],  { revalidate: 30, tags: ['kh'] });
+// IMPORT_DUPLICATE_CHECK_P0 — cùng revalidate 30s với _pgKhachHang (hàm full-
+// shape cũ mà Import Excel từng gọi) — giữ NGUYÊN đặc tính "staleness tối đa
+// 30s" đã có từ trước (KHÔNG phải rủi ro mới), chỉ giảm số cột/row width.
+const _pgKhachHangDedupFields      = unstable_cache(() => getCustomerRepository().findDedupFields(),      ['kh-dedup-fields'],      { revalidate: 30, tags: ['kh'] });
 const _pgPipeline  = unstable_cache(() => getPipelineRepository().findAll(),  ['pl'],  { revalidate: 30,  tags: ['pl']  });
 const _pgCongViec  = unstable_cache(() => getCrmTaskRepository().findAll(),   ['cv'],  { revalidate: 30,  tags: ['cv']  });
 const _pgHopDong   = unstable_cache(() => getContractRepository().findAll(),  ['hd'],  { revalidate: 60,  tags: ['hd']  });
@@ -409,6 +413,24 @@ export async function getKhachHangDashboardFields(): Promise<CustomerDashboardFi
     console.error('[PG:crm:getKhachHangDashboardFields] error, falling back to GS:', e instanceof Error ? e.message : e);
     const all = await getKhachHang();
     return all.map(toDashboardFields);
+  }
+}
+
+// IMPORT_DUPLICATE_CHECK_P0 — Import Excel (import-excel/route.ts) chỉ cần
+// id_khach_hang + so_dien_thoai của TOÀN BỘ customer hiện có để dựng
+// phoneKey Set/Map cho duplicate-check, KHÔNG cần full ~48 cột. Cùng pattern
+// PG→GS fallback với getKhachHangCrmAccessFields/getKhachHangDashboardFields.
+export async function getKhachHangImportDedupFields(): Promise<CustomerDedupFields[]> {
+  if (!isPostgresEnabled('crm')) {
+    const all = await getKhachHang();
+    return all.map(toDedupFields);
+  }
+  try {
+    return await _pgKhachHangDedupFields();
+  } catch (e) {
+    console.error('[PG:crm:getKhachHangImportDedupFields] error, falling back to GS:', e instanceof Error ? e.message : e);
+    const all = await getKhachHang();
+    return all.map(toDedupFields);
   }
 }
 

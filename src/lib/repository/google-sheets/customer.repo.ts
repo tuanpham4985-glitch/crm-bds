@@ -1,4 +1,4 @@
-import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardFields } from '../interfaces';
+import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields } from '../interfaces';
 import type { KhachHang } from '../../types';
 import {
   getKhachHang,
@@ -40,6 +40,11 @@ export class GoogleSheetsCustomerRepository implements ICustomerRepository {
   async findDashboardFields(): Promise<CustomerDashboardFields[]> {
     const all = await getKhachHang();
     return all.map(k => ({ nguon: k.nguon, sale_phu_trach: k.sale_phu_trach, ngay_tao: k.ngay_tao }));
+  }
+
+  async findDedupFields(): Promise<CustomerDedupFields[]> {
+    const all = await getKhachHang();
+    return all.map(k => ({ id_khach_hang: k.id_khach_hang, so_dien_thoai: k.so_dien_thoai }));
   }
 
   create(data: KhachHang): Promise<void> {

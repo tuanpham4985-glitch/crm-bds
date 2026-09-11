@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
-import { getKhachHang, addKhachHang, addKhachHangWithBatch, addKhachHangBatchWithImportBatch } from '@/lib/data-access';
+import { getKhachHangImportDedupFields, addKhachHang, addKhachHangWithBatch, addKhachHangBatchWithImportBatch } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { classifyRow, detectDuplicateNameWarnings, findImportSheets, phoneKey, type ExcelColumnMap } from '@/lib/khach-hang-excel-import';
@@ -135,7 +135,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // đồng nhất với dedupe của /api/khach-hang (manual create/update). Set này KHÔNG
     // đổi trong lúc chạy — dùng riêng để phân biệt "already_exists" (DB) khỏi
     // "duplicate_in_file" (trùng trong cùng file, xem seenInFilePhoneKeys bên dưới).
-    const existing = await getKhachHang();
+    // IMPORT_DUPLICATE_CHECK_P0 — chỉ cần id_khach_hang + so_dien_thoai (2 field
+    // DUY NHẤT được đọc từ `existing` trong toàn bộ route này) — getKhachHangImportDedupFields()
+    // narrow-select thay cho getKhachHang() (full ~48 cột × toàn bộ customer).
+    const existing = await getKhachHangImportDedupFields();
     const existingDbPhoneKeys = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
     // CUSTOMER DATASET — tra cứu id_khach_hang từ phoneKey cho nhánh
     // "already_exists" bên dưới, để ghi CustomerDatasetMembership cho Customer

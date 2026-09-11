@@ -16,7 +16,7 @@
 import type { Prisma } from '../generated/prisma/client';
 import type { CrmSessionUser } from './crm-auth';
 import type { DuAn, NhanVien, KhachHang } from './types';
-import type { CustomerAssignmentFields, CustomerDashboardFields } from './repository';
+import type { CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields } from './repository';
 
 // NEON_TRANSFER_AUDIT P0 — narrow-projection mappers dùng bởi GS fallback
 // path của getKhachHangCrmAccessFields()/getKhachHangDashboardFields()
@@ -37,6 +37,14 @@ export function toAssignmentFields(kh: KhachHang): CustomerAssignmentFields {
 
 export function toDashboardFields(kh: KhachHang): CustomerDashboardFields {
   return { nguon: kh.nguon, sale_phu_trach: kh.sale_phu_trach, ngay_tao: kh.ngay_tao };
+}
+
+// IMPORT_DUPLICATE_CHECK_P0 — GS fallback path của getKhachHangImportDedupFields()
+// (data-access.ts). Chỉ 2 field id_khach_hang/so_dien_thoai — trace trực tiếp
+// từ import-excel/route.ts (existingDbPhoneKeys + phoneKeyToCustomerId), KHÔNG
+// field nào khác được đọc từ danh sách customer hiện có trong toàn bộ route.
+export function toDedupFields(kh: KhachHang): CustomerDedupFields {
+  return { id_khach_hang: kh.id_khach_hang, so_dien_thoai: kh.so_dien_thoai };
 }
 
 export interface KhachHangListFilters {
