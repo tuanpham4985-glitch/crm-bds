@@ -3,6 +3,7 @@ import { assertTransactionalCrm } from './transactional-workflow';
 import { parseJsonList } from '../crm-workflow';
 import type { CrmChamSocEntry, QualifiedLeadFilters } from '../types';
 import type { CrmManagerScope } from '../crm-auth';
+import type { Prisma } from '../../generated/prisma/client';
 
 export interface QualityLeadRow {
   id_khach_hang: string;
@@ -35,7 +36,46 @@ export interface QualityLeadRow {
   latest_note: string;
 }
 
-type CustomerRow = Awaited<ReturnType<typeof prisma.khachHang.findMany>>[number];
+// KHACH_HANG_P3A — narrow select: TOÀN BỘ field Customer thực sự được đọc bởi
+// queryQualityLeads() + inScope() bên dưới (trace trực tiếp từ source, đếm
+// từng `customer.<field>`/`item.<field>` — 27 field, không hơn không kém).
+// KHÔNG đổi row scope (vẫn findMany không where) — CHỈ giảm số cột trả về từ
+// ~48 xuống 27, loại các cột tài chính/text lịch sử KHÔNG dùng ở đây (VD
+// lead_score_history, ghi_chu*, so_lan_lien_he...). CustomerRow suy ra TỪ
+// CHÍNH select này (Prisma.KhachHangGetPayload) — thêm/bớt field dùng thật sẽ
+// tự động bắt lỗi biên dịch nếu lệch với CUSTOMER_SELECT, không thể lệch âm
+// thầm giữa 2 nơi.
+const CUSTOMER_SELECT = {
+  id_khach_hang: true,
+  ten_KH: true,
+  so_dien_thoai: true,
+  du_an: true,
+  san_pham_quan_tam: true,
+  nhu_cau: true,
+  ngan_sach_min: true,
+  ngan_sach_max: true,
+  muc_dich: true,
+  thoi_gian_du_kien: true,
+  phuong_an_tai_chinh: true,
+  khu_vuc_yeu_cau: true,
+  muc_do_quan_tam: true,
+  hanh_dong_tiep_theo: true,
+  lead_quality_score: true,
+  lead_quality_rank: true,
+  qualification_status: true,
+  lead_score_breakdown: true,
+  nguon: true,
+  telesale_phu_trach: true,
+  sale_nhan_khach: true,
+  ngay_tao: true,
+  ngay_quan_tam: true,
+  ban_giao_luc: true,
+  sale_xac_nhan_luc: true,
+  trang_thai_ban_giao: true,
+  lich_su_cham_soc: true,
+} satisfies Prisma.KhachHangSelect;
+
+type CustomerRow = Prisma.KhachHangGetPayload<{ select: typeof CUSTOMER_SELECT }>;
 
 function inScope(customer: CustomerRow, scope: CrmManagerScope): boolean {
   return scope.allCustomers
@@ -115,7 +155,7 @@ function summarizeBasic(rows: QualityLeadRow[]) {
 
 export async function queryQualityLeads(filters: QualifiedLeadFilters, scope: CrmManagerScope) {
   assertTransactionalCrm();
-  const customers = (await prisma.khachHang.findMany({ orderBy: { ngay_tao: 'desc' } })).filter(customer => inScope(customer, scope));
+  const customers = (await prisma.khachHang.findMany({ select: CUSTOMER_SELECT, orderBy: { ngay_tao: 'desc' } })).filter(customer => inScope(customer, scope));
   const ids = customers.map(customer => customer.id_khach_hang);
   const [pipelines, handoffs] = await Promise.all([
     prisma.pipeline.findMany({ where: { id_khach_hang: { in: ids } }, orderBy: { updated_at: 'desc' } }),
