@@ -1,4 +1,4 @@
-import type { IPipelineRepository, PipelineCustomerRefFields } from '../interfaces';
+import type { IPipelineRepository, PipelineCustomerRefFields, PipelineStatusFields } from '../interfaces';
 import type { Pipeline } from '../../types';
 import { prisma } from '../../db/client';
 
@@ -11,6 +11,21 @@ export class PostgresPipelineRepository implements IPipelineRepository {
   // IMPORT_BATCH_P1 — xem PipelineCustomerRefFields (interfaces.ts) cho lý do.
   async findCustomerRefs(): Promise<PipelineCustomerRefFields[]> {
     return prisma.pipeline.findMany({ select: { id_khach_hang: true } });
+  }
+
+  // BANG_HANG_PIPELINE_P2 — xem PipelineStatusFields (interfaces.ts) cho lý
+  // do. id_du_an coalesce '' giống hệt toPipeline() bên dưới (Pipeline.id_du_an
+  // là string bắt buộc dù cột Prisma nullable) — giữ nguyên semantics
+  // buildPipelineStatusMap đã dùng trước khi narrow select.
+  async findStatusFields(): Promise<PipelineStatusFields[]> {
+    const rows = await prisma.pipeline.findMany({
+      select: { ma_can: true, giai_doan: true, id_du_an: true },
+    });
+    return rows.map(row => ({
+      ma_can: row.ma_can ?? undefined,
+      giai_doan: row.giai_doan,
+      id_du_an: row.id_du_an ?? '',
+    }));
   }
 
   async findById(id: string): Promise<Pipeline | null> {

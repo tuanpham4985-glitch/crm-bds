@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getStackingSheetList, getStackingUnits, getStackingListRows, getStackingListColumns, getPipeline, getDuAn, probeStackingSheet,
+  getStackingSheetList, getStackingUnits, getStackingListRows, getStackingListColumns, getPipelineStatusFields, getDuAn, probeStackingSheet,
   stackingListRowsCacheKey, stackingUnitsCacheKey,
 } from '@/lib/data-access';
 import { invalidate } from '@/lib/mem-cache';
-import type { DuAn, Pipeline } from '@/lib/types';
+import type { DuAn } from '@/lib/types';
+import type { PipelineStatusFields } from '@/lib/repository';
 
 // Trạng thái Còn hàng/Đang xem/Đã bán LUÔN đến từ CRM Pipeline (match theo
 // mã căn), KHÔNG bao giờ đọc từ màu ô Excel — dùng CHUNG cho cả 2 chế độ
@@ -14,8 +15,12 @@ import type { DuAn, Pipeline } from '@/lib/types';
 // trường hợp pipeline dự án A khớp nhầm unit dự án B khi 2 dự án có cấu trúc
 // mã căn trùng nhau. Nếu không tìm thấy DU_AN phù hợp → dùng toàn bộ pipeline
 // (backward compat, giữ nguyên hành vi cũ khi projectCode rỗng/không khớp).
+//
+// BANG_HANG_PIPELINE_P2 — pipelines giờ là PipelineStatusFields[] (narrow:
+// ma_can/giai_doan/id_du_an) thay vì Pipeline[] đầy đủ — đây là 3 field DUY
+// NHẤT hàm này đọc, không đổi logic gì bên dưới.
 function buildPipelineStatusMap(
-  pipelines: Pipeline[], duAnList: DuAn[], projectCode?: string,
+  pipelines: PipelineStatusFields[], duAnList: DuAn[], projectCode?: string,
 ): Map<string, string> {
   const projectDuAnIds = new Set(
     projectCode
@@ -103,7 +108,7 @@ export async function GET(req: NextRequest) {
 
       const [{ columns, rows }, pipelines, duAnList] = await Promise.all([
         getStackingListRows(sheetId, tab, visibleColumns),
-        getPipeline(),
+        getPipelineStatusFields(),
         getDuAn(),
       ]);
       const pipelineMap = buildPipelineStatusMap(pipelines, duAnList, projectCode);
@@ -127,7 +132,7 @@ export async function GET(req: NextRequest) {
 
     const [units, pipelines, duAnList] = await Promise.all([
       getStackingUnits(sheetId, project, tower),
-      getPipeline(),
+      getPipelineStatusFields(),
       getDuAn(),
     ]);
 

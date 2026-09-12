@@ -65,10 +65,18 @@ export interface ICustomerRepository {
 // field DUY NHẤT customerDeleteBlockReason đọc từ Pipeline.
 export type PipelineCustomerRefFields = Pick<Pipeline, 'id_khach_hang'>;
 
+// BANG_HANG_PIPELINE_P2 — buildPipelineStatusMap() (api/stacking/route.ts)
+// chỉ đọc 3 field này từ Pipeline để suy ra trạng thái Còn hàng/Đang xem/Đã
+// bán + lọc theo dự án — dùng thay cho findAll() (mọi cột, gồm ~20 cột tài
+// chính không dùng ở đây). Trace trực tiếp từ source: đây là 3 field DUY
+// NHẤT buildPipelineStatusMap đọc từ Pipeline.
+export type PipelineStatusFields = Pick<Pipeline, 'ma_can' | 'giai_doan' | 'id_du_an'>;
+
 export interface IPipelineRepository {
   findAll(): Promise<Pipeline[]>;
   findById(id: string): Promise<Pipeline | null>;
   findCustomerRefs(): Promise<PipelineCustomerRefFields[]>;
+  findStatusFields(): Promise<PipelineStatusFields[]>;
   create(data: Pipeline): Promise<void>;
   update(data: Pipeline): Promise<{ updated: boolean; oldGiaiDoan: string }>;
   delete(id: string): Promise<boolean>;
