@@ -1,7 +1,16 @@
 import { cookies } from 'next/headers';
-import type { DuAn, KhachHang, NhanVien, Pipeline } from './types';
+import type { DuAn, KhachHang, NhanVien } from './types';
+import type { PipelineCustomerRefFields } from './repository';
 import { SENIOR_EMPLOYEE_TYPES } from './constants';
 import { verifySessionValue } from './auth/session-signature';
+
+// IMPORT_BATCH_P1 — customerDeleteBlockReason chỉ đọc 5 field này từ
+// KhachHang (id_khach_hang để so khớp Pipeline, 4 field còn lại để check lịch
+// sử CRM/handoff) — trace trực tiếp từ thân hàm bên dưới. Dùng Pick<> để
+// caller có thể truyền full KhachHang (không đổi) hoặc một projection hẹp hơn
+// (Import Batch detail/delete-preflight — xem crm-funnel/import-batch.ts).
+export type CustomerDeleteGuardFields = Pick<KhachHang,
+  'id_khach_hang' | 'so_lan_lien_he' | 'lich_su_cham_soc' | 'lich_su_ban_giao' | 'trang_thai_ban_giao'>;
 
 export interface CrmSessionUser {
   id_nhan_vien: string;
@@ -97,8 +106,8 @@ export function customerInManagerScope(
  * PHẢI truyền đủ getCampaignMembershipCustomerRefs() để guard có hiệu lực.
  */
 export function customerDeleteBlockReason(
-  customer: KhachHang,
-  pipelines: readonly Pipeline[],
+  customer: CustomerDeleteGuardFields,
+  pipelines: readonly PipelineCustomerRefFields[],
   campaignMemberships: readonly { customer_id: string }[] = [],
 ): string | null {
   const hasCrmHistory = Number(customer.so_lan_lien_he || 0) > 0

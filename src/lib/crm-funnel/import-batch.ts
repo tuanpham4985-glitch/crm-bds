@@ -1,7 +1,14 @@
 import { prisma } from '../db/client';
-import { toKhachHang } from '../repository/postgresql/customer.repo';
-import type { CrmSessionUser } from '../crm-auth';
+import type { CrmSessionUser, CustomerDeleteGuardFields } from '../crm-auth';
 import type { KhachHang } from '../types';
+
+// IMPORT_BATCH_P1 — batch detail (route.ts) cần 4 field UI (id/ten/sdt/email)
+// + delete-preflight cần CustomerDeleteGuardFields (crm-auth.ts, 5 field cho
+// customerDeleteBlockReason) — union đúng 8 field, trace trực tiếp từ 2 call
+// site (import-batches/[id]/route.ts và .../delete/route.ts). KHÔNG cần ~44
+// cột KhachHang còn lại (feature này vẫn Postgres-only, không fallback GS).
+export type ImportBatchCustomerRefFields = CustomerDeleteGuardFields
+  & Pick<KhachHang, 'ten_KH' | 'so_dien_thoai' | 'email'>;
 
 /**
  * Import Batch chỉ tồn tại khi Postgres CRM được bật (giống mọi tính năng
@@ -102,7 +109,32 @@ export async function getImportBatch(id: string) {
   });
 }
 
-export async function getImportBatchCustomers(batchId: string): Promise<KhachHang[]> {
-  const rows = await prisma.khachHang.findMany({ where: { import_batch_id: batchId }, orderBy: { created_at: 'asc' } });
-  return rows.map(toKhachHang);
+export async function getImportBatchCustomers(batchId: string): Promise<ImportBatchCustomerRefFields[]> {
+  const rows = await prisma.khachHang.findMany({
+    where: { import_batch_id: batchId },
+    orderBy: { created_at: 'asc' },
+    select: {
+      id_khach_hang: true,
+      ten_KH: true,
+      so_dien_thoai: true,
+      email: true,
+      so_lan_lien_he: true,
+      lich_su_cham_soc: true,
+      lich_su_ban_giao: true,
+      trang_thai_ban_giao: true,
+    },
+  });
+  // Coalescing giống hệt toKhachHang() (customer.repo.ts) cho đúng 8 field
+  // này — giữ nguyên semantics customerDeleteBlockReason đã dùng trước khi
+  // narrow select (KHÔNG đổi giá trị null → '' / undefined / default).
+  return rows.map(row => ({
+    id_khach_hang: row.id_khach_hang,
+    ten_KH: row.ten_KH,
+    so_dien_thoai: row.so_dien_thoai ?? '',
+    email: row.email ?? '',
+    so_lan_lien_he: row.so_lan_lien_he,
+    lich_su_cham_soc: row.lich_su_cham_soc ?? undefined,
+    lich_su_ban_giao: row.lich_su_ban_giao ?? undefined,
+    trang_thai_ban_giao: (row.trang_thai_ban_giao ?? 'Chưa bàn giao') as KhachHang['trang_thai_ban_giao'],
+  }));
 }

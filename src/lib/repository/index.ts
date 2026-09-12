@@ -52,6 +52,7 @@ export type {
   CustomerAssignmentFields,
   CustomerDashboardFields,
   CustomerDedupFields,
+  PipelineCustomerRefFields,
 } from './interfaces';
 
 // ── Helpers ───────────────────────────────────────────────────

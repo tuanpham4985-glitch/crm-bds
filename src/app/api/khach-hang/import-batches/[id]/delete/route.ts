@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPipeline, deleteKhachHang } from '@/lib/data-access';
+import { getPipelineCustomerRefFields, deleteKhachHang } from '@/lib/data-access';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { getCampaignMembershipCustomerRefs } from '@/lib/crm-funnel/campaign';
 import { getImportBatch, getImportBatchCustomers } from '@/lib/crm-funnel/import-batch';
@@ -28,7 +28,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     if (!batch) return NextResponse.json({ success: false, error: 'Không tìm thấy đợt import' }, { status: 404 });
 
     const [customers, pipelines, campaignMemberships] = await Promise.all([
-      getImportBatchCustomers(id), getPipeline(), getCampaignMembershipCustomerRefs(),
+      getImportBatchCustomers(id), getPipelineCustomerRefFields(), getCampaignMembershipCustomerRefs(),
     ]);
     // Chỉ xử lý đúng các customer HIỆN vẫn còn thuộc batch (import_batch_id === id) —
     // không bao giờ đụng tới customer trùng SĐT đã tồn tại từ trước hay customer

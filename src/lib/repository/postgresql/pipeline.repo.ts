@@ -1,4 +1,4 @@
-import type { IPipelineRepository } from '../interfaces';
+import type { IPipelineRepository, PipelineCustomerRefFields } from '../interfaces';
 import type { Pipeline } from '../../types';
 import { prisma } from '../../db/client';
 
@@ -6,6 +6,11 @@ export class PostgresPipelineRepository implements IPipelineRepository {
   async findAll(): Promise<Pipeline[]> {
     const rows = await prisma.pipeline.findMany({ orderBy: { ngay_cap_nhat: 'desc' } });
     return rows.map(toPipeline);
+  }
+
+  // IMPORT_BATCH_P1 — xem PipelineCustomerRefFields (interfaces.ts) cho lý do.
+  async findCustomerRefs(): Promise<PipelineCustomerRefFields[]> {
+    return prisma.pipeline.findMany({ select: { id_khach_hang: true } });
   }
 
   async findById(id: string): Promise<Pipeline | null> {

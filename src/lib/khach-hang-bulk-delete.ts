@@ -1,8 +1,9 @@
 // Server-only: dùng customerDeleteBlockReason (crm-auth.ts, phụ thuộc next/headers)
 // nên module này chỉ được import từ route handler, không import trực tiếp từ
 // Client Component. UI selection helpers nằm ở khach-hang-selection.ts (client-safe).
-import type { KhachHang, Pipeline } from './types';
-import { customerDeleteBlockReason } from './crm-auth';
+import type { KhachHang } from './types';
+import type { PipelineCustomerRefFields } from './repository';
+import { customerDeleteBlockReason, type CustomerDeleteGuardFields } from './crm-auth';
 
 export interface BulkDeletePlanItem {
   id: string;
@@ -10,6 +11,13 @@ export interface BulkDeletePlanItem {
   status: 'ready' | 'blocked' | 'not_found';
   reason?: string;
 }
+
+// IMPORT_BATCH_P1 — planBulkDelete chỉ đọc id_khach_hang/ten_KH trực tiếp
+// (bên dưới) + forward customer cho customerDeleteBlockReason (5 field khác,
+// xem CustomerDeleteGuardFields) — dùng chung cho cả bulk-delete route (truyền
+// full KhachHang[], vẫn khớp cấu trúc) và Import Batch delete-preflight
+// (truyền projection hẹp hơn).
+export type BulkDeleteCustomerFields = CustomerDeleteGuardFields & Pick<KhachHang, 'ten_KH'>;
 
 /**
  * Chuẩn hoá + phân loại danh sách id trước khi xóa. Đây là bước duy nhất
@@ -19,8 +27,8 @@ export interface BulkDeletePlanItem {
  */
 export function planBulkDelete(
   rawIds: unknown,
-  customers: readonly KhachHang[],
-  pipelines: readonly Pipeline[],
+  customers: readonly BulkDeleteCustomerFields[],
+  pipelines: readonly PipelineCustomerRefFields[],
   campaignMemberships: readonly { customer_id: string }[] = [],
 ): { ids: string[]; items: BulkDeletePlanItem[] } {
   const ids = Array.isArray(rawIds)
@@ -31,7 +39,7 @@ export function planBulkDelete(
   const items: BulkDeletePlanItem[] = ids.map(id => {
     const customer = customerMap.get(id);
     if (!customer) return { id, ten_KH: '', status: 'not_found', reason: 'Không tìm thấy khách hàng' };
-    const blockReason = customerDeleteBlockReason(customer, pipelines as Pipeline[], campaignMemberships);
+    const blockReason = customerDeleteBlockReason(customer, pipelines, campaignMemberships);
     if (blockReason) return { id, ten_KH: customer.ten_KH, status: 'blocked', reason: blockReason };
     return { id, ten_KH: customer.ten_KH, status: 'ready' };
   });

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPipeline } from '@/lib/data-access';
+import { getPipelineCustomerRefFields } from '@/lib/data-access';
 import { customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { getCampaignMembershipCustomerRefs } from '@/lib/crm-funnel/campaign';
 import { getImportBatch, getImportBatchCustomers } from '@/lib/crm-funnel/import-batch';
@@ -13,7 +13,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     assertTransactionalCrm();
     const { id } = await context.params;
     const [batch, customers, pipelines, campaignMemberships] = await Promise.all([
-      getImportBatch(id), getImportBatchCustomers(id), getPipeline(), getCampaignMembershipCustomerRefs(),
+      getImportBatch(id), getImportBatchCustomers(id), getPipelineCustomerRefFields(), getCampaignMembershipCustomerRefs(),
     ]);
     if (!batch) return NextResponse.json({ success: false, error: 'Không tìm thấy đợt import' }, { status: 404 });
 

@@ -24,7 +24,7 @@ import {
   getAttendanceOutsideRepository,
   getPayrollRepository,
 } from './repository';
-import type { CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields } from './repository';
+import type { CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields, PipelineCustomerRefFields } from './repository';
 import { toAssignmentFields, toDashboardFields, toDedupFields } from './khach-hang-list-query';
 import type {
   NhanVien, KhachHang, Pipeline, DuAn,
@@ -51,6 +51,11 @@ const _pgKhachHangDashboardFields  = unstable_cache(() => getCustomerRepository(
 // 30s" đã có từ trước (KHÔNG phải rủi ro mới), chỉ giảm số cột/row width.
 const _pgKhachHangDedupFields      = unstable_cache(() => getCustomerRepository().findDedupFields(),      ['kh-dedup-fields'],      { revalidate: 30, tags: ['kh'] });
 const _pgPipeline  = unstable_cache(() => getPipelineRepository().findAll(),  ['pl'],  { revalidate: 30,  tags: ['pl']  });
+// IMPORT_BATCH_P1 — narrow projection của Pipeline (chỉ id_khach_hang), cùng
+// tag 'pl' với _pgPipeline nên addPipeline/updatePipeline/deletePipeline vẫn
+// invalidate cache này như cũ (xem revalidateTag('pl', {}) ở các hàm write
+// Pipeline bên dưới) — KHÔNG có invalidation path mới nào phải thêm.
+const _pgPipelineCustomerRefFields = unstable_cache(() => getPipelineRepository().findCustomerRefs(), ['pl-customer-ref-fields'], { revalidate: 30, tags: ['pl'] });
 const _pgCongViec  = unstable_cache(() => getCrmTaskRepository().findAll(),   ['cv'],  { revalidate: 30,  tags: ['cv']  });
 const _pgHopDong   = unstable_cache(() => getContractRepository().findAll(),  ['hd'],  { revalidate: 60,  tags: ['hd']  });
 const _pgDuAn      = unstable_cache(() => getProjectRepository().findAll(),   ['da'],  { revalidate: 120, tags: ['da']  });
@@ -548,6 +553,36 @@ export async function getPipeline(): Promise<Pipeline[]> {
     console.error('[PG:crm:getPipeline] error, falling back to GS:', e instanceof Error ? e.message : e);
     return cached('gs:pl', 30_000, () => GS.getPipeline());
   }
+}
+
+// IMPORT_BATCH_P1 — Import Batch detail (import-batches/[id]/route.ts) và
+// delete-preflight (import-batches/[id]/delete/route.ts) chỉ cần id_khach_hang
+// của TOÀN BỘ Pipeline để customerDeleteBlockReason check "khách đang có deal,
+// không được xóa" — KHÔNG cần 31 cột tài chính còn lại mà getPipeline() trả
+// về. Giữ NGUYÊN "empty replica → fallback GS" safety net của getPipeline()
+// ở trên (cùng bảng Pipeline, cùng rủi ro trước lần sync đầu tiên) — gọi thẳng
+// cached('gs:pl',...) + GS.getPipeline() (không gọi lại getPipeline() ở nhánh
+// PG-enabled để tránh lặp lại đúng lỗi/empty-check đã fail).
+export async function getPipelineCustomerRefFields(): Promise<PipelineCustomerRefFields[]> {
+  if (!isPostgresEnabled('crm')) {
+    const rows = await cached('gs:pl', 30_000, () => GS.getPipeline());
+    return rows.map(toPipelineCustomerRefFields);
+  }
+  try {
+    const rows = await _pgPipelineCustomerRefFields();
+    if (rows.length > 0) return rows;
+    console.warn('[PG:crm:getPipelineCustomerRefFields] empty replica, falling back to GS');
+    const gsRows = await cached('gs:pl', 30_000, () => GS.getPipeline());
+    return gsRows.map(toPipelineCustomerRefFields);
+  } catch (e) {
+    console.error('[PG:crm:getPipelineCustomerRefFields] error, falling back to GS:', e instanceof Error ? e.message : e);
+    const gsRows = await cached('gs:pl', 30_000, () => GS.getPipeline());
+    return gsRows.map(toPipelineCustomerRefFields);
+  }
+}
+
+function toPipelineCustomerRefFields(p: Pipeline): PipelineCustomerRefFields {
+  return { id_khach_hang: p.id_khach_hang };
 }
 
 export function addPipeline(data: Pipeline): Promise<void> {

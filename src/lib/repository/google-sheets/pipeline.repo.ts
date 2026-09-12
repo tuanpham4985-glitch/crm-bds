@@ -1,4 +1,4 @@
-import type { IPipelineRepository } from '../interfaces';
+import type { IPipelineRepository, PipelineCustomerRefFields } from '../interfaces';
 import type { Pipeline } from '../../types';
 import {
   getPipeline,
@@ -10,6 +10,12 @@ import {
 export class GoogleSheetsPipelineRepository implements IPipelineRepository {
   findAll(): Promise<Pipeline[]> {
     return getPipeline();
+  }
+
+  // IMPORT_BATCH_P1 — xem PipelineCustomerRefFields (interfaces.ts) cho lý do.
+  async findCustomerRefs(): Promise<PipelineCustomerRefFields[]> {
+    const all = await getPipeline();
+    return all.map(p => ({ id_khach_hang: p.id_khach_hang }));
   }
 
   async findById(id: string): Promise<Pipeline | null> {

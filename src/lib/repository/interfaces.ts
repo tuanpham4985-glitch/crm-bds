@@ -58,9 +58,17 @@ export interface ICustomerRepository {
 
 // ─── PIPELINE (CRM) ──────────────────────────────────────────
 
+// IMPORT_BATCH_P1 — customerDeleteBlockReason (crm-auth.ts) chỉ đọc field
+// id_khach_hang của Pipeline (check "khách đang có deal, không được xóa") —
+// dùng bởi Import Batch detail/delete-preflight thay cho findAll() (mọi cột,
+// gồm ~20 cột tài chính không dùng ở đây). Trace trực tiếp từ source: đây là
+// field DUY NHẤT customerDeleteBlockReason đọc từ Pipeline.
+export type PipelineCustomerRefFields = Pick<Pipeline, 'id_khach_hang'>;
+
 export interface IPipelineRepository {
   findAll(): Promise<Pipeline[]>;
   findById(id: string): Promise<Pipeline | null>;
+  findCustomerRefs(): Promise<PipelineCustomerRefFields[]>;
   create(data: Pipeline): Promise<void>;
   update(data: Pipeline): Promise<{ updated: boolean; oldGiaiDoan: string }>;
   delete(id: string): Promise<boolean>;
