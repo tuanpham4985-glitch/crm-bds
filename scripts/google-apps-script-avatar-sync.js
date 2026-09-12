@@ -133,17 +133,17 @@ function syncAvatars() {
 
     if (!idNhanVien || !hoTen) continue;
 
-    // Nếu đã có avatar_url → bỏ qua
-    if (currentAvatar) {
-      skipped++;
-      report.push({ name: hoTen, status: '⏭️ Đã có avatar', url: currentAvatar });
-      continue;
-    }
-
     // Tìm file ảnh phù hợp
     const matchedFile = findMatchingFile_(hoTen, idNhanVien, imageFiles, manualMapping);
 
     if (matchedFile) {
+      const nextUrl = avatarUrlForFile_(matchedFile);
+      if (currentAvatar === nextUrl) {
+        skipped++;
+        report.push({ name: hoTen, status: '⏭️ Ảnh không đổi', url: currentAvatar });
+        continue;
+      }
+
       // Tạo public URL
       const result = makeFilePublic_(matchedFile);
 
@@ -161,7 +161,7 @@ function syncAvatars() {
       Logger.log('✅ ' + hoTen + ' → ' + matchedFile.getName() + ' (id:' + matchedFile.getId() + ')');
     } else {
       failed++;
-      report.push({ name: hoTen, status: '❌ Không tìm thấy ảnh', url: '', file: '', fileId: '' });
+      report.push({ name: hoTen, status: '❌ Không tìm thấy ảnh', url: currentAvatar, file: '', fileId: '' });
       Logger.log('❌ Không tìm thấy ảnh cho: ' + hoTen);
     }
   }
@@ -172,7 +172,7 @@ function syncAvatars() {
   // 11. Hiển thị kết quả
   let msg =
     '✅ Đã match: ' + matched + ' nhân viên\n' +
-    '⏭️ Đã có sẵn: ' + skipped + ' nhân viên\n' +
+    '⏭️ Ảnh không đổi: ' + skipped + ' nhân viên\n' +
     '❌ Không match: ' + failed + ' nhân viên\n\n' +
     'Tổng file ảnh trong folder: ' + imageFiles.length + '\n';
 
@@ -188,6 +188,9 @@ function syncAvatars() {
       '3. Chạy lại Sync Avatar';
   }
 
+  if (matched > 0) {
+    msg += '\n💡 Nếu CRM đọc PostgreSQL, bấm Đồng bộ nhân sự trên CRM để cập nhật ngay; nếu không, chờ lịch đồng bộ Sheet → PostgreSQL.';
+  }
   ui.alert('🖼️ Kết quả Sync Avatar', msg, ui.ButtonSet.OK);
 }
 
@@ -289,7 +292,7 @@ function getImageFiles_(folder) {
  * Trả về { url, sharingOk }
  */
 function makeFilePublic_(file) {
-  const fileId = file.getId();
+  const url = avatarUrlForFile_(file);
   let sharingOk = false;
 
   // Thử set sharing (có thể thất bại nếu file do người khác sở hữu)
@@ -319,9 +322,15 @@ function makeFilePublic_(file) {
   }
 
   return {
-    url: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w400',
+    url,
     sharingOk: sharingOk,
   };
+}
+
+// Drive file content changes update lastModified; equal versions keep an equal URL.
+function avatarUrlForFile_(file) {
+  return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(file.getId()) +
+    '&sz=w400&v=' + file.getLastUpdated().getTime();
 }
 
 /**
@@ -536,7 +545,7 @@ function showSyncReport() {
   message += '✅ Đã match (' + matched.length + '):\n';
   matched.forEach(r => { message += '  • ' + r.name + ' → ' + (r.file || '') + '\n'; });
 
-  message += '\n⏭️ Đã có sẵn (' + existing.length + '):\n';
+  message += '\n⏭️ Ảnh không đổi (' + existing.length + '):\n';
   existing.forEach(r => { message += '  • ' + r.name + '\n'; });
 
   if (failed.length > 0) {
