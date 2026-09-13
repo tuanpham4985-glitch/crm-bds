@@ -57,6 +57,33 @@ function qualificationStatus(lead: ScoreableLead, score: number): QualificationS
   return 'INTERESTED';
 }
 
+// CAMPAIGN_CUSTOMER_QUALIFICATION_SYNC — thứ tự tăng dần của phễu qualification,
+// dùng để merge kết quả tính điểm từ nhiều nguồn (Campaign/non-Campaign) vào
+// CÙNG 1 canonical Customer mà KHÔNG BAO GIỜ downgrade trạng thái đã đạt được.
+// UNQUALIFIED đứng NGOÀI phễu tăng dần (kết quả loại trừ CỤC BỘ của 1 lần
+// tương tác — VD "Sai số"/"Không phù hợp" ở MỘT Campaign khác) — xếp thấp
+// nhất để không bao giờ ghi đè bất kỳ trạng thái nào Customer đã đạt được,
+// kể cả RAW mặc định.
+const QUALIFICATION_FUNNEL_RANK: Record<QualificationStatus, number> = {
+  UNQUALIFIED: -1, RAW: 0, CONTACTED: 1, INTERESTED: 2, QUALIFIED: 3, HOT: 4,
+};
+
+/**
+ * True khi (next, nextScore) đủ tư cách thay thế canonical hiện tại
+ * (current, currentScore) mà KHÔNG downgrade. Rank khác nhau -> so rank
+ * (chỉ chấp nhận mạnh hơn). Rank bằng nhau -> chỉ chấp nhận nếu điểm KHÔNG
+ * thấp hơn (không hạ điểm của cùng 1 trạng thái).
+ */
+export function isQualificationPromotionOrEqual(
+  current: QualificationStatus, currentScore: number,
+  next: QualificationStatus, nextScore: number,
+): boolean {
+  const currentRank = QUALIFICATION_FUNNEL_RANK[current];
+  const nextRank = QUALIFICATION_FUNNEL_RANK[next];
+  if (nextRank !== currentRank) return nextRank > currentRank;
+  return nextScore >= currentScore;
+}
+
 export function calculateLeadQuality(lead: ScoreableLead): LeadScoreResult {
   const contacted = Boolean(lead.trang_thai_cham_soc && lead.trang_thai_cham_soc !== 'Chưa gọi');
   const interested = lead.trang_thai_cham_soc === 'Quan tâm';

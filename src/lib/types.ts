@@ -262,8 +262,13 @@ export interface CampaignSummary {
 }
 
 // CampaignMembership (M1B.1) — authoritative CSKH/qualification record for a
-// customer within ONE Campaign. KHÔNG mirror ngược lại KhachHang — khách
-// không có membership nào tiếp tục dùng field cùng tên trên KhachHang.
+// customer within ONE Campaign. Khách không có membership nào tiếp tục dùng
+// field cùng tên trên KhachHang như cũ. CAMPAIGN_CUSTOMER_QUALIFICATION_SYNC:
+// kết quả qualification (status/score/rank/breakdown + mốc ngay_quan_tam/
+// qualified_at/hot_at) được ĐỒNG BỘ MỘT CHIỀU sang canonical KhachHang (xem
+// membership-workflow.ts) — CampaignMembership vẫn là nơi lưu chi tiết CSKH
+// theo Campaign (lịch sử chăm sóc, callback, outcome, handoff linkage), không
+// bị thay thế bởi sync này.
 export interface CampaignMembership {
   id: string;
   customer_id: string;

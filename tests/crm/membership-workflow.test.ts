@@ -165,11 +165,18 @@ test('8b) membership-workflow.ts không gọi bất kỳ API CrmHandoff/Pipeline
 
 // --- 9 & 10: legacy compatibility --------------------------------------------
 
-test('9) membership-workflow.ts KHÔNG BAO GIỜ ghi vào KhachHang — mọi update chỉ target campaignMembership.id', () => {
+test('9) membership-workflow.ts: mọi CSKH-specific mutation (lịch sử chăm sóc, callback, so_lan_lien_he) vẫn CHỈ target campaignMembership.id — KHÔNG bị lẫn qualification-sync (test riêng ở campaign-customer-qualification-sync.test.ts)', () => {
   const src = readFileSync(resolve('src/lib/crm-funnel/membership-workflow.ts'), 'utf8');
-  assert.doesNotMatch(src, /khachHang\.(update|create)/);
   assert.match(src, /campaignMembership\.update/);
   assert.match(src, /where: \{ id: input\.membershipId \}/);
+  // CAMPAIGN_CUSTOMER_QUALIFICATION_SYNC (business-approved, xem
+  // DATA_TIEM_NANG_CAMPAIGN_INCLUSION_AUDIT_COMPLETE) đã ĐẢO NGƯỢC quyết định
+  // "KHÔNG BAO GIỜ ghi ngược lại KhachHang" — file này giờ CÓ đúng 2 lời gọi
+  // khachHang.update (1/writer), nhưng CHỈ ghi qualification fields, KHÔNG
+  // BAO GIỜ ghi create (không tự tạo Customer mới) và KHÔNG BAO GIỜ ghi
+  // ownership/handoff fields — xem test I) ở file riêng cho phạm vi chính xác.
+  assert.doesNotMatch(src, /khachHang\.create/);
+  assert.equal((src.match(/khachHang\.update/g) || []).length, 2);
 });
 
 test('10) legacy Customer-global CSKH workflow (transactional-workflow.ts) không bị đụng vào bởi M1B.1', () => {
