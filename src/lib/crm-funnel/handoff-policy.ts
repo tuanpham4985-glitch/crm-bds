@@ -2,7 +2,11 @@ import type { QualificationStatus } from '../types';
 
 export type HandoffAction = 'handoff' | 'accept' | 'reject';
 
-const HANDOFF_ELIGIBLE_STATUSES: readonly QualificationStatus[] = ['INTERESTED', 'QUALIFIED', 'HOT'];
+// DATA_TIEM_NANG_ENTRY_GATE — exported để queryQualityLeads() (analytics.ts)
+// tái dùng CHÍNH tập trạng thái này làm entry gate Prisma WHERE cho "Data
+// tiềm năng" — cùng authority với handoff (comment dưới), KHÔNG duplicate
+// mảng/logic ở nơi khác.
+export const HANDOFF_ELIGIBLE_STATUSES: readonly QualificationStatus[] = ['INTERESTED', 'QUALIFIED', 'HOT'];
 
 /**
  * Khách xác nhận QUAN TÂM (INTERESTED) đã đủ điều kiện bàn giao ngay cho Sale.

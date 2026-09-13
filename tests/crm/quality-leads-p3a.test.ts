@@ -19,12 +19,18 @@ const ANALYTICS_PATH = 'src/lib/crm-funnel/analytics.ts';
 // ─── 1-4. Query shape ───────────────────────────────────────────────────────
 
 test('analytics.ts: queryQualityLeads() Customer findMany có select — không còn full findMany trần', () => {
+  // LƯU Ý: regex gốc pin chính xác "findMany({ select, orderBy })" không kèm
+  // where — invariant "không where" đó thuộc riêng phạm vi P3A và đã được
+  // thay thế có chủ đích bởi task DATA_TIEM_NANG_ENTRY_GATE sau đó (xem
+  // quality-leads-entry-gate.test.ts sở hữu assertion cho where hiện tại).
+  // Test này giờ chỉ còn giữ đúng phần bất biến của P3A: select CHÍNH LÀ
+  // CUSTOMER_SELECT (không phải full object/không select nào khác).
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
   const start = src.indexOf('export async function queryQualityLeads');
   assert.ok(start >= 0);
   const end = src.indexOf('\n}', start);
   const body = src.slice(start, end);
-  assert.match(body, /prisma\.khachHang\.findMany\(\{\s*select:\s*CUSTOMER_SELECT,\s*orderBy:\s*\{\s*ngay_tao:\s*'desc'\s*\}\s*\}\)/);
+  assert.match(body, /prisma\.khachHang\.findMany\(\{[^}]*select:\s*CUSTOMER_SELECT[^}]*orderBy:\s*\{\s*ngay_tao:\s*'desc'\s*\}\s*\}\)/);
 });
 
 test('analytics.ts: CUSTOMER_SELECT chứa CHÍNH XÁC 27 field đã audit — không field nào khác', () => {
@@ -60,7 +66,13 @@ test('analytics.ts: CustomerRow suy ra TỪ CUSTOMER_SELECT (Prisma.KhachHangGet
   assert.doesNotMatch(src, /Awaited<ReturnType<typeof prisma\.khachHang\.findMany>>\[number\]/, 'không còn dùng full-row type cũ');
 });
 
-test('analytics.ts: orderBy giữ NGUYÊN ngay_tao desc, KHÔNG có where nào được thêm vào Customer findMany (row-scope không đổi)', () => {
+test('analytics.ts: orderBy giữ NGUYÊN ngay_tao desc trên Customer findMany', () => {
+  // LƯU Ý: bài test P3A gốc còn assert doesNotMatch(/where:/) — invariant đó
+  // ĐÃ được thay thế có chủ đích bởi task DATA_TIEM_NANG_ENTRY_GATE (xem
+  // tests/crm/quality-leads-entry-gate.test.ts), một task RIÊNG, đã được
+  // ChatGPT Architecture Review authorize sau P3A — KHÔNG phải regression.
+  // P3A tự thân (đúng như diff đã release) KHÔNG thêm where; test này giờ chỉ
+  // còn giữ phần bất biến CHUNG cho cả 2 task: orderBy không đổi.
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
   const start = src.indexOf('export async function queryQualityLeads');
   const end = src.indexOf('\n}', start);
@@ -69,24 +81,40 @@ test('analytics.ts: orderBy giữ NGUYÊN ngay_tao desc, KHÔNG có where nào �
   const findManyEnd = body.indexOf(')', findManyStart) + 1;
   const call = body.slice(findManyStart, findManyEnd);
   assert.match(call, /orderBy:\s*\{\s*ngay_tao:\s*'desc'\s*\}/);
-  assert.doesNotMatch(call, /where:/, 'row-scope (không where) phải giữ nguyên trong task P3A — column narrowing only');
 });
 
-test('analytics.ts: chỉ ĐÚNG 1 lệnh khachHang.findMany() trong queryQualityLeads — không tách thành nhiều query thay thế', () => {
+test('analytics.ts: queryQualityLeads() có ĐÚNG 2 lệnh khachHang.findMany() — full-scope (summary) + entry-gated (rows/export)', () => {
+  // LƯU Ý: bài test P3A gốc pin "chỉ 1 findMany" — invariant đó thuộc riêng
+  // phạm vi P3A (column narrowing, KHÔNG đổi row scope). Task
+  // DATA_TIEM_NANG_ENTRY_GATE_REMEDIATION (được ChatGPT Architecture Review
+  // yêu cầu SAU P3A) đã CHỦ ĐÍCH tách 1 population thành 2 vì lý do nghiệp vụ
+  // bắt buộc: summary/funnel phải phản ánh TOÀN BỘ CSKH trong scope trong khi
+  // rows/export chỉ được chứa INTERESTED/QUALIFIED/HOT — không thể cùng lúc
+  // đúng cả 2 semantics từ 1 query. Xem
+  // tests/crm/quality-leads-entry-gate.test.ts phần REMEDIATION sở hữu
+  // assertion chi tiết cho 2 query này (shape/WHERE/select từng query).
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
   const start = src.indexOf('export async function queryQualityLeads');
   const end = src.indexOf('\n}', start);
   const body = src.slice(start, end);
   const count = (body.match(/prisma\.khachHang\.findMany\(/g) || []).length;
-  assert.equal(count, 1, 'queryQualityLeads phải giữ đúng 1 query Customer duy nhất');
+  assert.equal(count, 2, 'queryQualityLeads phải giữ đúng 2 query Customer (full-scope summary + entry-gated list) — không hơn không kém');
 });
 
-// ─── 8. Pipeline/Handoff join KHÔNG đổi ─────────────────────────────────────
+// ─── 8. Pipeline/Handoff join ───────────────────────────────────────────────
 
-test('analytics.ts: Pipeline/CrmHandoff join giữ NGUYÊN — không đụng trong task P3A (column narrowing chỉ áp dụng cho Customer)', () => {
+test('analytics.ts: Pipeline/CrmHandoff join giữ NGUYÊN SHAPE (where id IN list + orderBy) — column narrowing P3A không đụng cấu trúc join này', () => {
+  // LƯU Ý: bài test P3A gốc pin cứng tên biến `ids` cho CẢ 2 join — do task
+  // DATA_TIEM_NANG_ENTRY_GATE_REMEDIATION tách population, Pipeline join giờ
+  // dùng `fullScopeIds` (cần pipeline_status cho CẢ full-scope summary lẫn
+  // rows — xem entry-gate test REMEDIATION) còn CrmHandoff join dùng
+  // `eligibleIds` (chỉ list-related, matches()/summarize() không đọc field
+  // handoff). Đây là thay đổi CÓ CHỦ ĐÍCH, đã authorize — test này giờ chỉ
+  // còn giữ bất biến CHUNG: vẫn đúng shape "findMany({ where: { <key>: { in:
+  // <ids var> } }, orderBy })", không bị rewrite thành join/aggregate khác.
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
-  assert.match(src, /prisma\.pipeline\.findMany\(\{\s*where:\s*\{\s*id_khach_hang:\s*\{\s*in:\s*ids\s*\}\s*\},\s*orderBy:\s*\{\s*updated_at:\s*'desc'\s*\}\s*\}\)/);
-  assert.match(src, /prisma\.crmHandoff\.findMany\(\{\s*where:\s*\{\s*customer_id:\s*\{\s*in:\s*ids\s*\}\s*\},\s*orderBy:\s*\{\s*created_at:\s*'desc'\s*\}\s*\}\)/);
+  assert.match(src, /prisma\.pipeline\.findMany\(\{\s*where:\s*\{\s*id_khach_hang:\s*\{\s*in:\s*\w+\s*\}\s*\},\s*orderBy:\s*\{\s*updated_at:\s*'desc'\s*\}\s*\}\)/);
+  assert.match(src, /prisma\.crmHandoff\.findMany\(\{\s*where:\s*\{\s*customer_id:\s*\{\s*in:\s*\w+\s*\}\s*\},\s*orderBy:\s*\{\s*created_at:\s*'desc'\s*\}\s*\}\)/);
 });
 
 // ─── 5-7. Behavioral equivalence — literal mirror của inScope/matches/mapping
@@ -125,17 +153,23 @@ function inScope(customer: NarrowCustomer, scope: { allCustomers: boolean; proje
 }
 
 test('mirror fidelity: inScope() trong file khớp BYTE-IDENTICAL với bản mirror dùng để test bên dưới', () => {
+  // LƯU Ý: chữ ký gốc P3A pin `customer: CustomerRow` — task
+  // DATA_TIEM_NANG_ENTRY_GATE_REMEDIATION đổi sang `customer: ScopeFields`
+  // (Pick<CustomerRow, 'du_an' | 'telesale_phu_trach'>) để inScope() dùng
+  // được cho CẢ CustomerRow (eligible) lẫn FullScopeCustomerRow (full-scope)
+  // qua structural subtyping — THÂN hàm (logic) vẫn byte-identical, chỉ đổi
+  // kiểu tham số.
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
-  const start = src.indexOf('function inScope(customer: CustomerRow, scope: CrmManagerScope): boolean {');
+  const start = src.indexOf('function inScope(customer: ScopeFields, scope: CrmManagerScope): boolean {');
   assert.ok(start >= 0);
   const end = src.indexOf('\n}', start) + '\n}'.length;
   const body = src.slice(start, end);
-  const expected = `function inScope(customer: CustomerRow, scope: CrmManagerScope): boolean {
+  const expected = `function inScope(customer: ScopeFields, scope: CrmManagerScope): boolean {
   return scope.allCustomers
     || scope.projectNames.includes(customer.du_an || '')
     || scope.directReportNames.includes(customer.telesale_phu_trach || '');
 }`;
-  assert.equal(body, expected, 'inScope() phải BYTE-IDENTICAL — P3A không được đổi logic, chỉ đổi kiểu tham số qua CustomerRow');
+  assert.equal(body, expected, 'inScope() THÂN hàm phải BYTE-IDENTICAL — chỉ kiểu tham số đổi (ScopeFields), logic không đổi');
 });
 
 test('5. inScope: narrow customer object (27 field) vẫn hoạt động đúng — Admin thấy tất cả, non-admin theo project/telesale', () => {
