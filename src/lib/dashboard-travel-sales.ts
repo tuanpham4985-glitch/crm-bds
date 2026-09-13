@@ -14,7 +14,7 @@
 // KHÔNG lọc theo năm: tab đối chiếu không có cột ngày/năm nào, và tổng khớp
 // CHÍNH XÁC với golden case khi tính trên TOÀN BỘ dòng hợp lệ, không giới
 // hạn khoảng thời gian — xem tests/crm/dashboard-travel-sales.test.ts.
-import type { DoanhThuTheoSale } from './types';
+import type { DoanhThuTheoSale, NhanVien } from './types';
 import type { TongHopRow } from './google-sheets';
 
 function isDoiTacStr(s: string | undefined | null): boolean {
@@ -96,4 +96,36 @@ export function buildTravelSalesLeaderboard(rows: readonly TongHopRow[]): DoanhT
     map.set(key, existing);
   }
   return Array.from(map.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
+}
+
+/** DASHBOARD_RACE_LEADERBOARD_LIGHTWEIGHT_ENDPOINT — display-rule step trước
+ * đây nằm THẲNG trong dashboard/route.ts (leaderboardExcludedNames + avatar
+ * enrichment), giờ tách ra đây làm authoritative helper DUY NHẤT — cả
+ * /api/dashboard lẫn /api/dashboard/leaderboard gọi CHUNG hàm này, không
+ * copy/paste lại rule. Byte-identical với logic gốc:
+ *   1. loại "Nghỉ việc"/"CTV" (leaderboardExcludedNames, từ allEmployeesRaw
+ *      CHƯA lọc — 1 nhân viên "Nghỉ việc" phải bị loại dù trùng tên với ai
+ *      khác đang làm).
+ *   2. enrich avatar_url từ allEmployees (ĐÃ lọc bỏ "Nghỉ việc", KHÔNG lọc
+ *      CTV) — .find() theo đúng thứ tự này để khớp tuyệt đối hành vi cũ
+ *      trong trường hợp trùng ho_ten giữa 1 người "Nghỉ việc" và 1 người
+ *      đang làm (lookup phải ưu tiên người đang làm, không phải người đầu
+ *      tiên xuất hiện trong allEmployeesRaw). */
+export function applyLeaderboardDisplayRules(
+  leaderboard: readonly DoanhThuTheoSale[],
+  allEmployeesRaw: readonly NhanVien[],
+): DoanhThuTheoSale[] {
+  const allEmployees = allEmployeesRaw.filter(nv => nv.trang_thai !== 'Nghỉ việc');
+  const excludedNames = new Set(
+    allEmployeesRaw
+      .filter(nv => nv.trang_thai === 'Nghỉ việc' || nv.trang_thai === 'CTV')
+      .map(nv => nv.ho_ten)
+  );
+  return leaderboard
+    .filter(entry => !excludedNames.has(entry.nhan_vien))
+    .map(entry => {
+      if (entry.nhan_vien === 'Chưa phân') return entry;
+      const emp = allEmployees.find(nv => nv.ho_ten === entry.nhan_vien);
+      return emp?.avatar_url ? { ...entry, avatar_url: emp.avatar_url } : entry;
+    });
 }

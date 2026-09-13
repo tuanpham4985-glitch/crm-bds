@@ -350,15 +350,21 @@ export default function DashboardPage() {
 
   // Fetch riêng cho CỰC CHIẾN 2026: tính từ ngày thành lập công ty (23/12/2025)
   // Bao gồm cả các deal ký cuối tháng 12/2025 (23/12, 26/12) vào cuộc đua.
-  // lite=1: widget này chỉ cần doanh_thu_theo_sale (có sẵn ở cả 2 chế độ) —
-  // không cần kéo theo tonghop/nhan_su_bien_dong/crm_totals của toàn bộ
-  // khoảng ngày từ lúc thành lập công ty.
+  // DASHBOARD_RACE_LEADERBOARD_LIGHTWEIGHT_ENDPOINT — trước đây gọi thẳng
+  // /api/dashboard?...&lite=1 chỉ để lấy đúng field doanh_thu_theo_sale,
+  // nhưng route đó vẫn chạy TOÀN BỘ Dashboard aggregation (Customer summary/
+  // getPipeline/funnel/crm_totals...) dù không dùng tới — xem audit
+  // DASHBOARD_DOUBLE_FETCH_AUDIT. Đổi sang endpoint nhẹ /api/dashboard/leaderboard
+  // (cùng authoritative helper applyLeaderboardDisplayRules(), KHÔNG đổi rule
+  // tính bảng xếp hạng) — response shape đổi từ DashboardData wrapper thành
+  // {success, data: DoanhThuTheoSale[]} thẳng, nên set raceData TRỰC TIẾP từ
+  // result.data (không còn .doanh_thu_theo_sale).
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
-    fetch(`/api/dashboard?from=${RACE_START_DATE}&to=${today}&lite=1`)
+    fetch(`/api/dashboard/leaderboard?from=${RACE_START_DATE}&to=${today}`)
       .then(r => r.json())
       .then(result => {
-        if (result.success) setRaceData(result.data.doanh_thu_theo_sale);
+        if (result.success) setRaceData(result.data);
       })
       .catch(err => console.error('Race data fetch error:', err));
   }, []);

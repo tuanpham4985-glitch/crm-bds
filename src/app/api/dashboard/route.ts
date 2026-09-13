@@ -6,7 +6,7 @@ import type { CustomerDashboardSummary } from '@/lib/repository';
 import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
-import { buildTravelSalesLeaderboard } from '@/lib/dashboard-travel-sales';
+import { buildTravelSalesLeaderboard, applyLeaderboardDisplayRules } from '@/lib/dashboard-travel-sales';
 import { cached } from '@/lib/mem-cache';
 
 // Batch 1 item 1 — Dashboard "double-fetch": trang Dashboard (page.tsx) tự
@@ -974,13 +974,12 @@ export async function GET(request: NextRequest) {
     //      trước đây, filter theo tên SAU KHI gộp (1 entry/tên).
     //   2. avatar_url — enrich từ allEmployees, cùng cách buildRaceSaleLeaderboard
     //      cũ đã làm, giữ nguyên UI contract (SafeAvatar trên Dashboard).
-    const travelSalesLeaderboard = buildTravelSalesLeaderboard(tongHopRows)
-      .filter(entry => !leaderboardExcludedNames.has(entry.nhan_vien))
-      .map(entry => {
-        if (entry.nhan_vien === 'Chưa phân') return entry;
-        const emp = allEmployees.find(nv => nv.ho_ten === entry.nhan_vien);
-        return emp?.avatar_url ? { ...entry, avatar_url: emp.avatar_url } : entry;
-      });
+    // DASHBOARD_RACE_LEADERBOARD_LIGHTWEIGHT_ENDPOINT — display-rule step
+    // (loại Nghỉ việc/CTV + enrich avatar_url) tách sang applyLeaderboardDisplayRules()
+    // (dashboard-travel-sales.ts) — cùng 1 authoritative helper dùng chung với
+    // /api/dashboard/leaderboard (endpoint mới, race widget), không copy/paste
+    // lại rule ở 2 nơi. Hành vi byte-identical với bản inline cũ.
+    const travelSalesLeaderboard = applyLeaderboardDisplayRules(buildTravelSalesLeaderboard(tongHopRows), allEmployeesRaw);
     const raceDuAn = buildRaceDuAn(tongHopRows);
     const raceTheoThang = buildRaceTheoThang(tongHopRows);
     const tonghop = wantCharts

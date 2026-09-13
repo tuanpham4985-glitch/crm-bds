@@ -18,12 +18,21 @@ test('route.ts: đọc lite=1 từ query, wantCharts CHỈ thu hẹp thêm trong
   assert.match(routeSrc, /const wantCharts = isAdmin && !lite;/);
 });
 
-test('route.ts: getCongViec()/getHopDong()/getDataNhanSuForReport() CHỈ fetch khi wantCharts=true (bỏ qua hoàn toàn ở chế độ lite) — KHÔNG đụng getPipeline/getKhachHang/getNhanVien/getTongHopGiaoDich (vẫn cần cho kpi/Bảng xếp hạng dù đóng biểu đồ)', () => {
+// DASHBOARD_RACE_LEADERBOARD_LIGHTWEIGHT_ENDPOINT remediation — assertion
+// "getPipeline(), getKhachHang(), getNhanVien()," đã STALE từ chính lúc
+// release b1c8608 (Customer Read Optimization): getKhachHang() (row-per-
+// customer) đã bị thay bằng getKhachHangDashboardSummary() gated theo
+// isAdmin (verified: git show b1c8608 đã có sẵn wiring này, KHÔNG phải thay
+// đổi mới của task hiện tại). Cập nhật lại ĐÚNG authority đã release — test
+// maintenance thuần, không đổi production behavior.
+test('route.ts: getCongViec()/getHopDong()/getDataNhanSuForReport() CHỈ fetch khi wantCharts=true (bỏ qua hoàn toàn ở chế độ lite) — KHÔNG đụng getPipeline/Customer summary/getNhanVien/getTongHopGiaoDich (vẫn cần cho kpi/Bảng xếp hạng dù đóng biểu đồ)', () => {
   assert.match(routeSrc, /wantCharts \? getCongViec\(\) : Promise\.resolve\(\[\] as Awaited<ReturnType<typeof getCongViec>>\)/);
   assert.match(routeSrc, /wantCharts \? getHopDong\(\) : Promise\.resolve\(\[\] as Awaited<ReturnType<typeof getHopDong>>\)/);
   assert.match(routeSrc, /wantCharts \? getDataNhanSuForReport\(\)\.catch/);
-  // Các fetch luôn-cần không được đổi điều kiện — vẫn gọi trần, không gate theo wantCharts/lite.
-  assert.match(routeSrc, /getPipeline\(\),\s*\n\s*getKhachHang\(\),\s*\n\s*getNhanVien\(\),/);
+  // Các fetch luôn-cần không được đổi điều kiện — vẫn gọi trần/isAdmin-gated
+  // (Customer summary, xem DASHBOARD_CUSTOMER_READ_OPTIMIZATION), không gate
+  // theo wantCharts/lite.
+  assert.match(routeSrc, /getPipeline\(\),\s*\n\s*isAdmin\s*\n\s*\?\s*getKhachHangDashboardSummary\(\)\s*\n\s*:\s*Promise\.resolve<CustomerDashboardSummary>\(\{\s*total:\s*0,\s*unassigned:\s*0,\s*bySource:\s*\[\],\s*createdDates:\s*\[\]\s*\}\),\s*\n\s*getNhanVien\(\),/);
   assert.match(routeSrc, /reportMode !== 'standard'\s*\n\s*\? getTongHopGiaoDich\(/);
 });
 
@@ -77,8 +86,14 @@ test('page.tsx: nút "Hiển thị biểu đồ"/"Ẩn biểu đồ" tồn tại
   assert.match(pageSrc, /\{chartsOpen \? 'Ẩn biểu đồ' : 'Hiển thị biểu đồ'\}/);
 });
 
-test('page.tsx: fetch riêng CỰC CHIẾN (raceData) cũng gửi lite=1 — chỉ cần doanh_thu_theo_sale, không kéo theo tonghop/nhan_su_bien_dong/crm_totals cho toàn bộ khoảng ngày kể từ lúc thành lập công ty', () => {
-  assert.match(pageSrc, /fetch\(`\/api\/dashboard\?from=\$\{RACE_START_DATE\}&to=\$\{today\}&lite=1`\)/);
+// DASHBOARD_RACE_LEADERBOARD_LIGHTWEIGHT_ENDPOINT — fetch riêng CỰC CHIẾN
+// (raceData) không còn gọi /api/dashboard?...&lite=1 (route "đủ" thu nhỏ
+// bằng lite) — đã chuyển sang /api/dashboard/leaderboard, endpoint riêng
+// KHÔNG chạy Dashboard aggregation nào (không có khái niệm lite ở đây vì
+// không có gì để "tắt bớt" — xem tests/dashboard/race-leaderboard.test.ts).
+test('page.tsx: fetch riêng CỰC CHIẾN (raceData) gọi /api/dashboard/leaderboard (KHÔNG còn /api/dashboard?...&lite=1) — endpoint riêng, không kéo theo Dashboard aggregation', () => {
+  assert.match(pageSrc, /fetch\(`\/api\/dashboard\/leaderboard\?from=\$\{RACE_START_DATE\}&to=\$\{today\}`\)/);
+  assert.doesNotMatch(pageSrc, /fetch\(`\/api\/dashboard\?from=\$\{RACE_START_DATE\}/);
 });
 
 // ─── /bao-cao KHÔNG bị đụng — không truyền lite, vẫn nhận đủ như cũ ────────
