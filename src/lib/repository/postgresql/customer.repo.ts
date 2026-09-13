@@ -1,4 +1,4 @@
-import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields } from '../interfaces';
+import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardSummary, CustomerDedupFields } from '../interfaces';
 import type { KhachHang } from '../../types';
 import { prisma } from '../../db/client';
 
@@ -14,7 +14,7 @@ export class PostgresCustomerRepository implements ICustomerRepository {
   }
 
   // NEON_TRANSFER_AUDIT P0 — narrow select() projections, xem interfaces.ts
-  // (CustomerAssignmentFields/CustomerDashboardFields) cho lý do/consumer.
+  // (CustomerAssignmentFields/CustomerDashboardSummary) cho lý do/consumer.
   async countByHandoffStatus(status: string): Promise<number> {
     return prisma.khachHang.count({ where: { trang_thai_ban_giao: status } });
   }
@@ -38,15 +38,31 @@ export class PostgresCustomerRepository implements ICustomerRepository {
     }));
   }
 
-  async findDashboardFields(): Promise<CustomerDashboardFields[]> {
-    const rows = await prisma.khachHang.findMany({
-      select: { nguon: true, sale_phu_trach: true, ngay_tao: true },
-    });
-    return rows.map(row => ({
-      nguon: row.nguon ?? '',
-      sale_phu_trach: row.sale_phu_trach,
-      ngay_tao: row.ngay_tao,
-    }));
+  // DASHBOARD_CUSTOMER_READ_OPTIMIZATION — thay 1 findMany({select: 3 cols})
+  // KHÔNG where/take (đọc toàn bộ ~6998 dòng) bằng 3 query nhỏ: count({where})/
+  // groupBy() cho 2 con số/nhóm, CHỈ còn 1 findMany select ĐÚNG 1 cột
+  // (ngay_tao) cho kh_moi_thang — field String tự do (nhiều định dạng lịch
+  // sử), CHƯA an toàn đẩy so sánh ngày xuống SQL WHERE (xem audit
+  // DASHBOARD_FULL_SCAN_OPTIMIZATION_AUDIT), nên vẫn đọc theo hàng và để
+  // route.ts filter bằng safeParseDate() y hệt hôm nay.
+  //
+  // MINOR_REMEDIATION — bỏ prisma.khachHang.count() đứng riêng cho `total`:
+  // findMany({select:{ngay_tao:true}}) KHÔNG where/distinct/include quan hệ
+  // nào, nên LUÔN trả ĐÚNG 1 dòng/1 bản ghi KhachHang — CÙNG population với
+  // count() không where. total = createdDateRows.length tương đương tuyệt
+  // đối, không cần query riêng.
+  async findDashboardSummary(): Promise<CustomerDashboardSummary> {
+    const [unassigned, bySourceRaw, createdDateRows] = await Promise.all([
+      prisma.khachHang.count({ where: { sale_phu_trach: '' } }),
+      prisma.khachHang.groupBy({ by: ['nguon'], _count: { _all: true } }),
+      prisma.khachHang.findMany({ select: { ngay_tao: true } }),
+    ]);
+    return {
+      total: createdDateRows.length,
+      unassigned,
+      bySource: bySourceRaw.map(row => ({ nguon: row.nguon, count: row._count._all })),
+      createdDates: createdDateRows.map(row => row.ngay_tao),
+    };
   }
 
   // IMPORT_DUPLICATE_CHECK_P0 — dùng bởi getKhachHangImportDedupFields()

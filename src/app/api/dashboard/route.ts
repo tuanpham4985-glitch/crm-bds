@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getPipeline, getKhachHangDashboardFields, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong, getDataNhanSuForReport } from '@/lib/data-access';
+import { getPipeline, getKhachHangDashboardSummary, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong, getDataNhanSuForReport } from '@/lib/data-access';
 import type { HrEmployeeRecord } from '@/lib/data-access';
+import type { CustomerDashboardSummary } from '@/lib/repository';
 import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
@@ -477,9 +478,19 @@ export async function GET(request: NextRequest) {
     // hoàn toàn 2 lần đọc bảng CongViec/HopDong khi wantCharts=false, KHÔNG
     // đụng tới getPipeline/getKhachHang/getNhanVien/getTongHopGiaoDich (những
     // fetch này còn phục vụ kpi/Bảng xếp hạng/sinh nhật — LUÔN cần dù đóng biểu đồ).
-    const [allPipelines, allCustomers, allEmployeesRaw, allCongViec, allContracts, hrBienDongData, tongHopRows] = await Promise.all([
+    // customerSummary (kh_total/kh_moi_thang/kh_by_nguon/nguon_khach_hang/
+    // kh_chua_assign) CHỈ được response admin đọc — non-admin hard-code
+    // nguon_khach_hang:[]/kpi.kh_chua_assign:0/không có crm_totals (xem return
+    // cuối hàm) — PROVEN qua audit DASHBOARD_CUSTOMER_READ_OPTIMIZATION, nên
+    // bỏ qua hẳn query này khi !isAdmin, cùng pattern wantCharts ? ... :
+    // Promise.resolve(...) đã dùng cho CongViec/HopDong/NhanSu bên dưới
+    // (điều kiện ở đây là isAdmin, KHÔNG phải wantCharts — request admin
+    // "đầy đủ" dù lite vẫn cần nguon_khach_hang/kh_chua_assign).
+    const [allPipelines, customerSummary, allEmployeesRaw, allCongViec, allContracts, hrBienDongData, tongHopRows] = await Promise.all([
       getPipeline(),
-      getKhachHangDashboardFields(),
+      isAdmin
+        ? getKhachHangDashboardSummary()
+        : Promise.resolve<CustomerDashboardSummary>({ total: 0, unassigned: 0, bySource: [], createdDates: [] }),
       getNhanVien(),
       wantCharts ? getCongViec() : Promise.resolve([] as Awaited<ReturnType<typeof getCongViec>>),
       wantCharts ? getHopDong() : Promise.resolve([] as Awaited<ReturnType<typeof getHopDong>>),
@@ -655,19 +666,25 @@ export async function GET(request: NextRequest) {
       doanh_thu_prev: thangPrevMap.get(thang) || 0,
     }));
 
-    // Nguồn khách hàng
+    // Nguồn khách hàng — customerSummary.bySource đã COUNT theo nguon ở DB
+    // (Postgres groupBy trả riêng null lẫn '' nếu cả 2 cùng tồn tại) — merge
+    // CẢ 2 + mọi literal 'Khác' đã có vào ĐÚNG 1 bucket bằng `|| 'Khác'`, y hệt
+    // hành vi cũ (không sinh 2 bucket Khác). Dùng CHUNG map này cho
+    // crm_totals.kh_by_nguon bên dưới — trước đây tính riêng 2 lần từ cùng
+    // allCustomers, nay chỉ 1 lần.
     const nguonMap = new Map<string, number>();
-    allCustomers.forEach(kh => {
-      const nguon = kh.nguon || 'Khác';
-      nguonMap.set(nguon, (nguonMap.get(nguon) || 0) + 1);
+    customerSummary.bySource.forEach(({ nguon, count }) => {
+      const key = nguon || 'Khác';
+      nguonMap.set(key, (nguonMap.get(key) || 0) + count);
     });
     const nguonKhachHang: NguonKhachHang[] = Array.from(nguonMap).map(([nguon, so_luong]) => ({
       nguon,
       so_luong,
     }));
 
-    // KH chưa assign sale
-    const kh_chua_assign = allCustomers.filter(kh => !kh.sale_phu_trach).length;
+    // KH chưa assign sale — count() DB-side (sale_phu_trach NOT NULL nên ''
+    // là giá trị "chưa assign" duy nhất có thể trên Postgres).
+    const kh_chua_assign = customerSummary.unassigned;
 
     // Funnel chuyển đổi — đếm tất cả pipeline theo giai đoạn (toàn thời gian)
     const funnelCountMap = new Map<string, number>();
@@ -698,19 +715,23 @@ export async function GET(request: NextRequest) {
     const cvStatusMap = new Map<string, number>();
     allCongViec.forEach(cv => cvStatusMap.set(cv.trang_thai, (cvStatusMap.get(cv.trang_thai) || 0) + 1));
 
-    const khNguonMap = new Map<string, number>();
-    allCustomers.forEach(kh => { const n = kh.nguon || 'Khác'; khNguonMap.set(n, (khNguonMap.get(n) || 0) + 1); });
-
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const kh_moi_thang = allCustomers.filter(kh => {
-      const d = safeParseDate(kh.ngay_tao);
+    // ngay_tao là String tự do (nhiều định dạng lịch sử) — GIỮ NGUYÊN
+    // safeParseDate() ở tầng app, KHÔNG đẩy so sánh ngày xuống SQL WHERE
+    // (xem audit DASHBOARD_FULL_SCAN_OPTIMIZATION_AUDIT — chưa xác nhận toàn
+    // bộ dữ liệu đã đồng nhất định dạng sortable). customerSummary.createdDates
+    // là mảng ngay_tao thô DUY NHẤT còn đọc theo hàng từ Customer.
+    const kh_moi_thang = customerSummary.createdDates.filter(ngayTao => {
+      const d = safeParseDate(ngayTao);
       return d && d >= monthStart;
     }).length;
 
     const crm_totals: CrmTotals = {
-      kh_total: allCustomers.length,
+      kh_total: customerSummary.total,
       kh_moi_thang,
-      kh_by_nguon: Array.from(khNguonMap.entries())
+      // Cùng nguonMap đã tính cho nguon_khach_hang ở trên — tránh tính lại
+      // lần 2 từ cùng 1 dữ liệu (trước đây khNguonMap lặp lại y hệt nguonMap).
+      kh_by_nguon: Array.from(nguonMap.entries())
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
         .map(([label, count]) => ({ label, count })),

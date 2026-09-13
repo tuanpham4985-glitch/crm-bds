@@ -24,8 +24,8 @@ import {
   getAttendanceOutsideRepository,
   getPayrollRepository,
 } from './repository';
-import type { CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields, PipelineCustomerRefFields, PipelineStatusFields } from './repository';
-import { toAssignmentFields, toDashboardFields, toDedupFields } from './khach-hang-list-query';
+import type { CustomerAssignmentFields, CustomerDashboardSummary, CustomerDedupFields, PipelineCustomerRefFields, PipelineStatusFields } from './repository';
+import { toAssignmentFields, toDashboardSummary, toDedupFields } from './khach-hang-list-query';
 import type {
   NhanVien, KhachHang, Pipeline, DuAn,
   CongViec, HopDong, ChamCongNgoai,
@@ -40,12 +40,12 @@ export type * from './google-sheets';
 const _pgNhanVien  = unstable_cache(() => getEmployeeRepository().findAll(),  ['nv'],  { revalidate: 60,  tags: ['nv']  });
 const _pgKhachHang = unstable_cache(() => getCustomerRepository().findAll(),  ['kh'],  { revalidate: 30,  tags: ['kh']  });
 // NEON_TRANSFER_AUDIT P0 — narrow projections of KhachHang for crm-access/
-// dashboard (xem getKhachHangCrmAccessFields/getKhachHangDashboardFields
+// dashboard (xem getKhachHangCrmAccessFields/getKhachHangDashboardSummary
 // bên dưới). Payload nhỏ hơn nhiều so với _pgKhachHang (full 48 cột, gồm
 // text lịch sử không giới hạn độ dài) nên unstable_cache ở đây thực sự ghi
 // được (không rơi vào giới hạn >2MB/item đã audit chứng minh với _pgKhachHang).
 const _pgKhachHangAssignmentFields = unstable_cache(() => getCustomerRepository().findAssignmentFields(), ['kh-assignment-fields'], { revalidate: 30, tags: ['kh'] });
-const _pgKhachHangDashboardFields  = unstable_cache(() => getCustomerRepository().findDashboardFields(),  ['kh-dashboard-fields'],  { revalidate: 30, tags: ['kh'] });
+const _pgKhachHangDashboardSummary = unstable_cache(() => getCustomerRepository().findDashboardSummary(), ['kh-dashboard-summary'], { revalidate: 30, tags: ['kh'] });
 // IMPORT_DUPLICATE_CHECK_P0 — cùng revalidate 30s với _pgKhachHang (hàm full-
 // shape cũ mà Import Excel từng gọi) — giữ NGUYÊN đặc tính "staleness tối đa
 // 30s" đã có từ trước (KHÔNG phải rủi ro mới), chỉ giảm số cột/row width.
@@ -390,12 +390,10 @@ export async function findKhachHangById(id: string): Promise<KhachHang | null> {
   }
 }
 
-// NEON_TRANSFER_AUDIT P0 — narrow reads cho 2 consumer chỉ cần vài field
-// nhỏ (KHÔNG phải full KhachHang, xem CustomerAssignmentFields/
-// CustomerDashboardFields trong repository/interfaces.ts): /api/crm-access
-// (nhánh non-admin: telesale_phu_trach/sale_nhan_khach/sale_phu_trach/du_an
-// để tính projectNamesFromAssignments + trang_thai_ban_giao cho handoffCount)
-// và /api/dashboard (nguon/sale_phu_trach/ngay_tao cho các thống kê kh_*).
+// NEON_TRANSFER_AUDIT P0 — narrow read cho /api/crm-access (nhánh non-admin:
+// telesale_phu_trach/sale_nhan_khach/sale_phu_trach/du_an để tính
+// projectNamesFromAssignments + trang_thai_ban_giao cho handoffCount), xem
+// CustomerAssignmentFields trong repository/interfaces.ts.
 // GS: vẫn giữ NGUYÊN cơ chế cache cũ của getKhachHang() (đã cached ở
 // mem-cache.ts) rồi rút gọn field trong JS — Sheets không có projection thật.
 export async function getKhachHangCrmAccessFields(): Promise<CustomerAssignmentFields[]> {
@@ -412,24 +410,30 @@ export async function getKhachHangCrmAccessFields(): Promise<CustomerAssignmentF
   }
 }
 
-export async function getKhachHangDashboardFields(): Promise<CustomerDashboardFields[]> {
+// DASHBOARD_CUSTOMER_READ_OPTIMIZATION — thay findDashboardFields() (row-per-
+// customer, 3 field, TOÀN BỘ population) bằng findDashboardSummary()
+// (aggregate: count/count-where/group-count DB-side + 1 cột ngay_tao đọc
+// theo hàng cho kh_moi_thang — xem CustomerDashboardSummary). GS fallback
+// dùng CHUNG toDashboardSummary() với GoogleSheetsCustomerRepository (1 công
+// thức, không lặp lại).
+export async function getKhachHangDashboardSummary(): Promise<CustomerDashboardSummary> {
   if (!isPostgresEnabled('crm')) {
     const all = await getKhachHang();
-    return all.map(toDashboardFields);
+    return toDashboardSummary(all);
   }
   try {
-    return await _pgKhachHangDashboardFields();
+    return await _pgKhachHangDashboardSummary();
   } catch (e) {
-    console.error('[PG:crm:getKhachHangDashboardFields] error, falling back to GS:', e instanceof Error ? e.message : e);
+    console.error('[PG:crm:getKhachHangDashboardSummary] error, falling back to GS:', e instanceof Error ? e.message : e);
     const all = await getKhachHang();
-    return all.map(toDashboardFields);
+    return toDashboardSummary(all);
   }
 }
 
 // IMPORT_DUPLICATE_CHECK_P0 — Import Excel (import-excel/route.ts) chỉ cần
 // id_khach_hang + so_dien_thoai của TOÀN BỘ customer hiện có để dựng
 // phoneKey Set/Map cho duplicate-check, KHÔNG cần full ~48 cột. Cùng pattern
-// PG→GS fallback với getKhachHangCrmAccessFields/getKhachHangDashboardFields.
+// PG→GS fallback với getKhachHangCrmAccessFields/getKhachHangDashboardSummary.
 export async function getKhachHangImportDedupFields(): Promise<CustomerDedupFields[]> {
   if (!isPostgresEnabled('crm')) {
     const all = await getKhachHang();

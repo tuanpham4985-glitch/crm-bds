@@ -16,7 +16,7 @@
 import type { Prisma } from '../generated/prisma/client';
 import type { CrmSessionUser } from './crm-auth';
 import type { DuAn, NhanVien, KhachHang } from './types';
-import type { CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields } from './repository';
+import type { CustomerAssignmentFields, CustomerDashboardSummary, CustomerDedupFields } from './repository';
 
 // NEON_TRANSFER_AUDIT P0 — narrow-projection mappers dùng bởi GS fallback
 // path của getKhachHangCrmAccessFields()/getKhachHangDashboardFields()
@@ -35,8 +35,29 @@ export function toAssignmentFields(kh: KhachHang): CustomerAssignmentFields {
   };
 }
 
-export function toDashboardFields(kh: KhachHang): CustomerDashboardFields {
-  return { nguon: kh.nguon, sale_phu_trach: kh.sale_phu_trach, ngay_tao: kh.ngay_tao };
+// DASHBOARD_CUSTOMER_READ_OPTIMIZATION — thay toDashboardFields() (mapper
+// TỪNG dòng) bằng toDashboardSummary() (mapper TOÀN mảng → aggregate),
+// dùng bởi GS fallback path của getKhachHangDashboardSummary() (data-access.ts)
+// VÀ GoogleSheetsCustomerRepository.findDashboardSummary() — 1 công thức
+// duy nhất, không lặp lại ở 2 nơi. `bySource` nhóm THEO ĐÚNG giá trị
+// kh.nguon thô (Sheets/KhachHang domain type luôn là string, không có null —
+// '' là giá trị "chưa rõ nguồn" duy nhất có thể) — merge '' + 'Khác' thành 1
+// bucket là việc của route.ts (`nguon || 'Khác'`), KHÔNG làm ở đây, để cùng
+// công thức merge áp dụng CHUNG cho cả nhánh Postgres (nguon: string | null)
+// lẫn nhánh này — tránh viết lại rule merge ở 2 nơi.
+export function toDashboardSummary(all: KhachHang[]): CustomerDashboardSummary {
+  const bySourceMap = new Map<string, number>();
+  let unassigned = 0;
+  for (const kh of all) {
+    bySourceMap.set(kh.nguon, (bySourceMap.get(kh.nguon) || 0) + 1);
+    if (!kh.sale_phu_trach) unassigned += 1;
+  }
+  return {
+    total: all.length,
+    unassigned,
+    bySource: Array.from(bySourceMap, ([nguon, count]) => ({ nguon, count })),
+    createdDates: all.map(kh => kh.ngay_tao),
+  };
 }
 
 // IMPORT_DUPLICATE_CHECK_P0 — GS fallback path của getKhachHangImportDedupFields()

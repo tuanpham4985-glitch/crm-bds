@@ -50,7 +50,7 @@ export type {
   PayrollBatchEntry,
   BangLuongUpdateFields,
   CustomerAssignmentFields,
-  CustomerDashboardFields,
+  CustomerDashboardSummary,
   CustomerDedupFields,
   PipelineCustomerRefFields,
   PipelineStatusFields,

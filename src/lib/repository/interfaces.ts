@@ -34,7 +34,27 @@ export interface IEmployeeRepository {
 export type CustomerAssignmentFields = Pick<KhachHang,
   'telesale_phu_trach' | 'sale_nhan_khach' | 'sale_phu_trach' | 'du_an' | 'trang_thai_ban_giao'>;
 
-export type CustomerDashboardFields = Pick<KhachHang, 'nguon' | 'sale_phu_trach' | 'ngay_tao'>;
+// DASHBOARD_CUSTOMER_READ_OPTIMIZATION — trước đây findDashboardFields() trả
+// CustomerDashboardFields[] (1 row/customer, 3 field, KHÔNG WHERE/take —
+// TOÀN BỘ ~6998 dòng) để route.ts .forEach/.filter/.length rút ra 4 con số.
+// Audit DASHBOARD_FULL_SCAN_OPTIMIZATION_AUDIT chứng minh CẢ 4 consumer đều
+// là count/group-count, CHỈ kh_moi_thang cần đọc ngay_tao theo hàng (String
+// tự do nhiều định dạng lịch sử, safeParseDate() đa định dạng — CHƯA an toàn
+// đẩy so sánh ngày xuống SQL WHERE trong task này). findDashboardSummary()
+// thay thế — trả THẲNG kết quả đã aggregate, `createdDates` là mảng ngay_tao
+// thô DUY NHẤT còn đọc theo hàng, route.ts filter bằng safeParseDate() y hệt
+// hôm nay (KHÔNG đổi semantics).
+export interface CustomerDashboardSourceCount {
+  nguon: string | null;
+  count: number;
+}
+
+export interface CustomerDashboardSummary {
+  total: number;
+  unassigned: number;
+  bySource: CustomerDashboardSourceCount[];
+  createdDates: string[];
+}
 
 // IMPORT_DUPLICATE_CHECK_P0 — Import Excel duplicate-check (import-excel/
 // route.ts) chỉ đọc so_dien_thoai (phoneKey dedup) + id_khach_hang (map
@@ -52,7 +72,7 @@ export interface ICustomerRepository {
   delete(id: string): Promise<boolean>;
   countByHandoffStatus(status: string): Promise<number>;
   findAssignmentFields(): Promise<CustomerAssignmentFields[]>;
-  findDashboardFields(): Promise<CustomerDashboardFields[]>;
+  findDashboardSummary(): Promise<CustomerDashboardSummary>;
   findDedupFields(): Promise<CustomerDedupFields[]>;
 }
 

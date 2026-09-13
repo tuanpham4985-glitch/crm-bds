@@ -1,4 +1,4 @@
-import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardFields, CustomerDedupFields } from '../interfaces';
+import type { ICustomerRepository, CustomerAssignmentFields, CustomerDashboardSummary, CustomerDedupFields } from '../interfaces';
 import type { KhachHang } from '../../types';
 import {
   getKhachHang,
@@ -7,6 +7,7 @@ import {
   updateKhachHang,
   deleteKhachHang,
 } from '../../google-sheets';
+import { toDashboardSummary } from '../../khach-hang-list-query';
 
 export class GoogleSheetsCustomerRepository implements ICustomerRepository {
   findAll(): Promise<KhachHang[]> {
@@ -37,9 +38,9 @@ export class GoogleSheetsCustomerRepository implements ICustomerRepository {
     }));
   }
 
-  async findDashboardFields(): Promise<CustomerDashboardFields[]> {
+  async findDashboardSummary(): Promise<CustomerDashboardSummary> {
     const all = await getKhachHang();
-    return all.map(k => ({ nguon: k.nguon, sale_phu_trach: k.sale_phu_trach, ngay_tao: k.ngay_tao }));
+    return toDashboardSummary(all);
   }
 
   async findDedupFields(): Promise<CustomerDedupFields[]> {
