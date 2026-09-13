@@ -71,10 +71,18 @@ export default function DataChatLuongPage() {
     finally { setExporting(''); }
   }
 
+  // DATA_TIEM_NANG_BUSINESS_REDESIGN_APPROVED — funnel còn 4 mốc, TRONG
+  // population eligible (INTERESTED/QUALIFIED/HOT) — bỏ "Tổng data"/"Đã liên
+  // hệ" (đo trên toàn bộ CSKH, ra khỏi quyền sở hữu trang này). UI CLEANUP:
+  // bỏ tiếp thẻ "Quan tâm" đứng riêng — population đã gate ở entry (mọi dòng
+  // đều đã ≥ INTERESTED) nên data.metrics.interested LUÔN bằng
+  // data.metrics.total, hiển thị 2 thẻ trùng số nhau là dư thừa/gây hiểu lầm.
+  // metrics.interested vẫn giữ nguyên ở backend (không đổi analytics.ts) —
+  // chỉ không còn thẻ UI riêng đọc nó.
   const funnel = data ? [
-    ['Tổng data', data.metrics.total, '#475569'], ['Đã liên hệ', data.metrics.contacted, '#2563eb'],
-    ['Quan tâm', data.metrics.interested, '#0891b2'], ['Đủ điều kiện', data.metrics.qualified, '#059669'],
-    ['Tiềm năng cao', data.metrics.hot, '#dc2626'], ['Giao dịch', data.metrics.transactions, '#7c3aed'],
+    ['Tổng tiềm năng', data.metrics.total, '#475569'],
+    ['Đủ điều kiện', data.metrics.qualified, '#059669'], ['Tiềm năng cao', data.metrics.hot, '#dc2626'],
+    ['Giao dịch', data.metrics.transactions, '#7c3aed'],
   ] as const : [];
 
   if (authLoading || crmModuleLoading) return null;
@@ -133,8 +141,12 @@ export default function DataChatLuongPage() {
     </div><div style={{ marginTop: 10 }}><button className="btn btn-ghost btn-sm" onClick={() => setFilters(emptyFilters)}>Xóa bộ lọc</button></div></div>
 
     {loading && !data ? <div className="loading-spinner"><div className="spinner" /></div> : data && <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(120px,1fr))', gap: 10, overflowX: 'auto', marginBottom: 14 }}>{funnel.map(([label, value, color], index) => <div className="card" key={label} style={{ padding: 14, minWidth: 120, borderTop: `3px solid ${color}` }}><div style={{ fontSize: 12, color: 'var(--text-label)' }}>{label}</div><div style={{ fontSize: 25, fontWeight: 800, color, marginTop: 4 }}>{value}</div>{index > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{percent(value / Math.max(1, funnel[index - 1][1]))} bước trước</div>}</div>)}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 14 }}>{Object.entries(data.conversion).map(([key, value]) => <div className="card" key={key} style={{ padding: 12 }}><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{({ contactRate: 'Data → Liên hệ', interestRate: 'Liên hệ → Quan tâm', qualifiedRate: 'Quan tâm → Đủ điều kiện', hotRate: 'Đủ điều kiện → Tiềm năng cao', transactionRate: 'Đủ điều kiện → Giao dịch' } as Record<string, string>)[key]}</div><div style={{ fontSize: 20, fontWeight: 750, marginTop: 3 }}>{percent(value)}</div></div>)}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(120px,1fr))', gap: 10, overflowX: 'auto', marginBottom: 14 }}>{funnel.map(([label, value, color], index) => <div className="card" key={label} style={{ padding: 14, minWidth: 120, borderTop: `3px solid ${color}` }}><div style={{ fontSize: 12, color: 'var(--text-label)' }}>{label}</div><div style={{ fontSize: 25, fontWeight: 800, color, marginTop: 4 }}>{value}</div>{index > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{percent(value / Math.max(1, funnel[index - 1][1]))} bước trước</div>}</div>)}</div>
+      {/* DATA_TIEM_NANG_BUSINESS_REDESIGN_APPROVED — chỉ còn 3 conversion card
+          trong phạm vi Data tiềm năng (contactRate/interestRate đo trên toàn
+          bộ CSKH, ra khỏi trang này — API vẫn trả 2 field đó vì summarize()
+          dùng chung cho mọi population, chỉ không hiển thị ở đây). */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>{(['qualifiedRate', 'hotRate', 'transactionRate'] as const).map(key => <div className="card" key={key} style={{ padding: 12 }}><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{({ qualifiedRate: 'Tiềm năng → Đủ điều kiện', hotRate: 'Đủ điều kiện → Tiềm năng cao', transactionRate: 'Đủ điều kiện → Giao dịch' } as Record<string, string>)[key]}</div><div style={{ fontSize: 20, fontWeight: 750, marginTop: 3 }}>{percent(data.conversion[key])}</div></div>)}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}><GroupTable title="Chất lượng theo nguồn data" icon={<TrendingUp size={17} />} rows={data.bySource} /><GroupTable title="Chuyển đổi theo Sale CSKH" icon={<Users size={17} />} rows={data.byTelesale} /></div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}><div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700 }}>Danh sách lead sau lọc ({data.rows.length})</div><div className="table-wrapper" style={{ overflowX: 'auto' }}><table className="data-table" style={{ minWidth: 1250 }}><thead><tr><th>Khách hàng</th><th>Dự án / sản phẩm</th><th>Điểm</th><th>Trạng thái</th><th>Nguồn</th><th>Sale CSKH</th><th>Sale nhận khách</th><th>Ngân sách</th><th>Bàn giao / Giao dịch</th><th>Ghi chú gần nhất</th></tr></thead><tbody>{data.rows.map(row => <tr key={row.id_khach_hang}><td><strong>{row.ten_KH}</strong><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{row.so_dien_thoai}</div></td><td>{row.du_an || '—'}<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{row.san_pham_quan_tam || 'Chưa rõ sản phẩm'}</div></td><td><span style={{ color: rankColor(row.lead_quality_rank), fontWeight: 800 }}>{row.lead_quality_score}</span><div style={{ fontSize: 10, color: rankColor(row.lead_quality_rank) }}>{leadQualityRankLabel(row.lead_quality_rank)}</div></td><td>{qualificationStatusLabel(row.qualification_status)}</td><td>{row.nguon_data || '—'}</td><td>{row.telesale || '—'}</td><td>{row.sale_nhan || '—'}</td><td>{money(row.ngan_sach_min)} – {money(row.ngan_sach_max)}</td><td>{row.handoff_status}<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{row.pipeline_status || 'Chưa có Giao dịch'}</div></td><td style={{ maxWidth: 220, whiteSpace: 'normal' }}>{row.latest_note || '—'}</td></tr>)}</tbody></table></div></div>
     </>}

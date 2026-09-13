@@ -125,95 +125,79 @@ test('orderBy giữ NGUYÊN ngay_tao desc — entry gate không đổi thứ t�
   assert.match(call, /orderBy:\s*\{\s*ngay_tao:\s*'desc'\s*\}/);
 });
 
-// LƯU Ý: 2 test dưới đây ("chỉ 1 lệnh findMany" + "H. join byte-identical")
-// đã bị THAY THẾ có chủ đích bởi phần "── REMEDIATION" ở cuối file này. Root
-// cause: bản entry-gate BAN ĐẦU (implementation trước remediation) áp entry
-// gate CHUNG cho cả rows lẫn summary/funnel — ChatGPT Architecture Review
-// phát hiện đây là REGRESSION (summary bị thu hẹp denominator xuống chỉ
-// INTERESTED+, làm contactRate/interestRate lệch méo tiến về ~100%). Fix bắt
-// buộc phải tách 2 population (full-scope cho summary, entry-gated cho
-// rows/export) — không thể giữ "chỉ 1 query" hay "ids dùng chung 1 biến" mà
-// vẫn đúng nghiệp vụ. Xem phần REMEDIATION cho assertion đầy đủ + test hành
-// vi thực (không chỉ regex).
+// ─── REDESIGN ───────────────────────────────────────────────────────────────
+// DATA_TIEM_NANG_BUSINESS_REDESIGN_APPROVED — supersedes toàn bộ phần
+// REMEDIATION cũ từng ở đây. ChatGPT Architecture Review đã CHỐT: full-CSKH
+// funnel (Tổng data/Đã liên hệ + contactRate/interestRate, tính trên TOÀN BỘ
+// Customer trong scope) là CSKH-domain analytics, KHÔNG thuộc quyền sở hữu
+// "Data tiềm năng" nữa. Trang này giờ CHỈ sở hữu 1 population — eligible
+// (qualification_status ∈ HANDOFF_ELIGIBLE_STATUSES) — dùng CHUNG cho
+// rows/export/options VÀ summary/funnel/byTelesale/bySource. Test dưới đây
+// chứng minh: (a) chỉ còn 1 query Customer, (b) dead code (FULL_SCOPE_SELECT/
+// toSummaryRow/summaryRows/fullScopeCustomers/fullScopeIds) đã bị xoá, (c)
+// pipeline join thu hẹp về eligibleIds, (d) hành vi THẬT của summarize() trên
+// population mới (INTERESTED/QUALIFIED/HOT only).
 
-// ─── REMEDIATION ────────────────────────────────────────────────────────────
-// DATA_TIEM_NANG_ENTRY_GATE_REMEDIATION — tách entry-gated Customer population
-// (rows/export) khỏi full-scope Customer population (summary/funnel), theo
-// approved remediation direction của ChatGPT Architecture Review. Test dưới
-// đây chứng minh: (a) shape/WHERE/select của TỪNG query, (b) join scope đúng
-// lý do nghiệp vụ, (c) hành vi THẬT của summarize()/matches() (import thật,
-// không mirror) trên 1 population RAW+CONTACTED+INTERESTED — không chỉ regex
-// trên source string.
-
-test('REMEDIATION 1: đúng 2 lệnh khachHang.findMany() — Query A (full-scope, KHÔNG where) + Query B (entry-gated, DATA_TIEM_NANG_WHERE) — không có query thứ 3', () => {
+test('REDESIGN 1: đúng 1 lệnh khachHang.findMany() duy nhất — không còn Query A (full-scope)', () => {
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
   const start = src.indexOf('export async function queryQualityLeads');
   const end = src.indexOf('\n}', start);
   const body = src.slice(start, end);
   const count = (body.match(/prisma\.khachHang\.findMany\(/g) || []).length;
-  assert.equal(count, 2, 'queryQualityLeads phải có đúng 2 query Customer — không thêm query thứ 3 để "bù" cho population nào');
+  assert.equal(count, 1, 'queryQualityLeads chỉ còn 1 query Customer — Data tiềm năng sở hữu đúng 1 population (eligible)');
 });
 
-test('REMEDIATION 2: Query A (full-scope summary) dùng FULL_SCOPE_SELECT, KHÔNG có where qualification_status', () => {
+test('REDESIGN 2: khai báo full-scope (select/type/hàm/biến) đã bị xoá (dead code sau redesign) — chỉ kiểm tra DECLARATION, không phải mọi nhắc tên trong comment lịch sử', () => {
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
-  const start = src.indexOf('export async function queryQualityLeads');
-  const end = src.indexOf('\n}', start);
-  const body = src.slice(start, end);
-  const queryAStart = body.indexOf('prisma.khachHang.findMany(');
-  const queryAEnd = body.indexOf(')', queryAStart) + 1;
-  const queryA = body.slice(queryAStart, queryAEnd);
-  assert.match(queryA, /select:\s*FULL_SCOPE_SELECT/, 'Query A (full-scope) phải dùng FULL_SCOPE_SELECT — không phải CUSTOMER_SELECT (tránh transfer 27 cột cho toàn bộ ~6998 dòng)');
-  assert.doesNotMatch(queryA, /where:/, 'Query A KHÔNG được có where qualification_status — summary phải phản ánh TOÀN BỘ CSKH trong scope, không bị entry gate');
+  const deadDeclarations = [
+    /const FULL_SCOPE_SELECT\b/, /type FullScopeCustomerRow\b/, /function toSummaryRow\(/,
+    /const DISPLAY_ONLY_DEFAULTS\b/, /type DisplayOnlyField\b/,
+    /const summaryRows\b/, /const fullScopeCustomers\b/, /const fullScopeIds\b/,
+  ];
+  for (const pattern of deadDeclarations) {
+    assert.doesNotMatch(src, pattern, `${pattern} phải bị xoá khỏi analytics.ts sau redesign — không còn population full-scope nào dùng tới`);
+  }
 });
 
-test('REMEDIATION 3: Query B (entry-gated list) vẫn dùng DATA_TIEM_NANG_WHERE + CUSTOMER_SELECT (P3A 27 field) — nguồn cho rows/export/options', () => {
+test('REDESIGN 3: query Customer duy nhất vẫn dùng DATA_TIEM_NANG_WHERE + CUSTOMER_SELECT (P3A 27 field) — nguồn CHO CẢ rows/export/options LẪN summary/funnel', () => {
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
-  const start = src.indexOf('export async function queryQualityLeads');
-  const end = src.indexOf('\n}', start);
-  const body = src.slice(start, end);
-  assert.match(body, /prisma\.khachHang\.findMany\(\{\s*where:\s*DATA_TIEM_NANG_WHERE,\s*select:\s*CUSTOMER_SELECT,\s*orderBy:\s*\{\s*ngay_tao:\s*'desc'\s*\}\s*\}\)/);
+  assert.match(src, /prisma\.khachHang\.findMany\(\{\s*where:\s*DATA_TIEM_NANG_WHERE,\s*select:\s*CUSTOMER_SELECT,\s*orderBy:\s*\{\s*ngay_tao:\s*'desc'\s*\}\s*\}\)/);
 });
 
-test('REMEDIATION 4: summary được tính TỪ full-scope rows (summaryRows/fullScopeCustomers), KHÔNG phải từ rows/eligibleCustomers trả về UI', () => {
+test('REDESIGN 4: summary được tính TỪ `rows` (eligible + filters đã áp dụng) — KHÔNG còn population riêng cho summary', () => {
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
-  assert.ok(src.includes('const summaryRows = fullScopeCustomers'), 'summaryRows phải build TỪ fullScopeCustomers');
-  assert.ok(src.includes('.map(customer => toSummaryRow(customer,'), 'summaryRows phải dùng toSummaryRow() (full-scope row builder)');
-  assert.match(src, /const summaryRows = fullScopeCustomers[\s\S]*?\.filter\(row => matches\(row, filters\)\);/);
-  assert.match(src, /const summary = summarize\(summaryRows\);/, 'summarize() phải nhận summaryRows (full-scope) — không phải rows (entry-gated, trả về UI/export)');
+  assert.match(src, /const summary = summarize\(rows\);/, 'summarize() phải nhận rows (eligible, đã filter) — cùng population với UI/export');
 });
 
-test('REMEDIATION 5: Pipeline join dùng fullScopeIds (không thu hẹp về eligible) vì pipeline_status cần cho CẢ summary lẫn rows', () => {
+test('REDESIGN 5: Pipeline join thu hẹp về eligibleIds (không còn fullScopeIds)', () => {
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
-  assert.match(src, /const fullScopeIds = fullScopeCustomers\.map\(customer => customer\.id_khach_hang\);/);
-  assert.match(src, /prisma\.pipeline\.findMany\(\{\s*where:\s*\{\s*id_khach_hang:\s*\{\s*in:\s*fullScopeIds\s*\}\s*\},\s*orderBy:\s*\{\s*updated_at:\s*'desc'\s*\}\s*\}\)/);
+  assert.match(src, /prisma\.pipeline\.findMany\(\{\s*where:\s*\{\s*id_khach_hang:\s*\{\s*in:\s*eligibleIds\s*\}\s*\},\s*orderBy:\s*\{\s*updated_at:\s*'desc'\s*\}\s*\}\)/);
 });
 
-test('REMEDIATION 6: Handoff join giữ hẹp theo eligibleIds (list-related only) — không mở lại full scope', () => {
+test('REDESIGN 6: Handoff join vẫn dùng eligibleIds (không đổi so với trước redesign)', () => {
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
   assert.match(src, /const eligibleIds = eligibleCustomers\.map\(customer => customer\.id_khach_hang\);/);
   assert.match(src, /prisma\.crmHandoff\.findMany\(\{\s*where:\s*\{\s*customer_id:\s*\{\s*in:\s*eligibleIds\s*\}\s*\},\s*orderBy:\s*\{\s*created_at:\s*'desc'\s*\}\s*\}\)/);
 });
 
-test('REMEDIATION 7: options tính TỪ eligibleCustomers (không phải full scope) — tránh leak project/telesale/source của RAW/CONTACTED/UNQUALIFIED vào dropdown filter', () => {
+test('REDESIGN 7: options vẫn tính TỪ eligibleCustomers (không đổi so với trước redesign)', () => {
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
   const start = src.indexOf('const options = {');
   const end = src.indexOf('};', start) + 2;
   const body = src.slice(start, end);
   assert.match(body, /eligibleCustomers\.map/, 'projects/telesales/sales/sources phải nguồn từ eligibleCustomers');
-  assert.doesNotMatch(body, /fullScopeCustomers\.map/, 'options KHÔNG được nguồn từ fullScopeCustomers');
 });
 
-test('REMEDIATION 8: exports (rows) vẫn nguồn TỪ eligibleCustomers — export gate không đổi', () => {
+test('REDESIGN 8: rows (UI/export) vẫn nguồn TỪ eligibleCustomers — export gate không đổi', () => {
   const src = readFileSync(resolve(ANALYTICS_PATH), 'utf8');
   assert.match(src, /const rows: QualityLeadRow\[\] = eligibleCustomers\.map\(customer => \{/);
 });
 
-// ─── Hành vi THẬT (import matches()/summarize() thật, không mirror) ────────
-// Chứng minh bằng dữ liệu giả lập: population A(RAW)/B(CONTACTED)/C(INTERESTED)
-// — rows-population (áp entry gate) chỉ còn C, summary-population (đầy đủ 3,
-// gọi summarize() THẬT) vẫn đúng total=3/contacted=2/interested=1 và
-// conversion tương ứng — chứng minh 2 population THỰC SỰ tách biệt, không chỉ
-// khai báo trên giấy.
+// ─── Hành vi THẬT (import summarize() thật, không mirror) ──────────────────
+// Chứng minh bằng dữ liệu giả lập: population chỉ gồm INTERESTED/QUALIFIED/HOT
+// (đúng shape production sẽ trả về sau redesign, vì WHERE đã gate ở Prisma) —
+// summarize() THẬT phải cho total=3/interested=3/qualified=2/hot=1, đúng yêu
+// cầu nghiệp vụ approved (section 12 của task redesign).
 
 function makeRow(overrides: Partial<QualityLeadRow>): QualityLeadRow {
   return {
@@ -227,40 +211,45 @@ function makeRow(overrides: Partial<QualityLeadRow>): QualityLeadRow {
   };
 }
 
-test('REMEDIATION 9 (hành vi thực): rows-population (entry gate + matches() thật) chỉ còn INTERESTED; RAW/CONTACTED bị loại', () => {
-  const A = makeRow({ id_khach_hang: 'A', qualification_status: 'RAW' });
-  const B = makeRow({ id_khach_hang: 'B', qualification_status: 'CONTACTED' });
-  const C = makeRow({ id_khach_hang: 'C', qualification_status: 'INTERESTED' });
-  const fullScope = [A, B, C];
-
-  const eligibleRows = fullScope
+test('REDESIGN 9 (hành vi thực): eligible-only population (A=INTERESTED, B=QUALIFIED, C=HOT) — WHERE đã loại RAW/CONTACTED trước khi tới đây', () => {
+  const A = makeRow({ id_khach_hang: 'A', qualification_status: 'INTERESTED' });
+  const B = makeRow({ id_khach_hang: 'B', qualification_status: 'QUALIFIED' });
+  const C = makeRow({ id_khach_hang: 'C', qualification_status: 'HOT' });
+  const eligibleRows = [A, B, C]
     .filter(row => HANDOFF_ELIGIBLE_STATUSES.includes(row.qualification_status as QualificationStatus))
     .filter(row => matches(row, {}));
-
-  assert.deepEqual(eligibleRows.map(row => row.id_khach_hang), ['C']);
+  assert.deepEqual(eligibleRows.map(row => row.id_khach_hang), ['A', 'B', 'C'], 'cả 3 đều đã qua entry gate (WHERE Prisma), không có RAW/CONTACTED nào lọt vào để loại thêm ở đây');
 });
 
-test('REMEDIATION 10 (hành vi thực): summary-population (summarize() thật, KHÔNG entry gate) vẫn đại diện ĐẦY ĐỦ RAW+CONTACTED+INTERESTED', () => {
-  const A = makeRow({ id_khach_hang: 'A', qualification_status: 'RAW' });
-  const B = makeRow({ id_khach_hang: 'B', qualification_status: 'CONTACTED' });
-  const C = makeRow({ id_khach_hang: 'C', qualification_status: 'INTERESTED' });
-  const fullScope = [A, B, C];
+test('REDESIGN 10 (hành vi thực): summarize() thật trên population eligible-only cho ĐÚNG total=3, interested=3, qualified=2, hot=1', () => {
+  const A = makeRow({ id_khach_hang: 'A', qualification_status: 'INTERESTED' });
+  const B = makeRow({ id_khach_hang: 'B', qualification_status: 'QUALIFIED' });
+  const C = makeRow({ id_khach_hang: 'C', qualification_status: 'HOT' });
 
-  const summary = summarize(fullScope.filter(row => matches(row, {})));
+  const summary = summarize([A, B, C]);
 
-  assert.equal(summary.metrics.total, 3, 'total phải đại diện ĐỦ 3 khách (A+B+C) — không bị entry gate thu hẹp');
-  assert.equal(summary.metrics.contacted, 2, 'contacted = B + C (không RAW)');
-  assert.equal(summary.metrics.interested, 1, 'interested = C');
-  assert.equal(summary.conversion.contactRate, 2 / 3, 'contactRate phải tính trên denominator ĐẦY ĐỦ (3), không phải trên population đã bị entry gate');
-  assert.equal(summary.conversion.interestRate, 1 / 2, 'interestRate = interested/contacted = 1/2, không lệch về ~100% như regression trước remediation');
+  assert.equal(summary.metrics.total, 3, 'total = A+B+C (Tổng tiềm năng)');
+  assert.equal(summary.metrics.interested, 3, 'interested = cả 3 (mọi dòng eligible đều ≥ INTERESTED) — trùng total, ĐÚNG như kỳ vọng redesign, không phải lỗi');
+  assert.equal(summary.metrics.qualified, 2, 'qualified = B + C (QUALIFIED/HOT)');
+  assert.equal(summary.metrics.hot, 1, 'hot = C (HOT only)');
+  assert.equal(summary.conversion.qualifiedRate, 2 / 3, 'Tiềm năng → Đủ điều kiện = qualified/interested = 2/3');
+  assert.equal(summary.conversion.hotRate, 1 / 2, 'Đủ điều kiện → Tiềm năng cao = hot/qualified = 1/2');
 });
 
-test('REMEDIATION 11 (hành vi thực): nếu (sai) lấy summary TỪ rows-population đã bị entry gate (chỉ C) thì contactRate/interestRate lệch về 100% — chứng minh ĐÚNG lý do phải tách 2 population', () => {
-  const C = makeRow({ id_khach_hang: 'C', qualification_status: 'INTERESTED' });
-  const regressedSummary = summarize([C]); // mô phỏng CHÍNH regression đã bị Architecture Review phát hiện
-  assert.equal(regressedSummary.metrics.total, 1);
-  assert.equal(regressedSummary.conversion.contactRate, 1, 'regression: contactRate lệch thành 100% khi summary bị tính trên population đã entry-gate — đúng cảnh báo của Architecture Review');
-  assert.equal(regressedSummary.conversion.interestRate, 1, 'regression: interestRate cũng lệch thành 100% — đây là lý do bắt buộc phải tách population');
+test('REDESIGN 11 (hành vi thực): byTelesale/bySource của summarize() chỉ nhóm trên population eligible truyền vào — không có RAW/CONTACTED nào để leak vào breakdown', () => {
+  const A = makeRow({ id_khach_hang: 'A', qualification_status: 'INTERESTED', telesale: 'Sale 1', nguon_data: 'Facebook' });
+  const B = makeRow({ id_khach_hang: 'B', qualification_status: 'HOT', telesale: 'Sale 1', nguon_data: 'Zalo' });
+  const C = makeRow({ id_khach_hang: 'C', qualification_status: 'QUALIFIED', telesale: 'Sale 2', nguon_data: 'Facebook' });
+
+  const summary = summarize([A, B, C]);
+
+  assert.equal(summary.byTelesale.length, 2, 'byTelesale nhóm theo đúng 2 Sale xuất hiện trong population truyền vào');
+  const sale1 = summary.byTelesale.find(row => row.name === 'Sale 1');
+  assert.ok(sale1);
+  assert.equal(sale1!.total, 2, 'Sale 1 có A+B — cả 2 đều eligible (INTERESTED/HOT)');
+  assert.equal(sale1!.hot, 1, 'Sale 1 có đúng 1 HOT (B)');
+
+  assert.equal(summary.bySource.length, 2, 'bySource nhóm theo đúng 2 nguồn xuất hiện trong population truyền vào');
 });
 
 test('F/G. matches()/inScope()/summarize() giữ NGUYÊN byte-identical — filter/search/summary semantics không regression', () => {

@@ -78,45 +78,14 @@ const CUSTOMER_SELECT = {
 
 type CustomerRow = Prisma.KhachHangGetPayload<{ select: typeof CUSTOMER_SELECT }>;
 
-// DATA_TIEM_NANG_ENTRY_GATE remediation — FULL_SCOPE_SELECT: select hẹp RIÊNG
-// cho population ĐẦY ĐỦ (không entry gate) dùng để tính summary/funnel
-// (metrics/conversion/byTelesale/bySource). Đây là subset ĐÚNG của
-// CUSTOMER_SELECT — chỉ field mà matches()/summarize() thực sự đọc (trace
-// trực tiếp 2 hàm đó). Bỏ 9 field so với CUSTOMER_SELECT: nhu_cau,
-// phuong_an_tai_chinh, khu_vuc_yeu_cau, hanh_dong_tiep_theo,
-// lead_score_breakdown, ngay_quan_tam, ban_giao_luc, sale_xac_nhan_luc,
-// lich_su_cham_soc — toàn bộ chỉ dùng để HIỂN THỊ chi tiết dòng Data tiềm
-// năng (không ảnh hưởng summary), trong đó lead_score_breakdown/
-// lich_su_cham_soc là 2 blob JSON/text nặng nhất trong CUSTOMER_SELECT.
-const FULL_SCOPE_SELECT = {
-  id_khach_hang: true,
-  ten_KH: true,
-  so_dien_thoai: true,
-  du_an: true,
-  san_pham_quan_tam: true,
-  ngan_sach_min: true,
-  ngan_sach_max: true,
-  muc_dich: true,
-  thoi_gian_du_kien: true,
-  muc_do_quan_tam: true,
-  lead_quality_score: true,
-  lead_quality_rank: true,
-  qualification_status: true,
-  nguon: true,
-  telesale_phu_trach: true,
-  sale_nhan_khach: true,
-  ngay_tao: true,
-  trang_thai_ban_giao: true,
-} satisfies Prisma.KhachHangSelect;
-
-type FullScopeCustomerRow = Prisma.KhachHangGetPayload<{ select: typeof FULL_SCOPE_SELECT }>;
-
-// DATA_TIEM_NANG_ENTRY_GATE remediation — inScope() giờ được gọi cho CẢ 2
-// population (full-scope + eligible). Đổi tham số sang ScopeFields (CHỈ 2
-// field du_an/telesale_phu_trach — đúng 2 field inScope() thực sự đọc) thay
-// vì CustomerRow cụ thể, để CustomerRow lẫn FullScopeCustomerRow đều gán
-// được (structural subtyping) — KHÔNG đổi logic bên trong hàm (byte-identical
-// phần thân hàm so với P3A/Entry Gate).
+// DATA_TIEM_NANG_BUSINESS_REDESIGN — trước đây có FULL_SCOPE_SELECT/
+// FullScopeCustomerRow riêng cho population ĐẦY ĐỦ (không entry gate) dùng
+// tính summary/funnel. Approved redesign: "Data tiềm năng" chỉ còn SỞ HỮU
+// đúng 1 population (eligible, CUSTOMER_SELECT) — full-CSKH funnel (Tổng
+// data/Đã liên hệ + conversion tương ứng) là CSKH-domain analytics, ra khỏi
+// scope trang này (xem DATA_TIEM_NANG_BUSINESS_REDESIGN_APPROVED). Giữ
+// ScopeFields (CHỈ 2 field du_an/telesale_phu_trach) làm tham số inScope() —
+// không đổi logic hàm, chỉ không còn cần dùng chung với type thứ 2 nào khác.
 type ScopeFields = Pick<CustomerRow, 'du_an' | 'telesale_phu_trach'>;
 
 function inScope(customer: ScopeFields, scope: CrmManagerScope): boolean {
@@ -213,92 +182,29 @@ const DATA_TIEM_NANG_WHERE: Prisma.KhachHangWhereInput = {
   qualification_status: { in: [...HANDOFF_ELIGIBLE_STATUSES] },
 };
 
-// ChatGPT Architecture Review hardening (post-remediation) — trước đây
-// toSummaryRow() trả thẳng object kiểu QualityLeadRow với 9 field display-only
-// hard-code rỗng xen giữa 19 field thật từ FullScopeCustomerRow — nếu sau này
-// QualityLeadRow có thêm field MỚI, TS không ép phải quyết định field đó có
-// cần đưa vào FULL_SCOPE_SELECT hay không (dev có thể lặng lẽ quên, giống hệt
-// rủi ro đã nêu ở remediation report mục 19). Fix: tách tường minh 2 phần —
-// DISPLAY_ONLY_DEFAULTS liệt kê ĐÚNG 9 field không có trong FULL_SCOPE_SELECT
-// (satisfies Partial<Record<keyof QualityLeadRow, string>> để tự bắt lỗi gõ
-// sai tên field), phần còn lại (fromFullScope, trong toSummaryRow() bên dưới)
-// gõ kiểu Omit<QualityLeadRow, keyof typeof DISPLAY_ONLY_DEFAULTS> — TS sẽ BẮT
-// BUỘC liệt kê ĐỦ mọi field KHÔNG nằm trong DISPLAY_ONLY_DEFAULTS. Field
-// QualityLeadRow mới thêm sau này sẽ gây lỗi biên dịch ở CẢ 2 nơi cho tới khi
-// dev chọn rõ: (a) thêm vào DISPLAY_ONLY_DEFAULTS (khai báo tường minh "chỉ
-// hiển thị, an toàn bỏ qua ở summary") hoặc (b) map từ customer.<field> (và
-// audit FULL_SCOPE_SELECT nếu field đó chưa có) — không còn "quên" trong im
-// lặng. KHÔNG đổi hành vi: giá trị default (chuỗi rỗng, trừ
-// lead_score_breakdown = '[]') giữ NGUYÊN.
-const DISPLAY_ONLY_DEFAULTS = {
-  nhu_cau: '', phuong_an_tai_chinh: '', khu_vuc_yeu_cau: '', hanh_dong_tiep_theo: '',
-  lead_score_breakdown: '[]', ngay_quan_tam: '', ngay_ban_giao: '', ngay_sale_nhan: '', latest_note: '',
-} satisfies Partial<Record<keyof QualityLeadRow, string>>;
-
-type DisplayOnlyField = keyof typeof DISPLAY_ONLY_DEFAULTS;
-
-// DATA_TIEM_NANG_ENTRY_GATE remediation — row builder RIÊNG cho population
-// FULL SCOPE (summary/funnel only). Hàng do hàm này tạo KHÔNG được trả về
-// UI/export — chỉ dùng làm input cho summarize(), không leak field rỗng ra
-// ngoài. Field display-only lấy TỪ DISPLAY_ONLY_DEFAULTS (an toàn vì
-// matches()/summarize() không bao giờ đọc các field đó — xem 2 hàm phía
-// trên); phần còn lại BẮT BUỘC đủ 19 field (Omit<QualityLeadRow,
-// DisplayOnlyField> — xem giải thích ở DISPLAY_ONLY_DEFAULTS).
-function toSummaryRow(customer: FullScopeCustomerRow, pipelineStatus: string): QualityLeadRow {
-  const fromFullScope: Omit<QualityLeadRow, DisplayOnlyField> = {
-    id_khach_hang: customer.id_khach_hang, ten_KH: customer.ten_KH, so_dien_thoai: customer.so_dien_thoai || '',
-    du_an: customer.du_an || '', san_pham_quan_tam: customer.san_pham_quan_tam || '',
-    ngan_sach_min: customer.ngan_sach_min || 0, ngan_sach_max: customer.ngan_sach_max || 0,
-    muc_dich: customer.muc_dich || '', thoi_gian_du_kien: customer.thoi_gian_du_kien || '',
-    muc_do_quan_tam: customer.muc_do_quan_tam || 'Chưa xác định',
-    lead_quality_score: customer.lead_quality_score, lead_quality_rank: customer.lead_quality_rank,
-    qualification_status: customer.qualification_status,
-    nguon_data: customer.nguon || '', telesale: customer.telesale_phu_trach || '', sale_nhan: customer.sale_nhan_khach || '',
-    ngay_tao: customer.ngay_tao,
-    handoff_status: customer.trang_thai_ban_giao || 'Chưa bàn giao', pipeline_status: pipelineStatus,
-  };
-  return { ...fromFullScope, ...DISPLAY_ONLY_DEFAULTS };
-}
-
 export async function queryQualityLeads(filters: QualifiedLeadFilters, scope: CrmManagerScope) {
   assertTransactionalCrm();
 
-  // Population A — FULL SCOPE (KHÔNG entry gate): phục vụ RIÊNG
-  // summary/funnel (metrics/conversion/byTelesale/bySource). Bắt buộc phải là
-  // TOÀN BỘ CSKH trong scope (không lọc qualification_status) — nếu không
-  // contactRate/interestRate sẽ lệch vì denominator đã bị lọc trước (root
-  // cause của regression bị Architecture Review phát hiện). Select hẹp
-  // (FULL_SCOPE_SELECT, 18 field) thay vì CUSTOMER_SELECT đầy đủ.
-  const fullScopeCustomers = (await prisma.khachHang.findMany({ select: FULL_SCOPE_SELECT, orderBy: { ngay_tao: 'desc' } }))
-    .filter(customer => inScope(customer, scope));
-  const fullScopeIds = fullScopeCustomers.map(customer => customer.id_khach_hang);
-
-  // Pipeline join giữ nguyên scope tiền-task (toàn bộ CSKH trong scope): CẢ
-  // summary lẫn Data tiềm năng rows đều dùng pipeline_status (matches()
-  // pipelineStatus filter + summarize() transactions) — không phải field
-  // chỉ-hiển-thị nên KHÔNG được thu hẹp về riêng eligible ids. Dùng CHUNG map
-  // này cho cả 2 population bên dưới (eligibleIds ⊆ fullScopeIds) — không
-  // query Pipeline lần 2.
-  const pipelines = await prisma.pipeline.findMany({ where: { id_khach_hang: { in: fullScopeIds } }, orderBy: { updated_at: 'desc' } });
-  const pipelineByCustomer = new Map<string, typeof pipelines[number]>();
-  pipelines.forEach(item => { if (!pipelineByCustomer.has(item.id_khach_hang)) pipelineByCustomer.set(item.id_khach_hang, item); });
-
-  const summaryRows = fullScopeCustomers
-    .map(customer => toSummaryRow(customer, pipelineByCustomer.get(customer.id_khach_hang)?.giai_doan || ''))
-    .filter(row => matches(row, filters));
-  const summary = summarize(summaryRows);
-
-  // Population B — DATA TIỀM NĂNG (entry-gated): qualification_status ∈
-  // HANDOFF_ELIGIBLE_STATUSES. Nguồn CHO rows/list/export/options — giữ
-  // nguyên CUSTOMER_SELECT 27-field (P3A), vì chỉ population này mới cần đủ
-  // field hiển thị chi tiết dòng.
+  // DATA_TIEM_NANG_BUSINESS_REDESIGN_APPROVED — "Data tiềm năng" sở hữu ĐÚNG 1
+  // population: eligible (qualification_status ∈ HANDOFF_ELIGIBLE_STATUSES).
+  // Trước đây có Population A (full-scope, không entry gate) riêng cho
+  // summary/funnel để giữ contactRate/interestRate không lệch denominator —
+  // nhưng Architecture Review đã quyết định các số đó (Tổng data/Đã liên hệ +
+  // 2 conversion đầu) là CSKH-domain analytics, KHÔNG thuộc quyền sở hữu của
+  // trang này nữa (ra khỏi trang, không di chuyển đi đâu trong task này).
+  // Summary/funnel/byTelesale/bySource giờ tính TRỰC TIẾP trên `rows` (đã lọc
+  // eligible + filters) — không còn query Customer thứ 2.
   const eligibleCustomers = (await prisma.khachHang.findMany({ where: DATA_TIEM_NANG_WHERE, select: CUSTOMER_SELECT, orderBy: { ngay_tao: 'desc' } }))
     .filter(customer => inScope(customer, scope));
   const eligibleIds = eligibleCustomers.map(customer => customer.id_khach_hang);
 
-  // Handoff join: CHỈ list-related (ngay_ban_giao/ngay_sale_nhan chỉ hiển thị
-  // ở Data tiềm năng rows — matches()/summarize() không đọc 2 field này) —
-  // giữ hẹp theo eligible ids, không mở lại full scope.
+  // Pipeline join thu hẹp về eligibleIds (trước đây fullScopeIds) — không còn
+  // population full-scope nào cần pipeline_status nữa.
+  const pipelines = await prisma.pipeline.findMany({ where: { id_khach_hang: { in: eligibleIds } }, orderBy: { updated_at: 'desc' } });
+  const pipelineByCustomer = new Map<string, typeof pipelines[number]>();
+  pipelines.forEach(item => { if (!pipelineByCustomer.has(item.id_khach_hang)) pipelineByCustomer.set(item.id_khach_hang, item); });
+
+  // Handoff join: giữ nguyên scope eligibleIds như trước redesign (đã đúng).
   const handoffs = await prisma.crmHandoff.findMany({ where: { customer_id: { in: eligibleIds } }, orderBy: { created_at: 'desc' } });
   const handoffByCustomer = new Map<string, typeof handoffs[number]>();
   handoffs.forEach(item => { if (!handoffByCustomer.has(item.customer_id)) handoffByCustomer.set(item.customer_id, item); });
@@ -326,18 +232,22 @@ export async function queryQualityLeads(filters: QualifiedLeadFilters, scope: Cr
     };
   }).filter(row => matches(row, filters));
 
+  // DATA_TIEM_NANG_BUSINESS_REDESIGN_APPROVED — summary/conversion/byTelesale/
+  // bySource giờ tính TỪ `rows` (eligible + filters đã áp dụng), KHÔNG còn
+  // summaryRows/fullScopeCustomers riêng. Denominator đổi TỪ "toàn bộ CSKH
+  // trong scope" SANG "toàn bộ Data tiềm năng (INTERESTED/QUALIFIED/HOT)
+  // trong scope" — thay đổi CÓ CHỦ Ý theo quyết định nghiệp vụ đã duyệt.
+  const summary = summarize(rows);
+
   // Options (FILTER_OPTION_METADATA) — nguồn TỪ eligible population (đúng
-  // population mà filters/rows thao tác trên) — KHÔNG dùng full-scope, tránh
-  // leak project/telesale/source của RAW/CONTACTED/UNQUALIFIED (vốn không
-  // được xuất hiện ở Data tiềm năng) vào dropdown filter. pipelineStatuses
-  // thu hẹp lại về eligible ids dù `pipelines` giờ cover full scope.
-  const eligibleIdSet = new Set(eligibleIds);
+  // population mà filters/rows thao tác trên). `pipelines` giờ đã tự thu hẹp
+  // về eligibleIds (xem join phía trên) nên không cần lọc lại eligibleIdSet.
   const options = {
     projects: [...new Set(eligibleCustomers.map(item => item.du_an).filter(Boolean))].sort(),
     telesales: [...new Set(eligibleCustomers.map(item => item.telesale_phu_trach).filter(Boolean))].sort(),
     sales: [...new Set(eligibleCustomers.map(item => item.sale_nhan_khach).filter(Boolean))].sort(),
     sources: [...new Set(eligibleCustomers.map(item => item.nguon).filter(Boolean))].sort(),
-    pipelineStatuses: [...new Set(pipelines.filter(item => eligibleIdSet.has(item.id_khach_hang)).map(item => item.giai_doan).filter(Boolean))].sort(),
+    pipelineStatuses: [...new Set(pipelines.map(item => item.giai_doan).filter(Boolean))].sort(),
   };
   return { rows, ...summary, options };
 }
