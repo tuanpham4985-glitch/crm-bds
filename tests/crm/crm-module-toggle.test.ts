@@ -148,18 +148,34 @@ test('Sidebar.tsx: nhóm CRM dùng canAccessCrmModule(isAdmin, ...) thay cho har
   assert.doesNotMatch(src, /TẠM THỜI mở lại toàn bộ/, 'comment tạm thời cũ phải được dọn, không để lại 2 giải thích authority mâu thuẫn nhau');
 });
 
-test('Sidebar.tsx: control "CRM Module" chỉ render khi isAdmin — non-admin không thấy/không đổi được toggle', () => {
+// CRM_MODULE_SIDEBAR_DUPLICATE_UI_REMOVED — trước đây có 2 UI entry point
+// cùng ghi crm_module_enabled qua PUT /api/crm-module: 1 button/modal riêng
+// ngay trong Sidebar, VÀ hàng CRM trong "Quản lý Menu & Module". Audit xác
+// nhận cả 2 cùng đọc/ghi ĐÚNG 1 authority (không có 2 source of truth) —
+// Architecture Review quyết định GIỮ authority + Menu Manager, CHỈ bỏ
+// standalone button/modal thừa trong Sidebar. 2 test dưới đây (trước kia
+// khoá sự TỒN TẠI của control đó trong Sidebar.tsx) giờ khoá đúng NGƯỢC LẠI
+// (đã bị xoá khỏi Sidebar) + xác nhận capability tương đương vẫn còn nguyên
+// ở admin/menu/page.tsx (nơi DUY NHẤT còn lại), không mất khả năng bật/tắt.
+test('Sidebar.tsx: KHÔNG còn standalone control/modal "CRM Module" — đã gỡ theo CRM_MODULE_SIDEBAR_DUPLICATE_UI_REMOVED, tránh 2 entry point cho cùng 1 hành động', () => {
   const src = readFileSync(resolve('src/components/layout/Sidebar.tsx'), 'utf8');
-  const iButton = src.indexOf('CRM Module: {crmEnabled');
-  assert.ok(iButton > -1, 'phải có control hiển thị trạng thái CRM Module: Bật/Tắt');
-  const before = src.slice(Math.max(0, iButton - 700), iButton);
-  assert.match(before, /\{isAdmin && \(\s*\n\s*<button\s*\n\s*onClick=\{\(\) => \{ setCrmModulePending/, 'control CRM Module phải nằm trong nhánh isAdmin — non-admin không thấy nút này');
+  assert.doesNotMatch(src, /CRM Module: \{crmEnabled/, 'button standalone "CRM Module: Bật/Tắt" phải đã bị xoá khỏi Sidebar');
+  assert.doesNotMatch(src, /showCrmModuleModal|crmModulePending|crmModuleSaving|crmModuleNotice|handleSaveCrmModule/, 'toàn bộ state/handler riêng của modal đó phải được dọn sạch, không để lại dead code');
+  assert.doesNotMatch(src, /mutateCrmModule/, 'mutate của useCrmModule không còn consumer nào trong Sidebar sau khi bỏ modal — không được còn destructure thừa');
 });
 
-test('Sidebar.tsx: modal CRM Module gọi PUT /api/crm-module (không phải POST tuỳ tiện, không phải ghi thẳng DB/Sheets từ client)', () => {
+test('Sidebar.tsx: shared CRM Module infrastructure (useCrmModule/canAccessCrmModule/crmEnabled) VẪN CÒN NGUYÊN — chỉ bỏ standalone UI, không bỏ authority dùng chung cho CRM group visibility', () => {
   const src = readFileSync(resolve('src/components/layout/Sidebar.tsx'), 'utf8');
-  assert.match(src, /fetch\('\/api\/crm-module', \{\s*\n\s*method: 'PUT',/);
-  assert.match(src, /body: JSON\.stringify\(\{ enabled: crmModulePending \}\)/);
+  assert.match(src, /import \{ useCrmModule \} from '@\/hooks\/useCrmModule';/);
+  assert.match(src, /import \{ canAccessCrmModule \} from '@\/lib\/crm-module-access';/);
+  assert.match(src, /const \{ enabled: crmEnabled \} = useCrmModule\(\);/);
+  assert.match(src, /canAccessCrmModule\(isAdmin, root\.enabled\)/, 'CRM root vẫn phải qua canAccessCrmModule (Admin bypass) — bất biến này không đổi bởi việc bỏ standalone UI');
+});
+
+test('admin/menu/page.tsx: vẫn là nơi DUY NHẤT còn lại gọi PUT /api/crm-module để bật/tắt CRM — capability không bị mất khi bỏ standalone Sidebar control', () => {
+  const src = readFileSync(resolve('src/app/admin/menu/page.tsx'), 'utf8');
+  assert.match(src, /fetch\('\/api\/crm-module', \{\s*\n\s*method: 'PUT', headers: \{ 'Content-Type': 'application\/json' \},\s*\n\s*body: JSON\.stringify\(\{ enabled: draftCrmEnabled \}\),/);
+  assert.match(src, /Dùng chung công tắc CRM Module hiện có — không tạo trạng thái riêng\./, 'UI phải tiếp tục nói rõ đây là công tắc CHUNG, không phải authority thứ 2');
 });
 
 // --- 6. Regression: không đụng M1B.2 business authority --------------------

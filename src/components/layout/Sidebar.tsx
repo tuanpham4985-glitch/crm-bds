@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Building2, LogOut, Download, ShieldCheck, Shield, Key, Lock, Eye, EyeOff, X,
-  ChevronDown, Power, LayoutGrid,
+  ChevronDown, LayoutGrid,
 } from 'lucide-react';
 import useSWR from 'swr';
 import styles from './Sidebar.module.css';
@@ -71,7 +71,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const pathname = usePathname();
   const { user, isAdmin, canEditHRM } = useAuth();
   const { canPhanKhach, handoffCount, canQualityDashboard } = useCrmAccess();
-  const { enabled: crmEnabled, mutate: mutateCrmModule } = useCrmModule();
+  const { enabled: crmEnabled } = useCrmModule();
   const { config: navConfigRaw } = useNavigationConfig();
 
   const { data: pendingData } = useSWR(
@@ -149,32 +149,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const [pwdLoading, setPwdLoading] = useState(false);
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
-
-  // CRM Module Toggle Modal State (Admin-only)
-  const [showCrmModuleModal, setShowCrmModuleModal] = useState(false);
-  const [crmModulePending, setCrmModulePending] = useState(crmEnabled);
-  const [crmModuleSaving, setCrmModuleSaving] = useState(false);
-  const [crmModuleNotice, setCrmModuleNotice] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
-
-  async function handleSaveCrmModule() {
-    setCrmModuleSaving(true);
-    setCrmModuleNotice(null);
-    try {
-      const res = await fetch('/api/crm-module', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: crmModulePending }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Không thể lưu cấu hình.');
-      await mutateCrmModule();
-      setCrmModuleNotice({ type: 'ok', text: `Đã ${crmModulePending ? 'bật' : 'tắt'} module CRM.` });
-    } catch (error) {
-      setCrmModuleNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không thể lưu cấu hình.' });
-    } finally {
-      setCrmModuleSaving(false);
-    }
-  }
 
   useEffect(() => {
     // Hiển thị logo từ localStorage ngay lập tức (cache nhanh)
@@ -450,20 +424,18 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           <Key size={18} />
           <span>Đổi mật khẩu</span>
         </button>
-        {isAdmin && (
-          <button
-            onClick={() => { setCrmModulePending(crmEnabled); setCrmModuleNotice(null); setShowCrmModuleModal(true); }}
-            className={styles.installBtn}
-            style={{ marginTop: 4, background: crmEnabled ? 'rgba(5, 150, 105, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: crmEnabled ? 'var(--success-text)' : '#ef4444' }}
-          >
-            <Power size={18} />
-            <span>CRM Module: {crmEnabled ? 'Bật' : 'Tắt'}</span>
-          </button>
-        )}
         {/* Quản lý Menu & Module — Admin-only, CỐ ĐỊNH NGOÀI registry (không
             phải 1 mục trong MENU_REGISTRY) nên Admin KHÔNG THỂ tự ẩn/khoá
             khỏi chính control này bằng drag/drop hay tắt module, và CRM OFF
-            cũng không ảnh hưởng — đây là entry point recovery bắt buộc. */}
+            cũng không ảnh hưởng — đây là entry point recovery bắt buộc.
+            CRM_MODULE_SIDEBAR_DUPLICATE_UI_REMOVED — đây giờ là NƠI DUY NHẤT
+            để bật/tắt CRM Module (trước đây còn 1 button/modal riêng ngay
+            trong Sidebar, cùng ghi crm_module_enabled qua PUT /api/crm-module
+            — 2 entry point cho ĐÚNG 1 hành động, đã gộp còn lại đúng 1 chỗ).
+            Authority/storage (crm_module_enabled, /api/crm-module,
+            useCrmModule, canAccessCrmModule) không đổi — xem
+            admin/menu/page.tsx (hàng CRM, "Dùng chung công tắc CRM Module
+            hiện có — không tạo trạng thái riêng"). */}
         {isAdmin && (
           <Link href="/admin/menu" className={styles.installBtn} style={{ marginTop: 4, background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)' }}>
             <LayoutGrid size={18} />
@@ -545,46 +517,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         </div>
       )}
 
-      {/* CRM Module Toggle Modal — Admin-only. Module availability gate độc
-          lập với business authorization (isCrmAdmin/canManageCampaign/...
-          không đổi bởi toggle này). */}
-      {showCrmModuleModal && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }}>
-          <div className="modal-content" style={{ maxWidth: 420 }}>
-            <div className="modal-header">
-              <h3 className="modal-title">CRM Module</h3>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowCrmModuleModal(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 0 }}>
-                Ẩn/hiện module CRM đối với người dùng. Không thay đổi quyền nghiệp vụ.
-              </p>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--bg-secondary, #f8fafc)', borderRadius: 8, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={crmModulePending}
-                  onChange={e => setCrmModulePending(e.target.checked)}
-                  style={{ width: 18, height: 18 }}
-                />
-                <span style={{ fontWeight: 600 }}>Trạng thái: {crmModulePending ? 'Bật' : 'Tắt'}</span>
-              </label>
-              {crmModuleNotice && (
-                <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 8, fontSize: 13, background: crmModuleNotice.type === 'ok' ? '#ecfdf5' : '#fef2f2', color: crmModuleNotice.type === 'ok' ? '#047857' : '#b91c1c' }}>
-                  {crmModuleNotice.text}
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setShowCrmModuleModal(false)}>Hủy</button>
-              <button type="button" className="btn btn-primary" disabled={crmModuleSaving} onClick={() => void handleSaveCrmModule()}>
-                {crmModuleSaving ? 'Đang lưu...' : 'Lưu'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </aside>
   );
 }
