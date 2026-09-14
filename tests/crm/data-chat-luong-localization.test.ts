@@ -87,12 +87,21 @@ test('data-chat-luong/page.tsx: filter "rank" vẫn gửi ĐÚNG giá trị enum
   assert.match(src, /options=\{\['HOT', 'QUALIFIED', 'WARM', 'UNQUALIFIED'\]\}\s*optionLabel=\{leadQualityRankLabel\}/);
 });
 
-test('data-chat-luong/page.tsx: warning box đổi sang câu tiếng Việt dễ hiểu, không còn nhắc "legacy"/"đóng băng" kỹ thuật với end-user, và định hướng đúng nơi xem CSKH theo Campaign', () => {
+// CAMPAIGN_CUSTOMER_QUALIFICATION_SYNC (commit d356167, production-validated):
+// khách đạt Quan tâm trở lên trong Campaign giờ ĐƯỢC đồng bộ vào canonical
+// KhachHang nên KHÔNG còn bị loại khỏi Data tiềm năng — banner cũ ("Trang này
+// hiện chỉ tổng hợp dữ liệu chăm sóc theo Dự án, ngoài Campaign") đã STALE và
+// mâu thuẫn với hành vi production hiện tại, cần đổi nội dung (không chỉ đổi
+// văn phong như các test Việt hóa khác ở trên).
+test('data-chat-luong/page.tsx: warning box phản ánh ĐÚNG business rule đã production-validated — khách Quan tâm trở lên từ Campaign VẪN được tổng hợp tại Data tiềm năng (không còn ngụ ý loại trừ Campaign), không còn nhắc "legacy"/"đóng băng"/"authoritative" kỹ thuật với end-user, vẫn định hướng đúng nơi xem chi tiết CSKH theo Campaign', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   const warningMatch = src.match(/background: '#fffbeb', color: '#a16207'[\s\S]{0,40}>\s*\n\s*([^<]+)</);
   assert.ok(warningMatch, 'phải tìm được nội dung warning box màu vàng');
   const warningText = warningMatch![1];
-  assert.match(warningText, /Campaign được quản lý riêng tại CSKH/);
+  assert.match(warningText, /Quan tâm trở lên sẽ được tổng hợp tại Data tiềm năng/);
+  assert.match(warningText, /bao gồm cả khách được chăm sóc trong Campaign/, 'PHẢI khẳng định RÕ khách Campaign được bao gồm — không còn ngụ ý loại trừ như banner cũ');
+  assert.match(warningText, /quản lý tại CSKH/);
+  assert.doesNotMatch(warningText, /chỉ tổng hợp dữ liệu chăm sóc theo Dự án, ngoài Campaign/, 'regression guard: KHÔNG được quay lại ngụ ý loại trừ Campaign của banner cũ (stale, đã audit)');
   assert.doesNotMatch(warningText, /legacy|đóng băng|authoritative/i);
 });
 

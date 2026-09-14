@@ -105,11 +105,13 @@ export default function DataChatLuongPage() {
       <a className="btn btn-secondary" href={`/api/crm/qualified-leads/export/xlsx?${params.toString()}`}><Download size={15} /> Excel</a>
       <button className="btn btn-primary" onClick={() => void exportGoogle()} disabled={Boolean(exporting)}>{exporting === 'google' ? <Loader2 size={15} className="spin" /> : <Sheet size={15} />} Google Sheets</button>
     </div></div>
-    {/* Campaign CSKH (M1B.1): số liệu dưới đây chỉ đọc field CSKH/qualification
-        Customer-global (KhachHang) — với khách đã tham gia Campaign, các field
-        này là DỮ LIỆU ĐÓNG BĂNG tại thời điểm trước khi vào Campaign, KHÔNG
-        phản ánh hoạt động CSKH đang diễn ra trong Campaign (nguồn thật của cái
-        đó là CampaignMembership, xem /phan-khach tab "Theo Campaign").
+    {/* Campaign CSKH (M1B.1): số liệu dưới đây đọc field CSKH/qualification
+        Customer-global (KhachHang) — kể từ CAMPAIGN_CUSTOMER_QUALIFICATION_SYNC
+        (commit d356167), kết quả qualification đạt được trong Campaign
+        (CampaignMembership) được ĐỒNG BỘ sang canonical KhachHang (xem
+        membership-workflow.ts) nên KHÔNG còn là dữ liệu đóng băng trước khi
+        vào Campaign — khách đạt Quan tâm trở lên trong Campaign xuất hiện ở
+        đây đúng như khách được chăm sóc ngoài Campaign.
         KHÔNG chuyển trang này sang đọc CampaignMembership: 1 Customer có thể
         thuộc NHIỀU Campaign (@@unique([customer_id, campaign_id]) — không có
         1 hàng "đại diện" duy nhất để gộp vào bảng tổng hợp toàn Customer này
@@ -117,7 +119,7 @@ export default function DataChatLuongPage() {
         (scope theo 1 Campaign, hay đổi grain của cả trang sang theo dòng
         Customer×Campaign) — ngoài phạm vi thay đổi localization/display này. */}
     <div style={{ padding: '10px 14px', marginBottom: 14, borderRadius: 8, background: '#fffbeb', color: '#a16207', fontSize: 13 }}>
-      Dữ liệu chăm sóc trong Campaign được quản lý riêng tại CSKH (mục &quot;Theo Campaign&quot;). Trang này hiện chỉ tổng hợp dữ liệu chăm sóc theo Dự án, ngoài Campaign.
+      Khách hàng đạt mức Quan tâm trở lên sẽ được tổng hợp tại Data tiềm năng, bao gồm cả khách được chăm sóc trong Campaign. Quá trình chăm sóc theo Campaign được quản lý tại CSKH (mục &quot;Theo Campaign&quot;).
     </div>
     {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: 12, marginBottom: 14 }}>{error}</div>}
 
