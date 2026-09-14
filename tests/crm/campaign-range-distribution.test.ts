@@ -215,7 +215,11 @@ test('resolveCampaignMembershipCustomerIdsByRange: dùng getCampaignMembersWithC
 test('getCampaignMembersWithCustomers (nguồn order cho cả UI lẫn range): vẫn orderBy created_at asc — bất biến order KHÔNG bị đổi bởi feature range này', () => {
   const src = readFileSync(resolve(CAMPAIGN_LIB_PATH), 'utf8');
   const fnStart = src.indexOf('export async function getCampaignMembersWithCustomers');
-  const fnBody = src.slice(fnStart, fnStart + 300);
+  // ROLE_SCOPED_QUERY_AUDIT remediation — window rộng hơn (500, trước là 300)
+  // để chứa thêm phần xây `where` scoped-by-telesale_id (actor không quản lý
+  // toàn Campaign) trước dòng orderBy — bản thân orderBy created_at asc
+  // KHÔNG đổi, chỉ dịch xuống vài dòng.
+  const fnBody = src.slice(fnStart, fnStart + 500);
   assert.match(fnBody, /orderBy:\s*\{\s*created_at:\s*'asc'\s*\}/);
 });
 

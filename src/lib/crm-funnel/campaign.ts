@@ -11,7 +11,7 @@ import { filterByDataset } from './dataset';
 import { matchesMembershipQueueFilter, resolveMembershipRange, type MembershipQueueFilter } from '../campaign-cskh-range';
 import { resolveListRange } from '../list-range';
 import type { CrmSessionUser } from '../crm-auth';
-import type { PrismaClient } from '../../generated/prisma/client';
+import type { Prisma, PrismaClient } from '../../generated/prisma/client';
 
 type TxClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -115,10 +115,35 @@ export async function getCampaignMembers(campaignId: string) {
  * danh Customer (Tên/SĐT/Email) chỉ để HIỂN THỊ, read-only. KHÔNG BAO GIỜ ghi
  * vào KhachHang từ đây — mọi mutation CSKH của membership đi qua
  * membership-workflow.ts và chỉ target CampaignMembership.id.
+ *
+ * ROLE_SCOPED_QUERY_AUDIT remediation — `scopeTelesaleId` (optional): khi
+ * caller (route.ts) đã xác định actor KHÔNG phải Admin/Campaign owner
+ * (canManageCampaign === false), truyền ĐÚNG actor.id_nhan_vien vào đây để
+ * đẩy visibility constraint xuống THẲNG Prisma WHERE — thay vì đọc toàn bộ
+ * campaign (N membership) rồi mới `.filter()` theo telesale_id ở route như
+ * trước đây (APP_FILTER_AFTER_BROAD_READ, xem ROLE_SCOPED_QUERY_AUDIT).
+ * Bỏ trống (undefined) = full-campaign read NGUYÊN VẸN như cũ — dùng cho
+ * Admin/Campaign owner (route.ts) và
+ * resolveCampaignMembershipCustomerIdsByRange (distribute route, đã gate
+ * canManageCampaign TRƯỚC khi gọi tới đây — luôn cần full view, KHÔNG đổi).
+ * KHÔNG đổi authority (WHO được xem gì) — chỉ đổi WHERE query chạy.
  */
-export async function getCampaignMembersWithCustomers(campaignId: string) {
+/**
+ * Thuần (không đụng DB) — tách riêng để test trực tiếp WHERE thật sự chạy,
+ * không suy luận qua source-regex. scopeTelesaleId undefined -> full-campaign
+ * (Admin/Campaign owner/full-view caller); có giá trị -> đúng 1 điều kiện
+ * bổ sung telesale_id, KHÔNG đổi campaign_id đã có.
+ */
+export function buildCampaignMembershipReadWhere(campaignId: string, scopeTelesaleId?: string): Prisma.CampaignMembershipWhereInput {
+  return scopeTelesaleId
+    ? { campaign_id: campaignId, telesale_id: scopeTelesaleId }
+    : { campaign_id: campaignId };
+}
+
+export async function getCampaignMembersWithCustomers(campaignId: string, scopeTelesaleId?: string) {
   assertTransactionalCrm();
-  const members = await prisma.campaignMembership.findMany({ where: { campaign_id: campaignId }, orderBy: { created_at: 'asc' } });
+  const where = buildCampaignMembershipReadWhere(campaignId, scopeTelesaleId);
+  const members = await prisma.campaignMembership.findMany({ where, orderBy: { created_at: 'asc' } });
   const customerIds = [...new Set(members.map(member => member.customer_id))];
   const customers = customerIds.length
     ? await prisma.khachHang.findMany({
