@@ -75,17 +75,52 @@ test('khach-hang/page.tsx: 2 nút bulk-action theo lựa chọn ("Tạo Campaign
 
 // --- 2. UI: empty-state không hướng dẫn non-admin bấm nút họ không thấy ---
 
-// ĐÃ CẬP NHẬT — gợi ý bấm nút giờ hiện cho MỌI user (nút "Thêm khách hàng"
-// không còn Admin-only, xem test phía trên) — không còn lý do ẩn gợi ý này
-// với non-admin vì họ giờ CÓ thấy + bấm được nút đó.
-test('khach-hang/page.tsx: empty-state luôn hiện "Chưa có khách hàng" VÀ gợi ý bấm "Thêm khách hàng" cho MỌI user (không gate isAdmin nữa)', () => {
+// KHACH_HANG_EMPTY_STATE_CAMPAIGN_GUIDANCE — "0 khách hàng" ở trang này chỉ
+// có nghĩa "không có Customer nào actor được phép thấy trong danh sách này"
+// (đúng authority/scoping hiện có) — KHÔNG đồng nghĩa Sale không có workload
+// nào được giao. Một Sale có thể đang có rất nhiều CampaignMembership trong
+// CSKH → Campaign dù trang Khách hàng trống (đúng workflow M1B.1/M1B.2,
+// không phải lỗi). Copy cũ dễ khiến Sale hiểu nhầm "không có nhiệm vụ nào" —
+// đổi copy + thêm link điều hướng /phan-khach (route CSKH hiện hữu, dùng
+// router.push() — pattern đã có sẵn trong CHÍNH file này, không import mới,
+// không thêm fetch/API nào chỉ để hiện thông báo). Gợi ý "Thêm khách hàng"
+// vẫn hiện cho MỌI user (không gate isAdmin), không đổi bất biến cũ.
+test('khach-hang/page.tsx: empty-state có tiêu đề + mô tả nói rõ khách Campaign được quản lý tại CSKH → Campaign, VÀ vẫn giữ gợi ý "Thêm khách hàng" cho MỌI user (không gate isAdmin)', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   const emptyStateIdx = src.indexOf('className="empty-state"');
   assert.ok(emptyStateIdx >= 0);
-  const emptyStateBlock = src.slice(emptyStateIdx, emptyStateIdx + 400);
-  assert.match(emptyStateBlock, /<h3>Chưa có khách hàng<\/h3>/, 'tiêu đề trung tính phải luôn hiện, không phụ thuộc isAdmin');
-  assert.match(emptyStateBlock, /<p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới<\/p>/, 'gợi ý bấm nút phải hiện cho mọi user (nút đã hiện cho mọi user)');
+  const emptyStateBlock = src.slice(emptyStateIdx, emptyStateIdx + 1400);
+  assert.match(emptyStateBlock, /<h3>Chưa có khách hàng trong danh sách này<\/h3>/, 'tiêu đề phải nói rõ đây là "danh sách này" (scoped), không phải "không có khách/nhiệm vụ nào"');
+  assert.match(emptyStateBlock, /Nhấn &quot;Thêm khách hàng&quot; để tạo mới/, 'gợi ý bấm nút phải vẫn hiện cho mọi user (nút đã hiện cho mọi user)');
+  assert.match(emptyStateBlock, /Khách được giao chăm sóc qua Campaign được quản lý tại CSKH → Campaign\./, 'phải nói rõ khách Campaign KHÔNG biến mất — được quản lý ở CSKH → Campaign, tránh Sale hiểu nhầm không có workload');
   assert.doesNotMatch(emptyStateBlock, /\{isAdmin && <p>Nhấn/, 'gợi ý không còn được gate bởi isAdmin');
+});
+
+test('khach-hang/page.tsx: empty-state link "Đi đến CSKH" điều hướng ĐÚNG route /phan-khach hiện hữu bằng router.push() (pattern đã dùng sẵn trong chính file này — VD điều hướng sang /pipeline), KHÔNG tạo component/hook điều hướng mới, KHÔNG đổi navigation authority', () => {
+  const src = readFileSync(resolve(PAGE_PATH), 'utf8');
+  const emptyStateIdx = src.indexOf('className="empty-state"');
+  const emptyStateBlock = src.slice(emptyStateIdx, emptyStateIdx + 1400);
+  assert.match(emptyStateBlock, /onClick=\{\(\) => router\.push\('\/phan-khach'\)\}/, 'link phải điều hướng đúng route CSKH hiện hữu (/phan-khach, xem menu-registry.ts key crm.cskh) bằng router đã có sẵn trong file');
+  assert.match(emptyStateBlock, />\s*Đi đến CSKH\s*</);
+});
+
+test('khach-hang/page.tsx: empty-state KHÔNG gọi thêm API/fetch nào cho Campaign — điều kiện rỗng vẫn chỉ dựa vào data.length (state đã fetch sẵn cho chính trang Khách hàng), không có useEffect/fetch mới nào gắn với "campaign"/"phan-khach" trong toàn bộ file', () => {
+  const src = readFileSync(resolve(PAGE_PATH), 'utf8');
+  assert.match(src, /\) : data\.length === 0 \? \(/, 'điều kiện empty-state vẫn chỉ dựa vào data.length đã có sẵn, không thêm state/điều kiện mới');
+  // Route CSKH (/phan-khach) chỉ được NHẮC tới như đích điều hướng
+  // (router.push('/phan-khach')) — không phải endpoint bị fetch.
+  assert.doesNotMatch(src, /fetch\(['"`]\/api\/phan-khach\/members|fetch\(['"`]\/api\/campaigns\/[^'"`]*\/members/i, 'không được thêm fetch mới nào tới endpoint liệt kê CampaignMembership chỉ để phục vụ empty-state');
+  assert.doesNotMatch(src, /getCampaignMembersWithCustomers|getCampaignMembers\(/, 'không được import/gọi bất kỳ hàm đọc CampaignMembership nào trong trang Khách hàng');
+});
+
+test('khach-hang/page.tsx: fetchData() — query Customer chính (GET /api/khach-hang, params page/limit/search/from/to/campaignStatus/datasetId) hoàn toàn KHÔNG đổi bởi thay đổi empty-state — cùng authority/scoping server-side như cũ', () => {
+  const src = readFileSync(resolve(PAGE_PATH), 'utf8');
+  const fnStart = src.indexOf('const fetchData = useCallback(async () => {');
+  assert.ok(fnStart >= 0);
+  const fnBody = src.slice(fnStart, fnStart + 700);
+  assert.match(fnBody, /const params = new URLSearchParams\(\{ page: String\(page\), limit: String\(limit\) \}\);/);
+  assert.match(fnBody, /if \(campaignStatus !== 'all'\) params\.set\('campaignStatus', campaignStatus\);/);
+  assert.match(fnBody, /const res = await fetch\(`\/api\/khach-hang\?\$\{params\}`\);/, 'query Customer chính vẫn đúng 1 endpoint, không đổi tham số/route');
 });
 
 // --- 3. Server: audit Admin-only enforcement cho từng operation quản trị ---

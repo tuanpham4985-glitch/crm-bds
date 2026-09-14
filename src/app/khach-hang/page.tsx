@@ -1016,10 +1016,25 @@ export default function KhachHangPage() {
         ) : data.length === 0 ? (
           <div className="empty-state">
             <Users size={40} />
-            <h3>Chưa có khách hàng</h3>
-            {/* Nút "Thêm khách hàng" giờ hiện cho MỌI user hợp lệ (section A)
-                — gợi ý này cũng bỏ gate isAdmin theo đúng thực tế đó. */}
-            <p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới</p>
+            {/* KHACH_HANG_EMPTY_STATE_CAMPAIGN_GUIDANCE — "0 khách hàng" ở
+                đây CHỈ có nghĩa "không có Customer nào actor hiện được phép
+                thấy trong danh sách này" (đúng authority/scoping hiện có,
+                data.length đã fetch sẵn, KHÔNG gọi thêm API nào). Một Sale
+                vẫn có thể đang có rất nhiều CampaignMembership được giao
+                chăm sóc trong CSKH → Campaign dù trang này trống — đó là
+                workflow đúng (M1B.1/M1B.2), KHÔNG phải lỗi. Copy trung lập,
+                dùng được cho cả Admin lẫn Sale — không thêm fetch/role check
+                nào chỉ để đổi câu chữ. */}
+            <h3>Chưa có khách hàng trong danh sách này</h3>
+            <p>Nhấn &quot;Thêm khách hàng&quot; để tạo mới. Khách được giao chăm sóc qua Campaign được quản lý tại CSKH → Campaign.</p>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ marginTop: 8 }}
+              onClick={() => router.push('/phan-khach')}
+            >
+              Đi đến CSKH
+            </button>
           </div>
         ) : (
           <>
