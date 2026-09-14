@@ -7,11 +7,11 @@
 // bỏ qua bước chọn/tạo Campaign). KHÔNG đụng CSKH interaction/qualification —
 // chỉ tạo/phân CampaignMembership. Không có role "Telesale" riêng — người
 // được phân là nhân viên vai_tro 'Sale' (eligibleCampaignSales).
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Layers, Loader2, Save, Users, X } from 'lucide-react';
 import type { Campaign, DuAn, NhanVien } from '@/lib/types';
-import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
+import { eligibleCampaignSales, listActiveSaleDepartments, mergeRecipientNames, resolveDepartmentSaleNames } from '@/lib/campaign-sale-eligibility';
 
 type Mode = 'none' | 'round_robin' | 'quantity';
 
@@ -82,6 +82,26 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
     ? eligibleCampaignSales(isAdmin, activeCampaign, projects, employees)
     : { blocked: false as const, scoped: false, sales: employees.filter(item => item.trang_thai !== 'Nghỉ việc' && item.vai_tro === 'Sale') };
   const eligibleSales = eligibility.blocked ? [] : eligibility.sales;
+
+  // CUSTOMER_DEPARTMENT_DISTRIBUTION — "Phòng" CHỈ là bulk selector cho
+  // selectedSales, KHÔNG phải recipient/allocation level mới. Danh sách
+  // Phòng + resolve theo Phòng đều là hàm THUẦN tái dùng từ
+  // campaign-sale-eligibility.ts (test riêng ở đó) — không tự viết lại logic
+  // ở component, không fetch thêm (employees đã có sẵn từ props).
+  const activeSaleDepartments = useMemo(() => listActiveSaleDepartments(employees), [employees]);
+  const [deptFeedback, setDeptFeedback] = useState<{ dept: string; matched: number } | null>(null);
+
+  function handleDeptSelect(event: React.ChangeEvent<HTMLSelectElement>) {
+    const dept = event.target.value;
+    event.target.value = ''; // one-shot action, không giữ lại lựa chọn trên select
+    if (!dept) return;
+    // resolveDepartmentSaleNames chỉ giao với eligibleSales hiện có (roster
+    // Dự án/Admin-scope đã áp dụng sẵn) — Department bulk-select KHÔNG được
+    // bypass eligibility.
+    const names = resolveDepartmentSaleNames(eligibleSales, dept);
+    setSelectedSales(current => mergeRecipientNames(current, names));
+    setDeptFeedback({ dept, matched: names.length });
+  }
 
   useEffect(() => {
     if (eligibility.blocked && mode !== 'none') setMode('none');
@@ -282,6 +302,21 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
               {!eligibility.blocked && mode !== 'none' && (
                 <div className="form-group">
                   <label className="form-label">Chọn Sale</label>
+                  {activeSaleDepartments.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <select className="form-select" defaultValue="" onChange={handleDeptSelect} style={{ fontSize: 12.5 }}>
+                        <option value="">— Chọn theo Phòng để tự động tick —</option>
+                        {activeSaleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                      </select>
+                      {deptFeedback && (
+                        <p style={{ fontSize: 11.5, color: deptFeedback.matched === 0 ? '#b91c1c' : 'var(--text-muted)', margin: '4px 0 0' }}>
+                          {deptFeedback.matched === 0
+                            ? `Phòng "${deptFeedback.dept}" không có Sale nào trong phạm vi Campaign này.`
+                            : `Đã chọn ${deptFeedback.matched} Sale thuộc Phòng "${deptFeedback.dept}".`}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
                     {eligibleSales.length === 0 && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-muted)' }}>Không có Sale nào đang hoạt động trong phạm vi Campaign này.</div>}
                     {eligibleSales.map(item => (

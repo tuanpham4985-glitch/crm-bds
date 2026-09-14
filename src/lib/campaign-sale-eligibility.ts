@@ -13,6 +13,47 @@ export function isActiveSale(employee: Pick<NhanVien, 'vai_tro' | 'trang_thai'>)
   return employee.vai_tro === 'Sale' && employee.trang_thai !== 'Nghỉ việc';
 }
 
+// CUSTOMER_DEPARTMENT_DISTRIBUTION — "Phòng" (NhanVien.phong_KD, cột đã có
+// sẵn trong Postgres/Sheets, KHÔNG cần model/API mới) CHỈ là bulk selector
+// cho recipient set (selectedSales trên CampaignDistributeModal), KHÔNG phải
+// 1 authority/allocation level mới. 2 hàm THUẦN dưới đây tách khỏi component
+// để test trực tiếp logic, không phải regex UI.
+
+/**
+ * Danh sách tên Phòng có ít nhất 1 Sale đang hoạt động — lấy từ TOÀN BỘ nhân
+ * viên (KHÔNG thu hẹp theo 1 Campaign cụ thể) để Admin luôn thấy đúng tên
+ * phòng họ nhớ, kể cả khi phòng đó hiện không có ai lọt qua roster Dự án của
+ * Campaign đang chọn — resolveDepartmentSaleNames() bên dưới mới là bước áp
+ * ĐÚNG eligibility thật cho 1 Campaign cụ thể.
+ */
+export function listActiveSaleDepartments(employees: readonly NhanVien[]): string[] {
+  const set = new Set<string>();
+  employees.forEach(item => { if (isActiveSale(item) && item.phong_KD) set.add(item.phong_KD); });
+  return [...set].sort((a, b) => a.localeCompare(b, 'vi'));
+}
+
+/**
+ * Resolve tên (ho_ten — CÙNG định danh recipient đã dùng cho selectedSales,
+ * không phát minh định danh mới) của các Sale thuộc phòng `dept` VÀ đã nằm
+ * trong `eligibleSales` (caller tự tính qua eligibleCampaignSales() TRƯỚC —
+ * hàm này KHÔNG tự tính lại eligibility, chỉ giao (intersect) với dept, nên
+ * Department bulk-select không thể bypass roster Dự án/Admin-scope đã duyệt).
+ */
+export function resolveDepartmentSaleNames(eligibleSales: readonly NhanVien[], dept: string): string[] {
+  return eligibleSales.filter(item => item.phong_KD === dept).map(item => item.ho_ten);
+}
+
+/**
+ * Merge `additions` (VD tên Sale vừa resolve từ 1 Phòng) vào `current`
+ * recipient names, dedupe — 1 Sale chỉ xuất hiện đúng 1 lần trong final
+ * recipient set dù được chọn thủ công VÀ đồng thời thuộc Phòng vừa bulk-
+ * select. Set-union thuần theo ĐÚNG định danh ho_ten đã dùng cho
+ * selectedSales — không phát minh weighting/quota nào.
+ */
+export function mergeRecipientNames(current: readonly string[], additions: readonly string[]): string[] {
+  return Array.from(new Set([...current, ...additions]));
+}
+
 export function parseSaleRoster(raw?: string | null): string[] | null {
   if (!raw) return null;
   try {
