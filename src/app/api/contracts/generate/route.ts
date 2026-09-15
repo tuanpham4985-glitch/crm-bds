@@ -250,6 +250,11 @@ export async function POST(req: Request) {
       Phong_Ban: data.phong_KD || '',
       // Nhiệm vụ / công việc phải làm (điền từ sheet NHIEM_VU theo chức danh)
       cong_viec_phai_lam: data.cong_viec_phai_lam || '',
+      // Phụ lục sửa đổi, bổ sung HĐLĐ (NVKD cơ hữu Đại Lý)
+      // Ngày ký Phụ lục mặc định cố định 17/07/2026 (theo yêu cầu người dùng ngày 2026-09-15,
+      // không dùng ngày hệ thống) — vẫn có thể ghi đè qua data.ngay_ky_phu_luc nếu cần.
+      ngay_ky_hdld: formatDateVN(data.ngay_bat_dau),
+      ngay_ky_phu_luc: data.ngay_ky_phu_luc ? formatDateVN(data.ngay_ky_phu_luc) : '17/07/2026',
     };
 
     // ---- 1. Generate main contract .docx ----
@@ -270,6 +275,14 @@ export async function POST(req: Request) {
 
     // Rule 2: Cam kết ứng xử → only Khối KD
     const isKD = data.department === 'KD';
+
+    // Rule 3: Phụ lục sửa đổi, bổ sung HĐLĐ (NVKD cơ hữu Đại Lý) → mọi nhân viên,
+    // TRỪ các chức danh quản lý cấp cao (theo xác nhận người dùng ngày 2026-09-15)
+    const EXCLUDED_PHU_LUC_TITLES = new Set(
+      ['Chủ tịch', 'TP HCNS', 'CEO', 'TP TC-KT', 'GĐ phát triển thương hiệu cá nhân - Social Sales']
+        .map(t => t.trim().toLowerCase())
+    );
+    const needsPhuLucDaiLy = !EXCLUDED_PHU_LUC_TITLES.has((data.employee_type || '').trim().toLowerCase());
 
     /**
      * Resolve template file: prefer .docx (OOXML) over .doc (OLE2 binary).
@@ -309,6 +322,10 @@ export async function POST(req: Request) {
     }
     if (isKD) {
       const f = resolveTemplateFile('MAU_CAM_KET_UNG_XU_NVKD.doc');
+      if (f) additionalFiles.push(f);
+    }
+    if (needsPhuLucDaiLy) {
+      const f = resolveTemplateFile('MAU_VIC_PHU_LUC_DAI_LY.docx');
       if (f) additionalFiles.push(f);
     }
 
