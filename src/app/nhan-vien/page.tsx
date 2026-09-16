@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
   Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText, FileUser, RefreshCw,
-  Megaphone, Send, Paperclip, CheckCircle2, Users, Search, ChevronDown, Filter
+  Megaphone, Send, Paperclip, CheckCircle2, Users, Search, ChevronDown,
+  ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc } from '@/lib/types';
 import Link from 'next/link';
@@ -37,10 +38,15 @@ export default function NhanVienPage() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
   const [contracts, setContracts] = useState<HopDong[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterChucDanh, setFilterChucDanh] = useState('');
-  const [filterPhongKD, setFilterPhongKD] = useState('');
-  const [filterTrangThai, setFilterTrangThai] = useState('');
+  const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' } | null>(null);
+  const SORTABLE_COLUMNS = new Set(['ho_ten', 'employee_type', 'phong_KD', 'trang_thai', 'hop_dong']);
+  const toggleSort = (column: string) => {
+    setSort(current => {
+      if (!current || current.column !== column) return { column, direction: 'asc' };
+      if (current.direction === 'asc') return { column, direction: 'desc' };
+      return null;
+    });
+  };
   const [danhMuc, setDanhMuc] = useState<DanhMuc>({
     employee_types: [], khu_vuc: [], gioi_tinh: [], phong_KD: [],
     giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: [],
@@ -647,16 +653,19 @@ export default function NhanVienPage() {
     return <div className="loading-spinner"><div className="spinner" /></div>;
   }
 
-  const q = searchQuery.trim().toLowerCase();
-  const displayedEmployees = employees.filter(nv => {
-    const matchSearch = !q ||
-      nv.ho_ten?.toLowerCase().includes(q) ||
-      nv.so_dien_thoai?.toLowerCase().includes(q);
-    const matchChucDanh = !filterChucDanh || nv.employee_type === filterChucDanh;
-    const matchPhongKD = !filterPhongKD || nv.phong_KD === filterPhongKD;
-    const matchTrangThai = !filterTrangThai || nv.trang_thai === filterTrangThai;
-    return matchSearch && matchChucDanh && matchPhongKD && matchTrangThai;
-  });
+  const getSortValue = (nv: NhanVien, column: string): string | number => {
+    if (column === 'hop_dong') return getContractCount(nv.id_nhan_vien).active;
+    return ((nv as any)[column] || '').toString().toLowerCase();
+  };
+  const displayedEmployees = [...employees];
+  if (sort) {
+    displayedEmployees.sort((a, b) => {
+      const va = getSortValue(a, sort.column);
+      const vb = getSortValue(b, sort.column);
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'vi');
+      return sort.direction === 'asc' ? cmp : -cmp;
+    });
+  }
 
   return (
     <div>
@@ -729,38 +738,6 @@ export default function NhanVienPage() {
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div className="filter-bar">
-        <div className="search-wrapper">
-          <Search size={16} className="search-icon" />
-          <input
-            className="form-input"
-            placeholder="Tìm theo họ tên hoặc SĐT..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <div className="filter-group">
-          <Filter size={14} style={{ color: 'var(--text-label)' }} />
-          <select className="form-select" value={filterChucDanh}
-            onChange={e => setFilterChucDanh(e.target.value)}>
-            <option value="">Tất cả chức danh</option>
-            {(danhMuc?.employee_types || []).map(et => <option key={et} value={et}>{et}</option>)}
-          </select>
-          <select className="form-select" value={filterPhongKD}
-            onChange={e => setFilterPhongKD(e.target.value)}>
-            <option value="">Tất cả phòng KD</option>
-            {(danhMuc?.phong_KD || []).map(pkd => <option key={pkd} value={pkd}>{pkd}</option>)}
-          </select>
-          <select className="form-select" value={filterTrangThai}
-            onChange={e => setFilterTrangThai(e.target.value)}>
-            <option value="">Tất cả trạng thái</option>
-            {(danhMuc?.trang_thai_nhan_vien?.length ? danhMuc.trang_thai_nhan_vien : ['Chính thức', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'])
-              .map(tt => <option key={tt} value={tt}>{tt}</option>)}
-          </select>
-        </div>
-      </div>
-
       {/* Employee Table */}
       <div className="card" style={{ padding: 0 }}>
         {employees.length === 0 ? (
@@ -769,12 +746,6 @@ export default function NhanVienPage() {
             <h3>Chưa có nhân viên</h3>
             <p>Nhấn &quot;Thêm nhân viên&quot; để tạo mới</p>
           </div>
-        ) : displayedEmployees.length === 0 ? (
-          <div className="empty-state">
-            <Search size={40} />
-            <h3>Không tìm thấy nhân viên phù hợp</h3>
-            <p>Thử đổi từ khóa tìm kiếm hoặc bộ lọc</p>
-          </div>
         ) : (
           <div className="table-wrapper" style={{ borderRadius: 'var(--radius-xl)', overflow: 'visible' }}>
             <table className="data-table">
@@ -782,15 +753,26 @@ export default function NhanVienPage() {
                 <tr>
                   {visibleColumns.map(col => {
                     if (col.adminOnly && !canEditHRM) return null;
+                    const sortable = SORTABLE_COLUMNS.has(col.id);
+                    const direction = sort?.column === col.id ? sort.direction : null;
                     return (
                       <th
                         key={col.id}
+                        onClick={sortable ? () => toggleSort(col.id) : undefined}
+                        title={sortable ? 'Bấm để sắp xếp' : undefined}
                         style={{
                           width: col.width,
-                          textAlign: col.align as any
+                          textAlign: col.align as any,
+                          cursor: sortable ? 'pointer' : undefined,
+                          userSelect: sortable ? 'none' : undefined,
                         }}
                       >
-                        {col.label}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: col.align === 'right' || col.align === 'center' ? 'center' : 'flex-start' }}>
+                          {col.label}
+                          {sortable && direction === 'asc' && <ArrowUp size={12} />}
+                          {sortable && direction === 'desc' && <ArrowDown size={12} />}
+                          {sortable && !direction && <ArrowUpDown size={11} style={{ opacity: 0.35 }} />}
+                        </span>
                       </th>
                     );
                   })}
