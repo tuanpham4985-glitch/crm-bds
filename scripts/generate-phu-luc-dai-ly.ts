@@ -27,7 +27,6 @@ const EXCLUDED_TITLES = new Set(
 
 const INCLUDED_STATUSES = new Set(['chính thức', 'thử việc', 'ctv', 'học việc']);
 
-const NGAY_KY_PHU_LUC = '17/07/2026';
 const TEMPLATE_PATH = path.join(process.cwd(), 'public', 'templates', 'MAU_VIC_PHU_LUC_DAI_LY.docx');
 const OUTPUT_DIR = path.join(process.cwd(), 'output', 'phu-luc-dai-ly');
 
@@ -111,7 +110,9 @@ async function main() {
       ngay_cap: formatDateVN(e.ngay_cap),
       noi_cap: e.noi_cap || '',
       ngay_ky_hdld: formatDateVN(contract.ngay_bat_dau),
-      ngay_ky_phu_luc: NGAY_KY_PHU_LUC,
+      // Ngày ký Phụ lục = ngày ký HĐLĐ (theo yêu cầu người dùng 2026-09-17,
+      // thay cho hằng số cố định 17/07/2026 trước đó).
+      ngay_ky_phu_luc: formatDateVN(contract.ngay_bat_dau),
     };
 
     const zip = new PizZip(content);
