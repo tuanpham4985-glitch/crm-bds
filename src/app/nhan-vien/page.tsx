@@ -863,8 +863,8 @@ export default function NhanVienPage() {
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: 4,
                                   padding: '4px 10px', borderRadius: 6,
-                                  background: contractStats.active > 0 ? 'var(--success-bg)' : 'var(--bg-page)',
-                                  color: contractStats.active > 0 ? 'var(--success-text)' : 'var(--text-label)',
+                                  background: contractStats.active > 0 ? 'var(--success-bg)' : contractStats.total > 0 ? 'var(--danger-bg)' : 'var(--bg-page)',
+                                  color: contractStats.active > 0 ? 'var(--success-text)' : contractStats.total > 0 ? 'var(--danger-text)' : 'var(--text-label)',
                                   fontSize: '0.8125rem', fontWeight: 600,
                                   textDecoration: 'none', transition: 'all 0.15s',
                                 }}
