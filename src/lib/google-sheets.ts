@@ -4678,3 +4678,154 @@ export async function getDataNhanSuForReport(): Promise<HrEmployeeRecord[]> {
 
   return results;
 }
+
+// ============================================================
+// NGÀY HĐ THỬ VIỆC / HĐLĐ CHÍNH THỨC — đọc từ file HR ngoài
+// (dùng để đối chiếu + tự động tạo/cập nhật Hợp đồng trong CRM —
+// xem scripts/sync-contract-dates-from-hr.ts)
+// ============================================================
+
+export interface HrContractDateRecord {
+  mnv: string;
+  ho_ten: string;
+  chuc_danh: string;
+  tv_tu_ngay: string;  // ISO YYYY-MM-DD hoặc '' — HĐ Thử việc, "Từ ngày"
+  tv_den_ngay: string; // HĐ Thử việc, "Đến ngày"
+  ct_tu_ngay: string;  // HĐLĐ XĐTH 12 tháng (Chính thức), "Từ ngày"
+  ct_den_ngay: string; // HĐLĐ XĐTH 12 tháng (Chính thức), "Đến ngày"
+}
+
+export async function getContractDatesFromHrFile(): Promise<HrContractDateRecord[]> {
+  const hrSheetId = process.env.NHAN_SU_SHEET_ID;
+  if (!hrSheetId) return [];
+
+  const HR_SHEET_NAME  = 'DATA NHÂN SỰ';
+  const CATEGORY_ROW_IDX = 2; // hàng 3 (0-based = 2) — tiêu đề gộp "HĐ THỬ VIỆC" / "HĐLĐ XĐTH 12 tháng"
+  const HEADER_ROW_IDX   = 3; // hàng 4 (0-based = 3) — "Từ ngày"/"Đến ngày"
+
+  const hrDoc   = await getDocBySheetId(hrSheetId);
+  const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
+  if (!hrSheet) return [];
+
+  const rowCount = Math.min(hrSheet.rowCount, 2000);
+  const colCount = Math.min(hrSheet.columnCount, 60);
+
+  await hrSheet.loadCells({
+    startRowIndex:    CATEGORY_ROW_IDX,
+    endRowIndex:      rowCount,
+    startColumnIndex: 0,
+    endColumnIndex:   colCount,
+  });
+
+  const normH = (s: string) =>
+    s.toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/đ/g, 'd')
+      .trim()
+      .replace(/\s+/g, '');
+
+  const headers: string[] = [];
+  for (let c = 0; c < colCount; c++) {
+    headers.push(str(hrSheet.getCell(HEADER_ROW_IDX, c).value));
+  }
+  const categoryHeaders: string[] = [];
+  for (let c = 0; c < colCount; c++) {
+    categoryHeaders.push(str(hrSheet.getCell(CATEGORY_ROW_IDX, c).value));
+  }
+
+  const findCol = (aliases: string[], fallback = -1): number => {
+    const norm = aliases.map(normH);
+    for (let c = 0; c < headers.length; c++) {
+      const h = normH(headers[c]);
+      if (norm.includes(h)) return c;
+    }
+    for (let c = 0; c < headers.length; c++) {
+      const h = normH(headers[c]);
+      if (norm.some(a => a.length >= 6 && h.includes(a))) return c;
+    }
+    return fallback;
+  };
+
+  // Cột "Từ ngày"/"Đến ngày" của mỗi loại HĐ được xác định qua tiêu đề GỘP ở
+  // hàng trên (vì bản thân "Từ ngày"/"Đến ngày" lặp lại giống hệt nhau ở mọi
+  // loại HĐ) — tìm cột chứa tiêu đề gộp, cột đó = Từ ngày, cột kế tiếp = Đến ngày.
+  const findCategoryStartCol = (aliases: string[]): number => {
+    const norm = aliases.map(normH);
+    for (let c = 0; c < categoryHeaders.length; c++) {
+      const h = normH(categoryHeaders[c]);
+      if (!h) continue;
+      if (norm.some(a => h.includes(a))) return c;
+    }
+    return -1;
+  };
+
+  const colMNV   = findCol(['mnv', 'manv', 'manhânvien', 'mãnv'], 1);
+  const colHoTen = findCol(['hoten', 'hovaten', 'hotennhanvien'], 2);
+  const colChucDanh = findCol(['chucdanh', 'chucvu', 'vitri'], -1);
+
+  const colThuViecTu = findCategoryStartCol(['thuviec']);
+  const colChinhThucTu = findCategoryStartCol(['xdth', 'chinhthuc', 'hdldxdth']);
+
+  // Đọc ngày qua formattedValue (text hiển thị, VD "04/01/2026") — KHÔNG dùng
+  // .value trực tiếp: với ô định dạng Ngày tháng thật sự, .value trả về SERIAL
+  // NUMBER (số ngày kể từ 30/12/1899), không phải chuỗi ngày → parse sai hoàn
+  // toàn (từng để lọt ra các ngày "+046022-12-31" khi chạy thử).
+  const getCellText = (r: number, c: number): string => {
+    if (c < 0) return '';
+    const cell = hrSheet.getCell(r, c);
+    return str(cell.formattedValue ?? cell.value ?? '');
+  };
+
+  // Dựng chuỗi ISO trực tiếp từ D/M/Y đã parse — KHÔNG đi qua `new Date(...).
+  // toISOString()`: toISOString quy đổi sang UTC, máy chủ chạy giờ VN (UTC+7)
+  // nên nửa đêm giờ địa phương lùi thành 17h hôm trước theo UTC → lệch ngày
+  // (từng để lọt lỗi lùi 1 ngày khi chạy thử, VD 04/01/2026 in ra 2026-01-03).
+  const parseDateISO = (raw: string): string => {
+    if (!raw) return '';
+    const s = raw.trim();
+    if (!s) return '';
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m1) {
+      const d = +m1[1], mo = +m1[2], y = +m1[3];
+      if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${y}-${pad2(mo)}-${pad2(d)}`;
+    }
+    const m2 = s.match(/^(\d{1,2})[-.](\d{1,2})[-.](\d{4})/);
+    if (m2) {
+      const d = +m2[1], mo = +m2[2], y = +m2[3];
+      if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${y}-${pad2(mo)}-${pad2(d)}`;
+    }
+    // ISO đã đúng sẵn (YYYY-MM-DD...)
+    const m3 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m3) return `${m3[1]}-${m3[2]}-${m3[3]}`;
+    return '';
+  };
+
+  const results: HrContractDateRecord[] = [];
+
+  for (let r = HEADER_ROW_IDX + 1; r < rowCount; r++) {
+    const mnvRaw   = getCellText(r, colMNV);
+    const hoTenRaw = getCellText(r, colHoTen);
+    if (!mnvRaw && !hoTenRaw) continue;
+
+    results.push({
+      mnv:      mnvRaw,
+      ho_ten:   hoTenRaw,
+      chuc_danh:   getCellText(r, colChucDanh),
+      tv_tu_ngay:  parseDateISO(getCellText(r, colThuViecTu)),
+      tv_den_ngay: parseDateISO(getCellText(r, colThuViecTu >= 0 ? colThuViecTu + 1 : -1)),
+      ct_tu_ngay:  parseDateISO(getCellText(r, colChinhThucTu)),
+      ct_den_ngay: parseDateISO(getCellText(r, colChinhThucTu >= 0 ? colChinhThucTu + 1 : -1)),
+    });
+  }
+
+  console.log(
+    `[getContractDatesFromHrFile] ${results.length} records — ` +
+    `MNV:${colMNV}, HoTen:${colHoTen}, ChucDanh:${colChucDanh}, ` +
+    `ThuViec:${colThuViecTu}(${categoryHeaders[colThuViecTu] ?? '?'}), ` +
+    `ChinhThuc:${colChinhThucTu}(${categoryHeaders[colChinhThucTu] ?? '?'})`
+  );
+
+  return results;
+}

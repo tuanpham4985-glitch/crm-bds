@@ -124,6 +124,8 @@ export interface ICrmTaskRepository {
 
 // ─── CONTRACT / HỢP ĐỒNG ─────────────────────────────────────
 
+export type HopDongMatchFields = Pick<HopDong, 'id' | 'id_nhan_vien' | 'so_hop_dong' | 'contract_type' | 'ngay_bat_dau' | 'ngay_ket_thuc'>;
+
 export interface IContractRepository {
   findAll(): Promise<HopDong[]>;
   findById(id: string): Promise<HopDong | null>;
@@ -131,6 +133,14 @@ export interface IContractRepository {
   create(data: HopDong): Promise<void>;
   update(data: HopDong): Promise<boolean>;
   delete(id: string): Promise<boolean>;
+  // NEON_TRANSFER: narrow projection dùng cho đối chiếu ngày HĐ từ file HR
+  // (sync-contract-dates-from-hr) — chỉ 6 cột thay vì cả hàng, cùng tinh thần
+  // narrow-select đã áp dụng ở IMPORT_DUPLICATE_CHECK_P0/IMPORT_BATCH_P1.
+  findMatchFields(): Promise<HopDongMatchFields[]>;
+  // Gộp N lệnh create() rời rạc thành 1 round-trip khi tạo hàng loạt.
+  createMany(data: HopDong[]): Promise<void>;
+  // Cập nhật CHỈ 2 cột ngày — không cần đọc/ghi lại cả hàng như update(full).
+  updateDates(id: string, ngay_bat_dau: string, ngay_ket_thuc: string): Promise<boolean>;
 }
 
 // ─── ATTENDANCE OUTSIDE / CHẤM CÔNG NGOÀI ────────────────────

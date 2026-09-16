@@ -93,6 +93,7 @@ export const syncManagerFromHrFile    = GS.syncManagerFromHrFile;
 export const syncEmployeesFromHrFile  = GS.syncEmployeesFromHrFile;
 export const backfillNhanVienIds      = GS.backfillNhanVienIds;
 export const getManagerForEmployee    = GS.getManagerForEmployee;
+export const getContractDatesFromHrFile = GS.getContractDatesFromHrFile;
 
 // CRM — stacking (chưa có PG model)
 //

@@ -215,6 +215,13 @@ export default function NhanVienPage() {
         if (tu) {
           lines.push(`- Danh sách giao việc: thêm ${tu.created}, cập nhật ${tu.updated}, ngừng hoạt động ${tu.deactivated}`);
         }
+        const ct = result.data?.contracts;
+        if (ct && (ct.created > 0 || ct.updated > 0)) {
+          lines.push(`- Hợp đồng (ngày Thử việc/Chính thức): tạo mới ${ct.created}, cập nhật ${ct.updated}`);
+        }
+        if (ct?.errors?.length) {
+          lines.push(`- Lỗi đồng bộ hợp đồng: ${ct.errors.length} (xem log server)`);
+        }
         alert(lines.join('\n'));
         fetchAll(true);
       } else {

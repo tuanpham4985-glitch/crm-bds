@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { syncEmployeesFromHrFile, syncManagerFromHrFile } from '@/lib/data-access';
 import { syncNhanVienToPostgres } from '@/lib/sync/nhan-vien-to-pg';
+import { syncContractDatesFromHrFile } from '@/lib/sync/contract-dates-from-hr';
 import { syncTmUsersFromNhanVien } from '@/lib/task-management/sync-users';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { invalidate } from '@/lib/mem-cache';
@@ -42,11 +43,25 @@ export async function POST() {
       return null;
     });
 
+    // 4.5. File HR ngoài (cột HĐ Thử việc / HĐLĐ XĐTH 12 tháng) → bảng hop_dong.
+    // Chạy sau bước 3 vì cần NHAN_VIEN trong Postgres đã có mặt để khớp mã NV.
+    // Gộp vào cùng nút thay vì để người dùng phải nhớ chạy script riêng.
+    const contracts = isPostgresEnabled('contracts')
+      ? await syncContractDatesFromHrFile().catch(e => {
+          console.error('[nhan-vien/sync] Contract dates sync failed:', e instanceof Error ? e.message : e);
+          return null;
+        })
+      : null;
+    if (contracts && (contracts.created > 0 || contracts.updated > 0)) {
+      revalidateTag('hd', {});
+      invalidate('gs:hd');
+    }
+
     // 5. Xoá cache đọc để danh sách hiện ngay, không phải chờ TTL 60s
     revalidateTag('nv', {});
     invalidate('gs:nv');
 
-    return NextResponse.json({ success: true, data: { ...result, manager, postgres, taskUsers } });
+    return NextResponse.json({ success: true, data: { ...result, manager, postgres, taskUsers, contracts } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Lỗi kết nối đồng bộ';
     console.error('NhanVien Sync POST error:', message);
