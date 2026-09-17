@@ -5,9 +5,10 @@ import {
   Plus, Edit3, Trash2, X, UserCog, Phone, Mail,
   Shield, ShieldCheck, TrendingUp, Upload, Loader2, FileText, FileUser, RefreshCw,
   Megaphone, Send, Paperclip, CheckCircle2, Users, Search, ChevronDown,
-  ArrowUp, ArrowDown, ArrowUpDown, Filter
+  ArrowUp, ArrowDown, ArrowUpDown, Filter, Award
 } from 'lucide-react';
-import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc } from '@/lib/types';
+import type { NhanVien, Pipeline, KhachHang, HopDong, DanhMuc, BoNhiemChucVu } from '@/lib/types';
+import { isTenureActive } from '@/lib/hrm/appointment-lifecycle';
 import Link from 'next/link';
 import RichEditor from '@/components/RichEditor';
 import { formatDate, formatCurrency } from '@/lib/utils';
@@ -27,6 +28,7 @@ const NHAN_VIEN_FIELDS = [
   { id: 'doanh_thu', label: 'Doanh thu', align: 'right', public: false },
   { id: 'hoa_hong', label: 'Hoa hồng', align: 'right', public: false },
   { id: 'hop_dong', label: 'Hợp đồng', align: 'center', public: true },
+  { id: 'bo_nhiem', label: 'Bổ nhiệm', align: 'center', public: true },
   { id: 'ngay_tao', label: 'Ngày tạo', public: false },
   { id: 'thao_tac', label: 'Thao tác', align: 'center', width: 120, public: true, adminOnly: true }
 ];
@@ -38,6 +40,7 @@ export default function NhanVienPage() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customers, setCustomers] = useState<KhachHang[]>([]);
   const [contracts, setContracts] = useState<HopDong[]>([]);
+  const [tenures, setTenures] = useState<BoNhiemChucVu[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterChucDanh, setFilterChucDanh] = useState('');
   const [filterPhongKD, setFilterPhongKD] = useState('');
@@ -258,15 +261,16 @@ export default function NhanVienPage() {
         fetch('/api/khach-hang?limit=999'),
         fetch('/api/contracts'),
         fetch('/api/danh-muc'),
+        fetch('/api/bo-nhiem-chuc-vu'),
       ]);
 
       // Parse JSON safely
-      const [nvData, plData, khData, hdData, dmData] = await Promise.all(
+      const [nvData, plData, khData, hdData, dmData, bnData] = await Promise.all(
         responses.map(res => safeJson(res))
       );
 
       // Check for errors
-      const errors = [nvData, plData, khData, hdData, dmData].filter(d => !d.success);
+      const errors = [nvData, plData, khData, hdData, dmData, bnData].filter(d => !d.success);
       if (errors.length > 0 && !isBackground) {
         console.warn('[API] Some data failed to load:', errors);
       }
@@ -276,6 +280,7 @@ export default function NhanVienPage() {
       if (khData.success) setCustomers(khData.data);
       if (hdData.success) setContracts(hdData.data);
       if (dmData.success) setDanhMuc(dmData.data);
+      if (bnData.success) setTenures(bnData.data);
     } catch (err) {
       console.error('Fetch all error:', err);
     } finally {
@@ -311,6 +316,13 @@ export default function NhanVienPage() {
       return new Date(c.ngay_ket_thuc) >= new Date();
     });
     return { total: empContracts.length, active: active.length };
+  };
+
+  // Tenure (bổ nhiệm/miễn nhiệm) count per employee
+  const getTenureCount = (employeeId: string) => {
+    const empTenures = tenures.filter(t => t.id_nhan_vien === employeeId);
+    const active = empTenures.filter(isTenureActive);
+    return { total: empTenures.length, active: active.length };
   };
 
   const openCreate = () => {
@@ -839,6 +851,7 @@ export default function NhanVienPage() {
                 {displayedEmployees.map((nv, idx) => {
                   const stats = getEmployeeStats(nv.ho_ten);
                   const contractStats = getContractCount(nv.id_nhan_vien);
+                  const tenureStats = getTenureCount(nv.id_nhan_vien);
                   return (
                     <tr key={nv.id_nhan_vien}>
                       {visibleColumns.map((col) => {
@@ -968,6 +981,27 @@ export default function NhanVienPage() {
                             </td>
                           );
                         }
+                        if (col.id === 'bo_nhiem') {
+                          return (
+                            <td key={col.id} style={{ textAlign: col.align as any }}>
+                              <Link
+                                href={`/nhan-vien/bo-nhiem-chuc-vu?id_nhan_vien=${nv.id_nhan_vien}`}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  padding: '4px 10px', borderRadius: 6,
+                                  background: tenureStats.active > 0 ? 'var(--success-bg)' : tenureStats.total > 0 ? 'var(--bg-page)' : 'var(--bg-page)',
+                                  color: tenureStats.active > 0 ? 'var(--success-text)' : tenureStats.total > 0 ? 'var(--text-body)' : 'var(--text-label)',
+                                  fontSize: '0.8125rem', fontWeight: 600,
+                                  textDecoration: 'none', transition: 'all 0.15s',
+                                }}
+                                title={`${tenureStats.total} quyết định (${tenureStats.active} đang giữ chức vụ)`}
+                              >
+                                <Award size={13} />
+                                {tenureStats.active}/{tenureStats.total}
+                              </Link>
+                            </td>
+                          );
+                        }
                         if (col.id === 'ngay_tao') {
                           return <td key={col.id} style={{ textAlign: col.align as any }}>{formatDate(nv.ngay_tao)}</td>;
                         }
@@ -982,6 +1016,14 @@ export default function NhanVienPage() {
                                   style={{ color: 'var(--primary)' }}
                                 >
                                   <FileText size={15} />
+                                </Link>
+                                <Link
+                                  href={`/nhan-vien/bo-nhiem-chuc-vu?id_nhan_vien=${nv.id_nhan_vien}&action=create`}
+                                  className="btn btn-ghost btn-icon btn-sm"
+                                  title="Tạo quyết định bổ nhiệm mới"
+                                  style={{ color: 'var(--primary)' }}
+                                >
+                                  <Award size={15} />
                                 </Link>
                                 <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(nv)} title="Chỉnh sửa"><Edit3 size={15} /></button>
                                 <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger-text)' }}

@@ -24,6 +24,17 @@ export const FIELD_LABELS: Record<string, string> = {
   ghi_chu: 'Ghi chú',
   created_at: 'Ngày tạo',
 
+  // Bổ nhiệm / Miễn nhiệm chức vụ
+  chuc_vu_bo_nhiem: 'Chức vụ bổ nhiệm',
+  ngay_bo_nhiem: 'Ngày bổ nhiệm',
+  so_quyet_dinh_bo_nhiem: 'Số QĐ bổ nhiệm',
+  nguoi_ky_bo_nhiem: 'Người ký (bổ nhiệm)',
+  ngay_mien_nhiem: 'Ngày miễn nhiệm',
+  so_quyet_dinh_mien_nhiem: 'Số QĐ miễn nhiệm',
+  nguoi_ky_mien_nhiem: 'Người ký (miễn nhiệm)',
+  phong_ban: 'Phòng ban/KD',
+  du_an: 'Dự án',
+
   // Employee fields
   ho_ten: 'Họ tên',
   so_dien_thoai: 'Số điện thoại',

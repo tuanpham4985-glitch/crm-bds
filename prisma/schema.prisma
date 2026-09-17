@@ -564,6 +564,49 @@ model HopDong {
   @@map("hop_dong")
 }
 
+// BoNhiemChucVu — lịch sử giữ chức vụ (bổ nhiệm → thôi giữ/miễn nhiệm).
+// Postgres-native, KHÔNG Sheets dual-write (khác HopDong/NhanVien) — audit
+// HRM_APPOINTMENT_LIFECYCLE xác nhận sheet "THEO DÕI BỔ NHIỆM" (file HR ngoài,
+// NHAN_SU_SHEET_ID) không có dữ liệu nghiệp vụ thật (100% blank ngoài STT) nên
+// không cần fallback/mirror — pattern giống PrivateGroup/Campaign, không phải
+// HopDong. id_nhan_vien là string ref THUẦN, KHÔNG @relation tới NhanVien —
+// cùng lý do mọi cross-module reference khác trong schema này (NhanVien có
+// thể sống ở Google Sheets thay vì Postgres tuỳ PG_ENABLED_MODULES).
+//
+// 1 record = 1 tenure (giai đoạn giữ 1 chức vụ). Không có cột trang_thai —
+// "đang giữ" hay "đã thôi giữ" LUÔN derive từ ngay_mien_nhiem (null = đang
+// giữ) ở application layer (xem src/lib/hrm/appointment-lifecycle.ts), tránh
+// second source of truth có thể lệch khỏi 2 cột ngày.
+model BoNhiemChucVu {
+  id                        String   @id @default(cuid())
+  id_nhan_vien              String
+  ten_nhan_vien             String?
+  phong_ban                 String?
+  du_an                     String?
+
+  chuc_vu_bo_nhiem          String
+  ngay_bo_nhiem             String
+  so_quyet_dinh_bo_nhiem    String?
+  nguoi_ky_bo_nhiem         String?
+  file_quyet_dinh_bo_nhiem  String?
+
+  ngay_mien_nhiem           String?
+  so_quyet_dinh_mien_nhiem  String?
+  nguoi_ky_mien_nhiem       String?
+  file_quyet_dinh_mien_nhiem String?
+
+  ghi_chu                   String?
+
+  created_by_id             String
+  created_by_name           String
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+
+  @@index([id_nhan_vien])
+  @@index([id_nhan_vien, ngay_bo_nhiem])
+  @@map("bo_nhiem_chuc_vu")
+}
+
 // ─── PAYROLL ─────────────────────────────────────────────────
 
 model BangLuong {

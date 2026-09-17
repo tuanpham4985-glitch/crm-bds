@@ -54,6 +54,13 @@ export const TRANG_THAI_HOP_DONG_COLORS: Record<string, { bg: string; text: stri
   'Hết hạn': { bg: '#fff1f2', text: '#9f1239' },
 };
 
+// === BỔ NHIỆM / MIỄN NHIỆM CHỨC VỤ ===
+export const TRANG_THAI_BO_NHIEM_COLORS: Record<string, { bg: string; text: string }> = {
+  'Đang giữ chức vụ': { bg: '#ecfdf5', text: '#065f46' },
+  'Đã thôi giữ chức vụ': { bg: '#f1f5f9', text: '#475569' },
+  'Chức vụ cần xác nhận': { bg: '#fffbeb', text: '#b45309' },
+};
+
 // Giai đoạn color mapping
 export const GIAI_DOAN_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   'Mới': { bg: '#f1f5f9', text: '#475569', border: '#94a3b8' },

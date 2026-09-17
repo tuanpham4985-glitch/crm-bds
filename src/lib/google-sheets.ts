@@ -4829,3 +4829,118 @@ export async function getContractDatesFromHrFile(): Promise<HrContractDateRecord
 
   return results;
 }
+
+// ============================================================
+// BỔ NHIỆM / MIỄN NHIỆM CHỨC VỤ — đọc RAW từ file HR ngoài
+// (tab "THEO DÕI BỔ NHIỆM", cùng file NHAN_SU_SHEET_ID với "DATA NHÂN SỰ")
+//
+// CHỈ đọc + trả về string thô (không parse ngày/chuẩn hoá phòng ban ở đây) —
+// mọi normalization/validation/idempotency nằm ở src/lib/hrm/appointment-sheet-sync.ts
+// (pure, test bằng fixture, không cần Sheet thật) để tách I/O khỏi business logic,
+// khác với getContractDatesFromHrFile() (đã parse ngày ngay tại chỗ) vì hàm đó
+// không cần test độc lập với fixture đa dạng như sync này (approved architecture
+// HRM_APPOINTMENT_SHEET_SYNC, xem yêu cầu test §11 dùng fixture, không phụ thuộc
+// Sheet thật).
+// ============================================================
+
+export interface HrAppointmentRawRecord {
+  stt: string;
+  ma_nv: string;
+  ho_ten: string;
+  phong_ban: string;
+  so_qd_bn: string;
+  chuc_vu_bo_nhiem: string;
+  ngay_bo_nhiem_raw: string;
+  so_qd_mn: string;
+  thoi_giu_chuc_vu: string;
+  ngay_mien_nhiem_raw: string;
+  du_an: string;
+}
+
+export async function getAppointmentsFromHrFile(): Promise<HrAppointmentRawRecord[]> {
+  const hrSheetId = process.env.NHAN_SU_SHEET_ID;
+  if (!hrSheetId) return [];
+
+  const HR_SHEET_NAME = 'THEO DÕI BỔ NHIỆM';
+  // Xác nhận trực tiếp trên Sheet thật (HRM_APPOINTMENT_LIVE_DATA_RECHECK,
+  // 2026-09-17): hàng 2 (0-based=1) = tiêu đề gộp, hàng 4 (0-based=3) = nhóm cột
+  // "THÔNG TIN NHÂN SỰ"/"THÔNG TIN BỔ NHIỆM"/"THÔNG TIN MIỄN NHIỆM"/"Dự án",
+  // hàng 5 (0-based=4) = header cột thật.
+  const HEADER_ROW_IDX = 4;
+
+  const hrDoc = await getDocBySheetId(hrSheetId);
+  const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
+  if (!hrSheet) return [];
+
+  const rowCount = Math.min(hrSheet.rowCount, 2000);
+  const colCount = Math.min(hrSheet.columnCount, 30);
+
+  await hrSheet.loadCells({
+    startRowIndex: HEADER_ROW_IDX,
+    endRowIndex: rowCount,
+    startColumnIndex: 0,
+    endColumnIndex: colCount,
+  });
+
+  const normH = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').trim().replace(/\s+/g, '');
+
+  const headers: string[] = [];
+  for (let c = 0; c < colCount; c++) {
+    headers.push(str(hrSheet.getCell(HEADER_ROW_IDX, c).value));
+  }
+
+  const findCol = (aliases: string[], fallback = -1): number => {
+    const norm = aliases.map(normH);
+    for (let c = 0; c < headers.length; c++) {
+      if (norm.includes(normH(headers[c]))) return c;
+    }
+    return fallback;
+  };
+
+  const colStt      = findCol(['stt'], 0);
+  const colMaNV      = findCol(['manv'], 1);
+  const colHoTen     = findCol(['hovaten'], 2);
+  const colPhongBan  = findCol(['phongban/kd', 'phongbankd'], 3);
+  const colSoQdBn    = findCol(['soqdbn'], 4);
+  const colChucVu    = findCol(['chucvubonhiem'], 5);
+  const colNgayBN    = findCol(['ngaybonhiem'], 6);
+  const colSoQdMn    = findCol(['soqdmn'], 7);
+  const colThoiGiu   = findCol(['thoigiuchucvu'], 8);
+  const colNgayMN    = findCol(['ngaymiennhiem'], 9);
+  const colDuAn      = findCol(['duan'], 10);
+
+  // Đọc qua formattedValue (text hiển thị) — KHÔNG dùng .value trực tiếp, cùng
+  // lý do đã áp dụng ở getContractDatesFromHrFile: ô định dạng ngày/số có thể
+  // trả serial number thay vì chuỗi, và Mã NV có thể bị Sheets tự strip số 0
+  // đầu nếu cell được coi là number.
+  const getCellText = (r: number, c: number): string => {
+    if (c < 0) return '';
+    const cell = hrSheet.getCell(r, c);
+    return str(cell.formattedValue ?? cell.value ?? '');
+  };
+
+  const results: HrAppointmentRawRecord[] = [];
+  for (let r = HEADER_ROW_IDX + 1; r < rowCount; r++) {
+    results.push({
+      stt: getCellText(r, colStt),
+      ma_nv: getCellText(r, colMaNV),
+      ho_ten: getCellText(r, colHoTen),
+      phong_ban: getCellText(r, colPhongBan),
+      so_qd_bn: getCellText(r, colSoQdBn),
+      chuc_vu_bo_nhiem: getCellText(r, colChucVu),
+      ngay_bo_nhiem_raw: getCellText(r, colNgayBN),
+      so_qd_mn: getCellText(r, colSoQdMn),
+      thoi_giu_chuc_vu: getCellText(r, colThoiGiu),
+      ngay_mien_nhiem_raw: getCellText(r, colNgayMN),
+      du_an: getCellText(r, colDuAn),
+    });
+  }
+
+  console.log(
+    `[getAppointmentsFromHrFile] ${results.length} raw rows read — ` +
+    `MaNV:${colMaNV}, HoTen:${colHoTen}, PhongBan:${colPhongBan}, ChucVu:${colChucVu}, NgayBN:${colNgayBN}`
+  );
+
+  return results;
+}

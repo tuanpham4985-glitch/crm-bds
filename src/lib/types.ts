@@ -82,6 +82,36 @@ export interface HopDong {
   created_at: string;
 }
 
+// === BỔ NHIỆM / MIỄN NHIỆM CHỨC VỤ ===
+// 1 record = 1 tenure (giai đoạn giữ 1 chức vụ). "Đang giữ" / "Đã thôi giữ"
+// LUÔN derive từ ngay_mien_nhiem (không có field trang_thai lưu trữ) — xem
+// src/lib/hrm/appointment-lifecycle.ts#deriveTenureStatus.
+export interface BoNhiemChucVu {
+  id: string;
+  id_nhan_vien: string;
+  ten_nhan_vien?: string;
+  phong_ban?: string;
+  du_an?: string;
+
+  chuc_vu_bo_nhiem: string;
+  ngay_bo_nhiem: string;
+  so_quyet_dinh_bo_nhiem?: string;
+  nguoi_ky_bo_nhiem?: string;
+  file_quyet_dinh_bo_nhiem?: string;
+
+  ngay_mien_nhiem?: string | null;
+  so_quyet_dinh_mien_nhiem?: string;
+  nguoi_ky_mien_nhiem?: string;
+  file_quyet_dinh_mien_nhiem?: string;
+
+  ghi_chu?: string;
+
+  created_by_id: string;
+  created_by_name: string;
+  created_at: string;
+  updated_at?: string;
+}
+
 // === KHÁCH HÀNG ===
 export interface KhachHang {
   id_khach_hang: string;

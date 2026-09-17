@@ -12,6 +12,9 @@
 # TMB Manager local/dev asset storage (see src/lib/tmb-storage.ts) — never commit
 /.tmb-dev-storage
 
+# HRM document local/dev storage (see src/lib/hrm/hrm-document-storage.ts) — never commit
+/.hrm-dev-storage
+
 # next.js
 /.next/
 /out/
