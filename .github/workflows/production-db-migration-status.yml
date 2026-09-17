@@ -1,0 +1,33 @@
+name: Production DB Migration Status (Read-Only)
+
+# Manual-only, read-only diagnostic. Runs ONLY `prisma migrate status` against
+# the production database — no migrate deploy/dev/reset/push, no raw SQL, no
+# arbitrary command input. See .github/workflows/production-db-migration.yml
+# for the (separate, write-capable) migration-apply workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: Prisma migrate status (read-only)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies (lockfile-safe)
+        run: npm ci
+
+      - name: Prisma migrate status
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate status
