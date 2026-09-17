@@ -4857,37 +4857,26 @@ export interface HrAppointmentRawRecord {
   du_an: string;
 }
 
-export async function getAppointmentsFromHrFile(): Promise<HrAppointmentRawRecord[]> {
-  const hrSheetId = process.env.NHAN_SU_SHEET_ID;
-  if (!hrSheetId) return [];
-
-  const HR_SHEET_NAME = 'THEO DÕI BỔ NHIỆM';
-  // Xác nhận trực tiếp trên Sheet thật (HRM_APPOINTMENT_LIVE_DATA_RECHECK,
-  // 2026-09-17): hàng 2 (0-based=1) = tiêu đề gộp, hàng 4 (0-based=3) = nhóm cột
-  // "THÔNG TIN NHÂN SỰ"/"THÔNG TIN BỔ NHIỆM"/"THÔNG TIN MIỄN NHIỆM"/"Dự án",
-  // hàng 5 (0-based=4) = header cột thật.
-  const HEADER_ROW_IDX = 4;
-
-  const hrDoc = await getDocBySheetId(hrSheetId);
-  const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
-  if (!hrSheet) return [];
-
-  const rowCount = Math.min(hrSheet.rowCount, 2000);
-  const colCount = Math.min(hrSheet.columnCount, 30);
-
-  await hrSheet.loadCells({
-    startRowIndex: HEADER_ROW_IDX,
-    endRowIndex: rowCount,
-    startColumnIndex: 0,
-    endColumnIndex: colCount,
-  });
-
+/** Pure — tách nguyên logic build headers/column-mapping/data-rows ra khỏi
+ * getAppointmentsFromHrFile() (CHỈ tách, KHÔNG đổi logic) để regression test
+ * chứng minh được dòng dữ liệu nghiệp vụ ĐẦU TIÊN ngay sau header không bị bỏ
+ * sót, không cần mock GoogleSpreadsheet (HRM_APPOINTMENT_FIRST_ROW_PARSER_FIX).
+ * getHeaderValue/getCellText là accessor thuần do caller cung cấp — cùng đúng
+ * 2 accessor (.value cho header, .formattedValue ?? .value cho data) như bản
+ * gốc, không gộp/đổi ý nghĩa. */
+export function buildAppointmentRowsFromCells(
+  headerRowIdx: number,
+  rowCount: number,
+  colCount: number,
+  getHeaderValue: (col: number) => string,
+  getCellText: (row: number, col: number) => string,
+): HrAppointmentRawRecord[] {
   const normH = (s: string) =>
     s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').trim().replace(/\s+/g, '');
 
   const headers: string[] = [];
   for (let c = 0; c < colCount; c++) {
-    headers.push(str(hrSheet.getCell(HEADER_ROW_IDX, c).value));
+    headers.push(getHeaderValue(c));
   }
 
   const findCol = (aliases: string[], fallback = -1): number => {
@@ -4910,18 +4899,8 @@ export async function getAppointmentsFromHrFile(): Promise<HrAppointmentRawRecor
   const colNgayMN    = findCol(['ngaymiennhiem'], 9);
   const colDuAn      = findCol(['duan'], 10);
 
-  // Đọc qua formattedValue (text hiển thị) — KHÔNG dùng .value trực tiếp, cùng
-  // lý do đã áp dụng ở getContractDatesFromHrFile: ô định dạng ngày/số có thể
-  // trả serial number thay vì chuỗi, và Mã NV có thể bị Sheets tự strip số 0
-  // đầu nếu cell được coi là number.
-  const getCellText = (r: number, c: number): string => {
-    if (c < 0) return '';
-    const cell = hrSheet.getCell(r, c);
-    return str(cell.formattedValue ?? cell.value ?? '');
-  };
-
   const results: HrAppointmentRawRecord[] = [];
-  for (let r = HEADER_ROW_IDX + 1; r < rowCount; r++) {
+  for (let r = headerRowIdx + 1; r < rowCount; r++) {
     results.push({
       stt: getCellText(r, colStt),
       ma_nv: getCellText(r, colMaNV),
@@ -4943,4 +4922,49 @@ export async function getAppointmentsFromHrFile(): Promise<HrAppointmentRawRecor
   );
 
   return results;
+}
+
+export async function getAppointmentsFromHrFile(): Promise<HrAppointmentRawRecord[]> {
+  const hrSheetId = process.env.NHAN_SU_SHEET_ID;
+  if (!hrSheetId) return [];
+
+  const HR_SHEET_NAME = 'THEO DÕI BỔ NHIỆM';
+  // Xác nhận lại trực tiếp trên Sheet thật bằng raw cell dump (HRM_APPOINTMENT_
+  // FIRST_ROW_PARSER_FIX, 2026-09-17 — bản xác nhận trước đó bị lệch 1 dòng):
+  // hàng 1 (0-based=0) = tiêu đề gộp, hàng 3 (0-based=2) = nhóm cột
+  // "THÔNG TIN NHÂN SỰ"/"THÔNG TIN BỔ NHIỆM"/"THÔNG TIN MIỄN NHIỆM"/"Dự án",
+  // hàng 4 (0-based=3) = header cột thật, hàng 5 (0-based=4) = dòng dữ liệu
+  // nghiệp vụ ĐẦU TIÊN. HEADER_ROW_IDX phải = 3 để dòng dữ liệu đầu tiên
+  // (0-based=4) không bị đọc nhầm thành header rồi bị bỏ sót vĩnh viễn.
+  const HEADER_ROW_IDX = 3;
+
+  const hrDoc = await getDocBySheetId(hrSheetId);
+  const hrSheet = hrDoc.sheetsByTitle[HR_SHEET_NAME];
+  if (!hrSheet) return [];
+
+  const rowCount = Math.min(hrSheet.rowCount, 2000);
+  const colCount = Math.min(hrSheet.columnCount, 30);
+
+  await hrSheet.loadCells({
+    startRowIndex: HEADER_ROW_IDX,
+    endRowIndex: rowCount,
+    startColumnIndex: 0,
+    endColumnIndex: colCount,
+  });
+
+  // Đọc qua formattedValue (text hiển thị) — KHÔNG dùng .value trực tiếp, cùng
+  // lý do đã áp dụng ở getContractDatesFromHrFile: ô định dạng ngày/số có thể
+  // trả serial number thay vì chuỗi, và Mã NV có thể bị Sheets tự strip số 0
+  // đầu nếu cell được coi là number.
+  const getCellText = (r: number, c: number): string => {
+    if (c < 0) return '';
+    const cell = hrSheet.getCell(r, c);
+    return str(cell.formattedValue ?? cell.value ?? '');
+  };
+
+  return buildAppointmentRowsFromCells(
+    HEADER_ROW_IDX, rowCount, colCount,
+    (c) => str(hrSheet.getCell(HEADER_ROW_IDX, c).value),
+    getCellText,
+  );
 }

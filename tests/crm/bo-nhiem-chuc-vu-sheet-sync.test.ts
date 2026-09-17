@@ -7,7 +7,7 @@ const {
   parseVietnameseDateToISO, normalizeDepartmentCode, planAppointmentSheetSync,
   isSheetOwnedTenure, HR_SHEET_SYNC_CREATED_BY_ID, HR_SHEET_SYNC_CREATED_BY_NAME,
 } = sheetSyncModule;
-import type { HrAppointmentRawRecord } from '../../src/lib/google-sheets';
+import { buildAppointmentRowsFromCells, type HrAppointmentRawRecord } from '../../src/lib/google-sheets';
 import type { BoNhiemChucVu, NhanVien } from '../../src/lib/types';
 
 // Fixtures — KHÔNG phụ thuộc Sheet thật (approved architecture §11).
@@ -245,6 +245,70 @@ test('HR_SHEET_SYNC_CREATED_BY_NAME là chuỗi hiển thị hợp lý, không t
 // frontend visibility (approved architecture §10) — canManageHRM() bản thân
 // đã test đầy đủ ở bo-nhiem-chuc-vu-auth.test.ts; test dưới đây xác nhận route
 // mới THỰC SỰ gọi guard đó trước khi chạy sync, không phải chỉ ở UI.
+// ---- Regression: dòng dữ liệu nghiệp vụ ĐẦU TIÊN ngay sau header không bị
+// bỏ sót (HRM_APPOINTMENT_FIRST_ROW_PARSER_FIX — trước đó HEADER_ROW_IDX lệch
+// 1 dòng khiến dòng này bị đọc nhầm thành header rồi mất vĩnh viễn). Dùng
+// buildAppointmentRowsFromCells (pure, tách khỏi getAppointmentsFromHrFile
+// CHỈ để test được, không đổi logic) + fake grid mô phỏng đúng cấu trúc Sheet
+// thật đã xác nhận bằng raw cell dump: row0=tiêu đề gộp, row1=blank,
+// row2=nhóm cột, row3=header cột thật, row4=dòng nghiệp vụ ĐẦU TIÊN.
+function fakeSheetGrid(): string[][] {
+  const grid: string[][] = [];
+  grid[0] = ['THEO DÕI BỔ NHIỆM/ THÔI GIỮ CHỨC VỤ'];
+  grid[1] = [];
+  grid[2] = ['THÔNG TIN NHÂN SỰ', '', '', '', 'THÔNG TIN BỔ NHIỆM', '', '', 'THÔNG TIN MIỄN NHIỆM', '', '', 'Dự án'];
+  grid[3] = ['STT', 'Mã NV', 'Họ và tên', 'Phòng ban/KD', 'Số QĐ BN', 'Chức vụ bổ nhiệm', 'Ngày bổ nhiệm', 'Số QĐ MN', 'Thôi giữ chức vụ', 'Ngày miễn nhiệm'];
+  // row4 = dòng nghiệp vụ ĐẦU TIÊN ngay sau header — case thật đã audit: Mã NV
+  // 0002, Nguyễn Văn Công, "Giám đốc dự án", 17/08/2026 (ROW A).
+  grid[4] = ['1', '0002', 'Nguyễn Văn Công', 'VIC 01', '1708/2026/QĐ-VIC', 'Giám đốc dự án', '17/08/2026', '', '', '', 'VH SAI GON PARK'];
+  // row10 = tenure thứ 2 của CÙNG nhân viên, identity khác (ROW B thật đã audit).
+  grid[10] = ['7', '0002', 'Nguyễn Văn Công', 'VIC 01', '', 'Phó giám đốc dự án', '29/05/2026', '', '', '', 'VH SAI GON PARK'];
+  for (let r = 5; r < 11; r++) if (!grid[r]) grid[r] = [];
+  return grid;
+}
+
+function gridAccessors(grid: string[][]) {
+  const getHeaderValue = (col: number) => grid[3]?.[col] ?? '';
+  const getCellText = (row: number, col: number) => (col < 0 ? '' : (grid[row]?.[col] ?? ''));
+  return { getHeaderValue, getCellText };
+}
+
+test('buildAppointmentRowsFromCells: headerRowIdx đúng (=3) → dòng nghiệp vụ đầu tiên (row4, ngay sau header) KHÔNG bị bỏ sót', () => {
+  const grid = fakeSheetGrid();
+  const { getHeaderValue, getCellText } = gridAccessors(grid);
+  const rows = buildAppointmentRowsFromCells(3, 11, 11, getHeaderValue, getCellText);
+  const row4 = rows.find(r => r.ma_nv === '0002' && r.chuc_vu_bo_nhiem === 'Giám đốc dự án');
+  assert.ok(row4, 'Dòng nghiệp vụ đầu tiên (row4) phải có mặt trong kết quả');
+  assert.equal(row4!.ngay_bo_nhiem_raw, '17/08/2026');
+  assert.equal(row4!.so_qd_bn, '1708/2026/QĐ-VIC');
+  assert.equal(row4!.du_an, 'VH SAI GON PARK');
+});
+
+test('buildAppointmentRowsFromCells: regression-in-reverse — headerRowIdx SAI (=4, bug cũ) làm mất đúng dòng row4 đó', () => {
+  const grid = fakeSheetGrid();
+  const { getHeaderValue, getCellText } = gridAccessors(grid);
+  // Dùng LẠI cùng fake grid nhưng với headerRowIdx CŨ (bug đã confirm) — chứng
+  // minh nếu không sửa, dòng "Giám đốc dự án" biến mất khỏi kết quả.
+  const buggyGetHeaderValue = (col: number) => grid[4]?.[col] ?? '';
+  const rows = buildAppointmentRowsFromCells(4, 11, 11, buggyGetHeaderValue, getCellText);
+  const row4 = rows.find(r => r.chuc_vu_bo_nhiem === 'Giám đốc dự án' && r.ngay_bo_nhiem_raw === '17/08/2026');
+  assert.equal(row4, undefined, 'Với HEADER_ROW_IDX sai (=4), dòng row4 phải bị mất — xác nhận đây đúng là bug đã audit');
+});
+
+test('buildAppointmentRowsFromCells: cả 2 tenure của CÙNG nhân viên (0002) đều được đọc, giữ identity riêng khi đưa vào planner', () => {
+  const grid = fakeSheetGrid();
+  const { getHeaderValue, getCellText } = gridAccessors(grid);
+  const rows = buildAppointmentRowsFromCells(3, 11, 11, getHeaderValue, getCellText);
+  const rowsFor0002 = rows.filter(r => r.ma_nv === '0002');
+  assert.equal(rowsFor0002.length, 2, 'Phải đọc được cả 2 dòng 0002 (Giám đốc dự án 17/08 + Phó giám đốc dự án 29/05)');
+
+  const plan = planAppointmentSheetSync(rows, [], employees);
+  const createsFor0002 = plan.toCreate.filter(c => c.data.id_nhan_vien === '0002');
+  assert.equal(createsFor0002.length, 2, 'Cả 2 tenure phải thành 2 toCreate riêng biệt — identity khác nhau (chức vụ + ngày khác)');
+  assert.ok(createsFor0002.some(c => c.data.chuc_vu_bo_nhiem === 'Giám đốc dự án' && c.data.ngay_bo_nhiem === '2026-08-17'));
+  assert.ok(createsFor0002.some(c => c.data.chuc_vu_bo_nhiem === 'Phó giám đốc dự án' && c.data.ngay_bo_nhiem === '2026-05-29'));
+});
+
 test('route POST /api/bo-nhiem-chuc-vu/sync gọi canManageHRM() và trả 403 khi không đủ quyền TRƯỚC khi chạy sync', () => {
   const routeSrc = fs.readFileSync(
     path.join(__dirname, '../../src/app/api/bo-nhiem-chuc-vu/sync/route.ts'), 'utf8',
