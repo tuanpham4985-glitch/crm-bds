@@ -33,13 +33,15 @@ function getRowStatus(tenure: BoNhiemChucVu, employee?: NhanVien): string {
 
 // Trạng thái NHÂN VIÊN (NhanVien.trang_thai) — ĐỘC LẬP với trạng thái CHỨC VỤ
 // ở trên (isTenureActive/getRowStatus). Cùng quy ước màu badge đã dùng ở
-// nhan-vien/page.tsx (không tạo bảng màu mới) — nhân viên Nghỉ việc rơi vào
-// nhánh mặc định 'badge-neutral', cố ý KHÔNG có nhánh riêng để tránh nhấn
-// mạnh quá mức (hồ sơ vẫn phải hiển thị bình thường, không "báo lỗi").
+// nhan-vien/page.tsx, RIÊNG "Nghỉ việc" dùng badge-danger (đỏ nhạt, đã có sẵn
+// trong design system, chưa từng dùng ở đâu khác) — theo yêu cầu user: cần
+// nhận biết NGAY trong lịch sử Bổ nhiệm/Miễn nhiệm nhân viên nào đã nghỉ việc
+// (khác nhan-vien/page.tsx, giữ nguyên badge-neutral, ngoài scope thay đổi này).
 function employeeStatusBadgeClass(trangThai: string | undefined): string {
   if (trangThai === 'Đang làm' || trangThai === 'Chính thức') return 'badge-success';
   if (trangThai === 'Học viên' || trangThai === 'Thử việc') return 'badge-info';
   if (trangThai === 'Nghỉ sinh') return 'badge-warning';
+  if (trangThai === 'Nghỉ việc') return 'badge-danger';
   if (trangThai === 'CTV') return '';
   return 'badge-neutral';
 }
