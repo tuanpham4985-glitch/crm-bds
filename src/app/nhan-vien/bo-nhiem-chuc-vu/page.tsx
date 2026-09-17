@@ -469,7 +469,7 @@ function BoNhiemChucVuContent() {
                   <th>{getFieldLabel('du_an')}</th>
                   <th>{getFieldLabel('chuc_vu_bo_nhiem')}</th>
                   <th>{getFieldLabel('ngay_bo_nhiem')}</th>
-                  <th>Thôi giữ từ</th>
+                  <th>{getFieldLabel('ngay_mien_nhiem')}</th>
                   <th>Trạng thái chức vụ</th>
                   <th style={{ textAlign: 'center' }}>Hồ sơ</th>
                   {canEditHRM && <th style={{ width: 130, textAlign: 'center' }}>Thao tác</th>}
