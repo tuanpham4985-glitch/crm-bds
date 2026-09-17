@@ -87,8 +87,8 @@ test('resolveNavigationConfig: child trong disabledChildren -> enabled=false, c�
 });
 
 test('hasBusinessAccess: business authority vẫn áp dụng SAU KHI nav config xác định visible — Menu Manager bật 1 mục không tự cấp quyền', () => {
-  const noAccess = { isAdmin: false, canPhanKhach: false, canQualityDashboard: false, canEditHRM: false };
-  const fullAccess = { isAdmin: true, canPhanKhach: true, canQualityDashboard: true, canEditHRM: true };
+  const noAccess = { isAdmin: false, canPhanKhach: false, canQualityDashboard: false, canEditHRM: false, canAccessHrmAppointment: false };
+  const fullAccess = { isAdmin: true, canPhanKhach: true, canQualityDashboard: true, canEditHRM: true, canAccessHrmAppointment: true };
   assert.equal(hasBusinessAccess('canQualityDashboard', noAccess), false, 'nav config có thể bật crm.qualifiedData, nhưng user không có canQualityDashboard vẫn không được hasBusinessAccess cho qua');
   assert.equal(hasBusinessAccess('canQualityDashboard', fullAccess), true);
   assert.equal(hasBusinessAccess(undefined, noAccess), true, 'không có tag -> không thêm gate nào, giữ nguyên hành vi cũ');
@@ -197,11 +197,11 @@ test('MENU_REGISTRY thật của app: chỉ đúng 1 root có moduleAvailability
   assert.equal(withModuleAvailability[0].key, 'crm');
 });
 
-test('MENU_REGISTRY thật của app: đúng 4 child CRM và 4 child HRM như Sidebar cũ, key ổn định đúng ví dụ trong yêu cầu (crm.customers/crm.cskh/crm.qualifiedData/crm.pipeline)', () => {
+test('MENU_REGISTRY thật của app: đúng 4 child CRM và 5 child HRM (đã thêm hrm.appointments — Bổ nhiệm/Miễn nhiệm), key ổn định đúng ví dụ trong yêu cầu (crm.customers/crm.cskh/crm.qualifiedData/crm.pipeline)', () => {
   const crm = MENU_REGISTRY.find(r => r.key === 'crm')!;
   assert.deepEqual(crm.children?.map(c => c.key), ['crm.customers', 'crm.cskh', 'crm.qualifiedData', 'crm.pipeline']);
   const hrm = MENU_REGISTRY.find(r => r.key === 'hrm')!;
-  assert.deepEqual(hrm.children?.map(c => c.key), ['hrm.employees', 'hrm.contracts', 'hrm.payroll', 'hrm.attendance']);
+  assert.deepEqual(hrm.children?.map(c => c.key), ['hrm.employees', 'hrm.contracts', 'hrm.appointments', 'hrm.payroll', 'hrm.attendance']);
 });
 
 test('admin/menu/page.tsx: draft chỉ khởi tạo khi CẢ configLoading VÀ crmLoading đều false — phát hiện live trong production validation: nếu chỉ đợi configLoading, draftCrmEnabled có thể chốt nhầm vào fallback mặc định (true) của useCrmModule trước khi giá trị thật resolve, khiến Save âm thầm BẬT CRM dù Admin không chạm vào công tắc CRM (vi phạm bất biến 1 authority duy nhất, §5)', () => {

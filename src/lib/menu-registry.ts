@@ -6,13 +6,13 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Building2, LayoutList, Users, PhoneCall, BadgeCheck, GitBranch,
-  ClipboardList, BarChart3, TrendingUp, Briefcase, UserCog, FileText, BadgeDollarSign, MapPin,
+  ClipboardList, BarChart3, TrendingUp, Briefcase, UserCog, FileText, BadgeDollarSign, MapPin, Award,
 } from 'lucide-react';
 
 // Tag khai báo "cần business rule nào" — KHÔNG phải RBAC engine mới. Sidebar
 // (nơi đã có sẵn các hook useAuth/useCrmAccess) resolve tag này thành boolean
 // qua hasBusinessAccess() bên dưới. Registry chỉ khai báo, không tự đánh giá.
-export type BusinessAccessTag = 'adminOnly' | 'canPhanKhach' | 'canQualityDashboard' | 'canEditHRM';
+export type BusinessAccessTag = 'adminOnly' | 'canPhanKhach' | 'canQualityDashboard' | 'canEditHRM' | 'canAccessHrmAppointment';
 
 export interface MenuChildDef {
   key: string;
@@ -63,6 +63,7 @@ export const MENU_REGISTRY: MenuRootDef[] = [
     children: [
       { key: 'hrm.employees', label: 'Nhân viên', href: '/nhan-vien', icon: UserCog, businessAccess: 'canEditHRM' },
       { key: 'hrm.contracts', label: 'Hợp đồng', href: '/nhan-vien/hop-dong', icon: FileText },
+      { key: 'hrm.appointments', label: 'Bổ nhiệm / Miễn nhiệm', href: '/nhan-vien/bo-nhiem-chuc-vu', icon: Award, businessAccess: 'canAccessHrmAppointment' },
       { key: 'hrm.payroll', label: 'Bảng lương', href: '/nhan-vien/bang-luong', icon: BadgeDollarSign },
       { key: 'hrm.attendance', label: 'Chấm công online', href: '/cham-cong-ngoai', icon: MapPin },
     ],
@@ -74,6 +75,10 @@ export interface BusinessAccessContext {
   canPhanKhach: boolean;
   canQualityDashboard: boolean;
   canEditHRM: boolean;
+  /** approved architecture HRM_APPOINTMENT_ACCESS_CONTROL §5 — audience
+   * riêng cho capability Bổ nhiệm/Miễn nhiệm (Ban lãnh đạo/HCNS/TKKD/TCKT),
+   * KHÁC canEditHRM (rộng hơn: HR/Admin/chức danh cấp cao nói chung). */
+  canAccessHrmAppointment: boolean;
 }
 
 /**
@@ -89,6 +94,7 @@ export function hasBusinessAccess(tag: BusinessAccessTag | undefined, ctx: Busin
     case 'canPhanKhach': return ctx.canPhanKhach;
     case 'canQualityDashboard': return ctx.canQualityDashboard;
     case 'canEditHRM': return ctx.canEditHRM;
+    case 'canAccessHrmAppointment': return ctx.canAccessHrmAppointment;
     default: return true;
   }
 }

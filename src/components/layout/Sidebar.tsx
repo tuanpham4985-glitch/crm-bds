@@ -19,6 +19,7 @@ import { useNavigationConfig } from '@/hooks/useNavigationConfig';
 import { canAccessCrmModule } from '@/lib/crm-module-access';
 import { MENU_REGISTRY, hasBusinessAccess, type MenuRootDef, type MenuChildDef } from '@/lib/menu-registry';
 import { resolveNavigationConfig, DEFAULT_NAVIGATION_CONFIG } from '@/lib/navigation-config-resolve';
+import { canAccessHrmAppointment } from '@/lib/hrm/appointment-access';
 
 // Hook: trả về badge count cho sidebar
 // - Nếu đang ở trang TM: lấy từ Zustand (đã được cập nhật bởi useNotifications)
@@ -70,6 +71,9 @@ interface SidebarProps {
 export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { user, isAdmin, canEditHRM } = useAuth();
+  const canAccessHrmAppointmentMenu = canAccessHrmAppointment(
+    user ? { vai_tro: user.vai_tro, employee_type: user.employee_type, phong_KD: user.phong_KD } : null,
+  );
   const { canPhanKhach, handoffCount, canQualityDashboard } = useCrmAccess();
   const { enabled: crmEnabled } = useCrmModule();
   const { config: navConfigRaw } = useNavigationConfig();
@@ -99,7 +103,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   // canEditHRM/isAdmin) -> render. Business authorization LUÔN là bước cuối,
   // Menu Manager bật 1 mục không tự cấp quyền truy cập.
   const resolvedNav = resolveNavigationConfig(MENU_REGISTRY, navConfigRaw ?? DEFAULT_NAVIGATION_CONFIG, { crm: crmEnabled });
-  const businessAccessCtx = { isAdmin, canPhanKhach, canQualityDashboard, canEditHRM };
+  const businessAccessCtx = { isAdmin, canPhanKhach, canQualityDashboard, canEditHRM, canAccessHrmAppointment: canAccessHrmAppointmentMenu };
   const visibleRoots = resolvedNav.roots
     .map(root => {
       const def = MENU_REGISTRY.find(r => r.key === root.key);

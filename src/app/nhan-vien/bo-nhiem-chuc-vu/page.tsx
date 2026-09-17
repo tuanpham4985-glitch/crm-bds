@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Plus, Edit3, Trash2, X, Award, Search, Filter, Eye, Calendar, User,
-  FileText, Upload, AlertTriangle, RefreshCw, Loader2, Cloud,
+  FileText, Upload, AlertTriangle, RefreshCw, Loader2, Cloud, AlertCircle,
 } from 'lucide-react';
 import { BoNhiemChucVu, NhanVien, DanhMuc } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
@@ -14,8 +14,10 @@ import { getFieldLabel } from '@/config/fieldLabels';
 import {
   TENURE_STATUS_ACTIVE, isTenureActive,
   shouldPromptPositionSyncOnAppointment, needsPositionConfirmationAfterTermination,
+  needsDismissalReviewWarning, matchesEmployeeStatusFilter,
 } from '@/lib/hrm/appointment-lifecycle';
 import { isSheetOwnedTenure } from '@/lib/hrm/appointment-sheet-sync';
+import { canAccessHrmAppointment } from '@/lib/hrm/appointment-access';
 import type { AppointmentSyncSummary } from '@/lib/hrm/appointment-sheet-sync-service';
 import Link from 'next/link';
 
@@ -27,6 +29,19 @@ function getRowStatus(tenure: BoNhiemChucVu, employee?: NhanVien): string {
     return RECONFIRM_STATUS;
   }
   return 'Đã thôi giữ chức vụ';
+}
+
+// Trạng thái NHÂN VIÊN (NhanVien.trang_thai) — ĐỘC LẬP với trạng thái CHỨC VỤ
+// ở trên (isTenureActive/getRowStatus). Cùng quy ước màu badge đã dùng ở
+// nhan-vien/page.tsx (không tạo bảng màu mới) — nhân viên Nghỉ việc rơi vào
+// nhánh mặc định 'badge-neutral', cố ý KHÔNG có nhánh riêng để tránh nhấn
+// mạnh quá mức (hồ sơ vẫn phải hiển thị bình thường, không "báo lỗi").
+function employeeStatusBadgeClass(trangThai: string | undefined): string {
+  if (trangThai === 'Đang làm' || trangThai === 'Chính thức') return 'badge-success';
+  if (trangThai === 'Học viên' || trangThai === 'Thử việc') return 'badge-info';
+  if (trangThai === 'Nghỉ sinh') return 'badge-warning';
+  if (trangThai === 'CTV') return '';
+  return 'badge-neutral';
 }
 
 const emptyForm = {
@@ -54,12 +69,17 @@ export default function BoNhiemChucVuPage() {
 }
 
 function BoNhiemChucVuContent() {
-  const { canEditHRM, isLoading: authLoading } = useAuth();
+  const { user, canEditHRM, isLoading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const prefilledEmployeeId = searchParams.get('id_nhan_vien') || '';
 
   const [tenures, setTenures] = useState<BoNhiemChucVu[]>([]);
   const [employees, setEmployees] = useState<NhanVien[]>([]);
+  // Trạng thái NHÂN VIÊN (NhanVien.trang_thai) theo id_nhan_vien — lấy từ
+  // GET /api/bo-nhiem-chuc-vu (KHÔNG từ /api/nhan-vien: route đó lọc bỏ hẳn
+  // nhân viên "Nghỉ việc" cho MỌI người gọi, nên sẽ không có dữ liệu cho đúng
+  // trường hợp cần hiển thị nhất — xem appointment-lifecycle.ts).
+  const [employeeStatus, setEmployeeStatus] = useState<Record<string, string>>({});
   const [danhMuc, setDanhMuc] = useState<DanhMuc>({
     employee_types: [], khu_vuc: [], gioi_tinh: [], phong_KD: [],
     giai_doan_pipeline: [], trang_thai_kh: [], trang_thai_cong_viec: [], nguon: [],
@@ -86,6 +106,7 @@ function BoNhiemChucVuContent() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterEmployeeStatus, setFilterEmployeeStatus] = useState('');
   const [filterEmployee, setFilterEmployee] = useState(prefilledEmployeeId);
 
   // Đồng bộ từ HR Sheet (THEO DÕI BỔ NHIỆM) — approved architecture HRM_APPOINTMENT_SHEET_SYNC
@@ -108,7 +129,10 @@ function BoNhiemChucVuContent() {
       const tData = await safeJson(tRes);
       const nvData = await safeJson(nvRes);
       const dmData = await safeJson(dmRes);
-      if (tData.success) setTenures(tData.data);
+      if (tData.success) {
+        setTenures(tData.data);
+        setEmployeeStatus(tData.employeeStatus || {});
+      }
       if (nvData.success) setEmployees(nvData.data);
       if (dmData.success) setDanhMuc(dmData.data);
     } catch (err) {
@@ -146,8 +170,9 @@ function BoNhiemChucVuContent() {
       || empName.includes(searchQuery.toLowerCase())
       || t.chuc_vu_bo_nhiem.toLowerCase().includes(searchQuery.toLowerCase());
     const matchStatus = !filterStatus || getRowStatus(t, getEmployee(t.id_nhan_vien)) === filterStatus;
+    const matchEmployeeStatus = matchesEmployeeStatusFilter(employeeStatus[t.id_nhan_vien], filterEmployeeStatus);
     const matchEmployee = !filterEmployee || t.id_nhan_vien === filterEmployee;
-    return matchSearch && matchStatus && matchEmployee;
+    return matchSearch && matchStatus && matchEmployeeStatus && matchEmployee;
   });
 
   const openCreate = (employeeId = '') => {
@@ -336,6 +361,22 @@ function BoNhiemChucVuContent() {
     return <div className="loading-spinner"><div className="spinner" /></div>;
   }
 
+  // Chặn truy cập trực tiếp qua URL (approved architecture
+  // HRM_APPOINTMENT_ACCESS_CONTROL §6) — CHỈ Ban lãnh đạo/HCNS/TKKD/Kế toán
+  // (TCKT). Đây là UX phụ trợ — server (mọi route /api/bo-nhiem-chuc-vu/*)
+  // đã tự chặn độc lập, page này KHÔNG BAO GIỜ là điểm chặn duy nhất. Cùng
+  // convention "access denied" đã dùng ở /tai-chinh (AlertCircle + 2 dòng
+  // text), không tạo UX mới.
+  if (!canAccessHrmAppointment(user ? { vai_tro: user.vai_tro, employee_type: user.employee_type, phong_KD: user.phong_KD } : null)) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-secondary)' }}>
+        <AlertCircle size={40} style={{ color: '#ef4444', opacity: 0.7 }} />
+        <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bạn không có quyền truy cập trang này</p>
+        <p style={{ fontSize: 13, margin: 0 }}>Chỉ Ban lãnh đạo, Phòng HCNS, Phòng TKKD và Phòng Kế toán mới có thể xem Bổ nhiệm / Miễn nhiệm</p>
+      </div>
+    );
+  }
+
   const fileUrl = (ref: string) => `/api/bo-nhiem-chuc-vu/documents/${encodeURIComponent(ref)}`;
 
   return (
@@ -395,6 +436,11 @@ function BoNhiemChucVuContent() {
             <option value="Đã thôi giữ chức vụ">Đã thôi giữ chức vụ</option>
             <option value={RECONFIRM_STATUS}>Chức vụ cần xác nhận</option>
           </select>
+          <select className="form-select" value={filterEmployeeStatus} onChange={e => setFilterEmployeeStatus(e.target.value)}>
+            <option value="">Tất cả nhân viên (mọi trạng thái)</option>
+            <option value="Chính thức">Chính thức</option>
+            <option value="Nghỉ việc">Nghỉ việc</option>
+          </select>
           {employees.length > 0 && (
             <select className="form-select" value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} style={{ minWidth: 160 }}>
               <option value="">Tất cả nhân viên</option>
@@ -418,12 +464,13 @@ function BoNhiemChucVuContent() {
                 <tr>
                   <th style={{ width: 50 }}>#</th>
                   <th>Nhân viên</th>
+                  <th>Trạng thái NV</th>
                   <th>{getFieldLabel('phong_ban')}</th>
                   <th>{getFieldLabel('du_an')}</th>
                   <th>{getFieldLabel('chuc_vu_bo_nhiem')}</th>
                   <th>{getFieldLabel('ngay_bo_nhiem')}</th>
                   <th>Thôi giữ từ</th>
-                  <th>Trạng thái</th>
+                  <th>Trạng thái chức vụ</th>
                   <th style={{ textAlign: 'center' }}>Hồ sơ</th>
                   {canEditHRM && <th style={{ width: 130, textAlign: 'center' }}>Thao tác</th>}
                 </tr>
@@ -431,8 +478,10 @@ function BoNhiemChucVuContent() {
               <tbody>
                 {filteredTenures.map((t, idx) => {
                   const emp = getEmployee(t.id_nhan_vien);
+                  const empTrangThai = employeeStatus[t.id_nhan_vien];
                   const status = getRowStatus(t, emp);
                   const statusColor = TRANG_THAI_BO_NHIEM_COLORS[status] || { bg: '#f1f5f9', text: '#475569' };
+                  const dismissalWarning = needsDismissalReviewWarning(empTrangThai, t);
                   return (
                     <tr key={t.id}>
                       <td style={{ color: 'var(--text-label)' }}>{idx + 1}</td>
@@ -441,6 +490,11 @@ function BoNhiemChucVuContent() {
                           <User size={14} style={{ color: 'var(--text-label)' }} />
                           <span style={{ fontWeight: 500, color: 'var(--text-title)' }}>{getEmployeeName(t.id_nhan_vien, t.ten_nhan_vien)}</span>
                         </div>
+                      </td>
+                      <td>
+                        {empTrangThai ? (
+                          <span className={`badge ${employeeStatusBadgeClass(empTrangThai)}`}>{empTrangThai}</span>
+                        ) : '—'}
                       </td>
                       <td>{t.phong_ban || '—'}</td>
                       <td>{t.du_an || '—'}</td>
@@ -459,6 +513,12 @@ function BoNhiemChucVuContent() {
                           {status === RECONFIRM_STATUS && <AlertTriangle size={12} />}
                           {status}
                         </span>
+                        {dismissalWarning && (
+                          <div title="Nhân viên đã nghỉ việc nhưng chưa có thông tin miễn nhiệm cho chức vụ này — cần HR/kế toán rà soát, hệ thống không tự suy đoán."
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: '0.7rem', color: '#b45309' }}>
+                            <AlertTriangle size={11} /> Chưa có thông tin miễn nhiệm
+                          </div>
+                        )}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div className="flex items-center gap-1" style={{ justifyContent: 'center' }}>
@@ -644,10 +704,26 @@ function BoNhiemChucVuContent() {
               <button className="btn btn-ghost btn-icon" onClick={() => setViewItem(null)}><X size={18} /></button>
             </div>
             <div className="modal-body">
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginBottom: 4, fontWeight: 500, textTransform: 'uppercase' }}>Nhân viên</div>
-                <div style={{ fontSize: '0.9375rem', fontWeight: 600 }}>{getEmployeeName(viewItem.id_nhan_vien, viewItem.ten_nhan_vien)}</div>
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-label)', marginBottom: 4, fontWeight: 500, textTransform: 'uppercase' }}>Nhân viên</div>
+                  <div style={{ fontSize: '0.9375rem', fontWeight: 600 }}>{getEmployeeName(viewItem.id_nhan_vien, viewItem.ten_nhan_vien)}</div>
+                </div>
+                {employeeStatus[viewItem.id_nhan_vien] && (
+                  <span className={`badge ${employeeStatusBadgeClass(employeeStatus[viewItem.id_nhan_vien])}`}>
+                    {employeeStatus[viewItem.id_nhan_vien]}
+                  </span>
+                )}
               </div>
+              {needsDismissalReviewWarning(employeeStatus[viewItem.id_nhan_vien], viewItem) && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 12,
+                  background: '#fffbeb', color: '#b45309', borderRadius: 'var(--radius-md)', fontSize: '0.8125rem',
+                }}>
+                  <AlertTriangle size={14} />
+                  <span>Nhân viên đã nghỉ việc nhưng chức vụ này chưa có thông tin miễn nhiệm — cần HR/kế toán rà soát.</span>
+                </div>
+              )}
               <DetailSection title="Thông tin bổ nhiệm" fields={[
                 { label: getFieldLabel('chuc_vu_bo_nhiem'), value: viewItem.chuc_vu_bo_nhiem },
                 { label: getFieldLabel('ngay_bo_nhiem'), value: formatDate(viewItem.ngay_bo_nhiem) },

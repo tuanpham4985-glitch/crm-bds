@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getHrmSessionUser, canManageHRM } from '@/lib/auth/hrm-authority';
+import { getHrmSessionUser, canManageHRM, canAccessHrmAppointment, getActorPhongKD } from '@/lib/auth/hrm-authority';
 import { getHrmDocumentStorage, generateHrmDocumentKey, validateHrmDocumentFile } from '@/lib/hrm/hrm-document-storage';
 
 // POST — upload file QĐ bổ nhiệm/miễn nhiệm. Trả về `ref` — client gắn ref
@@ -13,7 +13,8 @@ import { getHrmDocumentStorage, generateHrmDocumentKey, validateHrmDocumentFile 
 export async function POST(request: NextRequest) {
   try {
     const user = await getHrmSessionUser();
-    if (!canManageHRM(user)) {
+    const actorPhongKD = user ? await getActorPhongKD(user.id_nhan_vien) : '';
+    if (!canManageHRM(user) || !canAccessHrmAppointment({ vai_tro: user?.vai_tro, employee_type: user?.employee_type, phong_KD: actorPhongKD })) {
       return NextResponse.json({ success: false, error: 'Không có quyền thực hiện' }, { status: 403 });
     }
 

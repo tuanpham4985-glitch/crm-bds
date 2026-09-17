@@ -5,6 +5,14 @@
 // hiện có, KHÔNG phải kiến trúc permission mới).
 import { cookies } from 'next/headers';
 import { SENIOR_EMPLOYEE_TYPES } from '../constants';
+import { getNhanVien } from '../data-access';
+import { canAccessHrmAppointment, type HrmAppointmentActorSignals } from '../hrm/appointment-access';
+
+// Re-export — canAccessHrmAppointment PHẢI định nghĩa ở src/lib/hrm/appointment-access.ts
+// (pure, KHÔNG import next/headers) để dùng được cả client (Sidebar.tsx,
+// menu-registry.ts) lẫn server (route API dưới đây) — file này (hrm-authority.ts)
+// import next/headers nên KHÔNG thể import trực tiếp vào component client.
+export { canAccessHrmAppointment, type HrmAppointmentActorSignals };
 
 export interface HrmSessionUser {
   id_nhan_vien: string;
@@ -32,4 +40,22 @@ export function canManageHRM(user: Pick<HrmSessionUser, 'vai_tro' | 'employee_ty
   return user.vai_tro === 'Admin'
     || user.vai_tro === 'HR'
     || (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(user.employee_type || '');
+}
+
+// ─── Bổ nhiệm / Miễn nhiệm chức vụ — capability audience riêng ─────────────
+// canAccessHrmAppointment() được định nghĩa + re-export ở import phía trên
+// (src/lib/hrm/appointment-access.ts). Gate này RIÊNG, tách khỏi
+// canManageHRM() (canManageHRM vẫn giữ nguyên nghĩa "quản lý dữ liệu HRM nói
+// chung", dùng ở /api/nhan-vien và các route HRM khác — không đổi). 2 gate
+// này ĐỘC LẬP và phải AND với nhau cho thao tác ghi/sync/đọc file (route tự
+// intersect, KHÔNG gộp thành 1 hàm để tránh nới lỏng nhầm canManageHRM cho
+// các HRM route khác).
+
+/** Tra phong_KD hiện tại của actor — crm_session cookie KHÔNG chứa phong_KD
+ * (chỉ id_nhan_vien/ho_ten/email/vai_tro/employee_type/avatar_url, xem
+ * /api/auth/route.ts), nên phải tra lại từ NhanVien (authority hiện có,
+ * KHÔNG field mới, KHÔNG đổi shape session cookie). */
+export async function getActorPhongKD(idNhanVien: string): Promise<string> {
+  const employees = await getNhanVien();
+  return employees.find(e => e.id_nhan_vien === idNhanVien)?.phong_KD || '';
 }

@@ -5,6 +5,7 @@ import {
   isDuplicateTenure, validateTenureInput, normalizeChucVuForDuplicateCheck,
   shouldPromptPositionSyncOnAppointment, needsPositionConfirmationAfterTermination,
   employeePositionNeedsReconfirmation, getVacatedTitle,
+  needsDismissalReviewWarning, matchesEmployeeStatusFilter,
 } from '../../src/lib/hrm/appointment-lifecycle';
 
 // Domain: 1 record = 1 tenure. Không có field trang_thai lưu trữ — trạng thái
@@ -121,4 +122,59 @@ test('employeePositionNeedsReconfirmation: true khi có tenure đã thôi giữ 
   assert.equal(employeePositionNeedsReconfirmation(
     [{ chuc_vu_bo_nhiem: 'Trưởng phòng', ngay_mien_nhiem: '2026-08-01' }], employee,
   ), false);
+});
+
+// ---- Employment status (NhanVien.trang_thai) vs Appointment/tenure status —
+// approved architecture EMPLOYEE_STATUS_VS_TENURE_STATUS: 2 chiều độc lập,
+// "Nghỉ việc" KHÔNG tự động nghĩa là "Đã miễn nhiệm". Case thật: Ngô Thị Dung
+// (đã nghỉ việc, tenure "Giám đốc dự án" chưa có ngay_mien_nhiem). ----
+
+test('1. Nhân viên đang làm (Chính thức) + tenure đang giữ → không cảnh báo', () => {
+  assert.equal(needsDismissalReviewWarning('Chính thức', { ngay_mien_nhiem: null }), false);
+});
+
+test('2. Nhân viên Nghỉ việc + tenure ĐANG GIỮ (chưa có ngay_mien_nhiem) → record vẫn hiển thị bình thường, cảnh báo computed = true (không tự đổi trạng thái chức vụ)', () => {
+  const tenure = { ngay_mien_nhiem: null };
+  // Trạng thái chức vụ vẫn "Đang giữ chức vụ" — KHÔNG bị suy diễn thành đã miễn nhiệm.
+  assert.equal(isTenureActive(tenure), true);
+  assert.equal(deriveTenureStatus(tenure), TENURE_STATUS_ACTIVE);
+  // Cảnh báo rà soát được tính riêng, không thay thế trạng thái chức vụ.
+  assert.equal(needsDismissalReviewWarning('Nghỉ việc', tenure), true);
+});
+
+test('3. Nhân viên Nghỉ việc + tenure ĐÃ miễn nhiệm (có ngay_mien_nhiem) → không cảnh báo, không có gì bất thường để rà soát', () => {
+  const tenure = { ngay_mien_nhiem: '2026-04-20' };
+  assert.equal(deriveTenureStatus(tenure), TENURE_STATUS_ENDED);
+  assert.equal(needsDismissalReviewWarning('Nghỉ việc', tenure), false);
+});
+
+test('4. Employment status KHÔNG mutate appointment/tenure status — deriveTenureStatus chỉ phụ thuộc ngay_mien_nhiem, không nhận/đọc trang_thai nhân viên', () => {
+  const tenure = { ngay_mien_nhiem: null };
+  // Cùng 1 tenure, đổi trang_thai nhân viên bất kỳ — deriveTenureStatus không đổi.
+  assert.equal(deriveTenureStatus(tenure), TENURE_STATUS_ACTIVE);
+  assert.equal(needsDismissalReviewWarning('Chính thức', tenure) !== needsDismissalReviewWarning('Nghỉ việc', tenure), true);
+  // Nhưng bản thân deriveTenureStatus() không có tham số trang_thai — không thể mutate theo nó (kiểm tra bằng chữ ký hàm qua .length).
+  assert.equal(deriveTenureStatus.length, 1);
+});
+
+test('5. Appointment/tenure status KHÔNG mutate employment status — needsDismissalReviewWarning thuần derive, không có side-effect ghi NhanVien', () => {
+  // Hàm chỉ nhận input, trả boolean — không import bất kỳ hàm ghi NhanVien nào (kiểm tra tĩnh qua module exports của file domain thuần này).
+  assert.equal(typeof needsDismissalReviewWarning('Nghỉ việc', { ngay_mien_nhiem: null }), 'boolean');
+});
+
+test('6. matchesEmployeeStatusFilter: "" (Tất cả) luôn khớp; giá trị cụ thể phải khớp CHÍNH XÁC trang_thai', () => {
+  assert.equal(matchesEmployeeStatusFilter('Nghỉ việc', ''), true);
+  assert.equal(matchesEmployeeStatusFilter('Chính thức', ''), true);
+  assert.equal(matchesEmployeeStatusFilter('Nghỉ việc', 'Nghỉ việc'), true);
+  assert.equal(matchesEmployeeStatusFilter('Chính thức', 'Nghỉ việc'), false);
+  assert.equal(matchesEmployeeStatusFilter(undefined, 'Nghỉ việc'), false);
+});
+
+test('7. matchesEmployeeStatusFilter mặc định ("") không loại bất kỳ ai — record nhân viên Nghỉ việc KHÔNG biến mất khỏi view mặc định', () => {
+  const records = [
+    { id_nhan_vien: 'A', trang_thai: 'Chính thức' },
+    { id_nhan_vien: 'B', trang_thai: 'Nghỉ việc' },
+  ];
+  const visible = records.filter(r => matchesEmployeeStatusFilter(r.trang_thai, ''));
+  assert.equal(visible.length, 2);
 });

@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getHrmSessionUser, canManageHRM } from '@/lib/auth/hrm-authority';
+import { getHrmSessionUser, canManageHRM, canAccessHrmAppointment, getActorPhongKD } from '@/lib/auth/hrm-authority';
 import { runAppointmentSheetSync } from '@/lib/hrm/appointment-sheet-sync-service';
 
 export const maxDuration = 60;
 
 // POST — Đồng bộ THEO DÕI BỔ NHIỆM (Sheet, HR authority) → BoNhiemChucVu
-// (Postgres). Chỉ HR/Admin (canManageHRM) — approved architecture §10, không
-// tin frontend visibility. `dryRun: true` KHÔNG ghi gì vào Postgres, chỉ trả
-// về plan để xem trước.
+// (Postgres). Chỉ HR/Admin (canManageHRM) VÀ trong audience Bổ nhiệm/Miễn
+// nhiệm (canAccessHrmAppointment — approved architecture
+// HRM_APPOINTMENT_ACCESS_CONTROL), không tin frontend visibility. `dryRun:
+// true` KHÔNG ghi gì vào Postgres, chỉ trả về plan để xem trước.
 export async function POST(request: NextRequest) {
   try {
     const user = await getHrmSessionUser();
-    if (!canManageHRM(user)) {
+    const actorPhongKD = user ? await getActorPhongKD(user.id_nhan_vien) : '';
+    if (!canManageHRM(user) || !canAccessHrmAppointment({ vai_tro: user?.vai_tro, employee_type: user?.employee_type, phong_KD: actorPhongKD })) {
       return NextResponse.json({ success: false, error: 'Không có quyền thực hiện' }, { status: 403 });
     }
 

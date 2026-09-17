@@ -127,3 +127,32 @@ export function employeePositionNeedsReconfirmation(
 export function getVacatedTitle(tenure: Pick<BoNhiemChucVu, 'chuc_vu_bo_nhiem' | 'ngay_mien_nhiem'>): string {
   return tenure.ngay_mien_nhiem ? tenure.chuc_vu_bo_nhiem : '';
 }
+
+// ─── Employment status (NhanVien.trang_thai) vs Appointment status ─────────
+// Đây là 2 chiều ĐỘC LẬP (approved architecture EMPLOYEE_STATUS_VS_TENURE_STATUS):
+// NhanVien.trang_thai = nhân viên còn làm việc hay không (authority hiện có,
+// KHÔNG field mới). BoNhiemChucVu = lịch sử pháp lý/hồ sơ giữ chức vụ, PHẢI
+// giữ nguyên vĩnh viễn kể cả khi nhân viên đã "Nghỉ việc" — nhân viên Nghỉ
+// việc KHÔNG tự động nghĩa là "Đã miễn nhiệm" (2 khái niệm khác nhau hoàn
+// toàn: rời công ty vs rời 1 chức vụ cụ thể). Không hàm nào dưới đây được
+// phép ghi/đổi trang_thai hay ngay_mien_nhiem — thuần derive để hiển thị.
+
+/** Nhân viên đã "Nghỉ việc" nhưng tenure vẫn "Đang giữ chức vụ" (chưa có
+ * ngay_mien_nhiem) — đây là dữ liệu có giá trị nghiệp vụ cho HR/kế toán rà
+ * soát (thiếu hồ sơ miễn nhiệm khi nhân viên đã rời công ty), KHÔNG phải lỗi
+ * cần tự sửa. Computed-only — KHÔNG lưu field cảnh báo riêng, KHÔNG tự tạo
+ * bản ghi miễn nhiệm, KHÔNG suy ra ngày miễn nhiệm từ ngày nghỉ việc. */
+export function needsDismissalReviewWarning(
+  employeeTrangThai: string | undefined | null,
+  tenure: Pick<BoNhiemChucVu, 'ngay_mien_nhiem'>,
+): boolean {
+  return employeeTrangThai === 'Nghỉ việc' && isTenureActive(tenure);
+}
+
+/** Filter đơn giản theo trang_thai chính xác — "" = Tất cả. Dùng canonical
+ * value của NhanVien.trang_thai (VD "Chính thức"/"Nghỉ việc"), không tạo
+ * nhóm/mapping riêng. */
+export function matchesEmployeeStatusFilter(trangThai: string | undefined | null, filter: string): boolean {
+  if (!filter) return true;
+  return (trangThai || '') === filter;
+}

@@ -150,6 +150,12 @@ export async function GET() {
         userData.vai_tro      = nv.vai_tro || userData.vai_tro;
         userData.employee_type = nv.employee_type || userData.employee_type;
         userData.avatar_url   = nv.avatar_url || '';
+        // phong_KD KHÔNG có trong crm_session cookie gốc (xem POST ở trên) —
+        // bổ sung tại đây (cùng cách re-read vai_tro/employee_type) để client
+        // (Sidebar/useAuth) có đủ tín hiệu cho canAccessHrmAppointment mà
+        // KHÔNG cần mở rộng shape cookie — approved architecture
+        // HRM_APPOINTMENT_ACCESS_CONTROL §5 (menu visibility).
+        userData.phong_KD     = nv.phong_KD || '';
       } catch (refreshErr) {
         // Auth phải fail-closed: không dùng cookie cũ khi không xác thực được NHAN_VIEN.
         cookieStore.delete('crm_session');

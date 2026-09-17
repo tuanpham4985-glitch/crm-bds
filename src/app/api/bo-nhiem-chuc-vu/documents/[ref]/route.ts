@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getHrmSessionUser, canManageHRM } from '@/lib/auth/hrm-authority';
+import { getHrmSessionUser, canManageHRM, canAccessHrmAppointment, getActorPhongKD } from '@/lib/auth/hrm-authority';
 import { getHrmDocumentStorage } from '@/lib/hrm/hrm-document-storage';
 
 // GET — đọc file QĐ đã upload, LUÔN qua route proxy có auth server-side
@@ -10,7 +10,8 @@ import { getHrmDocumentStorage } from '@/lib/hrm/hrm-document-storage';
 export async function GET(_request: NextRequest, context: { params: Promise<{ ref: string }> }) {
   try {
     const user = await getHrmSessionUser();
-    if (!canManageHRM(user)) {
+    const actorPhongKD = user ? await getActorPhongKD(user.id_nhan_vien) : '';
+    if (!canManageHRM(user) || !canAccessHrmAppointment({ vai_tro: user?.vai_tro, employee_type: user?.employee_type, phong_KD: actorPhongKD })) {
       return NextResponse.json({ success: false, error: 'Không có quyền thực hiện' }, { status: 403 });
     }
 

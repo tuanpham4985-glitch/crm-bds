@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getHrmSessionUser, canManageHRM } from '@/lib/auth/hrm-authority';
+import { getHrmSessionUser, canManageHRM, canAccessHrmAppointment } from '@/lib/auth/hrm-authority';
 import { getNhanVien } from '@/lib/data-access';
 import { listTenures, createTenure } from '@/lib/hrm/appointment-tenure-repository';
 import { validateTenureInput } from '@/lib/hrm/appointment-lifecycle';
 
-// GET — user đã đăng nhập xem được; HR/Admin (canManageHRM) xem toàn bộ,
-// người khác chỉ xem tenure của chính mình (KHÔNG copy auth gap của
-// /api/contracts — approved architecture §8).
+// GET — CHỈ audience Bổ nhiệm/Miễn nhiệm (canAccessHrmAppointment: Ban lãnh
+// đạo/HCNS/TKKD/TCKT — approved architecture HRM_APPOINTMENT_ACCESS_CONTROL)
+// mới được vào capability này, kể cả xem tenure CỦA CHÍNH MÌNH — gate MỚI
+// này đứng TRƯỚC, độc lập với canManageHRM (privileged xem toàn bộ, non-
+// privileged chỉ xem của mình — 2 chiều phân quyền AND với nhau, không gộp).
 export async function GET(request: NextRequest) {
   try {
     const user = await getHrmSessionUser();
@@ -14,28 +16,49 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
     }
 
+    const allEmployees = await getNhanVien();
+    const actorPhongKD = allEmployees.find(e => e.id_nhan_vien === user.id_nhan_vien)?.phong_KD || '';
+    if (!canAccessHrmAppointment({ vai_tro: user.vai_tro, employee_type: user.employee_type, phong_KD: actorPhongKD })) {
+      return NextResponse.json({ success: false, error: 'Không có quyền truy cập chức năng này' }, { status: 403 });
+    }
+
     const idNhanVienParam = request.nextUrl.searchParams.get('id_nhan_vien') || undefined;
     const privileged = canManageHRM(user);
 
-    if (!privileged) {
+    const data = !privileged
       // Non-privileged: chỉ xem tenure của chính mình, bỏ qua filter khác nếu có.
-      const data = await listTenures({ id_nhan_vien: user.id_nhan_vien });
-      return NextResponse.json({ success: true, data });
+      ? await listTenures({ id_nhan_vien: user.id_nhan_vien })
+      : await listTenures(idNhanVienParam ? { id_nhan_vien: idNhanVienParam } : undefined);
+
+    // employeeStatus: trang_thai (NhanVien.trang_thai — authority hiện có,
+    // KHÔNG field mới) cho ĐÚNG các nhân viên xuất hiện trong `data` — dùng
+    // allEmployees đã có sẵn ở trên (KHÔNG qua GET /api/nhan-vien, route đó
+    // lọc bỏ hẳn nhân viên "Nghỉ việc" cho mọi caller, trong khi hồ sơ bổ
+    // nhiệm PHẢI hiển thị vĩnh viễn kể cả khi nhân viên đã nghỉ việc —
+    // approved architecture EMPLOYEE_STATUS_VS_TENURE_STATUS). Scoped đúng
+    // bằng các id đã xuất hiện trong `data`.
+    const employeeIds = new Set(data.map(t => t.id_nhan_vien));
+    const employeeStatus: Record<string, string> = {};
+    for (const e of allEmployees) {
+      if (employeeIds.has(e.id_nhan_vien)) employeeStatus[e.id_nhan_vien] = e.trang_thai;
     }
 
-    const data = await listTenures(idNhanVienParam ? { id_nhan_vien: idNhanVienParam } : undefined);
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, data, employeeStatus });
   } catch (error) {
     console.error('[BoNhiemChucVu] GET error:', error);
     return NextResponse.json({ success: false, error: 'Lỗi đọc dữ liệu' }, { status: 500 });
   }
 }
 
-// POST — chỉ HR/Admin
+// POST — chỉ HR/Admin (canManageHRM) VÀ trong audience Bổ nhiệm/Miễn nhiệm
+// (canAccessHrmAppointment) — giữ nguyên quyền ghi chặt hơn hiện có, AND
+// thêm gate audience mới, không nới lỏng canManageHRM cho route khác.
 export async function POST(request: NextRequest) {
   try {
     const user = await getHrmSessionUser();
-    if (!canManageHRM(user)) {
+    const employees = await getNhanVien();
+    const actorPhongKD = employees.find(e => e.id_nhan_vien === user?.id_nhan_vien)?.phong_KD || '';
+    if (!canManageHRM(user) || !canAccessHrmAppointment({ vai_tro: user?.vai_tro, employee_type: user?.employee_type, phong_KD: actorPhongKD })) {
       return NextResponse.json({ success: false, error: 'Không có quyền thực hiện' }, { status: 403 });
     }
 
@@ -47,7 +70,6 @@ export async function POST(request: NextRequest) {
     const ngay_bo_nhiem = String(body.ngay_bo_nhiem || '');
     const ngay_mien_nhiem = body.ngay_mien_nhiem ? String(body.ngay_mien_nhiem) : null;
 
-    const employees = await getNhanVien();
     const employeeExists = employees.some(e => e.id_nhan_vien === id_nhan_vien);
     const existingTenures = await listTenures();
 
