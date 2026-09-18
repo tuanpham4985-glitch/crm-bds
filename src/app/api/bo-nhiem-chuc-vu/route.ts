@@ -4,11 +4,18 @@ import { getNhanVien } from '@/lib/data-access';
 import { listTenures, createTenure } from '@/lib/hrm/appointment-tenure-repository';
 import { validateTenureInput } from '@/lib/hrm/appointment-lifecycle';
 
-// GET — CHỈ audience Bổ nhiệm/Miễn nhiệm (canAccessHrmAppointment: Ban lãnh
-// đạo/HCNS/TKKD/TCKT — approved architecture HRM_APPOINTMENT_ACCESS_CONTROL)
-// mới được vào capability này, kể cả xem tenure CỦA CHÍNH MÌNH — gate MỚI
-// này đứng TRƯỚC, độc lập với canManageHRM (privileged xem toàn bộ, non-
-// privileged chỉ xem của mình — 2 chiều phân quyền AND với nhau, không gộp).
+// GET — CHỈ audience Bổ nhiệm/Miễn nhiệm (canAccessHrmAppointment: Admin/
+// SENIOR_EMPLOYEE_TYPES/BLĐ/HCNS/TKKD/TCKT — approved architecture
+// HRM_APPOINTMENT_ACCESS_CONTROL) mới được vào capability này. Gate này ĐỨNG
+// TRƯỚC, độc lập với canManageHRM. VIEW (canAccessHrmAppointment) và MANAGE
+// (canManageHRM) là 2 quyền khác nhau — ai đã qua được gate audience ở trên
+// đều xem ĐÚNG 1 dataset chung (không tự scope xuống own id_nhan_vien chỉ vì
+// thiếu canManageHRM — đó là quyền GHI, không phải quyền XEM). Fix
+// HRM_APPOINTMENT_VIEW_SCOPE_FIX: trước đây route tự thu hẹp dataset theo
+// canManageHRM cho actor KHÔNG privileged, khiến audience VIEW-only hợp lệ
+// (VD Phòng TCKT) nhận 0 record dù đã qua gate audience — vì họ hầu như
+// không có tenure của chính mình. canManageHRM VẪN giữ nguyên, chỉ dùng cho
+// POST/PUT/DELETE/sync/document (không đổi ở các route đó).
 export async function GET(request: NextRequest) {
   try {
     const user = await getHrmSessionUser();
@@ -23,12 +30,7 @@ export async function GET(request: NextRequest) {
     }
 
     const idNhanVienParam = request.nextUrl.searchParams.get('id_nhan_vien') || undefined;
-    const privileged = canManageHRM(user);
-
-    const data = !privileged
-      // Non-privileged: chỉ xem tenure của chính mình, bỏ qua filter khác nếu có.
-      ? await listTenures({ id_nhan_vien: user.id_nhan_vien })
-      : await listTenures(idNhanVienParam ? { id_nhan_vien: idNhanVienParam } : undefined);
+    const data = await listTenures(idNhanVienParam ? { id_nhan_vien: idNhanVienParam } : undefined);
 
     // employeeStatus: trang_thai (NhanVien.trang_thai — authority hiện có,
     // KHÔNG field mới) cho ĐÚNG các nhân viên xuất hiện trong `data` — dùng

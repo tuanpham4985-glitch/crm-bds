@@ -142,3 +142,52 @@ test('regression: canManageHRM vẫn được gọi song song canAccessHrmAppoin
     assert.match(src, /canAccessHrmAppointment/, `${file} phải có thêm canAccessHrmAppointment`);
   }
 });
+
+// ---- Fix HRM_APPOINTMENT_VIEW_SCOPE_FIX — VIEW-only audience (VD Phòng
+// TCKT, không có canManageHRM) phải nhận CHUNG 1 dataset appointment như
+// Admin/HR, KHÔNG bị tự scope xuống own id_nhan_vien chỉ vì thiếu
+// canManageHRM (đó là quyền GHI). Route không có HTTP test harness sẵn
+// (kiến trúc hiện tại dùng source-inspection cho mọi route test trong file
+// này) — tái dùng đúng cách đó, không dựng framework mock request/response
+// mới chỉ cho task này. ----
+
+function getGetHandlerSource(): string {
+  const src = fs.readFileSync(path.join(__dirname, '../../src/app/api/bo-nhiem-chuc-vu/route.ts'), 'utf8');
+  const start = src.indexOf('export async function GET');
+  // Cắt TRƯỚC comment block của POST (không phải TRƯỚC "export async function
+  // POST") — comment đó tự nhắc tới "canManageHRM" như tài liệu cho POST, nếu
+  // cắt muộn hơn sẽ vô tình lẫn chữ đó vào slice của GET.
+  const end = src.indexOf('// POST —');
+  assert.ok(start >= 0 && end > start, 'Không tìm thấy đúng ranh giới GET handler trong route.ts');
+  return src.slice(start, end);
+}
+
+test('GET /api/bo-nhiem-chuc-vu: KHÔNG còn tự scope dataset theo canManageHRM — mọi actor đã qua gate canAccessHrmAppointment đều nhận CHUNG 1 dataset (regression cho bug TP TC-KT thấy 0 bản ghi)', () => {
+  const getSrc = getGetHandlerSource();
+  // canManageHRM KHÔNG được xuất hiện trong GET handler nữa — quyền GHI
+  // không còn quyết định dataset XEM. canManageHRM vẫn còn nguyên trong
+  // POST/PUT/DELETE/sync/document (test riêng ở trên đã xác nhận).
+  assert.doesNotMatch(getSrc, /canManageHRM/, 'GET không được dùng canManageHRM để scope dataset — đó là root cause bug TP TC-KT');
+  assert.doesNotMatch(getSrc, /privileged/i, 'GET không được còn khái niệm "privileged" phân biệt dataset — audience gate (canAccessHrmAppointment) đã quyết định ai vào được, ai vào rồi thì cùng 1 dataset');
+});
+
+test('GET /api/bo-nhiem-chuc-vu: dataset fetch chỉ phụ thuộc optional id_nhan_vien query param, KHÔNG phụ thuộc actor identity nào khác', () => {
+  const getSrc = getGetHandlerSource();
+  assert.match(
+    getSrc,
+    /listTenures\(idNhanVienParam \? \{ id_nhan_vien: idNhanVienParam \} : undefined\)/,
+    'GET phải gọi listTenures với duy nhất optional id_nhan_vien filter, không nhánh theo actor',
+  );
+  // canAccessHrmAppointment vẫn PHẢI đứng TRƯỚC lời gọi listTenures (audience
+  // gate không bị bỏ qua) — cùng cách kiểm tra thứ tự đã dùng cho các route khác.
+  const gateIdx = getSrc.indexOf('canAccessHrmAppointment');
+  const listIdx = getSrc.indexOf('listTenures(');
+  assert.ok(gateIdx >= 0 && listIdx >= 0 && gateIdx < listIdx, 'canAccessHrmAppointment phải được gọi TRƯỚC listTenures trong GET');
+});
+
+// ---- canAccessHrmAppointment (audience gate, pure) đã test đầy đủ ở đầu file
+// (test A-E: BLĐ/HCNS/TKKD/TCKT allowed, ngoài audience denied, Admin/senior
+// allowed) — vì GET giờ CHỈ còn phụ thuộc DUY NHẤT gate này để quyết định ai
+// xem được dataset chung, các test đó ĐÃ chứng minh đủ ma trận VIEW cho GET:
+// Admin/BLĐ/HCNS/TKKD/TCKT → allowed (nhận dataset chung); actor ngoài
+// audience → denied (403, chưa từng chạm listTenures). Không lặp lại ở đây. ----
