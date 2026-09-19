@@ -201,17 +201,25 @@ export function planAppointmentSheetSync(
       }
     }
 
-    // Idempotency identity: id_nhan_vien + normalized chuc_vu_bo_nhiem + ngay_bo_nhiem
-    // (approved architecture, cùng rule isDuplicateTenure() ở appointment-lifecycle.ts).
+    // Idempotency identity: id_nhan_vien + normalized chuc_vu_bo_nhiem +
+    // ngay_bo_nhiem + normalized du_an (approved architecture, cùng rule
+    // isDuplicateTenure() ở appointment-lifecycle.ts). Bổ sung du_an vào
+    // identity (HRM_APPOINTMENT_MULTI_PROJECT_IDENTITY_FIX) — case thật đã
+    // xác nhận: 1 nhân viên có thể được bổ nhiệm CÙNG chức vụ, CÙNG ngày bổ
+    // nhiệm nhưng cho NHIỀU dự án khác nhau cùng lúc, mỗi dự án miễn nhiệm ở
+    // 1 thời điểm riêng — đây là các tenure THẬT SỰ khác nhau, không phải
+    // duplicate. Không có du_an trong identity sẽ khiến các dòng này bị coi
+    // là cùng 1 bản ghi, ghi đè lẫn nhau khi sync.
     const normChucVu = normalizeChucVuForDuplicateCheck(chucVu);
+    const soQdBn = raw.so_qd_bn.trim() || undefined;
+    const duAn = raw.du_an.trim() || undefined;
+    const normDuAn = normalizeChucVuForDuplicateCheck(duAn || '');
     const existing = existingTenures.find(t =>
       t.id_nhan_vien === maNV
       && normalizeChucVuForDuplicateCheck(t.chuc_vu_bo_nhiem) === normChucVu
-      && t.ngay_bo_nhiem === ngayBN,
+      && t.ngay_bo_nhiem === ngayBN
+      && normalizeChucVuForDuplicateCheck(t.du_an || '') === normDuAn,
     );
-
-    const soQdBn = raw.so_qd_bn.trim() || undefined;
-    const duAn = raw.du_an.trim() || undefined;
 
     if (!existing) {
       plan.toCreate.push({

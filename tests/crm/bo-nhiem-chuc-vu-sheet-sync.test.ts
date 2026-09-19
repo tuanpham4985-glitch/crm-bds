@@ -147,6 +147,66 @@ test('planAppointmentSheetSync: tái bổ nhiệm cùng chức vụ KHÁC ngày 
   assert.equal(plan.toUpdate.length, 0);
 });
 
+// ---- Multi-project identity (HRM_APPOINTMENT_MULTI_PROJECT_IDENTITY_FIX) —
+// case thật đã xác nhận: Ngô Thị Dung được bổ nhiệm CÙNG chức vụ "Giám đốc dự
+// án" CÙNG ngày bổ nhiệm 22/04/2026 nhưng cho 2 dự án khác nhau (The Orchard,
+// Global City), mỗi dự án miễn nhiệm ở 1 ngày riêng — 2 tenure THẬT SỰ khác
+// nhau, identity phải phân biệt được bằng du_an. ----
+
+test('planAppointmentSheetSync: 2 dòng CÙNG nhân viên/chức vụ/ngày bổ nhiệm nhưng KHÁC dự án → 2 toCreate riêng biệt, không gộp thành 1', () => {
+  const plan = planAppointmentSheetSync(
+    [
+      rawRow({ ma_nv: '0052', ho_ten: 'Ngô Thị Dung', phong_ban: 'VIC 10', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem_raw: '22/04/2026', du_an: 'The Orchard' }),
+      rawRow({ ma_nv: '0052', ho_ten: 'Ngô Thị Dung', phong_ban: 'VIC 10', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem_raw: '22/04/2026', du_an: 'Global City' }),
+    ],
+    [], employees,
+  );
+  assert.equal(plan.toCreate.length, 2);
+  assert.ok(plan.toCreate.some(c => c.data.du_an === 'The Orchard'));
+  assert.ok(plan.toCreate.some(c => c.data.du_an === 'Global City'));
+});
+
+test('planAppointmentSheetSync: 2 existing tenure CÙNG chức vụ/ngày KHÁC dự án → mỗi dòng Sheet miễn nhiệm route ĐÚNG record theo dự án, không đè lẫn nhau', () => {
+  const existing = [
+    tenure({ id: 't-orchard', id_nhan_vien: '0052', ten_nhan_vien: 'Ngô Thị Dung', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem: '2026-04-22', du_an: 'The Orchard' }),
+    tenure({ id: 't-globalcity', id_nhan_vien: '0052', ten_nhan_vien: 'Ngô Thị Dung', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem: '2026-04-22', du_an: 'Global City' }),
+  ];
+  const plan = planAppointmentSheetSync(
+    [
+      rawRow({
+        ma_nv: '0052', ho_ten: 'Ngô Thị Dung', phong_ban: 'VIC 10', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem_raw: '22/04/2026', du_an: 'The Orchard',
+        so_qd_mn: '05/2026/QĐMN-VIC', thoi_giu_chuc_vu: 'Giám đốc dự án', ngay_mien_nhiem_raw: '08/08/2026',
+      }),
+      rawRow({
+        ma_nv: '0052', ho_ten: 'Ngô Thị Dung', phong_ban: 'VIC 10', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem_raw: '22/04/2026', du_an: 'Global City',
+        so_qd_mn: '04/2026/QĐMN-VIC', thoi_giu_chuc_vu: 'Giám đốc dự án', ngay_mien_nhiem_raw: '11/07/2026',
+      }),
+    ],
+    existing, employees,
+  );
+  assert.equal(plan.toCreate.length, 0, 'cả 2 record đã tồn tại — không được tạo mới');
+  assert.equal(plan.toUpdate.length, 2, 'mỗi dự án phải update ĐÚNG 1 record riêng — không gộp/đè lẫn nhau');
+  const orchardUpdate = plan.toUpdate.find(u => u.id === 't-orchard');
+  const globalCityUpdate = plan.toUpdate.find(u => u.id === 't-globalcity');
+  assert.ok(orchardUpdate && globalCityUpdate);
+  assert.equal(orchardUpdate!.patch.ngay_mien_nhiem, '2026-08-08');
+  assert.equal(globalCityUpdate!.patch.ngay_mien_nhiem, '2026-07-11');
+});
+
+test('planAppointmentSheetSync: CÙNG nhân viên/chức vụ/ngày/dự án (thật sự trùng) → vẫn match đúng 1 existing, không tạo thêm', () => {
+  const existing = [tenure({
+    id: 't1', id_nhan_vien: '0052', ten_nhan_vien: 'Ngô Thị Dung', phong_ban: 'VIC-10',
+    chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem: '2026-04-22', du_an: 'Gladia',
+  })];
+  const plan = planAppointmentSheetSync(
+    [rawRow({ ma_nv: '0052', ho_ten: 'Ngô Thị Dung', phong_ban: 'VIC 10', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem_raw: '22/04/2026', du_an: 'Gladia' })],
+    existing, employees,
+  );
+  assert.equal(plan.toCreate.length, 0);
+  assert.equal(plan.unchanged.length, 1);
+  assert.equal(plan.unchanged[0].id, 't1');
+});
+
 // ---- Existing tenure gets Sheet-owned changes, App-only fields survive ----
 
 test('planAppointmentSheetSync: tenure đã tồn tại nhưng số QĐ đổi trên Sheet → update patch CHỈ chứa field Sheet-owned', () => {
@@ -319,4 +379,27 @@ test('route POST /api/bo-nhiem-chuc-vu/sync gọi canManageHRM() và trả 403 k
   const guardIdx = routeSrc.indexOf('canManageHRM(user)');
   const syncIdx = routeSrc.indexOf('runAppointmentSheetSync(');
   assert.ok(guardIdx >= 0 && syncIdx >= 0 && guardIdx < syncIdx);
+});
+
+// ---- Regression: updateTenure() KHÔNG được khởi tạo document storage vô
+// điều kiện (HRM_APPOINTMENT_UPDATE_STORAGE_FIX) — bug thật đã xác nhận: mọi
+// update từ sync (VD chỉ thêm ngay_mien_nhiem, không đụng file) từng fail
+// trên production vì getHrmDocumentStorage() throw ngay khi
+// HRM_DOCUMENT_STORAGE_PROVIDER chưa cấu hình. updateTenure() gọi Prisma thật
+// (không có seam thuần để test bằng fixture) — dùng source-inspection, cùng
+// cách đã dùng cho các route test trong file này. ----
+
+test('updateTenure(): getHrmDocumentStorage() chỉ được gọi BÊN TRONG nhánh kiểm tra patch có đụng file field, không gọi vô điều kiện ở đầu hàm', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../src/lib/hrm/appointment-tenure-repository.ts'), 'utf8');
+  const fnStart = src.indexOf('export async function updateTenure');
+  const fnEnd = src.indexOf('export async function deleteTenure');
+  assert.ok(fnStart >= 0 && fnEnd > fnStart, 'Không tìm thấy đúng ranh giới updateTenure() trong repository');
+  const fnSrc = src.slice(fnStart, fnEnd);
+
+  const touchesCheckIdx = fnSrc.indexOf('touchesFileFields');
+  const storageCallIdx = fnSrc.indexOf('getHrmDocumentStorage()');
+  assert.ok(touchesCheckIdx >= 0 && storageCallIdx >= 0);
+  // getHrmDocumentStorage() phải nằm SAU điểm kiểm tra touchesFileFields (tức
+  // đã ở trong nhánh có điều kiện), không được gọi trước nó (vô điều kiện).
+  assert.ok(touchesCheckIdx < storageCallIdx, 'getHrmDocumentStorage() phải được gọi có điều kiện (chỉ khi patch đụng file field), không gọi vô điều kiện ở đầu hàm');
 });

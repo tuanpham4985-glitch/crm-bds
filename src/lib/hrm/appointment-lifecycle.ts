@@ -39,19 +39,26 @@ export interface TenureInputLike {
   chuc_vu_bo_nhiem: string;
   ngay_bo_nhiem: string;
   ngay_mien_nhiem?: string | null;
+  du_an?: string | null;
 }
 
 /** Exact-duplicate: cùng nhân viên + cùng chức vụ (chuẩn hoá) + cùng ngày bổ
- * nhiệm. KHÔNG chặn "cùng chức vụ, khác ngày" (tái bổ nhiệm hợp lệ theo domain
- * đã duyệt — 1 nhân viên có thể được bổ nhiệm lại cùng 1 chức vụ ở tenure
- * khác). Khi update, loại trừ chính record đang sửa (so theo `id`). */
+ * nhiệm + cùng dự án (chuẩn hoá). KHÔNG chặn "cùng chức vụ, khác ngày" (tái bổ
+ * nhiệm hợp lệ theo domain đã duyệt — 1 nhân viên có thể được bổ nhiệm lại
+ * cùng 1 chức vụ ở tenure khác). Có du_an trong identity
+ * (HRM_APPOINTMENT_MULTI_PROJECT_IDENTITY_FIX) — 1 nhân viên có thể được bổ
+ * nhiệm CÙNG chức vụ, CÙNG ngày bổ nhiệm cho NHIỀU dự án khác nhau cùng lúc,
+ * mỗi dự án miễn nhiệm độc lập — đây là các tenure THẬT SỰ khác nhau, không
+ * phải duplicate. Khi update, loại trừ chính record đang sửa (so theo `id`). */
 export function isDuplicateTenure(existing: TenureInputLike[], candidate: TenureInputLike): boolean {
   const candNorm = normalizeChucVuForDuplicateCheck(candidate.chuc_vu_bo_nhiem);
+  const candDuAn = normalizeChucVuForDuplicateCheck(candidate.du_an || '');
   return existing.some(t => {
     if (candidate.id && t.id === candidate.id) return false;
     return t.id_nhan_vien === candidate.id_nhan_vien
       && normalizeChucVuForDuplicateCheck(t.chuc_vu_bo_nhiem) === candNorm
-      && t.ngay_bo_nhiem === candidate.ngay_bo_nhiem;
+      && t.ngay_bo_nhiem === candidate.ngay_bo_nhiem
+      && normalizeChucVuForDuplicateCheck(t.du_an || '') === candDuAn;
   });
 }
 

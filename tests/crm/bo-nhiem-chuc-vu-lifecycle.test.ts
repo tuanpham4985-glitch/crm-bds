@@ -51,6 +51,32 @@ test('isDuplicateTenure: khi update, loại trừ chính record đang sửa theo
   assert.equal(isDuplicateTenure(existing, { id: 't1', id_nhan_vien: 'NV1', chuc_vu_bo_nhiem: 'Trưởng phòng', ngay_bo_nhiem: '2026-01-01' }), false);
 });
 
+// ---- du_an trong identity (HRM_APPOINTMENT_MULTI_PROJECT_IDENTITY_FIX) —
+// case thật: 1 nhân viên được bổ nhiệm CÙNG chức vụ, CÙNG ngày bổ nhiệm cho
+// NHIỀU dự án khác nhau cùng lúc — đây là các tenure khác nhau, không phải
+// duplicate. ----
+
+test('isDuplicateTenure: cùng nhân viên/chức vụ/ngày nhưng KHÁC dự án → KHÔNG phải duplicate (đa dự án hợp lệ)', () => {
+  const existing = [
+    { id: 't1', id_nhan_vien: 'NV1', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem: '2026-04-22', du_an: 'The Orchard' },
+  ];
+  assert.equal(isDuplicateTenure(existing, { id_nhan_vien: 'NV1', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem: '2026-04-22', du_an: 'Global City' }), false);
+});
+
+test('isDuplicateTenure: cùng nhân viên/chức vụ/ngày/dự án (chuẩn hoá) → VẪN là duplicate', () => {
+  const existing = [
+    { id: 't1', id_nhan_vien: 'NV1', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem: '2026-04-22', du_an: 'The Orchard' },
+  ];
+  assert.equal(isDuplicateTenure(existing, { id_nhan_vien: 'NV1', chuc_vu_bo_nhiem: 'Giám đốc dự án', ngay_bo_nhiem: '2026-04-22', du_an: '  the orchard  ' }), true);
+});
+
+test('isDuplicateTenure: cả 2 phía không có dự án (undefined) vẫn coi là cùng "không dự án" → duplicate như trước khi có fix', () => {
+  const existing = [
+    { id: 't1', id_nhan_vien: 'NV1', chuc_vu_bo_nhiem: 'Trưởng phòng', ngay_bo_nhiem: '2026-01-01' },
+  ];
+  assert.equal(isDuplicateTenure(existing, { id_nhan_vien: 'NV1', chuc_vu_bo_nhiem: 'Trưởng phòng', ngay_bo_nhiem: '2026-01-01' }), true);
+});
+
 test('validateTenureInput: nhân viên không tồn tại bị chặn', () => {
   const err = validateTenureInput(
     { id_nhan_vien: 'NV_X', chuc_vu_bo_nhiem: 'Trưởng phòng', ngay_bo_nhiem: '2026-01-01', employeeExists: false },

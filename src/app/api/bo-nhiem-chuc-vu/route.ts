@@ -71,12 +71,13 @@ export async function POST(request: NextRequest) {
     const chuc_vu_bo_nhiem = String(body.chuc_vu_bo_nhiem || '');
     const ngay_bo_nhiem = String(body.ngay_bo_nhiem || '');
     const ngay_mien_nhiem = body.ngay_mien_nhiem ? String(body.ngay_mien_nhiem) : null;
+    const du_an = body.du_an ? String(body.du_an) : undefined;
 
     const employeeExists = employees.some(e => e.id_nhan_vien === id_nhan_vien);
     const existingTenures = await listTenures();
 
     const validationError = validateTenureInput(
-      { id_nhan_vien, chuc_vu_bo_nhiem, ngay_bo_nhiem, ngay_mien_nhiem, employeeExists },
+      { id_nhan_vien, chuc_vu_bo_nhiem, ngay_bo_nhiem, ngay_mien_nhiem, du_an, employeeExists },
       existingTenures,
     );
     if (validationError) {
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
       id_nhan_vien,
       ten_nhan_vien: employee?.ho_ten || (body.ten_nhan_vien ? String(body.ten_nhan_vien) : undefined),
       phong_ban: body.phong_ban ? String(body.phong_ban) : (employee?.phong_KD || undefined),
-      du_an: body.du_an ? String(body.du_an) : undefined,
+      du_an,
       chuc_vu_bo_nhiem,
       ngay_bo_nhiem,
       so_quyet_dinh_bo_nhiem: body.so_quyet_dinh_bo_nhiem ? String(body.so_quyet_dinh_bo_nhiem) : undefined,

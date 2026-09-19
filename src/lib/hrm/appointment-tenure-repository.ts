@@ -58,19 +58,27 @@ export type UpdateTenureInput = Partial<Omit<CreateTenureInput, 'created_by_id' 
  * "silently overwrite existing tenure" sai record (approved architecture §4).
  * Trước khi ghi đè/xoá file cũ (khi field file_* đổi sang ref khác hoặc bị
  * xoá), xoá best-effort file cũ trên storage để tránh orphan (approved
- * architecture §7 "delete/replace behavior phải tránh orphan file"). */
+ * architecture §7 "delete/replace behavior phải tránh orphan file"). Chỉ khởi
+ * tạo storage (getHrmDocumentStorage()) khi patch THỰC SỰ đụng file field —
+ * fix HRM_APPOINTMENT_UPDATE_STORAGE_FIX: trước đây gọi storage vô điều kiện
+ * khiến MỌI update (kể cả update chỉ đổi ngày miễn nhiệm từ Sheet sync, không
+ * đụng file gì) đều fail trên production khi HRM_DOCUMENT_STORAGE_PROVIDER
+ * chưa cấu hình (assertHrmProductionUploadAllowed() throw ngay trên Vercel). */
 export async function updateTenure(id: string, patch: UpdateTenureInput): Promise<BoNhiemChucVu | null> {
   const existing = await prisma.boNhiemChucVu.findUnique({ where: { id } });
   if (!existing) return null;
 
-  const storage = getHrmDocumentStorage();
   const fileFields: Array<keyof UpdateTenureInput> = ['file_quyet_dinh_bo_nhiem', 'file_quyet_dinh_mien_nhiem'];
-  for (const field of fileFields) {
-    if (field in patch) {
-      const oldRef = (existing as Record<string, unknown>)[field] as string | null | undefined;
-      const newRef = patch[field];
-      if (oldRef && oldRef !== newRef) {
-        await storage.delete(oldRef).catch(() => {});
+  const touchesFileFields = fileFields.some(field => field in patch);
+  if (touchesFileFields) {
+    const storage = getHrmDocumentStorage();
+    for (const field of fileFields) {
+      if (field in patch) {
+        const oldRef = (existing as Record<string, unknown>)[field] as string | null | undefined;
+        const newRef = patch[field];
+        if (oldRef && oldRef !== newRef) {
+          await storage.delete(oldRef).catch(() => {});
+        }
       }
     }
   }
