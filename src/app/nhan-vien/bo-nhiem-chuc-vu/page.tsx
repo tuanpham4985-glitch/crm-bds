@@ -275,7 +275,15 @@ function BoNhiemChucVuContent() {
       const body = {
         ...(editingItem ? {} : { id: form._pendingId }),
         id_nhan_vien: form.id_nhan_vien,
-        ten_nhan_vien: emp?.ho_ten || '',
+        // emp có thể undefined khi nhân viên đã "Nghỉ việc" — GET /api/nhan-vien
+        // lọc bỏ hẳn nhân viên Nghỉ việc cho MỌI caller (route.ts:56), nên
+        // getEmployee() luôn thất bại với họ dù tenure vẫn hợp lệ (hồ sơ bổ
+        // nhiệm PHẢI hiển thị vĩnh viễn — approved architecture
+        // EMPLOYEE_STATUS_VS_TENURE_STATUS). Fallback về ten_nhan_vien đã lưu
+        // sẵn trên chính tenure đang sửa — KHÔNG được ghi đè thành rỗng, nếu
+        // không mọi lần Save trên tenure của nhân viên Nghỉ việc sẽ xóa mất
+        // tên (bug đã xác nhận, xem "(Không tìm thấy: ...)" trên UI).
+        ten_nhan_vien: emp?.ho_ten || editingItem?.ten_nhan_vien || '',
         chuc_vu_bo_nhiem: form.chuc_vu_bo_nhiem,
         ngay_bo_nhiem: form.ngay_bo_nhiem,
         so_quyet_dinh_bo_nhiem: form.so_quyet_dinh_bo_nhiem,
@@ -487,7 +495,7 @@ function BoNhiemChucVuContent() {
             <p>{accessibleTenures.length > 0 ? 'Không tìm thấy bản ghi phù hợp bộ lọc' : 'Nhấn "Tạo quyết định" để tạo mới'}</p>
           </div>
         ) : (
-          <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+          <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
             <table className="data-table">
               <thead>
                 <tr>

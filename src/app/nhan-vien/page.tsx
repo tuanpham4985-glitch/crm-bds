@@ -816,7 +816,7 @@ export default function NhanVienPage() {
             <p>Thử đổi từ khóa tìm kiếm hoặc bộ lọc</p>
           </div>
         ) : (
-          <div className="table-wrapper" style={{ borderRadius: 'var(--radius-xl)', overflowX: 'auto' }}>
+          <div className="table-wrapper" style={{ borderRadius: 'var(--radius-xl)', overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
             <table className="data-table">
               <thead>
                 <tr>
