@@ -706,12 +706,12 @@ select:focus {
 .filter-bar .form-select {
   padding: 7px 12px;
   font-size: 0.8125rem;
-  min-width: 140px;
+  min-width: 180px;
   width: auto;
 }
 
 .filter-bar .search-wrapper {
-  flex: 1;
+  flex: 0 1 260px;
   min-width: 200px;
 }
 
