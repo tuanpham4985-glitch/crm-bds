@@ -487,7 +487,7 @@ function BoNhiemChucVuContent() {
             <p>{accessibleTenures.length > 0 ? 'Không tìm thấy bản ghi phù hợp bộ lọc' : 'Nhấn "Tạo quyết định" để tạo mới'}</p>
           </div>
         ) : (
-          <div className="table-wrapper" style={{ overflow: 'visible' }}>
+          <div className="table-wrapper" style={{ overflowX: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>

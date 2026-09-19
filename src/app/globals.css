@@ -2066,6 +2066,13 @@ select:focus {
     align-items: stretch;
   }
 
+  /* filter-group (các dropdown lọc) mặc định là 1 hàng flex không wrap —
+     trên mobile các select cộng lại rộng hơn viewport, tràn ngang và kéo
+     luôn filter-bar/table cuộn ngang theo khi vuốt xem bảng bên dưới. */
+  .filter-group {
+    flex-wrap: wrap;
+  }
+
   /* Dashboard header: stack controls below title on mobile */
   .page-header {
     flex-direction: column;
