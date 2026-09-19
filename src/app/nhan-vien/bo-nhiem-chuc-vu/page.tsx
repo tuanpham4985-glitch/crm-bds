@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   Plus, Edit3, Trash2, X, Award, Search, Filter, Eye, Calendar, User,
   FileText, Upload, AlertTriangle, RefreshCw, Loader2, Cloud, AlertCircle,
+  ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
 import { BoNhiemChucVu, NhanVien, DanhMuc } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
@@ -111,6 +112,17 @@ function BoNhiemChucVuContent() {
   const [filterEmployeeStatus, setFilterEmployeeStatus] = useState('');
   const [filterEmployee, setFilterEmployee] = useState(prefilledEmployeeId);
 
+  // Sort theo tiêu đề cột — cùng convention đã dùng ở nhan-vien/page.tsx
+  // (click cycle: asc → desc → không sort, mũi tên hiển thị hướng hiện tại).
+  const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' } | null>(null);
+  const toggleSort = (column: string) => {
+    setSort(current => {
+      if (!current || current.column !== column) return { column, direction: 'asc' };
+      if (current.direction === 'asc') return { column, direction: 'desc' };
+      return null;
+    });
+  };
+
   // Đồng bộ từ HR Sheet (THEO DÕI BỔ NHIỆM) — approved architecture HRM_APPOINTMENT_SHEET_SYNC
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<AppointmentSyncSummary | null>(null);
@@ -176,6 +188,21 @@ function BoNhiemChucVuContent() {
     const matchEmployee = !filterEmployee || t.id_nhan_vien === filterEmployee;
     return matchSearch && matchStatus && matchEmployeeStatus && matchEmployee;
   });
+
+  const getSortValue = (t: BoNhiemChucVu, column: string): string => {
+    if (column === 'ho_ten') return getEmployeeName(t.id_nhan_vien, t.ten_nhan_vien).toLowerCase();
+    if (column === 'trang_thai_nv') return (employeeStatus[t.id_nhan_vien] || '').toLowerCase();
+    if (column === 'trang_thai_chuc_vu') return getRowStatus(t, getEmployee(t.id_nhan_vien)).toLowerCase();
+    return ((t as any)[column] || '').toString().toLowerCase();
+  };
+
+  const sortedTenures = [...filteredTenures];
+  if (sort) {
+    sortedTenures.sort((a, b) => {
+      const cmp = getSortValue(a, sort.column).localeCompare(getSortValue(b, sort.column), 'vi');
+      return sort.direction === 'asc' ? cmp : -cmp;
+    });
+  }
 
   const openCreate = (employeeId = '') => {
     setEditingItem(null);
@@ -465,20 +492,39 @@ function BoNhiemChucVuContent() {
               <thead>
                 <tr>
                   <th style={{ width: 50 }}>#</th>
-                  <th>Nhân viên</th>
-                  <th>Trạng thái NV</th>
-                  <th>{getFieldLabel('phong_ban')}</th>
-                  <th>{getFieldLabel('du_an')}</th>
-                  <th>{getFieldLabel('chuc_vu_bo_nhiem')}</th>
-                  <th>{getFieldLabel('ngay_bo_nhiem')}</th>
-                  <th>{getFieldLabel('ngay_mien_nhiem')}</th>
-                  <th>Trạng thái chức vụ</th>
+                  {([
+                    ['ho_ten', 'Nhân viên'],
+                    ['trang_thai_nv', 'Trạng thái NV'],
+                    ['phong_ban', getFieldLabel('phong_ban')],
+                    ['du_an', getFieldLabel('du_an')],
+                    ['chuc_vu_bo_nhiem', getFieldLabel('chuc_vu_bo_nhiem')],
+                    ['ngay_bo_nhiem', getFieldLabel('ngay_bo_nhiem')],
+                    ['ngay_mien_nhiem', getFieldLabel('ngay_mien_nhiem')],
+                    ['trang_thai_chuc_vu', 'Trạng thái chức vụ'],
+                  ] as const).map(([column, label]) => {
+                    const direction = sort?.column === column ? sort.direction : null;
+                    return (
+                      <th
+                        key={column}
+                        onClick={() => toggleSort(column)}
+                        title="Bấm để sắp xếp"
+                        style={{ cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {label}
+                          {direction === 'asc' && <ArrowUp size={12} />}
+                          {direction === 'desc' && <ArrowDown size={12} />}
+                          {!direction && <ArrowUpDown size={11} style={{ opacity: 0.35 }} />}
+                        </span>
+                      </th>
+                    );
+                  })}
                   <th style={{ textAlign: 'center' }}>Hồ sơ</th>
                   {canEditHRM && <th style={{ width: 130, textAlign: 'center' }}>Thao tác</th>}
                 </tr>
               </thead>
               <tbody>
-                {filteredTenures.map((t, idx) => {
+                {sortedTenures.map((t, idx) => {
                   const emp = getEmployee(t.id_nhan_vien);
                   const empTrangThai = employeeStatus[t.id_nhan_vien];
                   const status = getRowStatus(t, emp);
