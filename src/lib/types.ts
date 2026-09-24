@@ -46,6 +46,7 @@ export interface NhanVien {
   ngay_cap?: string;
   noi_cap?: string;
   HKTT?: string;
+  dia_chi?: string; // Nơi ở hiện tại (khác HKTT — hộ khẩu thường trú)
   ngay_sinh?: string;
   ma_so_thue?: string;
   so_nguoi_phu_thuoc?: number;

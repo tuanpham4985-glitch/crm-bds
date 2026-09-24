@@ -444,6 +444,7 @@ export async function getNhanVien(): Promise<NhanVien[]> {
       ngay_cap: str(v['ngay_cap']),
       noi_cap: str(v['noi_cap']),
       HKTT: str(v['HKTT']),
+      dia_chi: str(v['dia_chi']),
       ngay_sinh: str(v['ngay_sinh']),
       gioi_tinh: str(v['gioi_tinh']),
       ma_so_thue: str(v['ma_so_thue']),
@@ -1718,6 +1719,7 @@ export async function addNhanVien(nv: NhanVien): Promise<void> {
     'ngay_cap':                 nv.ngay_cap || '',
     'noi_cap':                  nv.noi_cap || '',
     'HKTT':                     nv.HKTT || '',
+    'dia_chi':                  nv.dia_chi || '',
     'ngay_sinh':                nv.ngay_sinh || '',
     'gioi_tinh':                nv.gioi_tinh || '',
     'ma_so_thue':               nv.ma_so_thue || '',
@@ -1754,6 +1756,7 @@ export async function updateNhanVien(nv: NhanVien): Promise<boolean> {
   setIfExists('ngay_cap',                nv.ngay_cap || '');
   setIfExists('noi_cap',                 nv.noi_cap || '');
   setIfExists('HKTT',                    nv.HKTT || '');
+  setIfExists('dia_chi',                 nv.dia_chi || '');
   setIfExists('ngay_sinh',               nv.ngay_sinh || '');
   setIfExists('gioi_tinh',               nv.gioi_tinh || '');
   setIfExists('ma_so_thue',              nv.ma_so_thue || '');
@@ -4403,6 +4406,7 @@ export async function syncEmployeesFromHrFile(): Promise<{
     ngay_cap:     ['ngaycap','ngaycapcmt','ngaycapcccd'],
     noi_cap:      ['noicap','noicapcmt','noicapcccd'],
     HKTT:         ['hktt','hokhauthruongtru','diachihuongtru','thuongtru','diachihktt','hokhauthườngtrú'],
+    dia_chi:      ['noiohientai','diachihientai'],
     ngay_sinh:    ['ngaysinh','sinhnhat','ngaythangnamsinh'],
     gioi_tinh:    ['gioitinh','giơitinh','nam/nu','phai'],
     ma_so_thue:   ['masothue','mst','taxcode'],

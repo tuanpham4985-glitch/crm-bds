@@ -80,7 +80,7 @@ export default function NhanVienPage() {
     vai_tro: 'Sale', employee_type: '', trang_thai: 'Đang làm',
     avatar_url: '',
     gioi_tinh: '', khu_vuc: '', phong_KD: '',
-    so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
+    so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', dia_chi: '', ngay_sinh: '', ma_so_thue: '',
     so_tk_ngan_hang: '', ten_ngan_hang_thu_huong: '',
     so_nguoi_phu_thuoc: 0,
   });
@@ -332,7 +332,7 @@ export default function NhanVienPage() {
       vai_tro: 'Sale', employee_type: '', trang_thai: 'Đang làm',
       avatar_url: '',
       gioi_tinh: '', khu_vuc: '', phong_KD: '',
-      so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', ngay_sinh: '', ma_so_thue: '',
+      so_cccd: '', ngay_cap: '', noi_cap: '', HKTT: '', dia_chi: '', ngay_sinh: '', ma_so_thue: '',
       so_tk_ngan_hang: '', ten_ngan_hang_thu_huong: '',
       so_nguoi_phu_thuoc: 0,
     });
@@ -380,6 +380,7 @@ export default function NhanVienPage() {
       ngay_cap: parseToISODate(nv.ngay_cap || ''),
       noi_cap: nv.noi_cap || '',
       HKTT: nv.HKTT || '',
+      dia_chi: nv.dia_chi || '',
       ngay_sinh: parseToISODate(nv.ngay_sinh || ''),
       ma_so_thue: nv.ma_so_thue || '',
       so_tk_ngan_hang: nv.so_tk_ngan_hang || '',
@@ -1226,6 +1227,12 @@ export default function NhanVienPage() {
                 <label className="form-label">HKTT (Hộ khẩu thường trú)</label>
                 <input className="form-input" value={form.HKTT}
                   onChange={(e) => setForm({ ...form, HKTT: e.target.value })} placeholder="Địa chỉ ghi trên CCCD" />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Nơi ở hiện tại</label>
+                <input className="form-input" value={form.dia_chi}
+                  onChange={(e) => setForm({ ...form, dia_chi: e.target.value })} placeholder="Địa chỉ đang sinh sống (nếu khác HKTT)" />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

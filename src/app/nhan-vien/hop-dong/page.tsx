@@ -693,7 +693,7 @@ function HopDongContent() {
                                 setExportItem(hd);
                                 setExportForm({
                                   so_cccd: emp?.so_cccd || '',
-                                  dia_chi: emp?.HKTT || '',
+                                  dia_chi: emp?.dia_chi || '',
                                   ngay_thang_nam_cap: emp?.ngay_cap || '',
                                   noi_cap: emp?.noi_cap || '',
                                   ma_so_thue: emp?.ma_so_thue || '',

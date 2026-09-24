@@ -229,6 +229,7 @@ export async function POST(req: Request) {
       ten_nhan_vien: data.ten_nhan_vien || data.ho_ten || '',
       ten_ctv: data.ten_ctv || data.ho_ten || '',
       so_dien_thoai: data.so_dien_thoai || '',
+      SDT: data.so_dien_thoai || '',
       email: data.email || '',
       Email: data.email || '',
       ngay_sinh:         formatDateVN(data.ngay_sinh),
@@ -239,7 +240,10 @@ export async function POST(req: Request) {
       noi_cap: data.noi_cap || '',
       HKTT: data.HKTT || '',
       hk_thuong_tru: data.HKTT || data.hk_thuong_tru || '',
-      dia_chi: data.dia_chi || data.HKTT || '',
+      // Nơi ở hiện tại — cột T sheet "DATA NHÂN SỰ" nguồn. KHÔNG fallback
+      // sang HKTT (hộ khẩu thường trú là trường khác): để trống nếu nhân
+      // viên chưa có dữ liệu này (theo yêu cầu người dùng 2026-09-24).
+      dia_chi: data.dia_chi || '',
       ma_so_thue: data.ma_so_thue || '',
       so_tk_ngan_hang: data.so_tk_ngan_hang || '',
       ten_ngan_hang_thu_huong: data.ten_ngan_hang_thu_huong || '',

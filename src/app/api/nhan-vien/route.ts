@@ -46,7 +46,7 @@ const ALWAYS_HIDDEN = ['mat_khau', 'khach_hang', 'hoa_hong'] as const;
 
 // PII/nhạy cảm — chỉ HR/Admin mới được nhận
 const SENSITIVE_FIELDS = [
-  'so_cccd', 'ngay_cap', 'noi_cap', 'HKTT', 'ngay_sinh', 'ma_so_thue',
+  'so_cccd', 'ngay_cap', 'noi_cap', 'HKTT', 'dia_chi', 'ngay_sinh', 'ma_so_thue',
   'so_nguoi_phu_thuoc', 'so_tk_ngan_hang', 'ten_ngan_hang_thu_huong',
 ] as const;
 

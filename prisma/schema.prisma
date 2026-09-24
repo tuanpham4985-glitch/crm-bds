@@ -30,6 +30,7 @@ model NhanVien {
   ngay_cap                 String?
   noi_cap                  String?
   HKTT                     String?
+  dia_chi                  String?
   ngay_sinh                String?
   ma_so_thue               String?
   so_nguoi_phu_thuoc       Int?
