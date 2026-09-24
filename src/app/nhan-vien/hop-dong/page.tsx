@@ -492,7 +492,7 @@ function HopDongContent() {
 
       // Show info about what was downloaded
       if (isZip && fileCount) {
-        alert(`✅ Đã tải xuống ${fileCount} tài liệu trong file ho-so-${exportItem.so_hop_dong}.zip\n\nBao gồm:\n• Hợp đồng chính\n• Cam kết bảo mật thông tin${exportDept === 'KD' ? '\n• Cam kết ứng xử NVKD' : ''}`);
+        alert(`✅ Đã tải xuống ${fileCount} tài liệu trong file ho-so-${exportItem.so_hop_dong}.zip\n\nBao gồm:\n• Hợp đồng chính\n• Cam kết bảo mật thông tin${exportDept === 'KD' ? '\n• Cam kết ứng xử NVKD\n• Cam kết thực hiện Phụ lục HĐ (NVKD)' : ''}`);
       }
     } catch (err: any) {
       console.error('Export error:', err);
@@ -686,7 +686,7 @@ function HopDongContent() {
                               <Eye size={15} />
                             </button>
                             <button className="btn btn-ghost btn-icon btn-sm"
-                              title="Xuất hồ sơ (.zip: HĐ + Cam kết bảo mật + Cam kết ứng xử)"
+                              title="Xuất hồ sơ (.zip: HĐ + Cam kết bảo mật + Cam kết ứng xử + Cam kết thực hiện Phụ lục HĐ)"
                               onClick={() => {
                                 const emp = employees.find(e => e.id_nhan_vien === hd.id_nhan_vien);
                                 console.log('[Export] Employee data loaded:', emp);

@@ -325,6 +325,10 @@ export async function POST(req: Request) {
       const f = resolveTemplateFile('MAU_CAM_KET_UNG_XU_NVKD.doc');
       if (f) additionalFiles.push(f);
     }
+    if (isKD) {
+      const f = resolveTemplateFile('MAU_VIC_CAM_KET_TH_PLHD-NVKD.doc');
+      if (f) additionalFiles.push(f);
+    }
     if (needsPhuLucDaiLy) {
       const f = resolveTemplateFile('MAU_VIC_PHU_LUC_DAI_LY.docx');
       if (f) additionalFiles.push(f);
