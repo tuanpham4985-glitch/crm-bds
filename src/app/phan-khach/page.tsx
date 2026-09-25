@@ -11,6 +11,7 @@ import { useCrmModule } from '@/hooks/useCrmModule';
 import { QualificationModal } from '@/components/crm/QualificationModal';
 import { CampaignCskhWorkQueue } from '@/components/crm/CampaignCskhWorkQueue';
 import { PrivateGroupCskhWorkQueue } from '@/components/crm/PrivateGroupCskhWorkQueue';
+import { isCustomerDistributionExempt } from '@/lib/campaign-sale-eligibility';
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
 const INTERESTS: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'];
@@ -94,7 +95,7 @@ function PhanKhachContent() {
   const canManage = Boolean(isAdmin || (selectedProject && selectedProject.truong_nhom === user?.ho_ten) || managesAssignedTelesale);
   const activeEmployees = employees.filter(employee => employee.trang_thai !== 'Nghỉ việc');
   const telesales = activeEmployees.filter(isTelesale);
-  const sales = activeEmployees.filter(employee => !isTelesale(employee) && employee.vai_tro !== 'HR');
+  const sales = activeEmployees.filter(employee => !isTelesale(employee) && employee.vai_tro !== 'HR' && !isCustomerDistributionExempt(employee));
 
   const loadBase = useCallback(async () => {
     setLoading(true);

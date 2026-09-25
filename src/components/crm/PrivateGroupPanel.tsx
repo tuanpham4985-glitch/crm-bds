@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Loader2, Plus, Shuffle, Trash2, Upload, Users, X } from 'lucide-react';
 import type { NhanVien, PrivateGroup, PrivateGroupMember, PrivateGroupCustomer, DuAn } from '@/lib/types';
 import { NGUON } from '@/lib/constants';
+import { isCustomerDistributionExempt } from '@/lib/campaign-sale-eligibility';
 
 export function PrivateGroupPanel({ employees, currentUser, isAdmin, duAnList = [], onClose }: {
   employees: NhanVien[];
@@ -182,7 +183,7 @@ function CreateGroupForm({ employees, onCancel, onCreated }: {
       <div className="form-group">
         <label className="form-label">Sale thành viên</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 180, overflowY: 'auto', padding: 4, border: '1px solid var(--border)', borderRadius: 8 }}>
-          {employees.filter(e => e.id_nhan_vien !== leaderId).map(e => (
+          {employees.filter(e => e.id_nhan_vien !== leaderId && !isCustomerDistributionExempt(e)).map(e => (
             <label key={e.id_nhan_vien} style={{
               display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '3px 8px', borderRadius: 5,
               border: '1px solid var(--border)', cursor: 'pointer',
@@ -341,7 +342,7 @@ function PrivateGroupDetail({ groupId, groupFallback, employees, currentUser, is
                   <div style={{ display: 'flex', gap: 6 }}>
                     <select className="form-select" style={{ maxWidth: 240 }} value={addMemberId} onChange={e => setAddMemberId(e.target.value)}>
                       <option value="">— Thêm Sale vào nhóm —</option>
-                      {employees.filter(e => e.id_nhan_vien !== group.leader_id && !members.some(m => m.employee_id === e.id_nhan_vien)).map(e => (
+                      {employees.filter(e => e.id_nhan_vien !== group.leader_id && !members.some(m => m.employee_id === e.id_nhan_vien) && !isCustomerDistributionExempt(e)).map(e => (
                         <option key={e.id_nhan_vien} value={e.id_nhan_vien}>{e.ho_ten}</option>
                       ))}
                     </select>

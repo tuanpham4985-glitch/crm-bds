@@ -3,6 +3,7 @@ import { getDuAn, findKhachHangById, getNhanVien } from '@/lib/data-access';
 import { canManageCustomer, getCrmSessionUser, isDirectManager, isTelesale } from '@/lib/crm-auth';
 import { transitionHandoffTransactional, TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import { canActOnHandoff, validRejectionReason } from '@/lib/crm-funnel/handoff-policy';
+import { isCustomerDistributionExempt } from '@/lib/campaign-sale-eligibility';
 
 export async function POST(request: NextRequest) {
   const user = await getCrmSessionUser();
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     let targetSale: { id_nhan_vien: string; ho_ten: string } | undefined;
     if (action === 'handoff') {
       const target = employees.find(item => item.ho_ten === sale_nhan && item.trang_thai !== 'Nghỉ việc');
-      if (!target || isTelesale(target) || target.vai_tro === 'HR') return NextResponse.json({ success: false, error: 'Sale nhận khách không hợp lệ' }, { status: 400 });
+      if (!target || isTelesale(target) || target.vai_tro === 'HR' || isCustomerDistributionExempt(target)) return NextResponse.json({ success: false, error: 'Sale nhận khách không hợp lệ' }, { status: 400 });
       targetSale = { id_nhan_vien: target.id_nhan_vien, ho_ten: target.ho_ten };
     }
     const result = await transitionHandoffTransactional({

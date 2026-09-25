@@ -4657,6 +4657,15 @@ export async function getDataNhanSuForReport(): Promise<HrEmployeeRecord[]> {
     return isNaN(d.getTime()) ? null : d;
   };
 
+  // Đọc ngày qua formattedValue (VD "31/12/2025") — ô định dạng Ngày tháng trả
+  // .value là SERIAL NUMBER (số ngày kể từ 30/12/1899) → new Date("46022") ra
+  // năm 46022. Cùng cách xử lý với getContractDatesFromHrFile.
+  const getDateCell = (r: number, c: number): Date | null => {
+    if (c < 0) return null;
+    const cell = hrSheet.getCell(r, c);
+    return parseDate(str(cell.formattedValue ?? cell.value ?? ''));
+  };
+
   const results: HrEmployeeRecord[] = [];
 
   for (let r = HEADER_ROW_IDX + 1; r < rowCount; r++) {
@@ -4667,8 +4676,8 @@ export async function getDataNhanSuForReport(): Promise<HrEmployeeRecord[]> {
     results.push({
       mnv:    mnvRaw,
       ho_ten: hoTenRaw,
-      ngay_vao_lam:           colVaoLam    >= 0 ? parseDate(str(hrSheet.getCell(r, colVaoLam).value))   : null,
-      ngay_ket_thuc_thu_viec: colKTTV      >= 0 ? parseDate(str(hrSheet.getCell(r, colKTTV).value))     : null,
+      ngay_vao_lam:           getDateCell(r, colVaoLam),
+      ngay_ket_thuc_thu_viec: getDateCell(r, colKTTV),
       trang_thai:             colTrangThai >= 0 ? str(hrSheet.getCell(r, colTrangThai).value) : '',
     });
   }

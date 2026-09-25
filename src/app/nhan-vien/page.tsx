@@ -34,8 +34,7 @@ const NHAN_VIEN_FIELDS = [
 ];
 
 // CEO và Chủ tịch không ký hợp đồng lao động → cột "Hợp đồng" hiển thị "—".
-// Theo ID vì chức danh trên sheet không phản ánh vai trò (Mai Hoài Thương là CEO
-// nhưng employee_type = "GĐ DA").
+// Nhận diện theo ID (chốt chặn cố định) lẫn chức danh CEO/Chủ tịch.
 const CONTRACT_EXEMPT_IDS = new Set([
   '99999', // Vũ Thị Thu — Chủ tịch
   '99998', // Mai Hoài Thương — CEO

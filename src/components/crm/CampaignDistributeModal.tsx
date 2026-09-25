@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Layers, Loader2, Save, Users, X } from 'lucide-react';
 import type { Campaign, DuAn, NhanVien } from '@/lib/types';
-import { eligibleCampaignSales, listActiveSaleDepartments, mergeRecipientNames, resolveDepartmentSaleNames } from '@/lib/campaign-sale-eligibility';
+import { eligibleCampaignSales, isActiveSale, listActiveSaleDepartments, mergeRecipientNames, resolveDepartmentSaleNames } from '@/lib/campaign-sale-eligibility';
 
 type Mode = 'none' | 'round_robin' | 'quantity';
 
@@ -80,7 +80,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
   // toàn bộ Sale công ty (đúng kiến trúc đã duyệt).
   const eligibility = activeCampaign
     ? eligibleCampaignSales(isAdmin, activeCampaign, projects, employees)
-    : { blocked: false as const, scoped: false, sales: employees.filter(item => item.trang_thai !== 'Nghỉ việc' && item.vai_tro === 'Sale') };
+    : { blocked: false as const, scoped: false, sales: employees.filter(isActiveSale) };
   const eligibleSales = eligibility.blocked ? [] : eligibility.sales;
 
   // CUSTOMER_DEPARTMENT_DISTRIBUTION — "Phòng" CHỈ là bulk selector cho

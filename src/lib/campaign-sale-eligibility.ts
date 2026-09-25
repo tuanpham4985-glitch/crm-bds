@@ -9,8 +9,16 @@ import type { DuAn, NhanVien } from './types';
 
 export const NO_SALE_SCOPE_REASON = 'Campaign chưa có phạm vi Sale được cấu hình. Vui lòng liên hệ Admin hoặc gắn Dự án có danh sách Sale.';
 
-export function isActiveSale(employee: Pick<NhanVien, 'vai_tro' | 'trang_thai'>): boolean {
-  return employee.vai_tro === 'Sale' && employee.trang_thai !== 'Nghỉ việc';
+// CEO / Chủ tịch giữ vai_tro 'Sale' để vào được CRM nhưng KHÔNG nhận khách —
+// loại khỏi mọi danh sách người nhận khi chia/chuyển khách.
+const NO_CUSTOMER_EMPLOYEE_TYPES = new Set(['CEO', 'Chủ tịch']);
+
+export function isCustomerDistributionExempt(employee: { employee_type?: string | null }): boolean {
+  return NO_CUSTOMER_EMPLOYEE_TYPES.has((employee.employee_type || '').trim());
+}
+
+export function isActiveSale(employee: Pick<NhanVien, 'vai_tro' | 'trang_thai'> & { employee_type?: string | null }): boolean {
+  return employee.vai_tro === 'Sale' && employee.trang_thai !== 'Nghỉ việc' && !isCustomerDistributionExempt(employee);
 }
 
 // CUSTOMER_DEPARTMENT_DISTRIBUTION — "Phòng" (NhanVien.phong_KD, cột đã có
