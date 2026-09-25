@@ -33,6 +33,18 @@ const NHAN_VIEN_FIELDS = [
   { id: 'thao_tac', label: 'Thao tác', align: 'center', width: 120, public: true, adminOnly: true }
 ];
 
+// CEO và Chủ tịch không ký hợp đồng lao động → cột "Hợp đồng" hiển thị "—".
+// Theo ID vì chức danh trên sheet không phản ánh vai trò (Mai Hoài Thương là CEO
+// nhưng employee_type = "GĐ DA").
+const CONTRACT_EXEMPT_IDS = new Set([
+  '99999', // Vũ Thị Thu — Chủ tịch
+  '99998', // Mai Hoài Thương — CEO
+]);
+const CONTRACT_EXEMPT_TYPES = new Set(['CEO', 'Chủ tịch']);
+const isContractExempt = (nv: NhanVien) =>
+  CONTRACT_EXEMPT_IDS.has(String(nv.id_nhan_vien)) ||
+  CONTRACT_EXEMPT_TYPES.has((nv.employee_type || '').trim());
+
 export default function NhanVienPage() {
   const { isAdmin, isHR, canEditHRM, isLoading: authLoading } = useAuth();
   const visibleColumns = NHAN_VIEN_FIELDS.filter(f => f.public);
@@ -672,6 +684,7 @@ export default function NhanVienPage() {
 
   const getSortValue = (nv: NhanVien, column: string): string | number => {
     if (column === 'hop_dong') {
+      if (isContractExempt(nv)) return -1;
       // Khóa phụ theo tổng số HĐ để không "lộn xộn" khi nhiều người cùng 0 HĐ
       // hiệu lực (VD 0/1 và 0/0) — sort trước hết theo active, sau đó theo total.
       const { active, total } = getContractCount(nv.id_nhan_vien);
@@ -962,6 +975,9 @@ export default function NhanVienPage() {
                           );
                         }
                         if (col.id === 'hop_dong') {
+                          if (isContractExempt(nv)) {
+                            return <td key={col.id} style={{ textAlign: col.align as any, color: 'var(--text-label)' }}>—</td>;
+                          }
                           return (
                             <td key={col.id} style={{ textAlign: col.align as any }}>
                               <Link
