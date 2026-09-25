@@ -4,11 +4,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   MapPin, Clock, Building2, CheckCircle, XCircle,
   Loader2, Trash2, Plus, RefreshCw, Camera, Download, Image as ImageIcon, X,
-  Navigation, User,
+  Navigation, User, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import type { ChamCongNgoai } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import PushToggle from '@/components/PushToggle';
+import { paginate } from '@/lib/table-pagination';
+
+const ALL_RECORDS_PAGE_SIZE = 10;
 
 const STATUS_LABEL: Record<string, { text: string; color: string }> = {
   cho_duyet: { text: 'Chờ duyệt', color: '#f59e0b' },
@@ -95,6 +98,7 @@ export default function ChamCongNgoaiPage() {
   const now = new Date();
   const [exportMonth, setExportMonth] = useState(now.getMonth() + 1);
   const [exportYear, setExportYear]   = useState(now.getFullYear());
+  const [allPage, setAllPage]         = useState(1);
   const [exporting, setExporting]     = useState(false);
 
   // ── Approve modal ─────────────────────────────────────────────
@@ -395,6 +399,7 @@ export default function ChamCongNgoaiPage() {
         return m === exportMonth && y === exportYear;
       })
     : [];
+  const allWindow = paginate(filteredAll, allPage, ALL_RECORDS_PAGE_SIZE);
 
   return (
     <div style={{ maxWidth: 680, margin: '0 auto', padding: '16px 12px 80px' }}>
@@ -577,11 +582,11 @@ export default function ChamCongNgoaiPage() {
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <span style={{ fontWeight: 600 }}>Tất cả đơn</span>
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
-              <select value={exportMonth} onChange={e => setExportMonth(Number(e.target.value))}
+              <select value={exportMonth} onChange={e => { setExportMonth(Number(e.target.value)); setAllPage(1); }}
                 className="form-input" style={{ width: 90, padding: '4px 8px', fontSize: 13 }}>
                 {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>Tháng {m}</option>)}
               </select>
-              <select value={exportYear} onChange={e => setExportYear(Number(e.target.value))}
+              <select value={exportYear} onChange={e => { setExportYear(Number(e.target.value)); setAllPage(1); }}
                 className="form-input" style={{ width: 80, padding: '4px 8px', fontSize: 13 }}>
                 {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
@@ -601,13 +606,35 @@ export default function ChamCongNgoaiPage() {
               Không có đơn nào trong tháng {exportMonth}/{exportYear}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {filteredAll.map(r => (
-                <RecordCard key={r.id} record={r} showName
-                  showDelete onDelete={() => handleDelete(r.id)}
-                  onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined} />
-              ))}
-            </div>
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {allWindow.items.map(r => (
+                  <RecordCard key={r.id} record={r} showName
+                    showDelete onDelete={() => handleDelete(r.id)}
+                    onPhoto={r.hinh_anh ? () => setLightbox(r.hinh_anh!) : undefined} />
+                ))}
+              </div>
+              {allWindow.totalPages > 1 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    {allWindow.startIndex + 1}–{allWindow.startIndex + allWindow.items.length} / {allWindow.total} đơn
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button className="btn btn-secondary btn-sm" disabled={allWindow.page <= 1}
+                      onClick={() => setAllPage(allWindow.page - 1)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ChevronLeft size={14} /> Trước
+                    </button>
+                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Trang {allWindow.page} / {allWindow.totalPages}</span>
+                    <button className="btn btn-secondary btn-sm" disabled={allWindow.page >= allWindow.totalPages}
+                      onClick={() => setAllPage(allWindow.page + 1)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      Sau <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
