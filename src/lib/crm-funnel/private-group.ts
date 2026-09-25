@@ -7,7 +7,9 @@
 // Customer vẫn là KhachHang master DUY NHẤT — private_group_customers CHỈ là
 // quan hệ (customer_id string ref, KHÔNG copy dữ liệu Customer).
 import { Prisma } from '../../generated/prisma/client';
+import { revalidateTag } from 'next/cache';
 import { prisma } from '../db/client';
+import { invalidate } from '../mem-cache';
 import { assertTransactionalCrm } from './transactional-workflow';
 import { isPostgresEnabled } from '../db/feature-flags';
 import { normalizePhone, phoneKey } from '../khach-hang-excel-import';
@@ -297,18 +299,70 @@ export interface ReassignGroupCustomerInput {
   assigned_to_name: string;
 }
 
-/** Giao lại 1 Customer trong nhóm cho Sale khác — CHỈ đổi assigned_to (authority
- * riêng cho "chăm sóc trong phạm vi nhóm"), KHÔNG đụng KhachHang.sale_phu_trach
- * (authority chung /khach-hang, xem comment PrivateGroupCustomer trong schema).
- * Trả về null nếu relation không thuộc đúng group này (tránh Leader nhóm A
+/** Relation cần biết để quyết định có đồng bộ KhachHang.sale_phu_trach không. */
+interface GroupOwnershipRef {
+  customer_id: string;
+  entered_by_name: string;
+  assigned_to_name: string;
+}
+
+/**
+ * Khi giao/chia Customer trong nhóm, đồng bộ KhachHang.sale_phu_trach theo
+ * người được giao — tránh khách vẫn đứng tên Leader (người nhập) sau khi đã
+ * giao cho Sale khác (yêu cầu nghiệp vụ 2026-09-25).
+ *
+ * CHỈ ghi khi sale_phu_trach hiện tại vẫn là "chủ do nhóm tạo ra" (trống,
+ * người nhập, hoặc người được giao trước đó) — KHÔNG ghi đè Sale phụ trách
+ * đã được đặt từ nguồn khác (VD Admin chỉ định khi thêm khách).
+ */
+async function syncCustomerOwnerToAssignee(tx: Tx, refs: readonly GroupOwnershipRef[], assigneeName: string): Promise<number> {
+  if (refs.length === 0) return 0;
+  const customers = await tx.khachHang.findMany({
+    where: { id_khach_hang: { in: refs.map(r => r.customer_id) } },
+    select: { id_khach_hang: true, sale_phu_trach: true },
+  });
+  const refById = new Map(refs.map(r => [r.customer_id, r]));
+  const ids = customers
+    .filter(c => {
+      const ref = refById.get(c.id_khach_hang);
+      const owner = (c.sale_phu_trach || '').trim();
+      return !!ref && owner !== assigneeName && (!owner || owner === ref.entered_by_name || owner === ref.assigned_to_name);
+    })
+    .map(c => c.id_khach_hang);
+  if (ids.length === 0) return 0;
+  const { count } = await tx.khachHang.updateMany({
+    where: { id_khach_hang: { in: ids } },
+    data: { sale_phu_trach: assigneeName, row_version: { increment: 1 } },
+  });
+  return count;
+}
+
+function invalidateCustomerCache() {
+  revalidateTag('kh', {}); invalidate('gs:kh');
+}
+
+/** Giao lại 1 Customer trong nhóm cho Sale khác — đổi assigned_to (authority
+ * "chăm sóc trong phạm vi nhóm") VÀ đồng bộ KhachHang.sale_phu_trach theo
+ * người được giao (xem syncCustomerOwnerToAssignee cho điều kiện ghi).
+ * Trả về false nếu relation không thuộc đúng group này (tránh Leader nhóm A
  * reassign nhầm 1 relationId thực ra thuộc nhóm B). */
 export async function reassignGroupCustomer(input: ReassignGroupCustomerInput) {
   assertTransactionalCrm();
-  const { count } = await prisma.privateGroupCustomer.updateMany({
-    where: { id: input.relationId, group_id: input.groupId },
-    data: { assigned_to_id: input.assigned_to_id, assigned_to_name: input.assigned_to_name },
+  const synced = await prisma.$transaction(async tx => {
+    const relation = await tx.privateGroupCustomer.findFirst({
+      where: { id: input.relationId, group_id: input.groupId },
+      select: { customer_id: true, entered_by_name: true, assigned_to_name: true },
+    });
+    if (!relation) return null;
+    await tx.privateGroupCustomer.update({
+      where: { id: input.relationId },
+      data: { assigned_to_id: input.assigned_to_id, assigned_to_name: input.assigned_to_name },
+    });
+    return syncCustomerOwnerToAssignee(tx, [relation], input.assigned_to_name);
   });
-  return count > 0;
+  if (synced === null) return false;
+  if (synced > 0) invalidateCustomerCache();
+  return true;
 }
 
 export interface DistributeGroupCustomersInput {
@@ -384,7 +438,7 @@ export async function distributeGroupCustomersTransactional(
       ...(input.onlyCurrentlyAssignedToId ? { assigned_to_id: input.onlyCurrentlyAssignedToId } : {}),
     },
     orderBy: { created_at: 'asc' },
-    select: { id: true, customer_id: true },
+    select: { id: true, customer_id: true, entered_by_name: true, assigned_to_name: true },
   });
   if (relations.length === 0) return { totalCustomers: 0, distributed: 0 };
 
@@ -395,25 +449,32 @@ export async function distributeGroupCustomersTransactional(
   });
   const planByCustomerId = new Map(plan.map(item => [item.customer_id, item]));
 
-  const groupsByTelesale = new Map<string, { telesale_name: string; relationIds: string[] }>();
+  const groupsByTelesale = new Map<string, { telesale_name: string; relationIds: string[]; refs: GroupOwnershipRef[] }>();
   let distributed = 0;
   for (const r of relations) {
     const item = planByCustomerId.get(r.customer_id);
     if (!item || item.assignment_status !== 'ASSIGNED' || !item.telesale_id || !item.telesale_name) continue;
-    if (!groupsByTelesale.has(item.telesale_id)) groupsByTelesale.set(item.telesale_id, { telesale_name: item.telesale_name, relationIds: [] });
-    groupsByTelesale.get(item.telesale_id)!.relationIds.push(r.id);
+    if (!groupsByTelesale.has(item.telesale_id)) groupsByTelesale.set(item.telesale_id, { telesale_name: item.telesale_name, relationIds: [], refs: [] });
+    const g = groupsByTelesale.get(item.telesale_id)!;
+    g.relationIds.push(r.id);
+    g.refs.push(r);
     distributed++;
   }
 
   if (groupsByTelesale.size > 0) {
+    let ownersSynced = 0;
     await prisma.$transaction(async tx => {
       for (const [telesale_id, g] of groupsByTelesale) {
         await tx.privateGroupCustomer.updateMany({
           where: { id: { in: g.relationIds } },
           data: { assigned_to_id: telesale_id, assigned_to_name: g.telesale_name },
         });
+        // Mỗi đích thêm 2 round-trip (findMany + updateMany) — vẫn tỉ lệ với
+        // số Sale được chọn, không phải số Customer.
+        ownersSynced += await syncCustomerOwnerToAssignee(tx, g.refs, g.telesale_name);
       }
     }, { timeout: 20000 });
+    if (ownersSynced > 0) invalidateCustomerCache();
   }
 
   return { totalCustomers: relations.length, distributed };

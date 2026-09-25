@@ -84,8 +84,17 @@ test('private-group.ts: SERIALIZABLE isolation cho toàn bộ dedupe+create+grou
   assert.match(fnBody, /return serializable\(async tx =>/);
 });
 
-test('private-group.ts: KHÔNG có bất kỳ lệnh ghi nào vào KhachHang đã tồn tại (chỉ .create, không .update/.upsert) — không thể silently steal/reassign Customer cũ (test bắt buộc #9)', () => {
-  const src = read(PRIVATE_GROUP_LIB_PATH);
+// Ngoại lệ DUY NHẤT (quyết định nghiệp vụ 2026-09-25): syncCustomerOwnerToAssignee
+// được updateMany sale_phu_trach cho Customer ĐÃ thuộc nhóm, có guard chủ-do-nhóm
+// (xem test syncCustomerOwnerToAssignee bên dưới) — mọi chỗ khác vẫn cấm ghi.
+test('private-group.ts: KHÔNG có bất kỳ lệnh ghi nào vào KhachHang đã tồn tại (chỉ .create, không .update/.upsert) ngoài syncCustomerOwnerToAssignee — không thể silently steal/reassign Customer cũ (test bắt buộc #9)', () => {
+  const full = read(PRIVATE_GROUP_LIB_PATH);
+  const helperStart = full.indexOf('async function syncCustomerOwnerToAssignee');
+  const helperEnd = full.indexOf('\nfunction invalidateCustomerCache');
+  assert.ok(helperStart > 0 && helperEnd > helperStart);
+  const helper = full.slice(helperStart, helperEnd);
+  assert.equal((helper.match(/tx\.khachHang\.updateMany/g) || []).length, 1);
+  const src = full.slice(0, helperStart) + full.slice(helperEnd);
   assert.doesNotMatch(src, /tx\.khachHang\.update/);
   assert.doesNotMatch(src, /tx\.khachHang\.upsert/);
   assert.doesNotMatch(src, /prisma\.khachHang\.update/);
@@ -99,12 +108,24 @@ test('private-group.ts: KHÔNG đụng tới campaignMembership/crmHandoff/pipel
   assert.doesNotMatch(src, /\.pipeline\./);
 });
 
-test('private-group.ts: reassignGroupCustomer CHỈ đổi assigned_to_id/name trên PrivateGroupCustomer — KHÔNG đụng KhachHang.sale_phu_trach (2 authority độc lập, xem comment schema)', () => {
+// Quyết định nghiệp vụ 2026-09-25: giao/chia khách trong nhóm ĐỒNG BỘ luôn
+// KhachHang.sale_phu_trach theo người được giao (thay bất biến "2 authority độc
+// lập" cũ) — nhưng CHỈ khi sale_phu_trach vẫn là chủ do nhóm tạo ra.
+test('private-group.ts: reassignGroupCustomer đổi assigned_to VÀ đồng bộ sale_phu_trach qua syncCustomerOwnerToAssignee, cùng 1 transaction, vẫn chặn relation khác nhóm', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function reassignGroupCustomer');
-  const fnBody = src.slice(fnStart, fnStart + 500);
-  assert.doesNotMatch(fnBody, /khachHang/);
-  assert.match(fnBody, /privateGroupCustomer\.updateMany/);
+  const fnBody = src.slice(fnStart, fnStart + 1000);
+  assert.match(fnBody, /prisma\.\$transaction\(async tx =>/);
+  assert.match(fnBody, /where: \{ id: input\.relationId, group_id: input\.groupId \}/);
+  assert.match(fnBody, /syncCustomerOwnerToAssignee\(tx, \[relation\], input\.assigned_to_name\)/);
+});
+
+test('private-group.ts: syncCustomerOwnerToAssignee CHỈ ghi đè sale_phu_trach trống / = người nhập / = người được giao trước — không cướp khách có Sale phụ trách từ nguồn khác', () => {
+  const src = read(PRIVATE_GROUP_LIB_PATH);
+  const fnStart = src.indexOf('async function syncCustomerOwnerToAssignee');
+  const fnBody = src.slice(fnStart, fnStart + 1200);
+  assert.match(fnBody, /!owner \|\| owner === ref\.entered_by_name \|\| owner === ref\.assigned_to_name/);
+  assert.match(fnBody, /data: \{ sale_phu_trach: assigneeName, row_version: \{ increment: 1 \} \}/);
 });
 
 // ─── #11: Authorization SERVER-SIDE — mọi route phải tự check quyền, không
@@ -504,12 +525,12 @@ test('private-group.ts: distributeGroupCustomersTransactional GOM update theo Đ
   assert.match(fnBody, /\}, \{ timeout: \d+ \}\);/);
 });
 
-test('private-group.ts: distributeGroupCustomersTransactional KHÔNG đụng KhachHang.sale_phu_trach — CHỈ đổi assigned_to_id/name trên PrivateGroupCustomer (cùng bất biến reassignGroupCustomer)', () => {
+test('private-group.ts: distributeGroupCustomersTransactional đổi assigned_to VÀ đồng bộ sale_phu_trach theo từng đích trong CÙNG transaction (cùng quy tắc reassignGroupCustomer)', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function distributeGroupCustomersTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 2400);
-  assert.doesNotMatch(fnBody, /khachHang/);
+  const fnBody = src.slice(fnStart, fnStart + 2800);
   assert.match(fnBody, /data: \{ assigned_to_id: telesale_id, assigned_to_name: g\.telesale_name \}/);
+  assert.match(fnBody, /syncCustomerOwnerToAssignee\(tx, g\.refs, g\.telesale_name\)/);
 });
 
 test('campaign.ts: planDistribution KHÔNG bị đụng bởi task này (vẫn export nguyên vẹn cho cả Campaign lẫn Private Group dùng chung)', () => {
