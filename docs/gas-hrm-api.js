@@ -354,8 +354,12 @@ function syncPipeline() {
       }
     }
 
+    // Ô Ngày ký có chữ nhưng không phải ngày (VD "Đợi bản cứng") → CHƯA ký thật.
+    // KHÔNG lấy ngày hôm nay thay vào: trước đây mỗi lần sync lại đóng dấu
+    // ngày hiện tại → deal nhảy sang tháng đang xem và bị Dashboard đếm sai.
+    // Vẫn upsert dòng (để ghi đè ngày sai của lần sync cũ) nhưng để trống ngày.
     if (!ngayKyDate || isNaN(ngayKyDate.getTime())) {
-      ngayKyDate = now;
+      ngayKyDate = null;
     }
 
     if (!maCan || !duAn) continue; // Bỏ qua dòng thiếu định danh
@@ -440,8 +444,8 @@ function syncPipeline() {
       "tkkd": tkkd,
       "phi_tkkd": phiTkkd,
       "ho_ten_kh": hoTenKH,
-      "ngay_cap_nhat": ngayKyDate,
-      "thang": Utilities.formatDate(ngayKyDate, Session.getScriptTimeZone(), "yyyy-MM")
+      "ngay_cap_nhat": ngayKyDate || "",
+      "thang": ngayKyDate ? Utilities.formatDate(ngayKyDate, Session.getScriptTimeZone(), "yyyy-MM") : ""
     };
 
     const rowValues = targetHeaders.map(h => writeObj[h] !== undefined ? writeObj[h] : "");
