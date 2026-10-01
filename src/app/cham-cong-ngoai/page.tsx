@@ -35,18 +35,48 @@ function formatDate(d: string): string {
   return `${day}/${m}/${y}`;
 }
 
-// created_at là ISO (UTC) → "dd/MM/yyyy HH:mm" theo giờ Việt Nam
-function formatSubmittedAt(iso: string): string {
-  if (!iso) return '';
+// Giờ làm việc chính thức của công ty — giá trị mặc định khi tạo đơn
+const DEFAULT_GIO_BAT_DAU = '08:30';
+const DEFAULT_GIO_KET_THUC = '17:30';
+// Số phút đi muộn được phép (≤ mức này không tính muộn)
+const LATE_GRACE_MINUTES = 5;
+
+// created_at là ISO (UTC) → ngày "yyyy-MM-dd" + giờ "HH:mm" theo giờ Việt Nam
+function submittedAtVN(iso: string): { date: string; time: string } | null {
+  if (!iso) return null;
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
+  if (isNaN(d.getTime())) return null;
   const p = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: false,
     }).formatToParts(d).map(x => [x.type, x.value]),
   );
-  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+}
+
+function toMinutes(hhmm: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || '');
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+// Cột "Thời điểm gửi đơn": chỉ HH:mm; nếu gửi khác ngày chấm công thì kèm ngày để không gây hiểu nhầm
+function formatSubmittedCell(r: ChamCongNgoai): string {
+  const s = submittedAtVN(r.created_at);
+  if (!s) return '';
+  return s.date === r.ngay ? s.time : `${s.time} (${formatDate(s.date)})`;
+}
+
+// Cột "Đi muộn": so "Thời điểm gửi đơn" với giờ vào làm chính thức (cố định, không theo "Từ giờ" tự khai).
+// Chỉ tính phần vượt quá LATE_GRACE_MINUTES (muộn 8 phút → 3 phút).
+// Đơn gửi khác ngày chấm công → không đối chiếu được, để trống.
+function formatLateCell(r: ChamCongNgoai): string {
+  const s = submittedAtVN(r.created_at);
+  if (!s || s.date !== r.ngay) return '';
+  const late = toMinutes(s.time)! - toMinutes(DEFAULT_GIO_BAT_DAU)! - LATE_GRACE_MINUTES;
+  if (late <= 0) return '';
+  const h = Math.floor(late / 60), m = late % 60;
+  return h > 0 ? `${h} giờ${m ? ` ${m} phút` : ''}` : `${m} phút`;
 }
 
 // Nén ảnh về maxPx và ≤ targetKB rồi trả về data URI (base64) để lưu.
@@ -96,7 +126,7 @@ export default function ChamCongNgoaiPage() {
 
   // ── Form ──────────────────────────────────────────────────────
   const [form, setForm] = useState({
-    ngay: today(), gio_bat_dau: '08:00', gio_ket_thuc: '17:00',
+    ngay: today(), gio_bat_dau: DEFAULT_GIO_BAT_DAU, gio_ket_thuc: DEFAULT_GIO_KET_THUC,
     du_an_khach_hang: '', dia_diem: '', ghi_chu: '',
   });
   const [photo, setPhoto]           = useState('');
@@ -161,7 +191,7 @@ export default function ChamCongNgoaiPage() {
       const json = await res.json();
       if (json.success) {
         setFormMsg({ ok: true, text: 'Đã gửi đơn, chờ phê duyệt' });
-        setForm({ ngay: today(), gio_bat_dau: '08:00', gio_ket_thuc: '17:00', du_an_khach_hang: '', dia_diem: '', ghi_chu: '' });
+        setForm({ ngay: today(), gio_bat_dau: DEFAULT_GIO_BAT_DAU, gio_ket_thuc: DEFAULT_GIO_KET_THUC, du_an_khach_hang: '', dia_diem: '', ghi_chu: '' });
         setPhoto('');
         fetchRecords();
       } else {
@@ -217,13 +247,13 @@ export default function ChamCongNgoaiPage() {
 
       // ── Sheet 1: Chi tiết ──────────────────────────────────────
       const header = ['STT', 'Họ và tên', 'Mã NV', 'Quản lý trực tiếp', 'Ngày', 'Từ giờ', 'Đến giờ',
-        'Thời điểm gửi đơn', 'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'Có ảnh',
+        'Thời điểm gửi đơn', 'Đi muộn', 'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'Có ảnh',
         'Trạng thái', 'Người phê duyệt', 'Ghi chú phê duyệt'];
 
       const rows = filtered.map((r, i) => [
         i + 1, r.ho_ten || '', r.id_nhan_vien, r.ql_truc_tiep || '',
         formatDate(r.ngay), r.gio_bat_dau, r.gio_ket_thuc,
-        formatSubmittedAt(r.created_at), r.du_an_khach_hang, r.dia_diem, r.ghi_chu || '',
+        formatSubmittedCell(r), formatLateCell(r), r.du_an_khach_hang, r.dia_diem, r.ghi_chu || '',
         r.hinh_anh ? 'Có' : 'Không',
         STATUS_VI[r.trang_thai] || r.trang_thai,
         r.nguoi_duyet || '', r.ghi_chu_duyet || '',
@@ -232,7 +262,7 @@ export default function ChamCongNgoaiPage() {
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
       ws['!cols'] = [
         { wch: 5 }, { wch: 22 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 9 }, { wch: 9 },
-        { wch: 17 }, { wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 8 },
+        { wch: 17 }, { wch: 14 }, { wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 8 },
         { wch: 12 }, { wch: 18 }, { wch: 24 },
       ];
 
