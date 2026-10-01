@@ -1,10 +1,11 @@
 import { findNhanVienByEmail } from '@/lib/data-access';
 import type { NhanVien } from '@/lib/types';
+import { isAttendanceOnlyStatus, type AccessScope } from './access-scope';
 
 export const ACTIVE_EMPLOYEE_STATUSES = ['đang làm', 'chính thức', 'thử việc'];
 
 export type EmployeeAuthLookup =
-  | { ok: true; employee: NhanVien }
+  | { ok: true; employee: NhanVien; scope: AccessScope }
   | { ok: false; reason: 'not_found' | 'inactive'; employee?: NhanVien };
 
 export function normalizeAuthEmail(email: string): string {
@@ -31,12 +32,22 @@ export function isActiveEmployee(employee: Pick<NhanVien, 'trang_thai'>): boolea
  * mới cho mật khẩu/vai trò/trạng thái đổi qua app. Chỉnh sửa trực tiếp trên
  * sheet (không qua app) sẽ có hiệu lực sau lần sync kế tiếp.
  */
-export async function findEmployeeForAuth(email: string): Promise<EmployeeAuthLookup> {
+//
+// allowAttendanceOnly: chỉ đăng nhập/phiên (/api/auth) bật cờ này để nhân viên
+// "Học việc" vào được app với scope 'attendance_only'. Caller khác (vd. Quản lý
+// công việc) giữ mặc định → "Học việc" vẫn bị coi là không hoạt động (fail-closed).
+export async function findEmployeeForAuth(
+  email: string,
+  opts: { allowAttendanceOnly?: boolean } = {},
+): Promise<EmployeeAuthLookup> {
   const normalizedEmail = normalizeAuthEmail(email);
   if (!normalizedEmail) return { ok: false, reason: 'not_found' };
 
   const employee = await findNhanVienByEmail(normalizedEmail);
   if (!employee) return { ok: false, reason: 'not_found' };
-  if (!isActiveEmployee(employee)) return { ok: false, reason: 'inactive', employee };
-  return { ok: true, employee };
+  if (isActiveEmployee(employee)) return { ok: true, employee, scope: 'full' };
+  if (opts.allowAttendanceOnly && isAttendanceOnlyStatus(employee.trang_thai)) {
+    return { ok: true, employee, scope: 'attendance_only' };
+  }
+  return { ok: false, reason: 'inactive', employee };
 }

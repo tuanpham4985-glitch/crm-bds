@@ -14,6 +14,7 @@ import RichEditor from '@/components/RichEditor';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { VAI_TRO } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
+import { TRANG_THAI_HOC_VIEC, isHocViecStatus, normalizeTrangThaiNV } from '@/lib/auth/access-scope';
 
 const NHAN_VIEN_FIELDS = [
   { id: 'index', label: '#', width: 50, public: true },
@@ -382,7 +383,7 @@ export default function NhanVienPage() {
       email: nv.email,
       vai_tro: nv.vai_tro || 'Sale',
       employee_type: nv.employee_type || '',
-      trang_thai: nv.trang_thai,
+      trang_thai: normalizeTrangThaiNV(nv.trang_thai),
       avatar_url: nv.avatar_url || '',
       gioi_tinh: nv.gioi_tinh || '',
       khu_vuc: nv.khu_vuc || '',
@@ -699,7 +700,7 @@ export default function NhanVienPage() {
       nv.so_dien_thoai?.toLowerCase().includes(sq);
     const matchChucDanh = !filterChucDanh || nv.employee_type === filterChucDanh;
     const matchPhongKD = !filterPhongKD || nv.phong_KD === filterPhongKD;
-    const matchTrangThai = !filterTrangThai || nv.trang_thai === filterTrangThai;
+    const matchTrangThai = !filterTrangThai || normalizeTrangThaiNV(nv.trang_thai) === filterTrangThai;
     return matchSearch && matchChucDanh && matchPhongKD && matchTrangThai;
   });
   if (sort) {
@@ -808,7 +809,7 @@ export default function NhanVienPage() {
           <select className="form-select" value={filterTrangThai}
             onChange={e => setFilterTrangThai(e.target.value)}>
             <option value="">Tất cả trạng thái</option>
-            {(danhMuc?.trang_thai_nhan_vien?.length ? danhMuc.trang_thai_nhan_vien : ['Chính thức', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'])
+            {(danhMuc?.trang_thai_nhan_vien?.length ? danhMuc.trang_thai_nhan_vien : ['Chính thức', 'Đang làm', TRANG_THAI_HOC_VIEC, 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'])
               .map(tt => <option key={tt} value={tt}>{tt}</option>)}
           </select>
         </div>
@@ -934,14 +935,14 @@ export default function NhanVienPage() {
                             <td key={col.id} style={{ textAlign: col.align as any }}>
                               <span className={`badge ${
                                 (nv.trang_thai === 'Đang làm' || nv.trang_thai === 'Chính thức') ? 'badge-success' :
-                                (nv.trang_thai === 'Học viên' || nv.trang_thai === 'Thử việc') ? 'badge-info' :
+                                (isHocViecStatus(nv.trang_thai) || nv.trang_thai === 'Thử việc') ? 'badge-info' :
                                 nv.trang_thai === 'Nghỉ sinh' ? 'badge-warning' :
                                 nv.trang_thai === 'CTV' ? '' :
                                 'badge-neutral'
                               }`} style={nv.trang_thai === 'CTV' ? {
                                 background: '#f3e8ff', color: '#7c3aed', fontWeight: 600
                               } : {}}>
-                                {nv.trang_thai}
+                                {normalizeTrangThaiNV(nv.trang_thai)}
                               </span>
                             </td>
                           );
@@ -1203,7 +1204,7 @@ export default function NhanVienPage() {
                     onChange={(e) => setForm({ ...form, trang_thai: e.target.value })}>
                     {(danhMuc?.trang_thai_nhan_vien?.length
                       ? danhMuc.trang_thai_nhan_vien
-                      : ['Chính thức', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc']
+                      : ['Chính thức', 'Đang làm', TRANG_THAI_HOC_VIEC, 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc']
                     ).map(tt => <option key={tt} value={tt}>{tt}</option>)}
                   </select>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>

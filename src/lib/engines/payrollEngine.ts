@@ -1,5 +1,6 @@
 import { NhanVien, PayrollAdjustment, HopDong } from '../types';
 import { calculateTaxMonthly, TAX_CONFIG } from '../tax';
+import { isHocViecStatus } from '../auth/access-scope';
 
 // ================================================================
 // Hằng số Luật Lao động Việt Nam (cập nhật 2024)
@@ -148,7 +149,7 @@ export class PayrollEngine {
     const lowerEmpType = (nv.employee_type || '').toLowerCase();
     const isProbation = lowerContractType.includes('thử việc') || lowerEmpType.includes('thử việc');
     const isCollaborator = lowerContractType.includes('ctv') || lowerEmpType.includes('ctv') || (nv.trang_thai || '').toUpperCase() === 'CTV';
-    const isIntern = lowerContractType.includes('học viên') || lowerEmpType.includes('học viên') || lowerContractType.includes('tập nghề') || lowerEmpType.includes('tập nghề') || (nv.trang_thai || '').toUpperCase() === 'HỌC VIÊN';
+    const isIntern = lowerContractType.includes('học viên') || lowerEmpType.includes('học viên') || lowerContractType.includes('tập nghề') || lowerEmpType.includes('tập nghề') || isHocViecStatus(nv.trang_thai);
 
     let bhxh_emp = 0, bhyt_emp = 0, bhtn_emp = 0;
     let bhxh_cty = 0, bhyt_cty = 0, bhtn_cty = 0;

@@ -70,7 +70,7 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
-  const { user, isAdmin, canEditHRM } = useAuth();
+  const { user, isAdmin, canEditHRM, isAttendanceOnly } = useAuth();
   const canAccessHrmAppointmentMenu = canAccessHrmAppointment(
     user ? { vai_tro: user.vai_tro, employee_type: user.employee_type, phong_KD: user.phong_KD } : null,
   );
@@ -87,7 +87,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
 
   // Badge từ Zustand store (được set bởi useNotifications khi ở trang TM)
   // Khi không ở trang TM: fetch 1 lần lúc mount, không auto-refresh
-  const tmBadge: number = useTmBadge(!!user, pathname.startsWith('/quan-ly-cong-viec'));
+  const tmBadge: number = useTmBadge(!!user && !isAttendanceOnly, pathname.startsWith('/quan-ly-cong-viec'));
   const { logo, setLogo } = useSettingsStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -104,6 +104,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   // Menu Manager bật 1 mục không tự cấp quyền truy cập.
   const resolvedNav = resolveNavigationConfig(MENU_REGISTRY, navConfigRaw ?? DEFAULT_NAVIGATION_CONFIG, { crm: crmEnabled });
   const businessAccessCtx = { isAdmin, canPhanKhach, canQualityDashboard, canEditHRM, canAccessHrmAppointment: canAccessHrmAppointmentMenu };
+  // Nhân viên "Học việc": chỉ hiện đúng mục Chấm công online (proxy.ts chặn phần còn lại ở server)
+  const attendanceChild = MENU_REGISTRY.flatMap(r => r.children ?? []).find(c => c.key === 'hrm.attendance');
+  const attendanceOnlyRoots = attendanceChild
+    ? [{ def: { key: attendanceChild.key, label: attendanceChild.label, href: attendanceChild.href, icon: attendanceChild.icon } as MenuRootDef, children: [] as MenuChildDef[] }]
+    : [];
   const visibleRoots = resolvedNav.roots
     .map(root => {
       const def = MENU_REGISTRY.find(r => r.key === root.key);
@@ -122,6 +127,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       return { def, children };
     })
     .filter((r): r is { def: MenuRootDef; children: MenuChildDef[] } => Boolean(r));
+  const navRoots = isAttendanceOnly ? attendanceOnlyRoots : visibleRoots;
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const isGroupOpen = (key: string) => openGroups[key] ?? true;
@@ -348,7 +354,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
           bật-tắt tại "Quản lý Menu & Module" (Admin-only, cố định ngoài
           registry — xem cuối component). */}
       <nav className={styles.nav}>
-        {visibleRoots.map(({ def, children }) => {
+        {navRoots.map(({ def, children }) => {
           const Icon = def.icon;
           const badge = navBadgeForKey(def.key, { handoffCount, tmBadge, pendingCount });
 

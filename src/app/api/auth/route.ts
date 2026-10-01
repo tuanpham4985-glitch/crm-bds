@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { findEmployeeForAuth, normalizeAuthEmail } from '@/lib/auth/employee-source';
 import { signSessionValue, verifySessionValue } from '@/lib/auth/session-signature';
+import type { AccessScope } from '@/lib/auth/access-scope';
+
+// Ghi cookie phiên + chữ ký. access_scope nằm TRONG phần được ký nên proxy.ts
+// tin được để chặn trang/API cho nhân viên "Học việc" (attendance_only).
+async function writeSessionCookies(session: Record<string, unknown>): Promise<void> {
+  const base64Session = btoa(unescape(encodeURIComponent(JSON.stringify(session))));
+  const isProd = process.env.NODE_ENV === 'production';
+  const opts = { httpOnly: true, secure: isProd, sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax', maxAge: 60 * 60 * 24 * 7, path: '/' };
+  const cookieStore = await cookies();
+  cookieStore.set('crm_session', base64Session, opts);
+  cookieStore.set('crm_session_sig', signSessionValue(base64Session), opts);
+}
 
 // Simple session-based auth using cookies
 // POST /api/auth — Login
@@ -51,7 +63,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const lookup = await findEmployeeForAuth(email);
+    const lookup = await findEmployeeForAuth(email, { allowAttendanceOnly: true });
     console.log('[Auth] Result of findEmployeeForAuth:', lookup.ok ? lookup.employee.email : lookup.reason);
 
     if (!lookup.ok && lookup.reason === 'inactive') {
@@ -68,30 +80,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Mật khẩu không đúng' }, { status: 401 });
     }
 
-    // Set session cookie
-    const sessionData = JSON.stringify({
+    await writeSessionCookies({
       id_nhan_vien: nv.id_nhan_vien,
       ho_ten: nv.ho_ten,
       email: nv.email,
       vai_tro: nv.vai_tro,
       employee_type: nv.employee_type,
       avatar_url: nv.avatar_url || '',
-    });
-
-    // Use btoa for Edge compatibility (Note: handle UTF-8 if needed)
-    const base64Session = btoa(unescape(encodeURIComponent(sessionData)));
-
-    const isProd = process.env.NODE_ENV === 'production';
-    const cookieStore = await cookies();
-    cookieStore.set('crm_session', base64Session, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    });
-    cookieStore.set('crm_session_sig', signSessionValue(base64Session), {
-      httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax', maxAge: 60 * 60 * 24 * 7, path: '/',
+      access_scope: lookup.scope,
     });
 
     return NextResponse.json({
@@ -103,6 +99,7 @@ export async function POST(request: NextRequest) {
         vai_tro: nv.vai_tro,
         employee_type: nv.employee_type,
         avatar_url: nv.avatar_url || '',
+        access_scope: lookup.scope,
       },
     });
   } catch (error: unknown) {
@@ -134,7 +131,7 @@ export async function GET() {
     // mà không cần user logout/login lại. Bỏ qua DEV_ADMIN (không có row trong sheet).
     if (userData.id_nhan_vien !== 'DEV_ADMIN' && userData.email) {
       try {
-        const lookup = await findEmployeeForAuth(userData.email);
+        const lookup = await findEmployeeForAuth(userData.email, { allowAttendanceOnly: true });
         if (!lookup.ok) {
           cookieStore.delete('crm_session');
           cookieStore.delete('crm_session_sig');
@@ -156,6 +153,22 @@ export async function GET() {
         // KHÔNG cần mở rộng shape cookie — approved architecture
         // HRM_APPOINTMENT_ACCESS_CONTROL §5 (menu visibility).
         userData.phong_KD     = nv.phong_KD || '';
+
+        // Trạng thái đổi (vd. Học việc → Thử việc, hoặc ngược lại) → ký lại
+        // cookie với access_scope mới để proxy.ts áp quyền ngay, không cần đăng nhập lại.
+        const prevScope: AccessScope = userData.access_scope === 'attendance_only' ? 'attendance_only' : 'full';
+        userData.access_scope = lookup.scope;
+        if (prevScope !== lookup.scope) {
+          await writeSessionCookies({
+            id_nhan_vien: nv.id_nhan_vien,
+            ho_ten: nv.ho_ten,
+            email: nv.email,
+            vai_tro: nv.vai_tro,
+            employee_type: nv.employee_type,
+            avatar_url: nv.avatar_url || '',
+            access_scope: lookup.scope,
+          });
+        }
       } catch (refreshErr) {
         // Auth phải fail-closed: không dùng cookie cũ khi không xác thực được NHAN_VIEN.
         cookieStore.delete('crm_session');

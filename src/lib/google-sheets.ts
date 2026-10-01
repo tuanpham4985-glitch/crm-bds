@@ -5,6 +5,7 @@
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
 import type { DuAn, NhanVien, KhachHang, Pipeline, CongViec, DanhMuc, HopDong, BangLuong, PayrollAdjustment, PayrollRecord, PayrollItemRecord, StackingSheetMeta, StackingUnit, PhanKhachConfig, ChamCongNgoai } from './types';
+import { TRANG_THAI_HOC_VIEC, isHocViecStatus } from './auth/access-scope';
 
 // ---- Environment Variable Validation ----
 function validateEnvVars(): { clientEmail: string; privateKey: string; sheetId: string } {
@@ -310,7 +311,7 @@ export async function getDanhMuc(): Promise<DanhMuc> {
 
     // Danh sách trạng thái mặc định — luôn hiển thị dù chưa có nhân viên nào dùng
     const DEFAULT_TRANG_THAI_NV = [
-      'Chính thức', 'CTV', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'
+      'Chính thức', 'CTV', 'Đang làm', TRANG_THAI_HOC_VIEC, 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'
     ];
     DEFAULT_TRANG_THAI_NV.forEach(tt => trangThaiSet.add(tt));
 
@@ -321,7 +322,8 @@ export async function getDanhMuc(): Promise<DanhMuc> {
       if (empType) employeeTypeSet.add(empType);
       // trang_thai is column index 5
       const trangThai = nvH[5] ? str(v[nvH[5]]) : '';
-      if (trangThai) trangThaiSet.add(trangThai);
+      // Tên cũ (Học việc / Học viên) gộp về tên chuẩn — cùng 1 trạng thái
+      if (trangThai) trangThaiSet.add(isHocViecStatus(trangThai) ? TRANG_THAI_HOC_VIEC : trangThai);
     }
 
     result.employee_types = Array.from(employeeTypeSet).sort();
@@ -330,7 +332,7 @@ export async function getDanhMuc(): Promise<DanhMuc> {
     console.warn('[GSheets] Could not read NHAN_VIEN for dropdown values:', err);
     // Fallback defaults
     result.employee_types = [];
-    result.trang_thai_nhan_vien = ['Chính thức', 'CTV', 'Đang làm', 'Học viên', 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'];
+    result.trang_thai_nhan_vien = ['Chính thức', 'CTV', 'Đang làm', TRANG_THAI_HOC_VIEC, 'Nghỉ sinh', 'Nghỉ việc', 'Thử việc'];
   }
 
   return result;

@@ -1,8 +1,24 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { verifySessionValue } from '@/lib/auth/session-signature';
+import { ATTENDANCE_ONLY_HOME, isPathAllowedForAttendanceOnly } from '@/lib/auth/access-scope';
+
+// Đọc access_scope từ cookie phiên ĐÃ KÝ. Chữ ký sai → coi như chưa đăng nhập
+// (GET /api/auth vốn cũng xoá phiên sai chữ ký), để không thể sửa tay cookie
+// bỏ access_scope nhằm vượt giới hạn "Học việc".
+function readSessionScope(request: NextRequest): 'none' | 'full' | 'attendance_only' {
+  const value = request.cookies.get('crm_session')?.value;
+  if (!value) return 'none';
+  try {
+    if (!verifySessionValue(value, request.cookies.get('crm_session_sig')?.value)) return 'none';
+    const session = JSON.parse(decodeURIComponent(escape(atob(value))));
+    return session?.access_scope === 'attendance_only' ? 'attendance_only' : 'full';
+  } catch {
+    return 'none';
+  }
+}
 
 export async function proxy(request: NextRequest) {
-  const session = request.cookies.get('crm_session');
   const { pathname } = request.nextUrl;
   const isLoginPage = pathname.startsWith('/login');
 
@@ -13,9 +29,11 @@ export async function proxy(request: NextRequest) {
   if (pathname === '/api/auth' || pathname === '/api/pwa/icon') {
     return NextResponse.next();
   }
-  
+
+  const scope = readSessionScope(request);
+
   // If no session and trying to access anything other than login
-  if (!session && !isLoginPage) {
+  if (scope === 'none' && !isLoginPage) {
     if (request.nextUrl.pathname.startsWith('/api')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
@@ -23,8 +41,16 @@ export async function proxy(request: NextRequest) {
   }
 
   // If already have session and visiting login page, redirect to Dashboard
-  if (session && isLoginPage) {
-    return NextResponse.redirect(new URL('/', request.url));
+  if (scope !== 'none' && isLoginPage) {
+    return NextResponse.redirect(new URL(scope === 'attendance_only' ? ATTENDANCE_ONLY_HOME : '/', request.url));
+  }
+
+  // Nhân viên "Học việc": chỉ Chấm công online — chặn mọi trang/API khác
+  if (scope === 'attendance_only' && !isPathAllowedForAttendanceOnly(pathname, request.method)) {
+    if (pathname.startsWith('/api')) {
+      return NextResponse.json({ success: false, error: 'Tài khoản Học việc chỉ được dùng Chấm công online' }, { status: 403 });
+    }
+    return NextResponse.redirect(new URL(ATTENDANCE_ONLY_HOME, request.url));
   }
 
   return NextResponse.next();

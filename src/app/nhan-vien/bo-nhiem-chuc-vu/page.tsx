@@ -21,6 +21,7 @@ import { isSheetOwnedTenure } from '@/lib/hrm/appointment-sheet-sync';
 import { canAccessHrmAppointment } from '@/lib/hrm/appointment-access';
 import type { AppointmentSyncSummary } from '@/lib/hrm/appointment-sheet-sync-service';
 import Link from 'next/link';
+import { isHocViecStatus } from '@/lib/auth/access-scope';
 
 const RECONFIRM_STATUS = 'Chức vụ cần xác nhận';
 
@@ -40,7 +41,7 @@ function getRowStatus(tenure: BoNhiemChucVu, employee?: NhanVien): string {
 // (khác nhan-vien/page.tsx, giữ nguyên badge-neutral, ngoài scope thay đổi này).
 function employeeStatusBadgeClass(trangThai: string | undefined): string {
   if (trangThai === 'Đang làm' || trangThai === 'Chính thức') return 'badge-success';
-  if (trangThai === 'Học viên' || trangThai === 'Thử việc') return 'badge-info';
+  if (isHocViecStatus(trangThai) || trangThai === 'Thử việc') return 'badge-info';
   if (trangThai === 'Nghỉ sinh') return 'badge-warning';
   if (trangThai === 'Nghỉ việc') return 'badge-danger';
   if (trangThai === 'CTV') return '';

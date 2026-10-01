@@ -14,6 +14,8 @@ export function useAuth() {
 
   const isAdmin = user?.vai_tro === 'Admin' || (SENIOR_EMPLOYEE_TYPES as readonly string[]).includes(user?.employee_type || '');
   const isHR = user?.vai_tro === 'HR';
+  // Nhân viên "Học việc" — chỉ dùng Chấm công online (xem lib/auth/access-scope.ts)
+  const isAttendanceOnly = data?.success ? data.data?.access_scope === 'attendance_only' : false;
 
   return {
     user,
@@ -21,6 +23,7 @@ export function useAuth() {
     isError: error || (data && !data.success),
     isAdmin,
     isHR,
+    isAttendanceOnly,
     /** Có quyền chỉnh sửa dữ liệu HRM (Admin hoặc HR) */
     canEditHRM: isAdmin || isHR,
     mutate

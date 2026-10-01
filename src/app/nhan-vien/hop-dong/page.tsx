@@ -15,6 +15,7 @@ import { detectEmployeeClassification, getContractTemplate } from '@/lib/contrac
 import type { Department, ContractCategory } from '@/config/contractTemplates';
 import { FIELD_LABELS, getFieldLabel, DEPARTMENT_LABELS } from '@/config/fieldLabels';
 import Link from 'next/link';
+import { isHocViecStatus } from '@/lib/auth/access-scope';
 
 function getContractStatus(ngay_ket_thuc: string): string {
   if (!ngay_ket_thuc) return 'Còn hiệu lực';
@@ -272,7 +273,7 @@ function HopDongContent() {
     const resolvedId = emp ? employeeId : '';
 
     // Auto-detect contract type from employee status
-    const initialContractType = emp?.trang_thai === 'Học viên' ? 'Học viên' : 'Thử việc';
+    const initialContractType = isHocViecStatus(emp?.trang_thai) ? 'Học viên' : 'Thử việc';
 
     const classification = detectEmployeeClassification(emp?.vai_tro || 'Sale', initialContractType, emp?.employee_type);
     const dept: Department = classification.department;
