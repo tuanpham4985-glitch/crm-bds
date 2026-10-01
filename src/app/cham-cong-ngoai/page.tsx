@@ -75,8 +75,7 @@ function formatLateCell(r: ChamCongNgoai): string {
   if (!s || s.date !== r.ngay) return '';
   const late = toMinutes(s.time)! - toMinutes(DEFAULT_GIO_BAT_DAU)! - LATE_GRACE_MINUTES;
   if (late <= 0) return '';
-  const h = Math.floor(late / 60), m = late % 60;
-  return h > 0 ? `${h} giờ${m ? ` ${m} phút` : ''}` : `${m} phút`;
+  return `${late} phút`;
 }
 
 // Nén ảnh về maxPx và ≤ targetKB rồi trả về data URI (base64) để lưu.
