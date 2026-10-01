@@ -6,7 +6,7 @@
 // Đối chiếu TOÀN BỘ (không chỉ nhân viên đang thiếu hợp đồng) — nhân viên nào
 // có ngày trong file HR mà CRM chưa có/khác thì tạo mới hoặc cập nhật.
 // Khớp hợp đồng hiện có theo id_nhan_vien + contract_type chứa "thử việc"/
-// "chính thức"; nhiều bản ghi cùng loại thì lấy bản có ngày bắt đầu mới nhất.
+// "học viên" (nhân viên Học việc)/"chính thức"; nhiều bản ghi cùng loại thì lấy bản có ngày bắt đầu mới nhất.
 //
 // NEON_TRANSFER: đọc bảng hop_dong qua findMatchFields() (6 cột hẹp thay vì cả
 // hàng) và gộp toàn bộ bản ghi tạo mới vào 1 lệnh createMany() thay vì N lệnh
@@ -19,6 +19,7 @@ import { getEmployeeRepository, getContractRepository } from '@/lib/repository';
 import { getContractDatesFromHrFile } from '@/lib/google-sheets';
 import { detectEmployeeClassification, getContractTemplate } from '@/lib/contractEngine';
 import type { HopDong } from '@/lib/types';
+import { isHocViecStatus } from '@/lib/auth/access-scope';
 
 function padId(id: string): string {
   if (!id) return '';
@@ -49,7 +50,7 @@ function genId(): string {
   return `HD${Date.now()}${_idCounter}`;
 }
 
-type Category = 'Thử việc' | 'Chính thức';
+type Category = 'Thử việc' | 'Học viên' | 'Chính thức';
 
 export interface SyncContractDatesResult {
   created: number;
@@ -80,8 +81,14 @@ export async function syncContractDatesFromHrFile(): Promise<SyncContractDatesRe
     const chucDanh = hr.chuc_danh || emp.employee_type || '';
     const { department } = detectEmployeeClassification(emp.vai_tro || 'Sale', 'Thử việc', chucDanh);
 
-    const categories: { label: Category; tu: string; den: string; apiCategory: 'PROBATION' | 'OFFICIAL'; suffix: string }[] = [
-      { label: 'Thử việc', tu: hr.tv_tu_ngay, den: hr.tv_den_ngay, apiCategory: 'PROBATION', suffix: 'VIC_HĐTV' },
+    // Nhân viên Học việc (Học việc NVKD / Học việc / Học viên): ngày ở cột thử
+    // việc của file HR là thời gian học việc → tạo HĐ "Học viên" (VIC_HĐTN),
+    // KHÔNG tạo HĐ Thử việc.
+    const hocViec = isHocViecStatus(emp.trang_thai);
+    const categories: { label: Category; tu: string; den: string; apiCategory: 'PROBATION' | 'STUDENT' | 'OFFICIAL'; suffix: string }[] = [
+      hocViec
+        ? { label: 'Học viên', tu: hr.tv_tu_ngay, den: hr.tv_den_ngay, apiCategory: 'STUDENT', suffix: 'VIC_HĐTN' }
+        : { label: 'Thử việc', tu: hr.tv_tu_ngay, den: hr.tv_den_ngay, apiCategory: 'PROBATION', suffix: 'VIC_HĐTV' },
       { label: 'Chính thức', tu: hr.ct_tu_ngay, den: hr.ct_den_ngay, apiCategory: 'OFFICIAL', suffix: 'VIC_HĐLĐ' },
     ];
 
@@ -96,7 +103,8 @@ export async function syncContractDatesFromHrFile(): Promise<SyncContractDatesRe
         : null;
 
       if (!existing) {
-        const template = getContractTemplate(cat.apiCategory, department);
+        // Mẫu HĐ Học viên chỉ có bản KD (MAU_VIC_HDTN.docx)
+        const template = getContractTemplate(cat.apiCategory, cat.apiCategory === 'STUDENT' ? 'KD' : department);
         toCreate.push({
           id: genId(),
           id_nhan_vien: mnv,
