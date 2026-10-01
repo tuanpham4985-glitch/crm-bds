@@ -35,6 +35,20 @@ function formatDate(d: string): string {
   return `${day}/${m}/${y}`;
 }
 
+// created_at là ISO (UTC) → "dd/MM/yyyy HH:mm" theo giờ Việt Nam
+function formatSubmittedAt(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(d).map(x => [x.type, x.value]),
+  );
+  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
+}
+
 // Nén ảnh về maxPx và ≤ targetKB rồi trả về data URI (base64) để lưu.
 // Ưu tiên WebP (nhỏ hơn JPEG ~25-35% cùng chất lượng), fallback JPEG cho máy cũ.
 function compressImage(file: File, maxPx = 400, targetKB = 12): Promise<string> {
@@ -203,13 +217,13 @@ export default function ChamCongNgoaiPage() {
 
       // ── Sheet 1: Chi tiết ──────────────────────────────────────
       const header = ['STT', 'Họ và tên', 'Mã NV', 'Quản lý trực tiếp', 'Ngày', 'Từ giờ', 'Đến giờ',
-        'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'Có ảnh',
+        'Thời điểm gửi đơn', 'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'Có ảnh',
         'Trạng thái', 'Người phê duyệt', 'Ghi chú phê duyệt'];
 
       const rows = filtered.map((r, i) => [
         i + 1, r.ho_ten || '', r.id_nhan_vien, r.ql_truc_tiep || '',
         formatDate(r.ngay), r.gio_bat_dau, r.gio_ket_thuc,
-        r.du_an_khach_hang, r.dia_diem, r.ghi_chu || '',
+        formatSubmittedAt(r.created_at), r.du_an_khach_hang, r.dia_diem, r.ghi_chu || '',
         r.hinh_anh ? 'Có' : 'Không',
         STATUS_VI[r.trang_thai] || r.trang_thai,
         r.nguoi_duyet || '', r.ghi_chu_duyet || '',
@@ -218,7 +232,7 @@ export default function ChamCongNgoaiPage() {
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
       ws['!cols'] = [
         { wch: 5 }, { wch: 22 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 9 }, { wch: 9 },
-        { wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 8 },
+        { wch: 17 }, { wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 8 },
         { wch: 12 }, { wch: 18 }, { wch: 24 },
       ];
 
