@@ -60,12 +60,12 @@ function toMinutes(hhmm: string): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-// Cột "Thứ": "yyyy-MM-dd" → "Thứ 2".."Thứ 7" / "Chủ nhật" (tính theo UTC để không lệch múi giờ)
+// Cột "Thứ": "yyyy-MM-dd" → "Thứ Hai".."Thứ Bảy" / "Chủ Nhật" (tính theo UTC để không lệch múi giờ)
+const WEEKDAY_VN = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 function weekdayVN(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd || '');
   if (!m) return '';
-  const dow = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
-  return dow === 0 ? 'Chủ nhật' : `Thứ ${dow + 1}`;
+  return WEEKDAY_VN[new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay()];
 }
 
 // Cột "Thời điểm gửi đơn": chỉ HH:mm; nếu gửi khác ngày chấm công thì kèm ngày để không gây hiểu nhầm
