@@ -60,8 +60,8 @@ function toMinutes(hhmm: string): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-// Cột "Thứ": "yyyy-MM-dd" → "Thứ Hai".."Thứ Bảy" / "Chủ Nhật" (tính theo UTC để không lệch múi giờ)
-const WEEKDAY_VN = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+// Cột "Thứ": "yyyy-MM-dd" → "Hai".."Bảy" / "Chủ Nhật" (tiêu đề cột đã là "Thứ"; tính theo UTC để không lệch múi giờ)
+const WEEKDAY_VN = ['Chủ Nhật', 'Hai', 'Ba', 'Tư', 'Năm', 'Sáu', 'Bảy'];
 function weekdayVN(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd || '');
   if (!m) return '';
