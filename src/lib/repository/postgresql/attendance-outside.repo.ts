@@ -33,6 +33,17 @@ export class PostgresAttendanceOutsideRepository
     });
   }
 
+  async purgePhotosBefore(cutoff: string): Promise<number> {
+    const res = await prisma.chamCongNgoai.updateMany({
+      where: {
+        ngay: { lt: cutoff },
+        AND: [{ hinh_anh: { not: null } }, { hinh_anh: { not: '' } }],
+      },
+      data: { hinh_anh: null, anh_da_xoa: true },
+    });
+    return res.count;
+  }
+
   async create(
     data: Omit<ChamCongNgoai, 'id' | 'created_at' | 'trang_thai' | 'nguoi_duyet' | 'ghi_chu_duyet'>
   ): Promise<ChamCongNgoai> {
@@ -113,6 +124,7 @@ function toChamCongNgoai(row: NonNullable<PgChamCong>): ChamCongNgoai {
     dia_diem:         row.dia_diem ?? '',
     ghi_chu:          row.ghi_chu ?? undefined,
     hinh_anh:         row.hinh_anh ?? undefined,
+    anh_da_xoa:       row.anh_da_xoa || undefined,
     vi_tri_gps:       row.vi_tri_gps ?? undefined,
     ql_truc_tiep:     row.ql_truc_tiep ?? undefined,
     trang_thai:       row.trang_thai as ChamCongNgoai['trang_thai'],

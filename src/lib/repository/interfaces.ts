@@ -154,6 +154,9 @@ export interface IAttendanceOutsideRepository {
   // /api/cham-cong-ngoai/pending-count (NEON_TRANSFER_AUDIT P0) mà không
   // cần load full rows (kể cả field ảnh hinh_anh) chỉ để .filter().length.
   countPending(employeeId?: string, qlTrucTiep?: string, excludeEmployeeId?: string): Promise<number>;
+  // Xóa ảnh (giữ đơn) của các đơn có ngay < cutoff ('YYYY-MM-DD'), đánh dấu
+  // anh_da_xoa = true. Trả về số đơn đã xóa ảnh.
+  purgePhotosBefore(cutoff: string): Promise<number>;
   create(
     data: Omit<ChamCongNgoai, 'id' | 'created_at' | 'trang_thai' | 'nguoi_duyet' | 'ghi_chu_duyet'>
   ): Promise<ChamCongNgoai>;

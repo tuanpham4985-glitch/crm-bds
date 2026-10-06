@@ -707,6 +707,8 @@ model ChamCongNgoai {
   dia_diem          String?
   ghi_chu           String?
   hinh_anh          String?
+  // true = đơn từng có ảnh nhưng ảnh đã bị xóa do hết hạn lưu (xem attendance-photo-retention.ts)
+  anh_da_xoa        Boolean  @default(false)
   vi_tri_gps        String?
   ql_truc_tiep      String?
   trang_thai        String   @default("cho_duyet")

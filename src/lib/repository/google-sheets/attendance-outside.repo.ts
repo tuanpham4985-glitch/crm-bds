@@ -25,6 +25,11 @@ export class GoogleSheetsAttendanceOutsideRepository
     return all.filter(c => c.trang_thai === 'cho_duyet' && (!excludeEmployeeId || c.id_nhan_vien !== excludeEmployeeId)).length;
   }
 
+  // Sheet chỉ lưu dấu "Có ảnh", không lưu ảnh gốc → không có gì để xóa.
+  async purgePhotosBefore(_cutoff: string): Promise<number> {
+    return 0;
+  }
+
   create(
     data: Omit<ChamCongNgoai, 'id' | 'created_at' | 'trang_thai' | 'nguoi_duyet' | 'ghi_chu_duyet'>
   ): Promise<ChamCongNgoai> {

@@ -843,6 +843,7 @@ export interface ChamCongNgoai {
   dia_diem: string;
   ghi_chu?: string;
   hinh_anh?: string;         // base64 JPEG thumbnail
+  anh_da_xoa?: boolean;      // ảnh đã xóa do hết hạn lưu (đơn vẫn tính là "Có ảnh")
   vi_tri_gps?: string;       // "lat,lng (±Xm)"
   ql_truc_tiep?: string;     // Tên quản lý trực tiếp (lưu tại thời điểm tạo đơn)
   trang_thai: 'cho_duyet' | 'da_duyet' | 'tu_choi';

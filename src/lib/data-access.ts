@@ -860,6 +860,13 @@ export function adminDeleteChamCongNgoai(id: string): Promise<boolean> {
   );
 }
 
+// Xóa ảnh hết hạn lưu (xem attendance-photo-retention.ts). Ảnh gốc chỉ nằm ở
+// PostgreSQL; sheet mirror giữ nguyên dấu "Có ảnh" nên không cần mirror.
+export async function purgeExpiredChamCongNgoaiPhotos(cutoff: string): Promise<number> {
+  if (!isPostgresEnabled('attendance')) return 0;
+  return getAttendanceOutsideRepository().purgePhotosBefore(cutoff);
+}
+
 // Attendance mirror: khi PG bật, vẫn phản chiếu CHAM_CONG_NGOAI về Google Sheet.
 async function mirrorChamCongNgoaiToSheet(row: ChamCongNgoai, fn: string): Promise<void> {
   try {

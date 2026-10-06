@@ -261,7 +261,7 @@ export default function ChamCongNgoaiPage() {
         i + 1, r.ho_ten || '', r.id_nhan_vien, r.ql_truc_tiep || '',
         formatDate(r.ngay), weekdayVN(r.ngay), r.gio_bat_dau, r.gio_ket_thuc,
         formatSubmittedCell(r), formatLateCell(r), r.du_an_khach_hang, r.dia_diem, r.ghi_chu || '',
-        r.hinh_anh ? 'Có' : 'Không',
+        r.hinh_anh || r.anh_da_xoa ? 'Có' : 'Không',
         STATUS_VI[r.trang_thai] || r.trang_thai,
         r.nguoi_duyet || '', r.ghi_chu_duyet || '',
       ]);
@@ -743,6 +743,16 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const EXPIRED_PHOTO_TEXT = 'Ảnh đã xóa (hết hạn lưu)';
+
+function ExpiredPhotoNote() {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+      <ImageIcon size={12} style={{ opacity: 0.5 }} /> {EXPIRED_PHOTO_TEXT}
+    </span>
+  );
+}
+
 function GpsChip({ gps }: { gps: string }) {
   const coords = gps.split(' ')[0];
   const acc    = gps.match(/±(.+)\)/)?.[1];
@@ -779,13 +789,14 @@ function RecordCard({ record, showDelete, onDelete, showName, onPhoto }: {
       </div>
 
       {/* GPS + photo row */}
-      {(record.vi_tri_gps || record.hinh_anh) && (
+      {(record.vi_tri_gps || record.hinh_anh || record.anh_da_xoa) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
           {record.vi_tri_gps && <GpsChip gps={record.vi_tri_gps} />}
           {record.hinh_anh && onPhoto && (
             <img src={record.hinh_anh} alt="ảnh" onClick={onPhoto}
               style={{ height: 48, borderRadius: 6, cursor: 'zoom-in', objectFit: 'cover', border: '1px solid var(--border)' }} />
           )}
+          {!record.hinh_anh && record.anh_da_xoa && <ExpiredPhotoNote />}
         </div>
       )}
 
@@ -857,8 +868,10 @@ function ApproveCard({ record, onApprove, onReject, onDelete, onPhoto }: {
           <img src={record.hinh_anh} alt="ảnh" onClick={onPhoto} title="Xem ảnh"
             style={{ width: 72, height: 72, borderRadius: 8, objectFit: 'cover', cursor: 'zoom-in', flexShrink: 0, border: '1px solid var(--border)' }} />
         ) : (
-          <div style={{ width: 72, height: 72, borderRadius: 8, background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div title={record.anh_da_xoa ? EXPIRED_PHOTO_TEXT : undefined}
+            style={{ width: 72, height: 72, borderRadius: 8, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, flexShrink: 0 }}>
             <ImageIcon size={22} style={{ color: 'var(--text-secondary)', opacity: 0.35 }} />
+            {record.anh_da_xoa && <span style={{ fontSize: 9, color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.2 }}>Ảnh đã xóa</span>}
           </div>
         )}
       </div>
