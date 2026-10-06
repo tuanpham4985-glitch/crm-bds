@@ -60,6 +60,14 @@ function toMinutes(hhmm: string): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
+// Cột "Thứ": "yyyy-MM-dd" → "Thứ 2".."Thứ 7" / "Chủ nhật" (tính theo UTC để không lệch múi giờ)
+function weekdayVN(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd || '');
+  if (!m) return '';
+  const dow = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+  return dow === 0 ? 'Chủ nhật' : `Thứ ${dow + 1}`;
+}
+
 // Cột "Thời điểm gửi đơn": chỉ HH:mm; nếu gửi khác ngày chấm công thì kèm ngày để không gây hiểu nhầm
 function formatSubmittedCell(r: ChamCongNgoai): string {
   const s = submittedAtVN(r.created_at);
@@ -245,13 +253,13 @@ export default function ChamCongNgoaiPage() {
         .sort((a, b) => a.ngay.localeCompare(b.ngay) || a.gio_bat_dau.localeCompare(b.gio_bat_dau));
 
       // ── Sheet 1: Chi tiết ──────────────────────────────────────
-      const header = ['STT', 'Họ và tên', 'Mã NV', 'Quản lý trực tiếp', 'Ngày', 'Từ giờ', 'Đến giờ',
+      const header = ['STT', 'Họ và tên', 'Mã NV', 'Quản lý trực tiếp', 'Ngày', 'Thứ', 'Từ giờ', 'Đến giờ',
         'Thời điểm gửi đơn', 'Đi muộn', 'Dự án / Khách hàng', 'Địa điểm', 'Ghi chú', 'Có ảnh',
         'Trạng thái', 'Người phê duyệt', 'Ghi chú phê duyệt'];
 
       const rows = filtered.map((r, i) => [
         i + 1, r.ho_ten || '', r.id_nhan_vien, r.ql_truc_tiep || '',
-        formatDate(r.ngay), r.gio_bat_dau, r.gio_ket_thuc,
+        formatDate(r.ngay), weekdayVN(r.ngay), r.gio_bat_dau, r.gio_ket_thuc,
         formatSubmittedCell(r), formatLateCell(r), r.du_an_khach_hang, r.dia_diem, r.ghi_chu || '',
         r.hinh_anh ? 'Có' : 'Không',
         STATUS_VI[r.trang_thai] || r.trang_thai,
@@ -260,7 +268,7 @@ export default function ChamCongNgoaiPage() {
 
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
       ws['!cols'] = [
-        { wch: 5 }, { wch: 22 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 9 }, { wch: 9 },
+        { wch: 5 }, { wch: 22 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 9 }, { wch: 9 },
         { wch: 17 }, { wch: 14 }, { wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 8 },
         { wch: 12 }, { wch: 18 }, { wch: 24 },
       ];
