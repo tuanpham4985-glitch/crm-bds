@@ -15,7 +15,7 @@ import { isPostgresEnabled } from '../db/feature-flags';
 import { normalizePhone, phoneKey } from '../khach-hang-excel-import';
 import { resolveManualCustomerGroup } from '../private-group-auth';
 import type { PrivateGroupCustomerLinkLike } from '../private-group-auth';
-import type { CrmSessionUser } from '../crm-auth';
+import { isCrmAdmin, type CrmSessionUser } from '../crm-auth';
 import type { KhachHang } from '../types';
 // CSKH work queue của Nhóm riêng — tái dùng NGUYÊN VẸN 2 pure function của
 // Campaign CSKH (planMembershipInteraction/planMembershipQualification KHÔNG
@@ -729,9 +729,9 @@ export interface PrivateGroupImportResult {
  *
  * 1. Validate actor THỰC SỰ là Leader HOẶC Sale thành viên của ĐÚNG group
  *    này (resolvePrivateGroupsForEmployee, CÙNG rule resolveManualCustomerGroup
- *    dùng cho add đơn — KHÔNG có Admin-bypass, đồng nhất hành vi "+ Thêm
- *    khách hàng": Admin không phải Leader/member của 1 group cụ thể vẫn
- *    KHÔNG import được vào group đó) -> throw GroupNotAllowedError nếu không.
+ *    dùng cho add đơn) -> throw GroupNotAllowedError nếu không. NGOẠI LỆ:
+ *    Admin import được vào mọi nhóm, nhưng khách giao cho Leader nhóm (Admin
+ *    KHÔNG nhận khách) — non-admin vẫn assigned_to = actor như cũ.
  * 2. Tạo Customer + PrivateGroupCustomer cho TỪNG dòng, atomic PER-ROW (1
  *    transaction nhỏ/dòng) — KHÔNG SERIALIZABLE cho cả batch: nguy cơ 2 lượt
  *    import cùng lúc trùng SĐT là rất hiếm cho use-case Sale tự nhập data
@@ -749,9 +749,19 @@ export async function importCustomersToPrivateGroupTransactional(input: {
   rows: readonly PrivateGroupImportRow[];
 }): Promise<PrivateGroupImportResult> {
   assertTransactionalCrm();
-  const groups = await resolvePrivateGroupsForEmployee(input.actor.id_nhan_vien);
-  const allowed = groups.leaderOf.some(g => g.id === input.groupId) || groups.memberOf.some(g => g.id === input.groupId);
-  if (!allowed) throw new GroupNotAllowedError();
+  // Admin được import vào MỌI nhóm (yêu cầu 2026-10-07) nhưng KHÔNG nhận
+  // khách — giao thẳng cho Leader nhóm (Leader/Admin "Chia đều" lại sau, lọc
+  // nguồn "đang giao cho" = Leader). entered_by vẫn là Admin để giữ vết.
+  let owner = { id: input.actor.id_nhan_vien, name: input.actor.ho_ten };
+  if (isCrmAdmin(input.actor)) {
+    const group = await prisma.privateGroup.findUnique({ where: { id: input.groupId }, select: { leader_id: true, leader_name: true } });
+    if (!group) throw new GroupNotAllowedError();
+    owner = { id: group.leader_id, name: group.leader_name };
+  } else {
+    const groups = await resolvePrivateGroupsForEmployee(input.actor.id_nhan_vien);
+    const allowed = groups.leaderOf.some(g => g.id === input.groupId) || groups.memberOf.some(g => g.id === input.groupId);
+    if (!allowed) throw new GroupNotAllowedError();
+  }
 
   const imported: string[] = [];
   const errors: PrivateGroupImportRowError[] = [];
@@ -770,7 +780,7 @@ export async function importCustomersToPrivateGroupTransactional(input: {
             nguon: '',
             nhu_cau: '',
             ghi_chu: '',
-            sale_phu_trach: input.actor.ho_ten,
+            sale_phu_trach: owner.name,
             label_khach: `${row.ten_KH} - ${row.so_dien_thoai}`,
             du_an: '',
             trang_thai_cham_soc: 'Chưa gọi',
@@ -787,8 +797,8 @@ export async function importCustomersToPrivateGroupTransactional(input: {
             customer_id: id_khach_hang,
             entered_by_id: input.actor.id_nhan_vien,
             entered_by_name: input.actor.ho_ten,
-            assigned_to_id: input.actor.id_nhan_vien,
-            assigned_to_name: input.actor.ho_ten,
+            assigned_to_id: owner.id,
+            assigned_to_name: owner.name,
           },
         });
       });

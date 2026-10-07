@@ -404,20 +404,21 @@ test('POST .../customers/import-excel: KHÔNG gate isCrmAdmin — khác Import E
   assert.doesNotMatch(src, /isCrmAdmin/);
 });
 
-test('private-group.ts: importCustomersToPrivateGroupTransactional validate actor THỰC SỰ Leader/member của ĐÚNG group (resolvePrivateGroupsForEmployee) — throw GroupNotAllowedError nếu không, KHÔNG có Admin-bypass', () => {
+test('private-group.ts: importCustomersToPrivateGroupTransactional validate non-admin THỰC SỰ Leader/member của ĐÚNG group — Admin import được mọi nhóm nhưng khách giao cho Leader', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function importCustomersToPrivateGroupTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 900);
+  const fnBody = src.slice(fnStart, fnStart + 1500);
   assert.match(fnBody, /resolvePrivateGroupsForEmployee\(input\.actor\.id_nhan_vien\)/);
   assert.match(fnBody, /groups\.leaderOf\.some\(g => g\.id === input\.groupId\) \|\| groups\.memberOf\.some\(g => g\.id === input\.groupId\)/);
   assert.match(fnBody, /if \(!allowed\) throw new GroupNotAllowedError\(\);/);
-  assert.doesNotMatch(fnBody, /isCrmAdmin/);
+  assert.match(fnBody, /if \(isCrmAdmin\(input\.actor\)\)/);
+  assert.match(fnBody, /owner = \{ id: group\.leader_id, name: group\.leader_name \}/);
 });
 
 test('private-group.ts: importCustomersToPrivateGroupTransactional tạo Customer + PrivateGroupCustomer ATOMIC per-row (transaction riêng từng dòng) — 1 dòng lỗi bị cô lập vào errors, KHÔNG fail cả batch', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function importCustomersToPrivateGroupTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 2200);
+  const fnBody = src.slice(fnStart, fnStart + 3000);
   assert.match(fnBody, /prisma\.\$transaction\(async tx => \{/);
   assert.match(fnBody, /tx\.khachHang\.create\(/);
   assert.match(fnBody, /tx\.privateGroupCustomer\.create\(/);
@@ -428,12 +429,14 @@ test('private-group.ts: importCustomersToPrivateGroupTransactional tạo Custome
   assert.ok(createCustomerIdx > -1 && createLinkIdx > createCustomerIdx);
 });
 
-test('private-group.ts: importCustomersToPrivateGroupTransactional gán entered_by = assigned_to = actor (tự động được quyền act ngay, cùng rule createManualCustomerWithGroupLink)', () => {
+test('private-group.ts: importCustomersToPrivateGroupTransactional gán entered_by = actor, assigned_to/sale_phu_trach = owner (actor, hoặc Leader nếu actor là Admin)', () => {
   const src = read(PRIVATE_GROUP_LIB_PATH);
   const fnStart = src.indexOf('export async function importCustomersToPrivateGroupTransactional');
-  const fnBody = src.slice(fnStart, fnStart + 2200);
+  const fnBody = src.slice(fnStart, fnStart + 3000);
+  assert.match(fnBody, /let owner = \{ id: input\.actor\.id_nhan_vien, name: input\.actor\.ho_ten \}/);
   assert.match(fnBody, /entered_by_id: input\.actor\.id_nhan_vien/);
-  assert.match(fnBody, /assigned_to_id: input\.actor\.id_nhan_vien/);
+  assert.match(fnBody, /assigned_to_id: owner\.id/);
+  assert.match(fnBody, /sale_phu_trach: owner\.name/);
 });
 
 test('PrivateGroupPanel.tsx: nút "Import Excel" POST tới ĐÚNG route /api/private-groups/{groupId}/customers/import-excel (route riêng, không dùng chung /api/khach-hang/import-excel)', () => {
