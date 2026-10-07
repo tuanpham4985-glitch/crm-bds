@@ -730,48 +730,57 @@ export interface PrivateGroupImportResult {
  * 1. Validate actor THỰC SỰ là Leader HOẶC Sale thành viên của ĐÚNG group
  *    này (resolvePrivateGroupsForEmployee, CÙNG rule resolveManualCustomerGroup
  *    dùng cho add đơn) -> throw GroupNotAllowedError nếu không. NGOẠI LỆ:
- *    Admin import được vào mọi nhóm, nhưng khách giao cho Leader nhóm (Admin
- *    KHÔNG nhận khách) — non-admin vẫn assigned_to = actor như cũ.
- * 2. Tạo Customer + PrivateGroupCustomer cho TỪNG dòng, atomic PER-ROW (1
- *    transaction nhỏ/dòng) — KHÔNG SERIALIZABLE cho cả batch: nguy cơ 2 lượt
- *    import cùng lúc trùng SĐT là rất hiếm cho use-case Sale tự nhập data
- *    riêng (khác add đơn tương tác — vẫn giữ SERIALIZABLE riêng ở đó). 1
- *    dòng lỗi (hiếm, VD DB blip) bị cô lập vào `errors`, KHÔNG fail cả batch
- *    — các dòng còn lại vẫn import bình thường.
+ *    Admin import được vào mọi nhóm nhưng KHÔNG nhận khách, và KHÔNG giao cho
+ *    Leader — tự chia đều (round-robin) cho các Sale THÀNH VIÊN (trừ Leader,
+ *    trừ Admin); nhóm chưa có thành viên nào mới fallback về Leader.
+ *    Non-admin vẫn assigned_to = actor như cũ.
+ * 2. Ghi theo LÔ (IMPORT_CHUNK_SIZE dòng/transaction, createMany) — bản cũ 1
+ *    transaction/dòng mất ~0.9s/dòng trên Neon, file 362 dòng bị maxDuration
+ *    cắt ngang sau 26 dòng (bug thật 2026-10-07). Atomic PER-LÔ: 1 lô lỗi bị
+ *    cô lập vào `errors`, các lô còn lại vẫn import bình thường.
  * 3. KHÔNG BAO GIỜ ghi vào Customer đã tồn tại — route đã lọc 'already_exists'
  *    TRƯỚC khi gọi hàm này (cùng bất biến an toàn với createManualCustomerWithGroupLink).
  * 4. KHÔNG có Dataset/Import Batch — Private Group độc lập khỏi 2 hệ đó (xem
  *    comment đầu file).
  */
+const IMPORT_CHUNK_SIZE = 100;
+
 export async function importCustomersToPrivateGroupTransactional(input: {
   actor: CrmSessionUser;
   groupId: string;
   rows: readonly PrivateGroupImportRow[];
 }): Promise<PrivateGroupImportResult> {
   assertTransactionalCrm();
-  // Admin được import vào MỌI nhóm (yêu cầu 2026-10-07) nhưng KHÔNG nhận
-  // khách — giao thẳng cho Leader nhóm (Leader/Admin "Chia đều" lại sau, lọc
-  // nguồn "đang giao cho" = Leader). entered_by vẫn là Admin để giữ vết.
-  let owner = { id: input.actor.id_nhan_vien, name: input.actor.ho_ten };
+  let owners: TelesaleRef[] = [{ id_nhan_vien: input.actor.id_nhan_vien, ho_ten: input.actor.ho_ten }];
   if (isCrmAdmin(input.actor)) {
     const group = await prisma.privateGroup.findUnique({ where: { id: input.groupId }, select: { leader_id: true, leader_name: true } });
     if (!group) throw new GroupNotAllowedError();
-    owner = { id: group.leader_id, name: group.leader_name };
+    const members = await prisma.privateGroupMember.findMany({ where: { group_id: input.groupId }, orderBy: { created_at: 'asc' } });
+    const sales = members
+      .filter(m => m.employee_id !== group.leader_id && m.employee_id !== input.actor.id_nhan_vien)
+      .map(m => ({ id_nhan_vien: m.employee_id, ho_ten: m.employee_name }));
+    owners = sales.length > 0 ? sales : [{ id_nhan_vien: group.leader_id, ho_ten: group.leader_name }];
   } else {
     const groups = await resolvePrivateGroupsForEmployee(input.actor.id_nhan_vien);
     const allowed = groups.leaderOf.some(g => g.id === input.groupId) || groups.memberOf.some(g => g.id === input.groupId);
     if (!allowed) throw new GroupNotAllowedError();
   }
 
+  const stamp = Date.now();
+  const prepared = input.rows.map((row, i) => ({
+    row,
+    id_khach_hang: `KH_${stamp}_${i}_${Math.floor(Math.random() * 10000)}`,
+    owner: owners[i % owners.length],
+  }));
+
   const imported: string[] = [];
   const errors: PrivateGroupImportRowError[] = [];
-  for (let i = 0; i < input.rows.length; i++) {
-    const row = input.rows[i];
-    const id_khach_hang = `KH_${Date.now()}_${i}_${Math.floor(Math.random() * 10000)}`;
+  for (let start = 0; start < prepared.length; start += IMPORT_CHUNK_SIZE) {
+    const chunk = prepared.slice(start, start + IMPORT_CHUNK_SIZE);
     try {
       await prisma.$transaction(async tx => {
-        await tx.khachHang.create({
-          data: {
+        await tx.khachHang.createMany({
+          data: chunk.map(({ row, id_khach_hang, owner }) => ({
             id_khach_hang,
             ngay_tao: new Date().toISOString(),
             ten_KH: row.ten_KH,
@@ -780,7 +789,7 @@ export async function importCustomersToPrivateGroupTransactional(input: {
             nguon: '',
             nhu_cau: '',
             ghi_chu: '',
-            sale_phu_trach: owner.name,
+            sale_phu_trach: owner.ho_ten,
             label_khach: `${row.ten_KH} - ${row.so_dien_thoai}`,
             du_an: '',
             trang_thai_cham_soc: 'Chưa gọi',
@@ -789,23 +798,25 @@ export async function importCustomersToPrivateGroupTransactional(input: {
             lich_su_cham_soc: '[]',
             trang_thai_ban_giao: 'Chưa bàn giao',
             lich_su_ban_giao: '[]',
-          },
+          })),
         });
-        await tx.privateGroupCustomer.create({
-          data: {
+        await tx.privateGroupCustomer.createMany({
+          data: chunk.map(({ id_khach_hang, owner }) => ({
             group_id: input.groupId,
             customer_id: id_khach_hang,
             entered_by_id: input.actor.id_nhan_vien,
             entered_by_name: input.actor.ho_ten,
-            assigned_to_id: owner.id,
-            assigned_to_name: owner.name,
-          },
+            assigned_to_id: owner.id_nhan_vien,
+            assigned_to_name: owner.ho_ten,
+          })),
         });
-      });
-      imported.push(row.ten_KH);
+      }, { timeout: 20000 });
+      imported.push(...chunk.map(c => c.row.ten_KH));
     } catch (e) {
-      errors.push({ ten_KH: row.ten_KH, error: e instanceof Error ? e.message : String(e) });
+      const message = e instanceof Error ? e.message : String(e);
+      errors.push(...chunk.map(c => ({ ten_KH: c.row.ten_KH, error: message })));
     }
   }
+  if (imported.length > 0) invalidateCustomerCache();
   return { imported, errors };
 }

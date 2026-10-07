@@ -13,7 +13,7 @@ import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-wo
 // File nhỏ (data 1 Sale tự khai thác, KHÔNG phải Dataset hàng nghìn dòng) —
 // không cần chunk/checkpoint như /api/khach-hang/import-excel, nhưng vẫn đặt
 // timeout riêng rộng hơn mặc định phòng file vài trăm dòng x transaction/dòng.
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export interface PrivateGroupImportExcelResult {
   success: boolean;
