@@ -16,14 +16,8 @@ import type { Department, ContractCategory } from '@/config/contractTemplates';
 import { FIELD_LABELS, getFieldLabel, DEPARTMENT_LABELS } from '@/config/fieldLabels';
 import Link from 'next/link';
 import { isHocViecStatus } from '@/lib/auth/access-scope';
+import { getContractStatus } from '@/lib/contract-status';
 
-function getContractStatus(ngay_ket_thuc: string): string {
-  if (!ngay_ket_thuc) return 'Còn hiệu lực';
-  const endDate = new Date(ngay_ket_thuc);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return endDate < today ? 'Hết hạn' : 'Còn hiệu lực';
-}
 
 /**
  * Extract numeric part from id_nhan_vien.
@@ -243,7 +237,7 @@ function HopDongContent() {
 
   const getActiveContractCount = (employeeId: string) => {
     return contracts.filter(
-      c => c.id_nhan_vien === employeeId && getContractStatus(c.ngay_ket_thuc) === 'Còn hiệu lực'
+      c => c.id_nhan_vien === employeeId && getContractStatus(c) === 'Còn hiệu lực'
     ).length;
   };
 
@@ -259,7 +253,7 @@ function HopDongContent() {
       hd.so_hop_dong.toLowerCase().includes(searchQuery.toLowerCase()) ||
       empName.includes(searchQuery.toLowerCase());
     const matchType = !filterType || hd.contract_type === filterType;
-    const matchStatus = !filterStatus || getContractStatus(hd.ngay_ket_thuc) === filterStatus;
+    const matchStatus = !filterStatus || getContractStatus(hd) === filterStatus;
     const matchEmployee = !filterEmployee || hd.id_nhan_vien === filterEmployee;
     return matchSearch && matchType && matchStatus && matchEmployee;
   });
@@ -505,8 +499,9 @@ function HopDongContent() {
 
   // KPI stats
   const totalContracts = accessibleContracts.length;
-  const activeContracts = accessibleContracts.filter(c => getContractStatus(c.ngay_ket_thuc) === 'Còn hiệu lực').length;
-  const expiredContracts = totalContracts - activeContracts;
+  const activeContracts = accessibleContracts.filter(c => getContractStatus(c) === 'Còn hiệu lực').length;
+  const terminatedContracts = accessibleContracts.filter(c => getContractStatus(c) === 'Đã chấm dứt').length;
+  const expiredContracts = totalContracts - activeContracts - terminatedContracts;
 
   if (loading || authLoading) {
     return <div className="loading-spinner"><div className="spinner" /></div>;
@@ -541,7 +536,7 @@ function HopDongContent() {
       </div>
 
       {/* KPI Cards */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 20 }}>
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: 20 }}>
         <div className="kpi-card">
           <div className="kpi-label">Tổng hợp đồng</div>
           <div className="kpi-value">{totalContracts}</div>
@@ -553,6 +548,10 @@ function HopDongContent() {
         <div className="kpi-card">
           <div className="kpi-label">Hết hạn</div>
           <div className="kpi-value" style={{ color: 'var(--danger-text)' }}>{expiredContracts}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Đã chấm dứt</div>
+          <div className="kpi-value" style={{ color: 'var(--text-muted)' }}>{terminatedContracts}</div>
         </div>
       </div>
 
@@ -584,6 +583,7 @@ function HopDongContent() {
             <option value="">Tất cả trạng thái</option>
             <option value="Còn hiệu lực">Còn hiệu lực</option>
             <option value="Hết hạn">Hết hạn</option>
+            <option value="Đã chấm dứt">Đã chấm dứt</option>
           </select>
           {employees.length > 0 && (
             <select className="form-select" value={filterEmployee}
@@ -626,7 +626,7 @@ function HopDongContent() {
               </thead>
               <tbody>
                 {filteredContracts.map((hd, idx) => {
-                  const status = getContractStatus(hd.ngay_ket_thuc);
+                  const status = getContractStatus(hd);
                   const statusColor = TRANG_THAI_HOP_DONG_COLORS[status] || { bg: '#f1f5f9', text: '#475569' };
                   return (
                     <tr key={hd.id}>
@@ -664,6 +664,11 @@ function HopDongContent() {
                           <Calendar size={13} style={{ color: 'var(--text-label)' }} />
                           {hd.ngay_ket_thuc ? formatDate(hd.ngay_ket_thuc) : 'Không thời hạn'}
                         </span>
+                        {hd.ngay_cham_dut && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                            Nghỉ việc: {formatDate(hd.ngay_cham_dut)}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <span className="badge" style={{
@@ -932,9 +937,10 @@ function HopDongContent() {
                   { label: 'Chức danh', value: viewItem.employee_type || '—' },
                   { label: getFieldLabel('phong_KD'), value: viewItem.phong_KD || '—' },
                   { label: getFieldLabel('contract_type'), value: viewItem.contract_type },
-                  { label: 'Trạng thái', value: getContractStatus(viewItem.ngay_ket_thuc), isBadge: true },
+                  { label: 'Trạng thái', value: getContractStatus(viewItem), isBadge: true },
                   { label: getFieldLabel('ngay_bat_dau'), value: formatDate(viewItem.ngay_bat_dau) },
                   { label: getFieldLabel('ngay_ket_thuc'), value: viewItem.ngay_ket_thuc ? formatDate(viewItem.ngay_ket_thuc) : 'Không thời hạn' },
+                  ...(viewItem.ngay_cham_dut ? [{ label: 'Ngày chấm dứt (nghỉ việc)', value: formatDate(viewItem.ngay_cham_dut) }] : []),
                   { label: getFieldLabel('luong_co_ban'), value: formatCurrency(viewItem.luong_co_ban) },
                   { label: getFieldLabel('created_at'), value: formatDate(viewItem.created_at) },
                 ].map((item, i) => (

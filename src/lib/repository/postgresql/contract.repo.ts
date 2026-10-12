@@ -19,8 +19,9 @@ export class PostgresContractRepository implements IContractRepository {
         contract_type: true,
         ngay_bat_dau: true,
         ngay_ket_thuc: true,
+        ngay_cham_dut: true,
       },
-    }).then(rows => rows.map(r => ({ ...r, ngay_ket_thuc: r.ngay_ket_thuc ?? '' })));
+    }).then(rows => rows.map(r => ({ ...r, ngay_ket_thuc: r.ngay_ket_thuc ?? '', ngay_cham_dut: r.ngay_cham_dut ?? '' })));
   }
 
   // Gộp nhiều bản ghi tạo mới thành 1 round-trip (createMany) thay vì gọi create()
@@ -35,6 +36,15 @@ export class PostgresContractRepository implements IContractRepository {
   async updateDates(id: string, ngay_bat_dau: string, ngay_ket_thuc: string): Promise<boolean> {
     try {
       await prisma.hopDong.update({ where: { id }, data: { ngay_bat_dau, ngay_ket_thuc } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async updateTermination(id: string, ngay_cham_dut: string): Promise<boolean> {
+    try {
+      await prisma.hopDong.update({ where: { id }, data: { ngay_cham_dut: ngay_cham_dut || null } });
       return true;
     } catch {
       return false;
@@ -92,6 +102,7 @@ function toHopDong(row: NonNullable<PgHopDong>): HopDong {
     template_file: row.template_file ?? '',
     ngay_bat_dau:  row.ngay_bat_dau,
     ngay_ket_thuc: row.ngay_ket_thuc ?? '',
+    ngay_cham_dut: row.ngay_cham_dut ?? '',
     luong_co_ban:  row.luong_co_ban,
     ghi_chu:       row.ghi_chu ?? '',
     created_at:    row.created_at.toISOString(),
@@ -111,6 +122,8 @@ function fromHopDong(hd: HopDong) {
     template_file: hd.template_file,
     ngay_bat_dau:  hd.ngay_bat_dau,
     ngay_ket_thuc: hd.ngay_ket_thuc,
+    // undefined (client không gửi) → Prisma bỏ qua, giữ nguyên giá trị đang có
+    ngay_cham_dut: hd.ngay_cham_dut === undefined ? undefined : (hd.ngay_cham_dut || null),
     luong_co_ban:  hd.luong_co_ban,
     ghi_chu:       hd.ghi_chu,
   };

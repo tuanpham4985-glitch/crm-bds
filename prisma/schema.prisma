@@ -556,6 +556,7 @@ model HopDong {
   template_file   String?
   ngay_bat_dau    String
   ngay_ket_thuc   String?
+  ngay_cham_dut   String?
   luong_co_ban    Float    @default(0)
   ghi_chu         String?
   created_at      DateTime @default(now())

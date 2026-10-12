@@ -16,7 +16,7 @@
 // Dùng bởi: nút "Đồng bộ nhân sự" (/api/nhan-vien/sync)
 // ============================================================
 import { getEmployeeRepository, getContractRepository } from '@/lib/repository';
-import { getContractDatesFromHrFile } from '@/lib/google-sheets';
+import { getContractDatesFromHrFile, type HrContractDateRecord } from '@/lib/google-sheets';
 import { detectEmployeeClassification, getContractTemplate } from '@/lib/contractEngine';
 import type { HopDong } from '@/lib/types';
 import { isHocViecStatus } from '@/lib/auth/access-scope';
@@ -59,9 +59,11 @@ export interface SyncContractDatesResult {
   errors: string[];
 }
 
-export async function syncContractDatesFromHrFile(): Promise<SyncContractDatesResult> {
+// prefetched: bản đã đọc sẵn từ file HR (route sync dùng lại cho bước chấm dứt
+// HĐ theo ngày nghỉ việc, khỏi đọc file HR 2 lần).
+export async function syncContractDatesFromHrFile(prefetched?: HrContractDateRecord[]): Promise<SyncContractDatesResult> {
   const [hrRecords, employees, contractsNarrow] = await Promise.all([
-    getContractDatesFromHrFile(),
+    prefetched ?? getContractDatesFromHrFile(),
     getEmployeeRepository().findAll(),
     getContractRepository().findMatchFields(),
   ]);

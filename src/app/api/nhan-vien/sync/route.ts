@@ -3,6 +3,8 @@ import { revalidateTag } from 'next/cache';
 import { syncEmployeesFromHrFile, syncManagerFromHrFile } from '@/lib/data-access';
 import { syncNhanVienToPostgres } from '@/lib/sync/nhan-vien-to-pg';
 import { syncContractDatesFromHrFile } from '@/lib/sync/contract-dates-from-hr';
+import { syncContractTerminationsFromHr } from '@/lib/sync/contract-termination-from-hr';
+import { getContractDatesFromHrFile } from '@/lib/google-sheets';
 import { syncTmUsersFromNhanVien } from '@/lib/task-management/sync-users';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { invalidate } from '@/lib/mem-cache';
@@ -46,13 +48,28 @@ export async function POST() {
     // 4.5. File HR ngoài (cột HĐ Thử việc / HĐLĐ XĐTH 12 tháng) → bảng hop_dong.
     // Chạy sau bước 3 vì cần NHAN_VIEN trong Postgres đã có mặt để khớp mã NV.
     // Gộp vào cùng nút thay vì để người dùng phải nhớ chạy script riêng.
-    const contracts = isPostgresEnabled('contracts')
-      ? await syncContractDatesFromHrFile().catch(e => {
+    const hrContractRecords = isPostgresEnabled('contracts')
+      ? await getContractDatesFromHrFile().catch(e => {
+          console.error('[nhan-vien/sync] Read HR contract columns failed:', e instanceof Error ? e.message : e);
+          return null;
+        })
+      : null;
+    const contracts = hrContractRecords
+      ? await syncContractDatesFromHrFile(hrContractRecords).catch(e => {
           console.error('[nhan-vien/sync] Contract dates sync failed:', e instanceof Error ? e.message : e);
           return null;
         })
       : null;
-    if (contracts && (contracts.created > 0 || contracts.updated > 0)) {
+
+    // 4.6. Cột "Thời gian nghỉ việc" → hop_dong.ngay_cham_dut. Chạy SAU 4.5 để
+    // HĐ vừa tạo từ file HR cũng được chấm dứt ngay trong cùng lần bấm.
+    const terminations = hrContractRecords
+      ? await syncContractTerminationsFromHr(hrContractRecords).catch(e => {
+          console.error('[nhan-vien/sync] Contract termination sync failed:', e instanceof Error ? e.message : e);
+          return null;
+        })
+      : null;
+    if ((contracts && (contracts.created > 0 || contracts.updated > 0)) || (terminations && terminations.terminated > 0)) {
       revalidateTag('hd', {});
       invalidate('gs:hd');
     }
@@ -61,7 +78,7 @@ export async function POST() {
     revalidateTag('nv', {});
     invalidate('gs:nv');
 
-    return NextResponse.json({ success: true, data: { ...result, manager, postgres, taskUsers, contracts } });
+    return NextResponse.json({ success: true, data: { ...result, manager, postgres, taskUsers, contracts, terminations } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Lỗi kết nối đồng bộ';
     console.error('NhanVien Sync POST error:', message);

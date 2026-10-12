@@ -52,6 +52,7 @@ export const LOAI_HOP_DONG = ['Thử việc', 'Chính thức', 'CTV'] as const;
 export const TRANG_THAI_HOP_DONG_COLORS: Record<string, { bg: string; text: string }> = {
   'Còn hiệu lực': { bg: '#ecfdf5', text: '#065f46' },
   'Hết hạn': { bg: '#fff1f2', text: '#9f1239' },
+  'Đã chấm dứt': { bg: '#f1f5f9', text: '#475569' },
 };
 
 // === BỔ NHIỆM / MIỄN NHIỆM CHỨC VỤ ===

@@ -76,6 +76,9 @@ export interface HopDong {
 
   ngay_bat_dau: string;
   ngay_ket_thuc: string;
+  // Ngày chấm dứt sớm (ISO) — lấy từ cột "Thời gian nghỉ việc" của file HR khi
+  // nhân viên nghỉ trước ngay_ket_thuc. Rỗng/undefined = HĐ chưa bị chấm dứt.
+  ngay_cham_dut?: string;
 
   luong_co_ban: number;
 

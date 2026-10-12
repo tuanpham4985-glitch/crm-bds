@@ -124,7 +124,7 @@ export interface ICrmTaskRepository {
 
 // ─── CONTRACT / HỢP ĐỒNG ─────────────────────────────────────
 
-export type HopDongMatchFields = Pick<HopDong, 'id' | 'id_nhan_vien' | 'so_hop_dong' | 'contract_type' | 'ngay_bat_dau' | 'ngay_ket_thuc'>;
+export type HopDongMatchFields = Pick<HopDong, 'id' | 'id_nhan_vien' | 'so_hop_dong' | 'contract_type' | 'ngay_bat_dau' | 'ngay_ket_thuc' | 'ngay_cham_dut'>;
 
 export interface IContractRepository {
   findAll(): Promise<HopDong[]>;
@@ -141,6 +141,8 @@ export interface IContractRepository {
   createMany(data: HopDong[]): Promise<void>;
   // Cập nhật CHỈ 2 cột ngày — không cần đọc/ghi lại cả hàng như update(full).
   updateDates(id: string, ngay_bat_dau: string, ngay_ket_thuc: string): Promise<boolean>;
+  // Cập nhật CHỈ cột ngay_cham_dut ('' = xoá) — dùng khi đồng bộ ngày nghỉ việc từ file HR.
+  updateTermination(id: string, ngay_cham_dut: string): Promise<boolean>;
 }
 
 // ─── ATTENDANCE OUTSIDE / CHẤM CÔNG NGOÀI ────────────────────

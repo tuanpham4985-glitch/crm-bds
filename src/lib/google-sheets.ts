@@ -1801,7 +1801,7 @@ export async function findNhanVienByEmail(email: string): Promise<NhanVien | nul
 // HỢP ĐỒNG (Contracts) — CORE LAYER: English keys
 // ============================================================
 
-const HOP_DONG_HEADERS = ['id', 'id_nhan_vien', 'ten_nhan_vien', 'so_hop_dong', 'phong_KD', 'employee_type', 'department', 'contract_type', 'template_file', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at'];
+const HOP_DONG_HEADERS = ['id', 'id_nhan_vien', 'ten_nhan_vien', 'so_hop_dong', 'phong_KD', 'employee_type', 'department', 'contract_type', 'template_file', 'ngay_bat_dau', 'ngay_ket_thuc', 'luong_co_ban', 'ghi_chu', 'created_at', 'ngay_cham_dut'];
 
 export async function getHopDong(): Promise<HopDong[]> {
   const doc = await getDoc();
@@ -1852,6 +1852,7 @@ export async function getHopDong(): Promise<HopDong[]> {
         template_file: str(v['template_file']),
         ngay_bat_dau: str(v['ngay_bat_dau']),
         ngay_ket_thuc: str(v['ngay_ket_thuc']),
+        ngay_cham_dut: str(v['ngay_cham_dut']),
         luong_co_ban: num(v['luong_co_ban']),
         ghi_chu: str(v['ghi_chu']),
         created_at: str(v['created_at']),
@@ -1887,6 +1888,7 @@ export async function addHopDong(hd: HopDong): Promise<void> {
   rowData['luong_co_ban'] = hd.luong_co_ban || 0;
   rowData['ghi_chu'] = hd.ghi_chu || '';
   rowData['created_at'] = hd.created_at || '';
+  rowData['ngay_cham_dut'] = hd.ngay_cham_dut || '';
 
   await sheet.addRow(rowData);
   await addLog(doc, 'CREATE_HD', hd.id, hd.id_nhan_vien, '');
@@ -1919,6 +1921,8 @@ export async function updateHopDong(hd: HopDong): Promise<boolean> {
     ngay_ket_thuc: hd.ngay_ket_thuc || '',
     luong_co_ban: hd.luong_co_ban || 0,
     ghi_chu: hd.ghi_chu || '',
+    // undefined (client không gửi) → giữ nguyên ô đang có
+    ...(hd.ngay_cham_dut !== undefined ? { ngay_cham_dut: hd.ngay_cham_dut || '' } : {}),
   });
 
   await row.save();
@@ -4708,6 +4712,12 @@ export interface HrContractDateRecord {
   tv_den_ngay: string; // HĐ Thử việc, "Đến ngày"
   ct_tu_ngay: string;  // HĐLĐ XĐTH 12 tháng (Chính thức), "Từ ngày"
   ct_den_ngay: string; // HĐLĐ XĐTH 12 tháng (Chính thức), "Đến ngày"
+  trang_thai: string;  // cột "Trạng thái NV"
+  ngay_nghi_viec: string;     // ISO YYYY-MM-DD, '' nếu trống HOẶC không đọc được
+  // Text hiển thị gốc — để báo lỗi khi ô có chữ nhưng parse không ra ngày.
+  // null = file HR KHÔNG có cột "Thời gian nghỉ việc" (đổi tên/xoá cột) → bên
+  // đồng bộ chấm dứt HĐ phải dừng hẳn, không được hiểu là "mọi người đều trống".
+  ngay_nghi_viec_raw: string | null;
 }
 
 export async function getContractDatesFromHrFile(): Promise<HrContractDateRecord[]> {
@@ -4778,6 +4788,8 @@ export async function getContractDatesFromHrFile(): Promise<HrContractDateRecord
   const colMNV   = findCol(['mnv', 'manv', 'manhânvien', 'mãnv'], 1);
   const colHoTen = findCol(['hoten', 'hovaten', 'hotennhanvien'], 2);
   const colChucDanh = findCol(['chucdanh', 'chucvu', 'vitri'], -1);
+  const colTrangThai = findCol(['trangthainv', 'trangthai', 'tinhtrangnv'], -1);
+  const colNghiViec  = findCol(['thoigiannghiviec', 'ngaynghiviec'], -1);
 
   const colThuViecTu = findCategoryStartCol(['thuviec']);
   const colChinhThucTu = findCategoryStartCol(['xdth', 'chinhthuc', 'hdldxdth']);
@@ -4817,6 +4829,21 @@ export async function getContractDatesFromHrFile(): Promise<HrContractDateRecord
     return '';
   };
 
+  // Ô định dạng Ngày tháng thật → .value là serial number, quy đổi CHÍNH XÁC từ
+  // serial thay vì parse text hiển thị: text phụ thuộc định dạng hiển thị của ô
+  // (file HR có ô hiện "5/28/2026" kiểu Mỹ lẫn với "28/05/2026"). Ô nhập dạng chữ
+  // thì mới parse text theo dd/mm/yyyy như các cột ngày khác.
+  const getDateISO = (r: number, c: number): string => {
+    if (c < 0) return '';
+    const v = hrSheet.getCell(r, c).value;
+    if (typeof v === 'number' && v > 0) {
+      const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86_400_000);
+      const pad2 = (n: number) => String(n).padStart(2, '0');
+      return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    }
+    return parseDateISO(getCellText(r, c));
+  };
+
   const results: HrContractDateRecord[] = [];
 
   for (let r = HEADER_ROW_IDX + 1; r < rowCount; r++) {
@@ -4832,6 +4859,9 @@ export async function getContractDatesFromHrFile(): Promise<HrContractDateRecord
       tv_den_ngay: parseDateISO(getCellText(r, colThuViecTu >= 0 ? colThuViecTu + 1 : -1)),
       ct_tu_ngay:  parseDateISO(getCellText(r, colChinhThucTu)),
       ct_den_ngay: parseDateISO(getCellText(r, colChinhThucTu >= 0 ? colChinhThucTu + 1 : -1)),
+      trang_thai:  getCellText(r, colTrangThai),
+      ngay_nghi_viec:     getDateISO(r, colNghiViec),
+      ngay_nghi_viec_raw: colNghiViec >= 0 ? getCellText(r, colNghiViec) : null,
     });
   }
 
@@ -4839,7 +4869,8 @@ export async function getContractDatesFromHrFile(): Promise<HrContractDateRecord
     `[getContractDatesFromHrFile] ${results.length} records — ` +
     `MNV:${colMNV}, HoTen:${colHoTen}, ChucDanh:${colChucDanh}, ` +
     `ThuViec:${colThuViecTu}(${categoryHeaders[colThuViecTu] ?? '?'}), ` +
-    `ChinhThuc:${colChinhThucTu}(${categoryHeaders[colChinhThucTu] ?? '?'})`
+    `ChinhThuc:${colChinhThucTu}(${categoryHeaders[colChinhThucTu] ?? '?'}), ` +
+    `TrangThai:${colTrangThai}, NghiViec:${colNghiViec}(${headers[colNghiViec] ?? '?'})`
   );
 
   return results;

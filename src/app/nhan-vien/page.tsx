@@ -15,6 +15,7 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 import { VAI_TRO } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
 import { TRANG_THAI_HOC_VIEC, isHocViecStatus, normalizeTrangThaiNV } from '@/lib/auth/access-scope';
+import { getContractStatus } from '@/lib/contract-status';
 
 const NHAN_VIEN_FIELDS = [
   { id: 'index', label: '#', width: 50, public: true },
@@ -251,6 +252,23 @@ export default function NhanVienPage() {
         if (ct?.errors?.length) {
           lines.push(`- Lỗi đồng bộ hợp đồng: ${ct.errors.length} (xem log server)`);
         }
+        const term = result.data?.terminations;
+        if (term) {
+          if (term.terminated > 0) {
+            lines.push(`- Hợp đồng chấm dứt theo ngày nghỉ việc: cập nhật ${term.terminated} HĐ`);
+          }
+          // Danh sách để nhân sự sửa file nguồn — các trường hợp này CRM KHÔNG tự chấm dứt HĐ
+          const listOut = (title: string, items: string[]) => {
+            if (!items?.length) return;
+            lines.push('', `${title} (${items.length}):`);
+            items.slice(0, 15).forEach(s => lines.push(`  • ${s}`));
+            if (items.length > 15) lines.push(`  … và ${items.length - 15} người khác`);
+          };
+          listOut('⚠ Trạng thái "Nghỉ việc" nhưng thiếu Thời gian nghỉ việc', term.missingDate);
+          listOut('⚠ Thời gian nghỉ việc sai định dạng (cần dd/mm/yyyy)', term.invalidDate);
+          listOut('⚠ Cần kiểm tra lại trên file nguồn', term.conflicts);
+          if (term.errors?.length) lines.push('', `- Lỗi chấm dứt hợp đồng: ${term.errors.join('; ')}`);
+        }
         alert(lines.join('\n'));
         fetchAll(true);
       } else {
@@ -323,10 +341,7 @@ export default function NhanVienPage() {
       c.id_nhan_vien === employeeId ||
       (emp && c.ten_nhan_vien && c.ten_nhan_vien === emp.ho_ten)
     );
-    const active = empContracts.filter(c => {
-      if (!c.ngay_ket_thuc) return true;
-      return new Date(c.ngay_ket_thuc) >= new Date();
-    });
+    const active = empContracts.filter(c => getContractStatus(c) === 'Còn hiệu lực');
     return { total: empContracts.length, active: active.length };
   };
 

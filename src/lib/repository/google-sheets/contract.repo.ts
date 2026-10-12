@@ -20,6 +20,7 @@ export class GoogleSheetsContractRepository implements IContractRepository {
     return all.map(h => ({
       id: h.id, id_nhan_vien: h.id_nhan_vien, so_hop_dong: h.so_hop_dong,
       contract_type: h.contract_type, ngay_bat_dau: h.ngay_bat_dau, ngay_ket_thuc: h.ngay_ket_thuc,
+      ngay_cham_dut: h.ngay_cham_dut ?? '',
     }));
   }
 
@@ -31,6 +32,12 @@ export class GoogleSheetsContractRepository implements IContractRepository {
     const full = await this.findById(id);
     if (!full) return false;
     return updateHopDong({ ...full, ngay_bat_dau, ngay_ket_thuc });
+  }
+
+  async updateTermination(id: string, ngay_cham_dut: string): Promise<boolean> {
+    const full = await this.findById(id);
+    if (!full) return false;
+    return updateHopDong({ ...full, ngay_cham_dut });
   }
 
   async findById(id: string): Promise<HopDong | null> {
