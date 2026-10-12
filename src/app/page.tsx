@@ -259,6 +259,10 @@ export default function DashboardPage() {
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
   const [showYearDropdown, setShowYearDropdown] = useState(false);
+  // Quý 1-4. Trước đây nút "Quý" luôn là quý hiện tại (không chọn được quý
+  // khác) — đầu quý mới thì Dashboard trống trơn dù quý trước có dữ liệu.
+  const [selectedQuarter, setSelectedQuarter] = useState(() => Math.floor(new Date().getMonth() / 3) + 1);
+  const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const monthDropdownRef = useRef<HTMLDivElement>(null);
   const [compare, setCompare] = useState('');
   const [loading, setLoading] = useState(true);
@@ -286,6 +290,7 @@ export default function DashboardPage() {
       if (monthDropdownRef.current && !monthDropdownRef.current.contains(e.target as Node)) {
         setShowMonthDropdown(false);
         setShowYearDropdown(false);
+        setShowQuarterDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -306,6 +311,12 @@ export default function DashboardPage() {
         const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
         params.set('from', `${selectedYear}-${mm}-01`);
         params.set('to', `${selectedYear}-${mm}-${String(lastDay).padStart(2, '0')}`);
+      }
+      if (period === 'quarter') {
+        const startMonth = (selectedQuarter - 1) * 3 + 1;
+        const lastDay = new Date(selectedYear, startMonth + 2, 0).getDate();
+        params.set('from', `${selectedYear}-${String(startMonth).padStart(2, '0')}-01`);
+        params.set('to', `${selectedYear}-${String(startMonth + 2).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
       }
       if (period === 'year') {
         params.set('from', `${selectedYear}-01-01`);
@@ -331,7 +342,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, compare, selectedMonth, selectedYear]);
+  }, [period, compare, selectedMonth, selectedQuarter, selectedYear]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -390,8 +401,9 @@ export default function DashboardPage() {
         break;
       }
       case 'quarter': {
-        const q = Math.floor(today.getMonth() / 3);
-        from = new Date(today.getFullYear(), q * 3, 1);
+        from = new Date(selectedYear, (selectedQuarter - 1) * 3, 1);
+        const quarterEnd = new Date(selectedYear, selectedQuarter * 3, 0);
+        to = quarterEnd > today ? today : quarterEnd;
         break;
       }
       case 'year':
@@ -471,19 +483,23 @@ export default function DashboardPage() {
               <button
                 className={`toggle-btn ${period === 'month' ? 'active' : ''}`}
                 style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                onClick={() => { setPeriod('month'); setShowMonthDropdown(v => !v); setShowYearDropdown(false); }}
+                onClick={() => { setPeriod('month'); setShowMonthDropdown(v => !v); setShowYearDropdown(false); setShowQuarterDropdown(false); }}
               >
                 {period === 'month' ? `T${selectedMonth}/${selectedYear}` : 'Tháng'}
                 <ChevronDown size={13} style={{ opacity: 0.7, transition: 'transform 150ms', transform: showMonthDropdown ? 'rotate(180deg)' : 'none' }} />
               </button>
               <button
                 className={`toggle-btn ${period === 'quarter' ? 'active' : ''}`}
-                onClick={() => { setPeriod('quarter'); setShowMonthDropdown(false); setShowYearDropdown(false); }}
-              >Quý</button>
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                onClick={() => { setPeriod('quarter'); setShowQuarterDropdown(v => !v); setShowMonthDropdown(false); setShowYearDropdown(false); }}
+              >
+                {period === 'quarter' ? `Q${selectedQuarter}/${selectedYear}` : 'Quý'}
+                <ChevronDown size={13} style={{ opacity: 0.7, transition: 'transform 150ms', transform: showQuarterDropdown ? 'rotate(180deg)' : 'none' }} />
+              </button>
               <button
                 className={`toggle-btn ${period === 'year' ? 'active' : ''}`}
                 style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                onClick={() => { setPeriod('year'); setShowYearDropdown(v => !v); setShowMonthDropdown(false); }}
+                onClick={() => { setPeriod('year'); setShowYearDropdown(v => !v); setShowMonthDropdown(false); setShowQuarterDropdown(false); }}
               >
                 {period === 'year' ? `${selectedYear}` : 'Năm'}
                 <ChevronDown size={13} style={{ opacity: 0.7, transition: 'transform 150ms', transform: showYearDropdown ? 'rotate(180deg)' : 'none' }} />
@@ -508,6 +524,7 @@ export default function DashboardPage() {
                       const curMonth = new Date().getMonth() + 1;
                       const curYear = new Date().getFullYear();
                       if (y === curYear && selectedMonth > curMonth) setSelectedMonth(curMonth);
+                      if (y === curYear && selectedQuarter > Math.ceil(curMonth / 3)) setSelectedQuarter(Math.ceil(curMonth / 3));
                     }} style={{
                       flex: 1, padding: '4px 0', borderRadius: 'var(--radius-sm)', border: 'none',
                       cursor: 'pointer', fontSize: 12, fontWeight: 600,
@@ -545,6 +562,60 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Quarter dropdown */}
+            {showQuarterDropdown && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
+                borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+                padding: 8, zIndex: 200,
+                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4,
+                minWidth: 192,
+              }}>
+                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 4, marginBottom: 4, paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>
+                  {[2025, 2026].map(y => (
+                    <button key={y} onClick={() => {
+                      setSelectedYear(y);
+                      const now = new Date();
+                      const curQuarter = Math.floor(now.getMonth() / 3) + 1;
+                      if (y === now.getFullYear() && selectedQuarter > curQuarter) setSelectedQuarter(curQuarter);
+                    }} style={{
+                      flex: 1, padding: '4px 0', borderRadius: 'var(--radius-sm)', border: 'none',
+                      cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                      background: selectedYear === y ? 'var(--primary)' : 'var(--bg-muted)',
+                      color: selectedYear === y ? '#fff' : 'var(--text-body)',
+                    }}>{y}</button>
+                  ))}
+                </div>
+                {[1, 2, 3, 4].map(q => {
+                  const today = new Date();
+                  const isFuture = selectedYear > today.getFullYear() ||
+                    (selectedYear === today.getFullYear() && q > Math.floor(today.getMonth() / 3) + 1);
+                  return (
+                    <button
+                      key={q}
+                      disabled={isFuture}
+                      onClick={() => { if (!isFuture) { setSelectedQuarter(q); setShowQuarterDropdown(false); } }}
+                      style={{
+                        padding: '6px 4px', borderRadius: 'var(--radius-sm)',
+                        border: 'none',
+                        cursor: isFuture ? 'not-allowed' : 'pointer',
+                        fontSize: 13, fontWeight: 500,
+                        background: selectedQuarter === q ? 'var(--primary)' : 'transparent',
+                        color: isFuture ? 'var(--text-muted)' : selectedQuarter === q ? '#fff' : 'var(--text-body)',
+                        opacity: isFuture ? 0.4 : 1,
+                        transition: 'background var(--transition-fast)',
+                      }}
+                      onMouseEnter={e => { if (!isFuture && selectedQuarter !== q) (e.target as HTMLButtonElement).style.background = 'var(--primary-light)'; }}
+                      onMouseLeave={e => { if (!isFuture && selectedQuarter !== q) (e.target as HTMLButtonElement).style.background = 'transparent'; }}
+                    >
+                      Q{q}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Year dropdown */}
             {showYearDropdown && (
               <div style={{
@@ -561,6 +632,7 @@ export default function DashboardPage() {
                     const curMonth = new Date().getMonth() + 1;
                     const curYear = new Date().getFullYear();
                     if (y === curYear && selectedMonth > curMonth) setSelectedMonth(curMonth);
+                    if (y === curYear && selectedQuarter > Math.ceil(curMonth / 3)) setSelectedQuarter(Math.ceil(curMonth / 3));
                   }} style={{
                     padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none',
                     cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'center',

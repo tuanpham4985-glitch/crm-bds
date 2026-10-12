@@ -468,6 +468,13 @@ export async function GET(request: NextRequest) {
     if (fromParam && toParam) {
       dateRange.from = new Date(fromParam);
       dateRange.to = new Date(toParam + 'T23:59:59');
+      // Quý chọn tuỳ ý (Q1-Q4 + năm) → kỳ so sánh là quý liền trước quý ĐƯỢC
+      // CHỌN, không phải quý liền trước quý hiện tại như getDateRange() tính.
+      if (period === 'quarter') {
+        const [y, m] = fromParam.split('-').map(Number);
+        dateRange.prevFrom = new Date(y, m - 4, 1);
+        dateRange.prevTo = new Date(y, m - 1, 0);
+      }
     }
     const useDepositDateForRevenue = reportMode === 'race';
     const revenueDateSource = useDepositDateForRevenue ? 'deposit' : 'signed';
