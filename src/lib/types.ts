@@ -541,6 +541,9 @@ export interface DoanhThuTheoThang {
   thang: string;
   doanh_thu: number;
   doanh_thu_prev?: number;
+  // Chỉ có khi bật So sánh: tháng tương ứng của kỳ so sánh, và cờ tháng chưa tới
+  thang_prev?: string;
+  chua_den?: boolean;
 }
 
 export interface NguonKhachHang {
@@ -627,6 +630,21 @@ export interface DashboardData {
   tonghop?: TongHopStats;
   nhan_su_bien_dong?: NhanSuBienDongItem[];
   report_mode?: 'standard' | 'race' | 'default';
+  so_sanh?: DashboardSoSanh;
+}
+
+// Chỉ có khi request gửi compare=prev|yoy. Số kỳ so sánh lấy CÙNG nguồn với
+// số kỳ hiện tại đang hiển thị trên thẻ KPI (tonghop khi đã mở biểu đồ, kpi
+// Pipeline khi chưa mở) để % thay đổi không bị lệch nguồn.
+export interface DashboardSoSanh {
+  mode: 'prev' | 'yoy';
+  from: string; // YYYY-MM-DD
+  to: string;   // YYYY-MM-DD
+  tonghop_prev?: {
+    tong_doanh_so: number;
+    tong_so_can: number;
+    gia_tri_tb_can: number;
+  };
 }
 
 // === FILTERS ===

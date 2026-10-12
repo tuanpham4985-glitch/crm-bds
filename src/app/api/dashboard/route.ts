@@ -3,9 +3,11 @@ import { cookies } from 'next/headers';
 import { getPipeline, getKhachHangDashboardSummary, getNhanVien, getCongViec, getTongHopGiaoDich, getHopDong, getDataNhanSuForReport } from '@/lib/data-access';
 import type { HrEmployeeRecord } from '@/lib/data-access';
 import type { CustomerDashboardSummary } from '@/lib/repository';
-import type { DashboardData, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
+import type { DashboardData, DashboardSoSanh, DoanhThuTheoSale, DoanhThuTheoDuAn, DoanhThuTheoThang, NguonKhachHang, SinhNhatNhanVien, PipelineFunnelItem, CrmTotals, TongHopStats, TongHopCompareItem, TongHopDuAn, NhanSuBienDongItem } from '@/lib/types';
 import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
+import { buildComparedRevenueSeries, buildMonthlyRevenueSeries, getComparisonRange, selectDashboardRevenueSeries } from '@/lib/dashboard-revenue';
+import type { DashboardCompareMode } from '@/lib/dashboard-revenue';
 import { buildTravelSalesLeaderboard, applyLeaderboardDisplayRules } from '@/lib/dashboard-travel-sales';
 import { cached } from '@/lib/mem-cache';
 
@@ -435,7 +437,10 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'month';
-    const compare = searchParams.get('compare') || '';
+    // compare: '' (tắt) | 'prev' (kỳ liền trước) | 'yoy' (cùng kỳ năm trước).
+    // Giá trị lạ coi như 'prev' để giữ hành vi cũ của mọi caller gửi compare=1.
+    const compareParam = searchParams.get('compare') || '';
+    const compare: DashboardCompareMode | '' = compareParam === 'yoy' ? 'yoy' : compareParam ? 'prev' : '';
     const reportModeParam = searchParams.get('report_mode') || '';
     const reportMode: 'default' | 'standard' | 'race' =
       reportModeParam === 'standard' || reportModeParam === 'race'
@@ -468,13 +473,17 @@ export async function GET(request: NextRequest) {
     if (fromParam && toParam) {
       dateRange.from = new Date(fromParam);
       dateRange.to = new Date(toParam + 'T23:59:59');
-      // Quý chọn tuỳ ý (Q1-Q4 + năm) → kỳ so sánh là quý liền trước quý ĐƯỢC
-      // CHỌN, không phải quý liền trước quý hiện tại như getDateRange() tính.
-      if (period === 'quarter') {
-        const [y, m] = fromParam.split('-').map(Number);
-        dateRange.prevFrom = new Date(y, m - 4, 1);
-        dateRange.prevTo = new Date(y, m - 1, 0);
+      // Kỳ so sánh tính theo ĐÚNG kỳ được chọn (T8 → T7, Q2 → Q1, 2025 →
+      // 2024 hoặc cùng kỳ năm trước), không phải theo hôm nay như getDateRange().
+      if (compare) {
+        const cmp = getComparisonRange(dateRange, compare);
+        dateRange.prevFrom = cmp.from;
+        dateRange.prevTo = cmp.to;
       }
+    } else if (compare === 'yoy') {
+      const cmp = getComparisonRange(dateRange, 'yoy');
+      dateRange.prevFrom = cmp.from;
+      dateRange.prevTo = cmp.to;
     }
     const useDepositDateForRevenue = reportMode === 'race';
     const revenueDateSource = useDepositDateForRevenue ? 'deposit' : 'signed';
@@ -493,7 +502,10 @@ export async function GET(request: NextRequest) {
     // Promise.resolve(...) đã dùng cho CongViec/HopDong/NhanSu bên dưới
     // (điều kiện ở đây là isAdmin, KHÔNG phải wantCharts — request admin
     // "đầy đủ" dù lite vẫn cần nguon_khach_hang/kh_chua_assign).
-    const [allPipelines, customerSummary, allEmployeesRaw, allCongViec, allContracts, hrBienDongData, tongHopRows] = await Promise.all([
+    // Kỳ so sánh dùng cùng nguồn Tổng hợp giao dịch với kỳ hiện tại — chỉ đọc
+    // thêm khi bật So sánh.
+    const wantPrevTongHop = Boolean(compare) && reportMode !== 'standard';
+    const [allPipelines, customerSummary, allEmployeesRaw, allCongViec, allContracts, hrBienDongData, tongHopRows, prevTongHopRows] = await Promise.all([
       getPipeline(),
       isAdmin
         ? getKhachHangDashboardSummary()
@@ -504,6 +516,9 @@ export async function GET(request: NextRequest) {
       wantCharts ? getDataNhanSuForReport().catch((): HrEmployeeRecord[] => []) : Promise.resolve([] as HrEmployeeRecord[]),
       reportMode !== 'standard'
         ? getTongHopGiaoDich(dateRange.from, dateRange.to, revenueDateSource).catch(() => [] as Awaited<ReturnType<typeof getTongHopGiaoDich>>)
+        : Promise.resolve([] as Awaited<ReturnType<typeof getTongHopGiaoDich>>),
+      wantPrevTongHop
+        ? getTongHopGiaoDich(dateRange.prevFrom, dateRange.prevTo, revenueDateSource).catch(() => [] as Awaited<ReturnType<typeof getTongHopGiaoDich>>)
         : Promise.resolve([] as Awaited<ReturnType<typeof getTongHopGiaoDich>>),
     ]);
 
@@ -578,13 +593,6 @@ export async function GET(request: NextRequest) {
     const prevPipelines = compare ? allPipelines.filter(pl => {
       const d = getPipelineRevenueDate(pl);
       if (!d) return false;
-      if (compare === 'yoy') {
-        const yoyFrom = new Date(dateRange.from);
-        yoyFrom.setFullYear(yoyFrom.getFullYear() - 1);
-        const yoyTo = new Date(dateRange.to);
-        yoyTo.setFullYear(yoyTo.getFullYear() - 1);
-        return isInRange(d, yoyFrom, yoyTo);
-      }
       return isInRange(d, dateRange.prevFrom, dateRange.prevTo);
     }) : [];
 
@@ -783,12 +791,6 @@ export async function GET(request: NextRequest) {
       return null;
     };
 
-    const getTongHopMonthKey = (rawDate: string): string => {
-      const d = safeParseDate(rawDate);
-      if (!d || isNaN(d.getTime())) return '';
-      return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-    };
-
     // buildRaceSaleLeaderboard (raw gia_tri sum, không lọc theo tỷ lệ phí
     // hh/thực nhận) đã bị THAY THẾ bởi buildTravelSalesLeaderboard
     // (dashboard-travel-sales.ts) — xem cách gán selectedLeaderboard bên
@@ -812,19 +814,11 @@ export async function GET(request: NextRequest) {
       return Array.from(raceDuAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
     };
 
-    const buildRaceTheoThang = (rows: typeof tongHopRows): DoanhThuTheoThang[] => {
-      const raceThangMap = new Map<string, number>();
-
-      rows.forEach(row => {
-        const key = getTongHopMonthKey(row.ngay_ky);
-        if (!key) return;
-        raceThangMap.set(key, (raceThangMap.get(key) || 0) + row.gia_tri);
-      });
-
-      return Array.from(raceThangMap.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([thang, doanh_thu]) => ({ thang, doanh_thu }));
-    };
+    const buildTongHopTheoThang = (rows: typeof tongHopRows): DoanhThuTheoThang[] =>
+      buildMonthlyRevenueSeries(rows.map(row => ({
+        date: safeParseDate(row.ngay_ky),
+        revenue: row.gia_tri,
+      })));
 
     const buildTongHopStats = (useExternalSource = true): TongHopStats => {
       if (useExternalSource && tongHopRows.length > 0) {
@@ -988,7 +982,7 @@ export async function GET(request: NextRequest) {
     // lại rule ở 2 nơi. Hành vi byte-identical với bản inline cũ.
     const travelSalesLeaderboard = applyLeaderboardDisplayRules(buildTravelSalesLeaderboard(tongHopRows), allEmployeesRaw);
     const raceDuAn = buildRaceDuAn(tongHopRows);
-    const raceTheoThang = buildRaceTheoThang(tongHopRows);
+    const tongHopTheoThang = buildTongHopTheoThang(tongHopRows);
     const tonghop = wantCharts
       ? buildTongHopStats(reportMode !== 'standard')
       : undefined;
@@ -1010,7 +1004,28 @@ export async function GET(request: NextRequest) {
     const selectedDuAn = useRaceSource
       ? raceDuAn
       : Array.from(duAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
-    const selectedTheoThang = useRaceSource ? raceTheoThang : doanhThuTheoThang;
+    // Đồng bộ biểu đồ với nguồn chuẩn đang cấp số liệu cho các thẻ Tổng hợp giao dịch.
+    // Default: ngày ký TTĐC/VBTT; Race: ngày cọc; Standard: Pipeline.
+    // Bật So sánh: ghép tháng thứ i của 2 kỳ lên cùng 1 điểm trục X (cùng
+    // nguồn với khi không so sánh: Tổng hợp giao dịch, fallback Pipeline).
+    const useTransactionSource = reportMode !== 'standard'
+      && (tongHopRows.length > 0 || prevTongHopRows.length > 0);
+    const toTransactionPoints = (rows: typeof tongHopRows) =>
+      rows.map(row => ({ date: safeParseDate(row.ngay_ky), revenue: row.gia_tri }));
+    const toPipelinePoints = (pls: typeof daKy) =>
+      pls.map(pl => ({ date: getPipelineRevenueDate(pl), revenue: pl.gia_tri_thuc_te }));
+    const selectedTheoThang = compare
+      ? buildComparedRevenueSeries({
+          current: useTransactionSource ? toTransactionPoints(tongHopRows) : toPipelinePoints(daKy),
+          previous: useTransactionSource ? toTransactionPoints(prevTongHopRows) : toPipelinePoints(prevDaKy),
+          range: { from: dateRange.from, to: dateRange.to },
+          prevRange: { from: dateRange.prevFrom, to: dateRange.prevTo },
+        })
+      : selectDashboardRevenueSeries({
+          reportMode,
+          transactionSeries: tongHopTheoThang,
+          pipelineSeries: doanhThuTheoThang,
+        });
     const selectedKpi = useRaceSource
       ? {
           tong_deal: tongHopRows.length,
@@ -1020,10 +1035,10 @@ export async function GET(request: NextRequest) {
           hoa_hong: 0,
           kh_chua_assign,
           ...(compare ? {
-            tong_deal_prev: 0,
+            tong_deal_prev: prevTongHopRows.length,
             dang_xu_ly_prev: 0,
-            da_ky_prev: 0,
-            doanh_thu_prev: 0,
+            da_ky_prev: prevTongHopRows.length,
+            doanh_thu_prev: prevTongHopRows.reduce((sum, row) => sum + row.gia_tri, 0),
             hoa_hong_prev: 0,
           } : {}),
         }
@@ -1043,6 +1058,31 @@ export async function GET(request: NextRequest) {
           } : {}),
         };
 
+    // Số kỳ so sánh cho 3 thẻ KPI khi đã mở biểu đồ (thẻ lúc đó đọc tonghop) —
+    // cùng quy tắc chọn nguồn với buildTongHopStats(): sheet nếu kỳ hiện tại
+    // lấy từ sheet, ngược lại Pipeline.
+    const formatYmd = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const soSanh: DashboardSoSanh | undefined = compare ? {
+      mode: compare,
+      from: formatYmd(dateRange.prevFrom),
+      to: formatYmd(dateRange.prevTo),
+      ...(tonghop ? {
+        tonghop_prev: (() => {
+          const tongHopFromSheet = reportMode !== 'standard' && tongHopRows.length > 0;
+          const tong_doanh_so = tongHopFromSheet
+            ? prevTongHopRows.reduce((sum, row) => sum + row.gia_tri, 0)
+            : prevDaKy.reduce((sum, pl) => sum + pl.gia_tri_thuc_te, 0);
+          const tong_so_can = tongHopFromSheet ? prevTongHopRows.length : prevDaKy.length;
+          return {
+            tong_doanh_so,
+            tong_so_can,
+            gia_tri_tb_can: tong_so_can > 0 ? Math.round(tong_doanh_so / tong_so_can) : 0,
+          };
+        })(),
+      } : {}),
+    } : undefined;
+
     return isAdmin ? {
       kpi: selectedKpi,
       doanh_thu_theo_sale: selectedLeaderboard,
@@ -1059,6 +1099,7 @@ export async function GET(request: NextRequest) {
       tonghop,
       nhan_su_bien_dong: nhanSuBienDong,
       report_mode: reportMode,
+      so_sanh: soSanh,
     } : {
       kpi: { tong_deal: 0, dang_xu_ly: 0, da_ky: 0, doanh_thu: 0, hoa_hong: 0, kh_chua_assign: 0 },
       doanh_thu_theo_sale: selectedLeaderboard,

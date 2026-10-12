@@ -264,7 +264,10 @@ export default function DashboardPage() {
   const [selectedQuarter, setSelectedQuarter] = useState(() => Math.floor(new Date().getMonth() / 3) + 1);
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const monthDropdownRef = useRef<HTMLDivElement>(null);
-  const [compare, setCompare] = useState('');
+  // '' = tắt; 'prev' = kỳ liền trước; 'yoy' = cùng kỳ năm trước.
+  const [compare, setCompare] = useState<'' | 'prev' | 'yoy'>('');
+  // Nhớ kiểu so sánh đã chọn để bật lại nút "So sánh" không bị về mặc định.
+  const [compareMode, setCompareMode] = useState<'prev' | 'yoy'>('prev');
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   // "Biểu đồ" (KPI grid/TongHopTables/Hà Nội-TPHCM/đường xu hướng, admin-only)
@@ -416,6 +419,30 @@ export default function DashboardPage() {
     return `Từ ${fmt(from)} đến ${fmt(to)}`;
   })();
 
+  // Nhãn kỳ so sánh lấy từ khoảng ngày server thực sự đã dùng (data.so_sanh).
+  const compareLabel = (() => {
+    const from = data?.so_sanh?.from;
+    if (!from) return 'kỳ trước';
+    const [y, m] = from.split('-').map(Number);
+    if (period === 'month') return `T${m}/${y}`;
+    if (period === 'quarter') return `Q${Math.floor((m - 1) / 3) + 1}/${y}`;
+    return `năm ${y}`;
+  })();
+  const currentLabel = period === 'month'
+    ? `T${selectedMonth}/${selectedYear}`
+    : period === 'quarter' ? `Q${selectedQuarter}/${selectedYear}` : `năm ${selectedYear}`;
+
+  // Số kỳ so sánh phải cùng nguồn với số đang hiện trên thẻ: tonghop (đã mở
+  // biểu đồ) ↔ so_sanh.tonghop_prev; data.kpi (chưa mở) ↔ data.kpi.*_prev.
+  const kpiPrev = (() => {
+    if (!compare || !data?.so_sanh) return undefined;
+    if (data.tonghop) return data.so_sanh.tonghop_prev;
+    const ds = data.kpi.doanh_thu_prev;
+    const can = data.kpi.da_ky_prev;
+    if (ds === undefined || can === undefined) return undefined;
+    return { tong_doanh_so: ds, tong_so_can: can, gia_tri_tb_can: can > 0 ? Math.round(ds / can) : 0 };
+  })();
+
   const renderKpiCard = (
     label: string,
     value: number,
@@ -424,8 +451,10 @@ export default function DashboardPage() {
     format: 'number' | 'currency' = 'number',
     cardColor?: { icon: string; iconBg: string; value: string; unit?: string }
   ) => {
-    const displayValue = format === 'currency' ? formatCurrency(value) : value.toString();
-    const change = prevValue !== undefined ? calcChange(value, prevValue) : null;
+    const fmtValue = (v: number) => (format === 'currency' ? formatCurrency(v) : v.toString());
+    const displayValue = fmtValue(value);
+    // Kỳ so sánh = 0 thì % không có nghĩa (calcChange trả +100%) — hiện trung tính.
+    const change = prevValue !== undefined && prevValue !== 0 ? calcChange(value, prevValue) : null;
 
     return (
       <div className="kpi-card">
@@ -448,11 +477,17 @@ export default function DashboardPage() {
             </span>
           )}
         </div>
-        {change !== null && (
-          <div className={`kpi-change ${change >= 0 ? 'positive' : 'negative'}`}>
-            {change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-            {formatChange(change)} so với kỳ trước
-          </div>
+        {prevValue !== undefined && (
+          change !== null ? (
+            <div className={`kpi-change ${change >= 0 ? 'positive' : 'negative'}`}>
+              {change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+              {formatChange(change)} so với {compareLabel} ({fmtValue(prevValue)})
+            </div>
+          ) : (
+            <div className="kpi-change" style={{ color: 'var(--text-muted)' }}>
+              {compareLabel} chưa có số liệu
+            </div>
+          )
         )}
       </div>
     );
@@ -651,12 +686,26 @@ export default function DashboardPage() {
           {isAdmin && (
             <button
               className={`btn ${compare ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-              onClick={() => setCompare(compare ? '' : 'prev')}
-              title="So sánh cùng kỳ"
+              onClick={() => setCompare(compare ? '' : compareMode)}
+              title="So sánh số liệu kỳ đang chọn với kỳ trước hoặc cùng kỳ năm trước"
             >
               {compare ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
               So sánh
             </button>
+          )}
+          {/* Chọn kiểu so sánh — ẩn khi xem theo Năm vì 2 kiểu trùng nhau */}
+          {isAdmin && compare && period !== 'year' && (
+            <div className="toggle-group">
+              {([['prev', period === 'month' ? 'Tháng trước' : 'Quý trước'], ['yoy', 'Cùng kỳ năm trước']] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  className={`toggle-btn ${compare === mode ? 'active' : ''}`}
+                  onClick={() => { setCompare(mode); setCompareMode(mode); }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           )}
           {/* Báo cáo tổng kết PDF — admin only */}
           {isAdmin && (
@@ -693,7 +742,7 @@ export default function DashboardPage() {
           {renderKpiCard(
             'TỔNG DOANH SỐ',
             data.tonghop?.tong_doanh_so ?? data.kpi.doanh_thu,
-            undefined,
+            kpiPrev?.tong_doanh_so,
             <DollarSign size={20} />,
             'currency',
             { icon: '#3b82f6', iconBg: '#eff6ff', value: '#1d4ed8' }
@@ -701,7 +750,7 @@ export default function DashboardPage() {
           {renderKpiCard(
             'TỔNG SỐ CĂN',
             data.tonghop?.tong_so_can ?? data.kpi.da_ky,
-            undefined,
+            kpiPrev?.tong_so_can,
             <Home size={20} />,
             'number',
             { icon: '#f59e0b', iconBg: '#fffbeb', value: '#d97706', unit: 'căn' }
@@ -709,7 +758,7 @@ export default function DashboardPage() {
           {renderKpiCard(
             'GIÁ TRỊ TB / CĂN',
             data.tonghop?.gia_tri_tb_can ?? (data.kpi.da_ky > 0 ? Math.round(data.kpi.doanh_thu / data.kpi.da_ky) : 0),
-            undefined,
+            kpiPrev?.gia_tri_tb_can,
             <Layers size={20} />,
             'currency',
             { icon: '#10b981', iconBg: '#ecfdf5', value: '#059669' }
@@ -765,28 +814,46 @@ export default function DashboardPage() {
           <div className="card-header">
             <div>
               <div className="card-title">Doanh thu theo thời gian</div>
-              <div className="card-subtitle">Xu hướng doanh thu qua các tháng</div>
+              <div className="card-subtitle">
+                {compare && data.so_sanh
+                  ? `${currentLabel} so với ${compareLabel} — từng tháng đặt cạnh nhau`
+                  : 'Xu hướng doanh thu qua các tháng'}
+              </div>
             </div>
           </div>
           <div style={{ width: '100%', height: 280 }}>
             <ResponsiveContainer>
-              <LineChart data={data.doanh_thu_theo_thang}>
+              <LineChart
+                data={compare
+                  // Tháng chưa tới của kỳ hiện tại → null để đường dừng lại, không rơi về 0.
+                  ? data.doanh_thu_theo_thang.map(p => (p.chua_den ? { ...p, doanh_thu: null } : p))
+                  : data.doanh_thu_theo_thang}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="thang" tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={(v) => formatCurrency(v as number)} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => formatCurrency(v as number)} />
+                <Tooltip
+                  formatter={(v, name, item) => {
+                    const thangPrev = (item?.payload as { thang_prev?: string } | undefined)?.thang_prev;
+                    return [
+                      formatCurrency(v as number),
+                      item?.dataKey === 'doanh_thu_prev' && thangPrev ? `${name} (${thangPrev})` : name,
+                    ];
+                  }}
+                />
+                {compare && <Legend wrapperStyle={{ fontSize: 12 }} />}
                 <Line
                   type="monotone" dataKey="doanh_thu"
                   stroke="#6366f1" strokeWidth={2.5}
                   dot={{ r: 4, fill: '#6366f1' }}
-                  name="Kỳ hiện tại"
+                  name={compare ? currentLabel : 'Kỳ hiện tại'}
                 />
                 {compare && (
                   <Line
                     type="monotone" dataKey="doanh_thu_prev"
-                    stroke="#cbd5e1" strokeWidth={2} strokeDasharray="5 5"
-                    dot={{ r: 3, fill: '#cbd5e1' }}
-                    name="Kỳ trước"
+                    stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5"
+                    dot={{ r: 3, fill: '#94a3b8' }}
+                    name={compareLabel}
                   />
                 )}
               </LineChart>
