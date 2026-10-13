@@ -4448,7 +4448,23 @@ export async function syncEmployeesFromHrFile(): Promise<{
   // 3. Mở CRM NHAN_VIEN sheet
   const crmDoc = await getDoc();
   const nvSheet = await getSheet(crmDoc, 'NHAN_VIEN');
-  const crmHeaders = nvSheet.headerValues as string[];
+  let crmHeaders = nvSheet.headerValues as string[];
+
+  // Cột chỉ được đồng bộ khi NHAN_VIEN đã có header tương ứng. Cột nào file
+  // HR có nhưng NHAN_VIEN còn thiếu thì thêm vào CUỐI header (không xê dịch
+  // cột cũ) — VD khu_vuc trước đây không bao giờ được chép sang.
+  const AUTO_ADD_COLUMNS = ['khu_vuc'];
+  const missingCols = AUTO_ADD_COLUMNS.filter(col => !crmHeaders.includes(col) && findSrcCol(col) >= 0);
+  if (missingCols.length > 0) {
+    const nextHeaders = [...crmHeaders, ...missingCols];
+    if (nvSheet.columnCount < nextHeaders.length) {
+      await nvSheet.resize({ rowCount: nvSheet.rowCount, columnCount: nextHeaders.length });
+    }
+    await nvSheet.setHeaderRow(nextHeaders);
+    crmHeaders = nextHeaders;
+    console.log('[syncEmployees] Added NHAN_VIEN columns:', missingCols.join(', '));
+  }
+
   const crmRows = await nvSheet.getRows();
 
   // Load cells để batch update (loadCells dùng 0-based index; header = row 0)

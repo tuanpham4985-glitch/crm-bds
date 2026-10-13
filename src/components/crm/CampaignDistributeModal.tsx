@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Layers, Loader2, Save, Users, X } from 'lucide-react';
 import type { Campaign, DuAn, NhanVien } from '@/lib/types';
-import { eligibleCampaignSales, isActiveSale, listActiveSaleDepartments, mergeRecipientNames, resolveDepartmentSaleNames } from '@/lib/campaign-sale-eligibility';
+import { eligibleCampaignSales, filterSalesByRegion, isActiveSale, listActiveSaleDepartments, listActiveSaleRegions, mergeRecipientNames, resolveDepartmentSaleNames } from '@/lib/campaign-sale-eligibility';
 
 type Mode = 'none' | 'round_robin' | 'quantity';
 
@@ -88,8 +88,25 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
   // Phòng + resolve theo Phòng đều là hàm THUẦN tái dùng từ
   // campaign-sale-eligibility.ts (test riêng ở đó) — không tự viết lại logic
   // ở component, không fetch thêm (employees đã có sẵn từ props).
-  const activeSaleDepartments = useMemo(() => listActiveSaleDepartments(employees), [employees]);
+  // Khu vực — bộ lọc hiển thị: thu hẹp danh sách Sale + danh sách Phòng.
+  // Sale đã tick nhưng bị bộ lọc ẩn VẪN được phân (báo rõ số đang ẩn).
+  const activeSaleRegions = useMemo(() => listActiveSaleRegions(employees), [employees]);
+  const [regionFilter, setRegionFilter] = useState('');
+  const visibleSales = filterSalesByRegion(eligibleSales, regionFilter);
+  const activeSaleDepartments = useMemo(
+    () => listActiveSaleDepartments(filterSalesByRegion(employees, regionFilter)),
+    [employees, regionFilter],
+  );
   const [deptFeedback, setDeptFeedback] = useState<{ dept: string; matched: number } | null>(null);
+  const hiddenSelectedCount = selectedSales.filter(name => !visibleSales.some(item => item.ho_ten === name)).length;
+  const allVisibleSelected = visibleSales.length > 0 && visibleSales.every(item => selectedSales.includes(item.ho_ten));
+
+  function toggleAllVisible() {
+    const names = visibleSales.map(item => item.ho_ten);
+    setSelectedSales(current => allVisibleSelected
+      ? current.filter(name => !names.includes(name))
+      : mergeRecipientNames(current, names));
+  }
 
   function handleDeptSelect(event: React.ChangeEvent<HTMLSelectElement>) {
     const dept = event.target.value;
@@ -98,7 +115,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
     // resolveDepartmentSaleNames chỉ giao với eligibleSales hiện có (roster
     // Dự án/Admin-scope đã áp dụng sẵn) — Department bulk-select KHÔNG được
     // bypass eligibility.
-    const names = resolveDepartmentSaleNames(eligibleSales, dept);
+    const names = resolveDepartmentSaleNames(visibleSales, dept);
     setSelectedSales(current => mergeRecipientNames(current, names));
     setDeptFeedback({ dept, matched: names.length });
   }
@@ -302,6 +319,14 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
               {!eligibility.blocked && mode !== 'none' && (
                 <div className="form-group">
                   <label className="form-label">Chọn Sale</label>
+                  {activeSaleRegions.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <select className="form-select" value={regionFilter} onChange={event => { setRegionFilter(event.target.value); setDeptFeedback(null); }} style={{ fontSize: 12.5 }}>
+                        <option value="">Tất cả khu vực</option>
+                        {activeSaleRegions.map(region => <option key={region} value={region}>{region}</option>)}
+                      </select>
+                    </div>
+                  )}
                   {activeSaleDepartments.length > 0 && (
                     <div style={{ marginBottom: 8 }}>
                       <select className="form-select" defaultValue="" onChange={handleDeptSelect} style={{ fontSize: 12.5 }}>
@@ -312,17 +337,35 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                         <p style={{ fontSize: 11.5, color: deptFeedback.matched === 0 ? '#b91c1c' : 'var(--text-muted)', margin: '4px 0 0' }}>
                           {deptFeedback.matched === 0
                             ? `Phòng "${deptFeedback.dept}" không có Sale nào trong phạm vi Campaign này.`
-                            : `Đã chọn ${deptFeedback.matched} Sale thuộc Phòng "${deptFeedback.dept}".`}
+                            : `Đã chọn ${deptFeedback.matched} Sale thuộc Phòng "${deptFeedback.dept}"${regionFilter ? ` (khu vực ${regionFilter})` : ''}.`}
                         </p>
                       )}
                     </div>
                   )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    <span>
+                      Đã chọn <strong>{selectedSales.length}</strong> Sale
+                      {hiddenSelectedCount > 0 && ` (${hiddenSelectedCount} đang ẩn bởi bộ lọc khu vực)`}
+                    </span>
+                    {visibleSales.length > 0 && (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={toggleAllVisible}>
+                        {allVisibleSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${visibleSales.length})`}
+                      </button>
+                    )}
+                  </div>
                   <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
-                    {eligibleSales.length === 0 && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-muted)' }}>Không có Sale nào đang hoạt động trong phạm vi Campaign này.</div>}
-                    {eligibleSales.map(item => (
+                    {visibleSales.length === 0 && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-muted)' }}>{regionFilter ? `Không có Sale nào thuộc khu vực "${regionFilter}" trong phạm vi Campaign này.` : 'Không có Sale nào đang hoạt động trong phạm vi Campaign này.'}</div>}
+                    {visibleSales.map(item => (
                       <div key={item.id_nhan_vien} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
                         <input type="checkbox" checked={selectedSales.includes(item.ho_ten)} onChange={() => toggleSale(item.ho_ten)} />
-                        <span style={{ flex: 1, fontSize: 13 }}>{item.ho_ten}</span>
+                        <span style={{ flex: 1, fontSize: 13 }}>
+                          {item.ho_ten}
+                          {(item.phong_KD || item.khu_vuc) && (
+                            <span style={{ marginLeft: 6, fontSize: 11.5, color: 'var(--text-muted)' }}>
+                              {[item.phong_KD, item.khu_vuc].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </span>
                         {mode === 'quantity' && selectedSales.includes(item.ho_ten) && (
                           <input
                             type="number" min={0} className="form-input" style={{ width: 72, fontSize: 12 }}

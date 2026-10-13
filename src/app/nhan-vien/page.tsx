@@ -57,6 +57,7 @@ export default function NhanVienPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterChucDanh, setFilterChucDanh] = useState('');
   const [filterPhongKD, setFilterPhongKD] = useState('');
+  const [filterKhuVuc, setFilterKhuVuc] = useState('');
   const [filterTrangThai, setFilterTrangThai] = useState('');
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' } | null>(null);
   const SORTABLE_COLUMNS = new Set(['ho_ten', 'employee_type', 'phong_KD', 'trang_thai', 'hop_dong']);
@@ -708,6 +709,13 @@ export default function NhanVienPage() {
     return ((nv as any)[column] || '').toString().toLowerCase();
   };
 
+  // Khu vực: hợp danh mục + giá trị thực tế trên nhân viên (danh mục có thể
+  // thiếu giá trị đã nhập tay/đồng bộ từ file HR).
+  const khuVucOptions = Array.from(new Set([
+    ...(danhMuc?.khu_vuc || []),
+    ...employees.map(nv => (nv.khu_vuc || '').trim()),
+  ].filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi'));
+
   const sq = searchQuery.trim().toLowerCase();
   const displayedEmployees = employees.filter(nv => {
     const matchSearch = !sq ||
@@ -715,8 +723,9 @@ export default function NhanVienPage() {
       nv.so_dien_thoai?.toLowerCase().includes(sq);
     const matchChucDanh = !filterChucDanh || nv.employee_type === filterChucDanh;
     const matchPhongKD = !filterPhongKD || nv.phong_KD === filterPhongKD;
+    const matchKhuVuc = !filterKhuVuc || (nv.khu_vuc || '').trim() === filterKhuVuc;
     const matchTrangThai = !filterTrangThai || normalizeTrangThaiNV(nv.trang_thai) === filterTrangThai;
-    return matchSearch && matchChucDanh && matchPhongKD && matchTrangThai;
+    return matchSearch && matchChucDanh && matchPhongKD && matchKhuVuc && matchTrangThai;
   });
   if (sort) {
     displayedEmployees.sort((a, b) => {
@@ -820,6 +829,11 @@ export default function NhanVienPage() {
             onChange={e => setFilterPhongKD(e.target.value)}>
             <option value="">Tất cả phòng KD</option>
             {(danhMuc?.phong_KD || []).map(pkd => <option key={pkd} value={pkd}>{pkd}</option>)}
+          </select>
+          <select className="form-select" value={filterKhuVuc}
+            onChange={e => setFilterKhuVuc(e.target.value)}>
+            <option value="">Tất cả khu vực</option>
+            {khuVucOptions.map(kv => <option key={kv} value={kv}>{kv}</option>)}
           </select>
           <select className="form-select" value={filterTrangThai}
             onChange={e => setFilterTrangThai(e.target.value)}>

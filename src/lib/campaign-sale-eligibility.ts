@@ -52,6 +52,26 @@ export function resolveDepartmentSaleNames(eligibleSales: readonly NhanVien[], d
 }
 
 /**
+ * Danh sách Khu vực (NhanVien.khu_vuc) có ít nhất 1 Sale đang hoạt động —
+ * cùng nguyên tắc listActiveSaleDepartments: lấy từ TOÀN BỘ nhân viên, chỉ là
+ * bộ lọc hiển thị trên CampaignDistributeModal, KHÔNG phải allocation level.
+ */
+export function listActiveSaleRegions(employees: readonly NhanVien[]): string[] {
+  const set = new Set<string>();
+  employees.forEach(item => {
+    const region = (item.khu_vuc || '').trim();
+    if (isActiveSale(item) && region) set.add(region);
+  });
+  return [...set].sort((a, b) => a.localeCompare(b, 'vi'));
+}
+
+/** Lọc `sales` theo khu vực; region rỗng = không lọc. Không tự tính eligibility. */
+export function filterSalesByRegion<T extends Pick<NhanVien, 'khu_vuc'>>(sales: readonly T[], region: string): T[] {
+  if (!region) return [...sales];
+  return sales.filter(item => (item.khu_vuc || '').trim() === region);
+}
+
+/**
  * Merge `additions` (VD tên Sale vừa resolve từ 1 Phòng) vào `current`
  * recipient names, dedupe — 1 Sale chỉ xuất hiện đúng 1 lần trong final
  * recipient set dù được chọn thủ công VÀ đồng thời thuộc Phòng vừa bulk-

@@ -2066,6 +2066,12 @@ select:focus {
     align-items: stretch;
   }
 
+  /* flex-basis 260px của search-wrapper (desktop) thành CHIỀU CAO khi
+     filter-bar xếp dọc — ô tìm kiếm cao vọt, icon trôi giữa khoảng trống. */
+  .filter-bar .search-wrapper {
+    flex: 0 0 auto;
+  }
+
   /* filter-group (các dropdown lọc) mặc định là 1 hàng flex không wrap —
      trên mobile các select cộng lại rộng hơn viewport, tràn ngang và kéo
      luôn filter-bar/table cuộn ngang theo khi vuốt xem bảng bên dưới. */
