@@ -4563,6 +4563,9 @@ export async function syncEmployeesFromHrFile(): Promise<{
       crmHeaders.forEach((h, colIdx) => {
         if (h === 'mat_khau' && curPass && curPass !== '123456') return;
         if (h === 'vai_tro' && curRole) return;
+        // ngay_tao chỉ ghi khi thêm mới — trước đây mỗi lần đồng bộ ghi đè
+        // thành giờ hiện tại nên ngày tạo gốc của mọi nhân viên bị mất.
+        if (h === 'ngay_tao') return;
         const val = obj[h];
         if (val === undefined) return;
         if (sheetRowIdx < loadEndRow) {
