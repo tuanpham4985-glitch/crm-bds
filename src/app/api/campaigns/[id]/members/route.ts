@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { canManageCampaign, getCrmSessionUser } from '@/lib/crm-auth';
 import { getCampaign, getCampaignMembersWithCustomers } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
+import { sortMembershipsNewestAssignedFirst } from '@/lib/campaign-cskh-range';
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCrmSessionUser();
@@ -18,7 +19,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     // Postgres chỉ trả đúng M membership của actor thay vì N của cả campaign
     // rồi mới lọc. KHÔNG đổi authority/kết quả cuối cùng actor nhìn thấy.
     const hasFullView = canManageCampaign(user, campaign);
-    const members = await getCampaignMembersWithCustomers(id, hasFullView ? undefined : user.id_nhan_vien);
+    const scopedMembers = await getCampaignMembersWithCustomers(id, hasFullView ? undefined : user.id_nhan_vien);
+    // Sale: khách mới được phân lên đầu (không bị chìm ở trang cuối). Admin/
+    // Leader giữ created_at ASC — thứ tự tham chiếu của "Chọn khách: Từ x đến y".
+    const members = hasFullView ? scopedMembers : sortMembershipsNewestAssignedFirst(scopedMembers);
     return NextResponse.json({ success: true, data: { campaign, members } });
   } catch (error) {
     if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });

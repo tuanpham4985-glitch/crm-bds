@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getNhanVien } from '@/lib/data-access';
 import { canManageCampaign, eligibleCampaignSales, getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import {
-  bulkAddAndDistribute, getCampaign, resolveCampaignMembershipCustomerIdsByRange,
+  bulkAddAndDistribute, getCampaign, previewCampaignDistribution, resolveCampaignMembershipCustomerIdsByRange,
   resolveCustomerIdsByFilter, resolveCustomerIdsByRange, type DistributionMode,
 } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
@@ -25,6 +25,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const body = await request.json().catch(() => null) as {
       customer_ids?: unknown; customer_filter?: unknown; customer_range?: unknown; membership_range?: unknown;
       telesale_names?: unknown; mode?: unknown; quantities?: unknown;
+      preview?: unknown; reassign_assigned?: unknown;
     } | null;
 
     let customerIds: string[];
@@ -100,6 +101,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (customerIds.length === 0) {
       return NextResponse.json({ success: false, error: 'Chưa chọn khách hàng nào' }, { status: 400 });
     }
+    // preview: true — READ-ONLY, cảnh báo trong modal TRƯỚC khi bấm Xác nhận
+    // (bao nhiêu khách đã có Sale, Sale nào). Dùng ĐÚNG tập khách vừa resolve
+    // ở trên (cùng gate/selection với lần ghi thật), không ghi gì.
+    if (body?.preview === true) {
+      return NextResponse.json({ success: true, data: await previewCampaignDistribution(id, customerIds) });
+    }
     const mode = MODES.includes(body?.mode as DistributionMode) ? (body!.mode as DistributionMode) : 'none';
 
     const telesaleNames = Array.isArray(body?.telesale_names)
@@ -148,8 +155,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       }
     }
 
+    // "Thu hồi & chia lại" khách ĐÃ có Sale khác — chỉ Admin.
+    const reassignAssigned = body?.reassign_assigned === true;
+    if (reassignAssigned && !isCrmAdmin(user)) {
+      return NextResponse.json({ success: false, error: 'Chỉ Admin được thu hồi & chia lại khách đã có Sale' }, { status: 403 });
+    }
+
     const result = await bulkAddAndDistribute({
-      campaignId: id, customerIds, telesales, mode, quantities, actor: user,
+      campaignId: id, customerIds, telesales, mode, quantities, actor: user, reassignAssigned,
     });
     return NextResponse.json({ success: true, data: result });
   } catch (error) {

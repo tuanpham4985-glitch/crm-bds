@@ -9,7 +9,7 @@
 // được phân là nhân viên vai_tro 'Sale' (eligibleCampaignSales).
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Layers, Loader2, Save, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Layers, Loader2, Save, Users, X } from 'lucide-react';
 import type { Campaign, DuAn, NhanVien } from '@/lib/types';
 import { eligibleCampaignSales, filterSalesByRegion, isActiveSale, listActiveSaleDepartments, listActiveSaleRegions, mergeRecipientNames, resolveDepartmentSaleNames } from '@/lib/campaign-sale-eligibility';
 
@@ -22,7 +22,19 @@ interface DistributeResult {
   alreadyAssigned: number;
   created: number;
   newlyAssigned: number;
+  reassigned?: number;
+  lockedHandoff?: number;
   stillUnassigned: number;
+}
+
+interface DistributePreview {
+  requested: number;
+  notFound: number;
+  notMember: number;
+  unassigned: number;
+  assigned: number;
+  assignedBySale: { telesale_id: string | null; telesale_name: string; count: number }[];
+  lockedHandoff: number;
 }
 
 export function CampaignDistributeModal({ customerIds, customerFilter, customerRange, employees, projects, isAdmin, fixedCampaign, onClose, onDone }: {
@@ -71,6 +83,9 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
   // Campaign có sẵn) — dùng để hiện đúng câu "Đã tạo Campaign X với Y khách
   // hàng" + link "đi thẳng" sang CSKH → Theo Campaign của ĐÚNG Campaign đó.
   const [createdCampaign, setCreatedCampaign] = useState<{ id: string; name: string } | null>(null);
+  const [preview, setPreview] = useState<DistributePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [reassignAssigned, setReassignAssigned] = useState(false);
 
   const activeCampaign = fixedCampaign || campaigns.find(item => item.id === campaignId);
   // Chưa chọn/tạo Campaign nào (bước tạo mới của Admin — POST /api/campaigns
@@ -140,6 +155,49 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
     })();
   }, [fixedCampaign]);
 
+  // Cùng payload chọn khách cho cả lần preview (cảnh báo) lẫn lần ghi thật.
+  const selectionPayload = (customerFilter
+    ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to, datasetId: customerFilter.datasetId } }
+    : customerRange
+      ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo, datasetId: customerRange.datasetId } }
+      : { customer_ids: customerIds });
+  // Key dạng chuỗi — prop customerIds có thể là mảng mới mỗi lần parent render.
+  const selectionKey = JSON.stringify(selectionPayload);
+
+  // Cảnh báo TRƯỚC khi xác nhận: khách đã có Sale trong Campaign đang chọn sẽ
+  // bị bỏ qua (giữ Sale cũ) trừ khi Admin tick "Thu hồi & chia lại".
+  // Campaign tạo mới chưa có ai -> không cần kiểm tra.
+  const previewCampaignId = creatingNew && !fixedCampaign ? '' : (fixedCampaign?.id || campaignId);
+  useEffect(() => {
+    setPreview(null);
+    setReassignAssigned(false);
+    if (!previewCampaignId) return;
+    let cancelled = false;
+    setPreviewLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/campaigns/${previewCampaignId}/distribute`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...JSON.parse(selectionKey), preview: true }),
+        });
+        const data = await res.json();
+        if (!cancelled && data.success) setPreview(data.data);
+      } catch { /* chỉ là cảnh báo — lỗi thì không hiện */ }
+      finally { if (!cancelled) setPreviewLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [previewCampaignId, selectionKey]);
+
+  // Khớp planBulkDistribution: khách đang thuộc chính 1 Sale đã chọn hoặc đã
+  // chuyển giao (handoff) không bao giờ bị chia lại.
+  const selectedSaleIds = new Set(employees.filter(item => selectedSales.includes(item.ho_ten)).map(item => item.id_nhan_vien));
+  const reassignableCount = preview && mode !== 'none'
+    ? Math.max(0, preview.assignedBySale
+      .filter(item => !(item.telesale_id && selectedSaleIds.has(item.telesale_id)))
+      .reduce((sum, item) => sum + item.count, 0) - preview.lockedHandoff)
+    : 0;
+  const willDistributeCount = preview ? preview.notMember + preview.unassigned + (reassignAssigned ? reassignableCount : 0) : 0;
+
   function toggleSale(name: string) {
     setSelectedSales(current => current.includes(name) ? current.filter(item => item !== name) : [...current, name]);
   }
@@ -187,12 +245,9 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
       const distributeRes = await fetch(`/api/campaigns/${targetId}/distribute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(customerFilter
-            ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to, datasetId: customerFilter.datasetId } }
-            : customerRange
-              ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo, datasetId: customerRange.datasetId } }
-              : { customer_ids: customerIds }),
+          ...selectionPayload,
           telesale_names: selectedSales, mode, quantities,
+          reassign_assigned: isAdmin && mode !== 'none' && reassignAssigned,
         }),
       });
       const distributed = await distributeRes.json();
@@ -227,6 +282,8 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                 <div>Vừa thêm mới: <strong>{result.created}</strong></div>
                 <div>Đã phân từ trước: <strong>{result.alreadyAssigned}</strong></div>
                 <div>Vừa phân Sale: <strong>{result.newlyAssigned}</strong></div>
+                {(result.reassigned ?? 0) > 0 && <div>Trong đó thu hồi & chia lại: <strong>{result.reassigned}</strong></div>}
+                {(result.lockedHandoff ?? 0) > 0 && <div>Đã chuyển giao (giữ nguyên): <strong>{result.lockedHandoff}</strong></div>}
                 <div style={{ gridColumn: '1 / -1' }}>Còn chưa phân: <strong>{result.stillUnassigned}</strong></div>
                 {result.notFound.length > 0 && <div style={{ color: '#b91c1c' }}>Không tìm thấy: <strong>{result.notFound.length}</strong></div>}
               </div>
@@ -382,6 +439,47 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                       Phần dư sau khi chia đủ số lượng sẽ được thêm vào Campaign ở trạng thái Chưa phân.
                     </p>
                   )}
+                </div>
+              )}
+
+              {previewLoading && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  <Loader2 size={13} className="spin" style={{ verticalAlign: -2 }} /> Đang kiểm tra khách đã chọn…
+                </div>
+              )}
+              {preview && preview.assigned > 0 && (
+                <div style={{ padding: 12, background: '#fff7ed', color: '#9a3412', borderRadius: 8, fontSize: 13, marginTop: 4 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontWeight: 600 }}>
+                    <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <span>
+                      {preview.assigned}/{preview.requested} khách đã có Sale trong Campaign này
+                      {!reassignAssigned && ' — sẽ GIỮ NGUYÊN Sale cũ, không chia lại'}.
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12.5 }}>
+                    {preview.assignedBySale.map(item => `${item.telesale_name}: ${item.count}`).join(' · ')}
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12.5 }}>
+                    Sẽ thêm/phân mới: <strong>{willDistributeCount}</strong> khách
+                    {' '}({preview.notMember} chưa vào Campaign, {preview.unassigned} chưa có Sale
+                    {reassignAssigned && reassignableCount > 0 ? `, ${reassignableCount} thu hồi & chia lại` : ''}).
+                  </div>
+                  {isAdmin && mode !== 'none' && (
+                    <label style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 10, color: '#7c2d12', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={reassignAssigned} onChange={event => setReassignAssigned(event.target.checked)} style={{ marginTop: 2 }} />
+                      <span>
+                        <strong>Thu hồi & chia lại</strong> khách đang thuộc Sale khác cho các Sale đã chọn
+                        {reassignableCount > 0 ? ` (${reassignableCount} khách)` : ''}.
+                        {' '}Sale cũ sẽ không còn thấy các khách này; lịch sử chăm sóc được giữ nguyên.
+                        {preview.lockedHandoff > 0 && ` ${preview.lockedHandoff} khách đã chuyển giao luôn giữ nguyên.`}
+                      </span>
+                    </label>
+                  )}
+                </div>
+              )}
+              {preview && preview.assigned === 0 && preview.requested > 0 && (
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Cả {preview.requested} khách đều chưa có Sale trong Campaign này.
                 </div>
               )}
             </>

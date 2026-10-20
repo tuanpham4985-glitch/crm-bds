@@ -169,11 +169,15 @@ test('CampaignDistributeModal.tsx: selectionCount lấy từ customerFilter.coun
 
 test('CampaignDistributeModal.tsx: submit() gửi customer_filter (KHÔNG kèm customer_ids) khi có customerFilter, customer_range khi có customerRange, ngược lại gửi customer_ids như cũ', () => {
   const src = readFileSync(resolve(MODAL_PATH), 'utf8');
-  const bodyStart = src.indexOf('body: JSON.stringify({', src.indexOf('/distribute`'));
+  // Payload chọn khách định nghĩa 1 lần (selectionPayload) — dùng chung cho
+  // lần preview cảnh báo lẫn lần ghi thật; submit() spread đúng payload đó.
+  const submitStart = src.indexOf('async function submit()');
+  assert.match(src.slice(submitStart), /body: JSON.stringify\(\{\s*\.\.\.selectionPayload,/);
+  const bodyStart = src.indexOf('const selectionPayload = ');
   const body = src.slice(bodyStart, bodyStart + 500);
   assert.match(body, /customerFilter\s*\?\s*\{ customer_filter:/);
   assert.match(body, /:\s*customerRange\s*\n\s*\? \{ customer_range:/);
-  assert.match(body, /:\s*\{ customer_ids: customerIds \}\)/);
+  assert.match(body, /:\s*\{ customer_ids: customerIds \}\);/);
 });
 
 test('CampaignDistributeModal.tsx: chỉ set createdCampaign khi THỰC SỰ vừa tạo Campaign mới (nhánh creatingNew, không phải chọn Campaign có sẵn) — message "Đã tạo Campaign" không được hiện sai khi Admin chỉ thêm vào Campaign đã tồn tại', () => {

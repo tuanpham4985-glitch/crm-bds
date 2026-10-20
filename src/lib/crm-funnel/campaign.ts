@@ -415,6 +415,8 @@ export interface BulkDistributeInput {
   mode: DistributionMode;
   quantities?: Readonly<Record<string, number>>;
   actor: CrmSessionUser;
+  /** Xem planBulkDistribution.reassignAssigned — chỉ Admin (route gate). */
+  reassignAssigned?: boolean;
 }
 
 export interface BulkDistributeResult {
@@ -427,8 +429,12 @@ export interface BulkDistributeResult {
   alreadyAssigned: number;
   /** Membership hoàn toàn mới được tạo trong lần gọi này (mọi assignment_status). */
   created: number;
-  /** Được gán ASSIGNED trong lần gọi này — gồm cả membership mới tạo lẫn membership UNASSIGNED có sẵn vừa được phân. */
+  /** Được gán ASSIGNED trong lần gọi này — gồm cả membership mới tạo, membership UNASSIGNED có sẵn vừa được phân, lẫn membership vừa thu hồi & chia lại. */
   newlyAssigned: number;
+  /** Trong newlyAssigned: membership ĐÃ ASSIGNED cho Sale khác, vừa thu hồi & chia lại (chỉ khi reassignAssigned). */
+  reassigned: number;
+  /** Đã ASSIGNED nhưng KHÔNG chia lại được vì đã chuyển giao (handoff) — luôn giữ nguyên. */
+  lockedHandoff: number;
   /**
    * Trạng thái CUỐI CÙNG sau lần gọi này: còn UNASSIGNED trong số các id hợp lệ
    * đã chọn (created hoặc có sẵn từ trước đều tính — KHÔNG chỉ đếm membership
@@ -441,6 +447,8 @@ export interface BulkDistributeResult {
 interface ExistingMembershipRef {
   customer_id: string;
   assignment_status: string;
+  telesale_id?: string | null;
+  handoff_id?: string | null;
 }
 
 interface BulkDistributionPlan {
@@ -449,6 +457,9 @@ interface BulkDistributionPlan {
   alreadyAssigned: number;
   toCreate: DistributionPlanItem[];
   toAssignExisting: DistributionPlanItem[];
+  /** Membership ĐÃ ASSIGNED cho Sale khác được chia lại (kèm telesale_id cũ làm guard concurrent). */
+  toReassign: (DistributionPlanItem & { previous_telesale_id: string | null })[];
+  lockedHandoff: number;
   /** Xem BulkDistributeResult.stillUnassigned — tính trên toàn bộ id hợp lệ, không riêng toCreate. */
   stillUnassigned: number;
 }
@@ -460,8 +471,13 @@ interface BulkDistributionPlan {
  *   đưa vào planDistribution như bình thường (tạo mới).
  * - customer đã có membership UNASSIGNED -> VẪN "eligible" để phân lần này
  *   (đây là fix cho bug: trước đây bị loại hoàn toàn nên không bao giờ phân được).
- * - customer đã có membership ASSIGNED -> loại khỏi eligible hoàn toàn, không
- *   bao giờ tự động gán lại (không chiếm chỗ trong round-robin/quantity).
+ * - customer đã có membership ASSIGNED -> mặc định loại khỏi eligible hoàn toàn,
+ *   không tự động gán lại (không chiếm chỗ trong round-robin/quantity).
+ * - reassignAssigned (Admin chủ động tick "Thu hồi & chia lại"): membership
+ *   ASSIGNED cho Sale NGOÀI danh sách telesales lần này cũng eligible -> thu hồi
+ *   từ Sale cũ và chia lại. Ngoại lệ luôn giữ nguyên: đã có handoff_id (đã
+ *   chuyển giao, lockedHandoff) hoặc đang thuộc chính 1 Sale trong danh sách
+ *   (không xáo trộn khách giữa các Sale đang được chia).
  */
 export function planBulkDistribution(input: {
   orderedIds: readonly string[];
@@ -470,28 +486,43 @@ export function planBulkDistribution(input: {
   telesales: readonly TelesaleRef[];
   mode: DistributionMode;
   quantities?: Readonly<Record<string, number>>;
+  reassignAssigned?: boolean;
 }): BulkDistributionPlan {
   const { orderedIds, existingCustomerIds, existingMemberships, telesales, mode, quantities } = input;
+  const canReassign = Boolean(input.reassignAssigned) && mode !== 'none' && telesales.length > 0;
+  const targetTelesaleIds = new Set(telesales.map(t => t.id_nhan_vien));
 
   const notFound = orderedIds.filter(id => !existingCustomerIds.has(id));
   const validIds = orderedIds.filter(id => existingCustomerIds.has(id));
 
   const membershipByCustomer = new Map(existingMemberships.map(m => [m.customer_id, m]));
-  const alreadyAssignedIds = new Set(
-    [...membershipByCustomer.values()].filter(m => m.assignment_status !== 'UNASSIGNED').map(m => m.customer_id),
+  const assignedMemberships = [...membershipByCustomer.values()].filter(m => m.assignment_status !== 'UNASSIGNED');
+  const alreadyAssignedIds = new Set(assignedMemberships.map(m => m.customer_id));
+  const lockedHandoff = assignedMemberships.filter(m => Boolean(m.handoff_id)).length;
+  const reassignableIds = new Set(
+    canReassign
+      ? assignedMemberships
+          .filter(m => !m.handoff_id && !(m.telesale_id && targetTelesaleIds.has(m.telesale_id)))
+          .map(m => m.customer_id)
+      : [],
   );
 
-  const eligibleIds = validIds.filter(id => !alreadyAssignedIds.has(id));
+  const eligibleIds = validIds.filter(id => !alreadyAssignedIds.has(id) || reassignableIds.has(id));
   const plan = planDistribution({ customerIds: eligibleIds, telesales, mode, quantities });
 
   const toCreate = plan.filter(item => !membershipByCustomer.has(item.customer_id));
   const toAssignExisting = plan.filter(
-    item => membershipByCustomer.has(item.customer_id) && item.assignment_status === 'ASSIGNED',
+    item => membershipByCustomer.has(item.customer_id) && !reassignableIds.has(item.customer_id) && item.assignment_status === 'ASSIGNED',
   );
+  // Phần dư của quantity rơi vào khách "chia lại" -> KHÔNG thu hồi (giữ Sale cũ),
+  // chỉ thu hồi khi thực sự có Sale mới nhận.
+  const toReassign = plan
+    .filter(item => reassignableIds.has(item.customer_id) && item.assignment_status === 'ASSIGNED')
+    .map(item => ({ ...item, previous_telesale_id: membershipByCustomer.get(item.customer_id)?.telesale_id ?? null }));
   // plan chỉ chứa đúng các id "eligible" (mới + UNASSIGNED có sẵn) — nên phần còn
   // lại vẫn UNASSIGNED sau vòng phân này (mới tạo VẪN unassigned, hoặc có sẵn
   // nhưng rớt vào phần dư của quantity/mode 'none') đều nằm trong chính plan.
-  const stillUnassigned = plan.filter(item => item.assignment_status === 'UNASSIGNED').length;
+  const stillUnassigned = plan.filter(item => item.assignment_status === 'UNASSIGNED' && !reassignableIds.has(item.customer_id)).length;
 
   return {
     notFound,
@@ -499,7 +530,61 @@ export function planBulkDistribution(input: {
     alreadyAssigned: alreadyAssignedIds.size,
     toCreate,
     toAssignExisting,
+    toReassign,
+    lockedHandoff,
     stillUnassigned,
+  };
+}
+
+export interface CampaignDistributionPreview {
+  requested: number;
+  notFound: number;
+  /** Chưa có trong Campaign này -> sẽ được thêm mới. */
+  notMember: number;
+  /** Đã trong Campaign nhưng chưa có Sale. */
+  unassigned: number;
+  /** Đã có Sale (gồm cả lockedHandoff), nhóm theo Sale hiện tại. */
+  assigned: number;
+  assignedBySale: { telesale_id: string | null; telesale_name: string; count: number }[];
+  /** Trong assigned: đã chuyển giao (handoff) — không bao giờ chia lại. */
+  lockedHandoff: number;
+}
+
+/**
+ * READ-ONLY — cảnh báo TRƯỚC khi bấm Xác nhận: trong tập khách đã chọn, bao
+ * nhiêu khách sẽ được thêm/phân, bao nhiêu đã có Sale (và Sale nào) nên sẽ bị
+ * bỏ qua nếu không tick "Thu hồi & chia lại".
+ */
+export async function previewCampaignDistribution(campaignId: string, customerIds: readonly string[]): Promise<CampaignDistributionPreview> {
+  assertTransactionalCrm();
+  const ids = [...new Set(customerIds.filter(id => typeof id === 'string' && id.trim()))];
+  const [existing, memberships] = ids.length
+    ? await Promise.all([
+        prisma.khachHang.findMany({ where: { id_khach_hang: { in: ids } }, select: { id_khach_hang: true } }),
+        prisma.campaignMembership.findMany({
+          where: { campaign_id: campaignId, customer_id: { in: ids } },
+          select: { customer_id: true, assignment_status: true, telesale_id: true, telesale_name: true, handoff_id: true },
+        }),
+      ])
+    : [[], []];
+  const existingIds = new Set(existing.map(c => c.id_khach_hang));
+  const valid = memberships.filter(m => existingIds.has(m.customer_id));
+  const assignedRows = valid.filter(m => m.assignment_status !== 'UNASSIGNED');
+  const bySale = new Map<string, { telesale_id: string | null; telesale_name: string; count: number }>();
+  for (const m of assignedRows) {
+    const key = m.telesale_id || m.telesale_name || '';
+    const entry = bySale.get(key) || { telesale_id: m.telesale_id, telesale_name: m.telesale_name || '(không rõ)', count: 0 };
+    entry.count += 1;
+    bySale.set(key, entry);
+  }
+  return {
+    requested: ids.length,
+    notFound: ids.length - existingIds.size,
+    notMember: existingIds.size - valid.length,
+    unassigned: valid.length - assignedRows.length,
+    assigned: assignedRows.length,
+    assignedBySale: [...bySale.values()].sort((a, b) => b.count - a.count),
+    lockedHandoff: assignedRows.filter(m => Boolean(m.handoff_id)).length,
   };
 }
 
@@ -535,13 +620,14 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
     const existingMemberships = orderedIds.length
       ? await tx.campaignMembership.findMany({
           where: { campaign_id: input.campaignId, customer_id: { in: orderedIds } },
-          select: { customer_id: true, assignment_status: true },
+          select: { customer_id: true, assignment_status: true, telesale_id: true, handoff_id: true },
         })
       : [];
 
     const plan = planBulkDistribution({
       orderedIds, existingCustomerIds, existingMemberships,
       telesales: input.telesales, mode: input.mode, quantities: input.quantities,
+      reassignAssigned: input.reassignAssigned,
     });
 
     if (plan.toCreate.length > 0) {
@@ -577,6 +663,28 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       });
     }
 
+    // Thu hồi & chia lại — guard concurrent: chỉ khớp khi membership VẪN đang
+    // thuộc đúng Sale cũ và chưa handoff (nếu ai đó vừa đổi, khớp 0 dòng).
+    // Lịch sử chăm sóc (lich_su_cham_soc, trạng thái...) giữ nguyên để Sale mới
+    // xem tiếp được.
+    let reassigned = 0;
+    for (const item of plan.toReassign) {
+      const updated = await tx.campaignMembership.updateMany({
+        where: {
+          campaign_id: input.campaignId, customer_id: item.customer_id,
+          assignment_status: 'ASSIGNED', telesale_id: item.previous_telesale_id, handoff_id: null,
+        },
+        data: {
+          telesale_id: item.telesale_id,
+          telesale_name: item.telesale_name,
+          assigned_at: new Date(),
+          assigned_by_id: input.actor.id_nhan_vien,
+          assigned_by_name: input.actor.ho_ten,
+        },
+      });
+      reassigned += updated.count;
+    }
+
     return {
       campaignId: input.campaignId,
       requested: orderedIds.length,
@@ -584,7 +692,9 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       alreadyMember: plan.alreadyMember,
       alreadyAssigned: plan.alreadyAssigned,
       created: plan.toCreate.length,
-      newlyAssigned: plan.toCreate.filter(p => p.assignment_status === 'ASSIGNED').length + plan.toAssignExisting.length,
+      newlyAssigned: plan.toCreate.filter(p => p.assignment_status === 'ASSIGNED').length + plan.toAssignExisting.length + reassigned,
+      reassigned,
+      lockedHandoff: plan.lockedHandoff,
       stillUnassigned: plan.stillUnassigned,
     };
   });

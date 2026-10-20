@@ -188,7 +188,12 @@ test('K) CampaignDistributeModal.tsx: KHÔNG có fetch/useEffect mới nào cho 
   const fetchCalls = [...src.matchAll(/fetch\(([^)]*)\)/g)].map(m => m[1]);
   // Đúng 2 fetch hiện có từ trước (GET /api/campaigns lúc mount, POST tạo
   // Campaign, POST distribute) — không có fetch thứ 4 nào mới cho Department.
-  assert.ok(fetchCalls.length <= 3, `chỉ được tối đa 3 fetch hiện có (list campaigns, create campaign, distribute) — thấy ${fetchCalls.length}: ${fetchCalls.join(' | ')}`);
+  // + 1 fetch preview cảnh báo khách đã có Sale — gọi CHÍNH POST /distribute
+  // (preview: true), không phải endpoint mới.
+  assert.ok(fetchCalls.length <= 4, `chỉ được tối đa 4 fetch (list campaigns, create campaign, distribute preview, distribute) — thấy ${fetchCalls.length}: ${fetchCalls.join(' | ')}`);
+  for (const call of fetchCalls) {
+    assert.match(call, /^'\/api\/campaigns'(,|$)|\/api\/campaigns\/\$\{\w+\}\/distribute`/,`fetch ngoài endpoint Campaign hiện có: ${call}`);
+  }
   assert.doesNotMatch(src, /fetch\([^)]*department/i, 'không được thêm fetch nào liên quan department');
   assert.doesNotMatch(src, /useEffect\([\s\S]{0,200}phong_KD/, 'listActiveSaleDepartments phải chạy qua useMemo (đồng bộ, từ props có sẵn) — không phải useEffect/fetch bất đồng bộ');
 });

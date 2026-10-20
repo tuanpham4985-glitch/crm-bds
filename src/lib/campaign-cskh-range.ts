@@ -177,3 +177,27 @@ export function summarizeMembersBySale(
   rows.sort((a, b) => a.telesaleName.localeCompare(b.telesaleName) || a.telesaleId.localeCompare(b.telesaleId));
   return rows;
 }
+
+// SALE CSKH VIEW — Sale (không quản lý toàn Campaign) thấy khách MỚI ĐƯỢC PHÂN
+// lên đầu (assigned_at, rơi về created_at nếu chưa có), thay vì nằm ở trang
+// cuối. CHỈ áp cho danh sách đã scope theo Sale (members route) — góc nhìn
+// Admin/Leader giữ nguyên created_at ASC vì đó là thứ tự tham chiếu của
+// "Chọn khách: Từ x đến y" (resolveCampaignMembershipCustomerIdsByRange).
+// Sort ổn định: cùng mốc thời gian giữ nguyên thứ tự đầu vào.
+export interface MembershipAssignedTime {
+  assigned_at?: Date | string | null;
+  created_at?: Date | string | null;
+}
+
+function membershipTimeValue(member: MembershipAssignedTime): number {
+  const raw = member.assigned_at ?? member.created_at;
+  const time = raw ? new Date(raw).getTime() : NaN;
+  return Number.isFinite(time) ? time : 0;
+}
+
+export function sortMembershipsNewestAssignedFirst<T extends MembershipAssignedTime>(members: readonly T[]): T[] {
+  return members
+    .map((member, index) => ({ member, index, time: membershipTimeValue(member) }))
+    .sort((a, b) => b.time - a.time || a.index - b.index)
+    .map(entry => entry.member);
+}
