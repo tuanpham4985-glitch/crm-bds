@@ -24,18 +24,26 @@ export function isCustomerInCampaign(customerId: string, membershipCustomerIds: 
   return membershipCustomerIds.has(customerId);
 }
 
+/**
+ * privateGroupCustomerIds (tuỳ chọn): Customer thuộc Nhóm riêng ĐÃ có người
+ * chăm sóc riêng — KHÔNG được coi là "Chưa vào Campaign" (khách trống để chia),
+ * tránh trộn khách Nhóm riêng vào Campaign khi chia nhanh/theo khoảng.
+ */
 export function matchesCampaignStatusFilter(
   customerId: string,
   membershipCustomerIds: ReadonlySet<string>,
   filter: CampaignStatusFilter,
+  privateGroupCustomerIds?: ReadonlySet<string>,
 ): boolean {
   if (filter === 'in_campaign') return membershipCustomerIds.has(customerId);
-  if (filter === 'not_in_campaign') return !membershipCustomerIds.has(customerId);
+  if (filter === 'not_in_campaign') return !membershipCustomerIds.has(customerId) && !privateGroupCustomerIds?.has(customerId);
   return true;
 }
 
 export interface CampaignMembershipSummary {
   inCampaign: number;
+  /** Thuộc Nhóm riêng và chưa vào Campaign — không tính là "Chưa vào Campaign". */
+  inPrivateGroup: number;
   notInCampaign: number;
 }
 
@@ -49,7 +57,11 @@ export interface CampaignMembershipSummary {
 export function summarizeCampaignMembership(
   customerIds: readonly string[],
   membershipCustomerIds: ReadonlySet<string>,
+  privateGroupCustomerIds?: ReadonlySet<string>,
 ): CampaignMembershipSummary {
   const inCampaign = customerIds.filter(id => membershipCustomerIds.has(id)).length;
-  return { inCampaign, notInCampaign: customerIds.length - inCampaign };
+  const inPrivateGroup = privateGroupCustomerIds
+    ? customerIds.filter(id => !membershipCustomerIds.has(id) && privateGroupCustomerIds.has(id)).length
+    : 0;
+  return { inCampaign, inPrivateGroup, notInCampaign: customerIds.length - inCampaign - inPrivateGroup };
 }

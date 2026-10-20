@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDuAn, getKhachHang, findKhachHangById, getNhanVien, getPipeline, addKhachHang, updateKhachHang, deleteKhachHang } from '@/lib/data-access';
 import { canManageCustomer, canViewCustomer, customerDeleteBlockReason, getCrmSessionUser, isCrmAdmin, isDirectManager } from '@/lib/crm-auth';
-import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds } from '@/lib/crm-funnel/campaign';
+import { getCampaignMembershipCustomerRefs, getCampaignNamesByCustomerIds, getPrivateGroupCustomerRefs } from '@/lib/crm-funnel/campaign';
 import { getDatasetMembershipCustomerRefs } from '@/lib/crm-funnel/dataset';
 import { createManualCustomerWithGroupLink, DuplicatePhoneError, getPrivateGroupLinksForCustomers, getPrivateGroupMembersForGroups, getPrivateGroupsByIds, getPrivateGroupVisibleCustomerIdsForEmployee, GroupNotAllowedError, GroupSelectionRequiredError } from '@/lib/crm-funnel/private-group';
 import { buildCustomerGroupBadges } from '@/lib/private-group-auth';
@@ -54,11 +54,15 @@ export async function GET(request: NextRequest) {
     // file) — 3 query cố định, KHÔNG phụ thuộc allCustomers.length nên KHÔNG
     // N+1. Guard-trả-rỗng khi Postgres CRM tắt (route vẫn luôn chạy).
     const privateGroupVisibleIds = await getPrivateGroupVisibleCustomerIdsForEmployee(user.id_nhan_vien);
+    // Khách thuộc BẤT KỲ Nhóm riêng nào — không tính là "Chưa vào Campaign"
+    // (đã có người chăm sóc riêng), để Chia nhanh/Chọn khách không lấy nhầm.
+    // Query riêng, giữ nguyên shape Promise.all ở trên.
+    const privateGroupCustomerSet = new Set((await getPrivateGroupCustomerRefs()).map(ref => ref.customer_id));
     const isAdmin = isCrmAdmin(user);
 
     let total: number;
     let filteredTotal: number;
-    let campaignSummary: { inCampaign: number; notInCampaign: number };
+    let campaignSummary: { inCampaign: number; inPrivateGroup: number; notInCampaign: number };
     let paginatedData: KhachHang[];
     const start = (page - 1) * limit;
 
@@ -78,21 +82,25 @@ export async function GET(request: NextRequest) {
       // "Chọn tất cả N phù hợp bộ lọc" phụ thuộc con số này).
       const extraConditions: Prisma.KhachHangWhereInput[] = [];
       if (campaignStatus === 'in_campaign') extraConditions.push({ id_khach_hang: { in: [...membershipSet] } });
-      else if (campaignStatus === 'not_in_campaign') extraConditions.push({ id_khach_hang: { notIn: [...membershipSet] } });
+      else if (campaignStatus === 'not_in_campaign') extraConditions.push({ id_khach_hang: { notIn: [...membershipSet, ...privateGroupCustomerSet] } });
       if (datasetId) extraConditions.push({ id_khach_hang: { in: [...datasetMembershipSet] } });
       const filteredWhere = extraConditions.length > 0 ? { AND: [baseWhere, ...extraConditions] } : baseWhere;
 
-      const [totalCount, inCampaignCount, filteredTotalCount, rows] = await Promise.all([
+      const privateGroupOnlyIds = [...privateGroupCustomerSet].filter(customerId => !membershipSet.has(customerId));
+      const [totalCount, inCampaignCount, filteredTotalCount, rows, inPrivateGroupCount] = await Promise.all([
         prisma.khachHang.count({ where: baseWhere }),
         membershipSet.size > 0
           ? prisma.khachHang.count({ where: { AND: [baseWhere, { id_khach_hang: { in: [...membershipSet] } }] } })
           : Promise.resolve(0),
         prisma.khachHang.count({ where: filteredWhere }),
         prisma.khachHang.findMany({ where: filteredWhere, orderBy: { ngay_tao: 'desc' }, skip: start, take: limit }),
+        privateGroupOnlyIds.length > 0
+          ? prisma.khachHang.count({ where: { AND: [baseWhere, { id_khach_hang: { in: privateGroupOnlyIds } }] } })
+          : Promise.resolve(0),
       ]);
 
       total = totalCount;
-      campaignSummary = { inCampaign: inCampaignCount, notInCampaign: total - inCampaignCount };
+      campaignSummary = { inCampaign: inCampaignCount, inPrivateGroup: inPrivateGroupCount, notInCampaign: total - inCampaignCount - inPrivateGroupCount };
       filteredTotal = filteredTotalCount;
       paginatedData = rows.map(toKhachHang);
     } else {
@@ -128,11 +136,11 @@ export async function GET(request: NextRequest) {
       // cũng KHÔNG biết gì về campaignStatus — đổi ý nghĩa "total" ở đây sẽ làm
       // range/select-all lệch với dữ liệu server thật sự resolve khi submit.
       total = data.length;
-      campaignSummary = summarizeCampaignMembership(data.map(kh => kh.id_khach_hang), membershipSet);
+      campaignSummary = summarizeCampaignMembership(data.map(kh => kh.id_khach_hang), membershipSet, privateGroupCustomerSet);
 
       // campaignStatus là filter MỚI, tách biệt hoàn toàn khỏi total/scope ở
       // trên — chỉ thu hẹp tập hiển thị + phân trang, không đụng "total".
-      data = data.filter(kh => matchesCampaignStatusFilter(kh.id_khach_hang, membershipSet, campaignStatus));
+      data = data.filter(kh => matchesCampaignStatusFilter(kh.id_khach_hang, membershipSet, campaignStatus, privateGroupCustomerSet));
       // CUSTOMER DATASET — cùng tinh thần campaignStatus: filter MỚI, không đụng
       // "total" (đã tính ở trên trước khi áp dụng cả 2 filter này).
       if (datasetId) data = data.filter(kh => datasetMembershipSet.has(kh.id_khach_hang));

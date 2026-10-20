@@ -26,7 +26,7 @@ test('route.ts: nhánh Postgres dùng buildKhachHangBaseWhere (reuse module thu�
 });
 
 test('route.ts: nhánh Postgres — 4 query total/inCampaignCount/filteredTotal/findMany chạy SONG SONG (Promise.all), không tuần tự', () => {
-  assert.match(routeSrc, /const \[totalCount, inCampaignCount, filteredTotalCount, rows\] = await Promise\.all\(\[/);
+  assert.match(routeSrc, /const \[totalCount, inCampaignCount, filteredTotalCount, rows, inPrivateGroupCount\] = await Promise\.all\(\[/);
 });
 
 test('route.ts: "total" tính trên baseWhere (KHÔNG gồm campaignStatus/datasetId) — giữ ĐÚNG ý nghĩa đã khoá (Customer Range + "Chọn tất cả N phù hợp bộ lọc" phụ thuộc con số này)', () => {
@@ -40,7 +40,8 @@ test('route.ts: "filteredTotal" tính trên filteredWhere (baseWhere + campaignS
 
 test('route.ts: campaignStatus="in_campaign"/"not_in_campaign" dịch đúng sang id_khach_hang in/notIn membershipSet — mirror matchesCampaignStatusFilter cũ', () => {
   assert.match(routeSrc, /if \(campaignStatus === 'in_campaign'\) extraConditions\.push\(\{ id_khach_hang: \{ in: \[\.\.\.membershipSet\] \} \}\);/);
-  assert.match(routeSrc, /else if \(campaignStatus === 'not_in_campaign'\) extraConditions\.push\(\{ id_khach_hang: \{ notIn: \[\.\.\.membershipSet\] \} \}\);/);
+  // "Chưa vào Campaign" loại cả khách Nhóm riêng (đã có người chăm sóc riêng).
+  assert.match(routeSrc, /else if \(campaignStatus === 'not_in_campaign'\) extraConditions\.push\(\{ id_khach_hang: \{ notIn: \[\.\.\.membershipSet, \.\.\.privateGroupCustomerSet\] \} \}\);/);
 });
 
 test('route.ts: datasetId dịch đúng sang id_khach_hang in datasetMembershipSet', () => {
@@ -48,7 +49,7 @@ test('route.ts: datasetId dịch đúng sang id_khach_hang in datasetMembershipS
 });
 
 test('route.ts: campaignSummary (inCampaign/notInCampaign) tính trên baseWhere — CÙNG scope với "total", KHÔNG bị campaignStatus/datasetId ảnh hưởng (mirror summarizeCampaignMembership cũ, tính TRƯỚC khi áp campaignStatus/datasetId)', () => {
-  assert.match(routeSrc, /campaignSummary = \{ inCampaign: inCampaignCount, notInCampaign: total - inCampaignCount \};/);
+  assert.match(routeSrc, /campaignSummary = \{ inCampaign: inCampaignCount, inPrivateGroup: inPrivateGroupCount, notInCampaign: total - inCampaignCount - inPrivateGroupCount \};/);
   // inCampaignCount PHẢI dùng baseWhere (không phải filteredWhere) làm điều kiện gốc.
   const idx = routeSrc.indexOf('inCampaignCount');
   const nearby = routeSrc.slice(routeSrc.indexOf('prisma.khachHang.count', idx - 200), idx + 400);

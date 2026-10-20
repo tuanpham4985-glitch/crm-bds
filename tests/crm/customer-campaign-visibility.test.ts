@@ -45,7 +45,7 @@ test('multiple memberships (Customer A thuộc cả Campaign 1 và Campaign 2) -
   const memberships = new Set(['KH_A']);
   assert.equal(matchesCampaignStatusFilter('KH_A', memberships, 'in_campaign'), true);
   const summary = summarizeCampaignMembership(['KH_A', 'KH_B'], memberships);
-  assert.deepEqual(summary, { inCampaign: 1, notInCampaign: 1 });
+  assert.deepEqual(summary, { inCampaign: 1, inPrivateGroup: 0, notInCampaign: 1 });
 });
 
 test('filter Tất cả/Chưa vào/Đã vào: matchesCampaignStatusFilter phủ đủ 3 nhánh, "all" luôn true bất kể trạng thái', () => {
@@ -63,12 +63,12 @@ test('counts đúng: summarizeCampaignMembership trên tập hỗn hợp -> inCa
   const memberships = new Set(['KH_1', 'KH_3', 'KH_5']);
   const ids = ['KH_1', 'KH_2', 'KH_3', 'KH_4', 'KH_5', 'KH_6', 'KH_7'];
   const summary = summarizeCampaignMembership(ids, memberships);
-  assert.deepEqual(summary, { inCampaign: 3, notInCampaign: 4 });
+  assert.deepEqual(summary, { inCampaign: 3, inPrivateGroup: 0, notInCampaign: 4 });
   assert.equal(summary.inCampaign + summary.notInCampaign, ids.length);
 });
 
 test('summarizeCampaignMembership: danh sách rỗng -> {0,0}, không lỗi', () => {
-  assert.deepEqual(summarizeCampaignMembership([], new Set()), { inCampaign: 0, notInCampaign: 0 });
+  assert.deepEqual(summarizeCampaignMembership([], new Set()), { inCampaign: 0, inPrivateGroup: 0, notInCampaign: 0 });
 });
 
 // --- B. Wiring: GET /api/khach-hang ---
@@ -114,7 +114,7 @@ test('route.ts: campaignSummary tính trên CÙNG scope với "total" (KHÔNG á
   // tạo vòng lặp tự tham chiếu vô nghĩa (summary phụ thuộc chính campaignStatus
   // nó đang mô tả).
   const inCampaignCountIdx = src.indexOf('{ AND: [baseWhere, { id_khach_hang: { in: [...membershipSet] } }] }');
-  const campaignSummaryPgIdx = src.indexOf('campaignSummary = { inCampaign: inCampaignCount, notInCampaign: total - inCampaignCount };');
+  const campaignSummaryPgIdx = src.indexOf('campaignSummary = { inCampaign: inCampaignCount, inPrivateGroup: inPrivateGroupCount, notInCampaign: total - inCampaignCount - inPrivateGroupCount };');
   assert.ok(inCampaignCountIdx >= 0 && campaignSummaryPgIdx > inCampaignCountIdx,
     'PostgreSQL: campaignSummary phải gán từ inCampaignCount (đếm trên baseWhere AND membership) và total (cũng trên baseWhere)');
   // Google Sheets: campaignSummary (hành vi cũ) phải tính TRƯỚC khi data bị
@@ -183,7 +183,8 @@ test('page.tsx: filter tri-state Tất cả/Chưa vào Campaign/Đã vào Campai
 
 test('page.tsx: summary "Tổng X · Đã vào Campaign Y · Chưa vào Campaign Z" dùng "total" (scope, KHÔNG đổi theo tab) + campaignSummary từ server — không tự tính lại ở client', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
-  assert.match(src, /Tổng \{total\} · Đã vào Campaign \{campaignSummary\.inCampaign\} · Chưa vào Campaign \{campaignSummary\.notInCampaign\}/);
+  // + "Nhóm riêng N" (khách Nhóm riêng không tính là Chưa vào Campaign) khi > 0.
+  assert.match(src, /Tổng \{total\} · Đã vào Campaign \{campaignSummary\.inCampaign\}\{campaignSummary\.inPrivateGroup \? ` · Nhóm riêng \$\{campaignSummary\.inPrivateGroup\}` : ''\} · Chưa vào Campaign \{campaignSummary\.notInCampaign\}/);
 });
 
 test('page.tsx: fetchData() gửi campaignStatus lên server khi khác "all" — filter phải server-side/authoritative, không tự lọc lại 20 dòng đã tải', () => {

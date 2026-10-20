@@ -218,7 +218,7 @@ test('bulkAddAndDistribute mode "none" (mặc định của customer_range khi A
 test('bulkAddAndDistribute (dùng chung cho customer_range) vẫn createMany skipDuplicates: true — dedupe theo @@unique([customer_id, campaign_id]) không đổi bởi feature mới', () => {
   const src = readFileSync(resolve(CAMPAIGN_LIB_PATH), 'utf8');
   const fnStart = src.indexOf('export async function bulkAddAndDistribute');
-  const fnBody = src.slice(fnStart, fnStart + 2000);
+  const fnBody = src.slice(fnStart, src.indexOf('\n}', fnStart));
   assert.match(fnBody, /skipDuplicates:\s*true/);
 });
 

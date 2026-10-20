@@ -56,13 +56,13 @@ export default function KhachHangPage() {
   // (sau khi áp thêm campaignStatus) để phân trang đúng.
   const [campaignStatus, setCampaignStatus] = useState<'all' | 'in_campaign' | 'not_in_campaign'>('all');
   const [filteredTotal, setFilteredTotal] = useState(0);
-  const [campaignSummary, setCampaignSummary] = useState<{ inCampaign: number; notInCampaign: number }>({ inCampaign: 0, notInCampaign: 0 });
+  const [campaignSummary, setCampaignSummary] = useState<{ inCampaign: number; inPrivateGroup?: number; notInCampaign: number }>({ inCampaign: 0, notInCampaign: 0 });
   const [campaignByCustomer, setCampaignByCustomer] = useState<Record<string, string[]>>({});
   // Badge Nhóm riêng dưới Tên KH — CHỈ chứa badge actor được phép biết (đã
   // lọc theo canViewGroupCustomer ở server, xem GET /api/khach-hang), KHÔNG
   // suy luận thêm ở client (frontend không phải security boundary).
   const [privateGroupByCustomer, setPrivateGroupByCustomer] = useState<Record<string, { id: string; name: string }>>({});
-  const [rangeCampaignPreview, setRangeCampaignPreview] = useState<{ inCampaign: number; notInCampaign: number } | null>(null);
+  const [rangeCampaignPreview, setRangeCampaignPreview] = useState<{ inCampaign: number; inPrivateGroup: number; notInCampaign: number } | null>(null);
 
   // CUSTOMER DATASET — Dataset (nguồn/lô data import) như MỘT filter nữa,
   // cùng tinh thần campaignStatus (server-side, không đụng "total" — xem
@@ -335,7 +335,7 @@ export default function KhachHangPage() {
       .then(res => res.json())
       .then(result => {
         if (cancelled) return;
-        setRangeCampaignPreview(result.success ? { inCampaign: result.data.inCampaign, notInCampaign: result.data.notInCampaign } : null);
+        setRangeCampaignPreview(result.success ? { inCampaign: result.data.inCampaign, inPrivateGroup: result.data.inPrivateGroup ?? 0, notInCampaign: result.data.notInCampaign } : null);
       })
       .catch(() => { if (!cancelled) setRangeCampaignPreview(null); });
     return () => { cancelled = true; };
@@ -987,7 +987,7 @@ export default function KhachHangPage() {
             ))}
           </div>
           <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)' }}>
-            Tổng {total} · Đã vào Campaign {campaignSummary.inCampaign} · Chưa vào Campaign {campaignSummary.notInCampaign}
+            Tổng {total} · Đã vào Campaign {campaignSummary.inCampaign}{campaignSummary.inPrivateGroup ? ` · Nhóm riêng ${campaignSummary.inPrivateGroup}` : ''} · Chưa vào Campaign {campaignSummary.notInCampaign}
           </span>
         </div>
         {/* CUSTOMER DATASET — dropdown gọn (không phải tab), lọc theo Dataset
@@ -1039,6 +1039,7 @@ export default function KhachHangPage() {
               ? <span style={{ fontSize: 13, fontWeight: 650, color: 'var(--primary)' }}>
                   → Đã chọn {rangeValidation.count} khách hàng (STT {rangeFromNum}–{rangeToNum} trên bảng{rangeScopeLabel ? `: ${rangeScopeLabel}` : ''})
                   {rangeCampaignPreview && ` · Đã vào Campaign ${rangeCampaignPreview.inCampaign} · Chưa vào Campaign ${rangeCampaignPreview.notInCampaign}`}
+                  {rangeCampaignPreview && rangeCampaignPreview.inPrivateGroup > 0 && ` · Nhóm riêng ${rangeCampaignPreview.inPrivateGroup} (sẽ bỏ qua)`}
                 </span>
               : <span style={{ fontSize: 12, color: '#b91c1c' }}>{rangeValidation.error}</span>
           )}

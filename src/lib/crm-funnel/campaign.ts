@@ -10,7 +10,7 @@ import { matchesCustomerBulkFilter, type CustomerBulkFilter } from '../khach-han
 import { filterByDataset } from './dataset';
 import { matchesMembershipQueueFilter, resolveMembershipRange, type MembershipQueueFilter } from '../campaign-cskh-range';
 import { resolveListRange } from '../list-range';
-import { matchesCampaignStatusFilter, type CampaignStatusFilter } from '../khach-hang-campaign-status';
+import { matchesCampaignStatusFilter, summarizeCampaignMembership, type CampaignStatusFilter } from '../khach-hang-campaign-status';
 import type { CrmSessionUser } from '../crm-auth';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client';
 
@@ -205,6 +205,18 @@ export async function resolveCampaignMembershipCustomerIdsByRange(
  * throw khi Postgres CRM chưa bật — delete guard phải luôn hoạt động được kể
  * cả khi tính năng Campaign chưa bật ở deployment đó (trả về mảng rỗng).
  */
+/**
+ * customer_id thuộc BẤT KỲ Nhóm riêng nào — khách đã có người chăm sóc riêng,
+ * KHÔNG được trộn vào Campaign (lọc khỏi "Chưa vào Campaign" + chặn ở
+ * bulkAddAndDistribute). Đặt ở đây (không import private-group.ts) để tránh
+ * vòng import (private-group.ts đã import campaign.ts). Không throw khi
+ * Postgres CRM tắt — trả rỗng như getCampaignMembershipCustomerRefs.
+ */
+export async function getPrivateGroupCustomerRefs(): Promise<{ customer_id: string }[]> {
+  if (!isPostgresEnabled('crm') || !process.env.DATABASE_URL) return [];
+  return prisma.privateGroupCustomer.findMany({ select: { customer_id: true } });
+}
+
 export async function getCampaignMembershipCustomerRefs(): Promise<{ customer_id: string }[]> {
   if (!isPostgresEnabled('crm') || !process.env.DATABASE_URL) return [];
   return prisma.campaignMembership.findMany({ select: { customer_id: true }, distinct: ['customer_id'] });
@@ -317,8 +329,10 @@ export async function resolveCustomerIdsByRange(selection: CustomerRangeSelectio
   const campaignStatus = selection.campaignStatus || 'all';
   let orderedFiltered = datasetScoped;
   if (campaignStatus !== 'all') {
-    const membershipSet = new Set((await getCampaignMembershipCustomerRefs()).map(ref => ref.customer_id));
-    orderedFiltered = datasetScoped.filter(customer => matchesCampaignStatusFilter(customer.id_khach_hang, membershipSet, campaignStatus));
+    const [membershipRefs, privateGroupRefs] = await Promise.all([getCampaignMembershipCustomerRefs(), getPrivateGroupCustomerRefs()]);
+    const membershipSet = new Set(membershipRefs.map(ref => ref.customer_id));
+    const privateGroupSet = new Set(privateGroupRefs.map(ref => ref.customer_id));
+    orderedFiltered = datasetScoped.filter(customer => matchesCampaignStatusFilter(customer.id_khach_hang, membershipSet, campaignStatus, privateGroupSet));
   }
   const result = resolveListRange(orderedFiltered, { from: selection.from, to: selection.to });
   if (!result.ok) return { error: result.error };
@@ -328,6 +342,8 @@ export async function resolveCustomerIdsByRange(selection: CustomerRangeSelectio
 export interface CustomerRangeCampaignStatusPreview {
   count: number;
   inCampaign: number;
+  /** Thuộc Nhóm riêng (chưa vào Campaign) — sẽ bị bỏ qua khi tạo Campaign. */
+  inPrivateGroup: number;
   notInCampaign: number;
 }
 
@@ -347,14 +363,16 @@ export async function previewCustomerRangeCampaignStatus(
 ): Promise<{ data: CustomerRangeCampaignStatusPreview } | { error: string }> {
   const resolved = await resolveCustomerIdsByRange(selection);
   if ('error' in resolved) return { error: resolved.error };
-  const membershipRefs = await getCampaignMembershipCustomerRefs();
+  const [membershipRefs, privateGroupRefs] = await Promise.all([getCampaignMembershipCustomerRefs(), getPrivateGroupCustomerRefs()]);
   const membershipSet = new Set(membershipRefs.map(ref => ref.customer_id));
-  const inCampaign = resolved.customerIds.filter(id => membershipSet.has(id)).length;
+  const privateGroupSet = new Set(privateGroupRefs.map(ref => ref.customer_id));
+  const summary = summarizeCampaignMembership(resolved.customerIds, membershipSet, privateGroupSet);
   return {
     data: {
       count: resolved.customerIds.length,
-      inCampaign,
-      notInCampaign: resolved.customerIds.length - inCampaign,
+      inCampaign: summary.inCampaign,
+      inPrivateGroup: summary.inPrivateGroup,
+      notInCampaign: summary.notInCampaign,
     },
   };
 }
@@ -448,6 +466,8 @@ export interface BulkDistributeResult {
   reassigned: number;
   /** Đã ASSIGNED nhưng KHÔNG chia lại được vì đã chuyển giao (handoff) — luôn giữ nguyên. */
   lockedHandoff: number;
+  /** Khách thuộc Nhóm riêng — luôn bị bỏ qua, không thêm/phân vào Campaign. */
+  privateGroupSkipped: number;
   /**
    * Trạng thái CUỐI CÙNG sau lần gọi này: còn UNASSIGNED trong số các id hợp lệ
    * đã chọn (created hoặc có sẵn từ trước đều tính — KHÔNG chỉ đếm membership
@@ -561,6 +581,8 @@ export interface CampaignDistributionPreview {
   assignedBySale: { telesale_id: string | null; telesale_name: string; count: number }[];
   /** Trong assigned: đã chuyển giao (handoff) — không bao giờ chia lại. */
   lockedHandoff: number;
+  /** Thuộc Nhóm riêng — luôn bị bỏ qua (không tính vào các số ở trên). */
+  privateGroupSkipped: number;
 }
 
 /**
@@ -570,7 +592,11 @@ export interface CampaignDistributionPreview {
  */
 export async function previewCampaignDistribution(campaignId: string, customerIds: readonly string[]): Promise<CampaignDistributionPreview> {
   assertTransactionalCrm();
-  const ids = [...new Set(customerIds.filter(id => typeof id === 'string' && id.trim()))];
+  const requestedIds = [...new Set(customerIds.filter(id => typeof id === 'string' && id.trim()))];
+  const privateGroupIds = requestedIds.length
+    ? new Set((await prisma.privateGroupCustomer.findMany({ where: { customer_id: { in: requestedIds } }, select: { customer_id: true } })).map(r => r.customer_id))
+    : new Set<string>();
+  const ids = requestedIds.filter(id => !privateGroupIds.has(id));
   const [existing, memberships] = ids.length
     ? await Promise.all([
         prisma.khachHang.findMany({ where: { id_khach_hang: { in: ids } }, select: { id_khach_hang: true } }),
@@ -591,7 +617,8 @@ export async function previewCampaignDistribution(campaignId: string, customerId
     bySale.set(key, entry);
   }
   return {
-    requested: ids.length,
+    requested: requestedIds.length,
+    privateGroupSkipped: privateGroupIds.size,
     notFound: ids.length - existingIds.size,
     notMember: existingIds.size - valid.length,
     unassigned: valid.length - assignedRows.length,
@@ -625,6 +652,19 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
   }
 
   return prisma.$transaction(async tx => {
+    // Khách thuộc Nhóm riêng đã có người chăm sóc riêng — KHÔNG BAO GIỜ thêm/
+    // phân vào Campaign (dù chọn theo khoảng, bộ lọc hay tick tay), tránh 2
+    // Sale cùng chăm 1 khách. Lọc trong transaction, trước mọi bước khác.
+    const privateGroupIds = orderedIds.length
+      ? new Set((await tx.privateGroupCustomer.findMany({ where: { customer_id: { in: orderedIds } }, select: { customer_id: true } })).map(r => r.customer_id))
+      : new Set<string>();
+    const requestedCount = orderedIds.length;
+    if (privateGroupIds.size > 0) {
+      const kept = orderedIds.filter(id => !privateGroupIds.has(id));
+      orderedIds.length = 0;
+      orderedIds.push(...kept);
+    }
+
     const existingCustomers = orderedIds.length
       ? await tx.khachHang.findMany({ where: { id_khach_hang: { in: orderedIds } }, select: { id_khach_hang: true } })
       : [];
@@ -700,7 +740,8 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
 
     return {
       campaignId: input.campaignId,
-      requested: orderedIds.length,
+      requested: requestedCount,
+      privateGroupSkipped: privateGroupIds.size,
       notFound: plan.notFound,
       alreadyMember: plan.alreadyMember,
       alreadyAssigned: plan.alreadyAssigned,

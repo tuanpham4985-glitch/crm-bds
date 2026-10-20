@@ -24,6 +24,7 @@ interface DistributeResult {
   newlyAssigned: number;
   reassigned?: number;
   lockedHandoff?: number;
+  privateGroupSkipped?: number;
   stillUnassigned: number;
 }
 
@@ -35,6 +36,7 @@ interface DistributePreview {
   assigned: number;
   assignedBySale: { telesale_id: string | null; telesale_name: string; count: number }[];
   lockedHandoff: number;
+  privateGroupSkipped?: number;
 }
 
 export function CampaignDistributeModal({ customerIds, customerFilter, customerRange, employees, projects, isAdmin, fixedCampaign, onClose, onDone }: {
@@ -284,6 +286,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                 <div>Vừa phân Sale: <strong>{result.newlyAssigned}</strong></div>
                 {(result.reassigned ?? 0) > 0 && <div>Trong đó thu hồi & chia lại: <strong>{result.reassigned}</strong></div>}
                 {(result.lockedHandoff ?? 0) > 0 && <div>Đã chuyển giao (giữ nguyên): <strong>{result.lockedHandoff}</strong></div>}
+                {(result.privateGroupSkipped ?? 0) > 0 && <div style={{ gridColumn: '1 / -1' }}>Bỏ qua vì thuộc Nhóm riêng: <strong>{result.privateGroupSkipped}</strong></div>}
                 <div style={{ gridColumn: '1 / -1' }}>Còn chưa phân: <strong>{result.stillUnassigned}</strong></div>
                 {result.notFound.length > 0 && <div style={{ color: '#b91c1c' }}>Không tìm thấy: <strong>{result.notFound.length}</strong></div>}
               </div>
@@ -447,12 +450,17 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                   <Loader2 size={13} className="spin" style={{ verticalAlign: -2 }} /> Đang kiểm tra khách đã chọn…
                 </div>
               )}
+              {preview && (preview.privateGroupSkipped ?? 0) > 0 && (
+                <div style={{ padding: 10, background: '#eff6ff', color: '#1e40af', borderRadius: 8, fontSize: 12.5, marginTop: 4, marginBottom: 6 }}>
+                  {preview.privateGroupSkipped} khách thuộc Nhóm riêng sẽ được bỏ qua (không thêm vào Campaign) — tránh trùng người chăm sóc.
+                </div>
+              )}
               {preview && preview.assigned > 0 && (
                 <div style={{ padding: 12, background: '#fff7ed', color: '#9a3412', borderRadius: 8, fontSize: 13, marginTop: 4 }}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontWeight: 600 }}>
                     <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
                     <span>
-                      {preview.assigned}/{preview.requested} khách đã có Sale trong Campaign này
+                      {preview.assigned}/{preview.requested - (preview.privateGroupSkipped ?? 0)} khách đã có Sale trong Campaign này
                       {!reassignAssigned && ' — sẽ GIỮ NGUYÊN Sale cũ, không chia lại'}.
                     </span>
                   </div>
@@ -477,9 +485,9 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                   )}
                 </div>
               )}
-              {preview && preview.assigned === 0 && preview.requested > 0 && (
+              {preview && preview.assigned === 0 && preview.requested - (preview.privateGroupSkipped ?? 0) > 0 && (
                 <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Cả {preview.requested} khách đều chưa có Sale trong Campaign này.
+                  Cả {preview.requested - (preview.privateGroupSkipped ?? 0)} khách đều chưa có Sale trong Campaign này.
                 </div>
               )}
             </>

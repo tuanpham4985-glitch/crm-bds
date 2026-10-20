@@ -197,7 +197,7 @@ test('distribute route: nhánh membership_range parse + validate assignment (whi
 test('bulkAddAndDistribute (campaign.ts): vẫn KHÔNG có bất kỳ code path nào update lại telesale_id của membership đã ASSIGNED — chỉ createMany (mới) + updateMany WHERE assignment_status=UNASSIGNED (an toàn, atomic-guard chống đè)', () => {
   const src = readFileSync(resolve(CAMPAIGN_LIB_PATH), 'utf8');
   const fnStart = src.indexOf('export async function bulkAddAndDistribute');
-  const fnBody = src.slice(fnStart, fnStart + 2500);
+  const fnBody = src.slice(fnStart, src.indexOf('\n}', fnStart));
   assert.match(fnBody, /where:\s*\{\s*campaign_id:\s*input\.campaignId,\s*customer_id:\s*item\.customer_id,\s*assignment_status:\s*'UNASSIGNED'\s*\}/);
 });
 
