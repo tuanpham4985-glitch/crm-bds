@@ -19,6 +19,10 @@ import { deriveImportBatchDisplayStatus } from '@/lib/import-batch-display-statu
 import { CampaignDistributeModal } from '@/components/crm/CampaignDistributeModal';
 import { PrivateGroupPanel } from '@/components/crm/PrivateGroupPanel';
 
+// STT nằm trong khoảng "Chọn khách" đang chọn — đánh dấu để Admin thấy đúng
+// những khách sẽ được đưa vào Campaign trước khi bấm Tạo Campaign.
+const RANGE_STT_STYLE = { color: 'var(--primary)', fontWeight: 700, boxShadow: 'inset 3px 0 0 var(--primary)' } as const;
+
 export default function KhachHangPage() {
   const router = useRouter();
   const { user: currentUser, isAdmin, isLoading: authLoading } = useAuth();
@@ -101,6 +105,13 @@ export default function KhachHangPage() {
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo, setRangeTo] = useState('');
   const [showRangeCampaignModal, setShowRangeCampaignModal] = useState(false);
+  // "Chia nhanh N khách chưa vào Campaign" — bật tab Chưa vào Campaign rồi
+  // điền sẵn Từ 1 đến N sau khi bảng tải xong (N kẹp theo số khách thật).
+  const [quickCount, setQuickCount] = useState('100');
+  const [pendingQuickRange, setPendingQuickRange] = useState<{ count: number; afterVersion: number } | null>(null);
+  // Tăng mỗi lần bảng tải xong — để "Chia nhanh" chỉ điền range SAU lần tải
+  // mới (đã áp tab Chưa vào Campaign), không dùng filteredTotal cũ.
+  const [dataVersion, setDataVersion] = useState(0);
 
   // Lịch sử Import (Import Batch)
   const [showImportHistory, setShowImportHistory] = useState(false);
@@ -225,6 +236,7 @@ export default function KhachHangPage() {
         setPrivateGroupByCustomer(result.privateGroupByCustomer || {});
         setSelectedIds(new Set()); // danh sách hiển thị đổi -> reset lựa chọn cho khớp
         setSelectAllMatching(false); // filter/trang đổi -> "chọn tất cả" cũ không còn đúng nghĩa
+        setDataVersion(version => version + 1);
       }
     } catch (err) {
       console.error('Fetch error:', err);
@@ -277,15 +289,34 @@ export default function KhachHangPage() {
       if (d.success) setMyPrivateGroups(d.data);
     }).catch(err => console.error('Fetch my private groups error:', err));
   }, []);
-  // Range theo STT tham chiếu "total" của filter hiện tại (search/fromDate/
-  // toDate) — KHÔNG phụ thuộc "page" (range không phải theo trang). Đổi filter
-  // -> total đổi -> range cũ (nếu có) không còn chắc đúng nghĩa, phải reset.
-  useEffect(() => { setRangeFrom(''); setRangeTo(''); }, [search, fromDate, toDate]);
+  // Range theo ĐÚNG cột STT của bảng đang hiển thị (search/ngày/Dataset/tab
+  // Chưa-Đã vào Campaign) — KHÔNG phụ thuộc "page". Đổi filter -> STT đổi ->
+  // range cũ không còn đúng nghĩa, phải reset.
+  useEffect(() => { setRangeFrom(''); setRangeTo(''); }, [search, fromDate, toDate, datasetFilter, campaignStatus]);
+  useEffect(() => {
+    if (pendingQuickRange === null || dataVersion <= pendingQuickRange.afterVersion || campaignStatus !== 'not_in_campaign') return;
+    const count = Math.min(pendingQuickRange.count, filteredTotal);
+    setPendingQuickRange(null);
+    if (count > 0) { setRangeFrom('1'); setRangeTo(String(count)); }
+  }, [pendingQuickRange, dataVersion, campaignStatus, filteredTotal]);
+
+  function startQuickDistribute() {
+    const count = Math.floor(Number(quickCount));
+    if (!Number.isFinite(count) || count < 1) return;
+    setPendingQuickRange({ count, afterVersion: dataVersion });
+    if (campaignStatus === 'not_in_campaign' && page === 1) {
+      // Đã đúng tab/trang -> không có lần tải mới nào tự chạy, tải lại để lấy số mới nhất.
+      setRangeFrom(''); setRangeTo('');
+      void fetchData();
+    } else {
+      setCampaignStatus('not_in_campaign');
+      setPage(1);
+    }
+  }
 
   // CUSTOMER USED-IN-CAMPAIGN VISIBILITY — preview "Đã vào Campaign X · Chưa
-  // vào Campaign Y" cho range đang nhập. CHỈ dùng from/to (vị trí) + search/
-  // fromDate/toDate — KHÔNG gửi campaignStatus (Customer Range không biết
-  // gì về filter này, giữ đúng authority hiện có của resolveCustomerIdsByRange).
+  // vào Campaign Y" cho range đang nhập — gửi ĐỦ bộ lọc của bảng (search/
+  // ngày/Dataset/tab Campaign), cùng tập resolveCustomerIdsByRange dùng khi ghi.
   const rangeFromNumForPreview = Number(rangeFrom);
   const rangeToNumForPreview = Number(rangeTo);
   const rangeReadyForPreview = rangeFrom.trim() !== '' && rangeTo.trim() !== ''
@@ -298,6 +329,8 @@ export default function KhachHangPage() {
     if (search) params.set('search', search);
     if (fromDate) params.set('dateFrom', fromDate);
     if (toDate) params.set('dateTo', toDate);
+    if (datasetFilter) params.set('datasetId', datasetFilter);
+    if (campaignStatus !== 'all') params.set('campaignStatus', campaignStatus);
     fetch(`/api/khach-hang/range-campaign-status?${params}`)
       .then(res => res.json())
       .then(result => {
@@ -306,7 +339,7 @@ export default function KhachHangPage() {
       })
       .catch(() => { if (!cancelled) setRangeCampaignPreview(null); });
     return () => { cancelled = true; };
-  }, [isAdmin, rangeReadyForPreview, rangeFromNumForPreview, rangeToNumForPreview, search, fromDate, toDate]);
+  }, [isAdmin, rangeReadyForPreview, rangeFromNumForPreview, rangeToNumForPreview, search, fromDate, toDate, datasetFilter, campaignStatus]);
 
   // Load pipeline data in background để hiển thị trạng thái deal của mỗi KH
   useEffect(() => {
@@ -793,16 +826,22 @@ export default function KhachHangPage() {
   const hasFilters = searchInput || fromDate || toDate || datasetFilter;
 
   // REMEDIATION — "Chọn khách: Từ x đến y" (Customer range, Admin-only).
-  // Preview client-side chỉ cần "total" (đã có sẵn từ fetchData, không cần
+  // Validate theo filteredTotal = số dòng của bảng đang hiển thị (cùng cột STT),
+  // không cần
   // tải cả danh sách/Customer object nào về trình duyệt) — validateListRangeAgainstTotal
   // là hàm TOÁN HỌC thuần (không đụng DB), server mới resolve id thật khi submit
   // (POST /api/campaigns/[id]/distribute, xem resolveCustomerIdsByRange).
   const rangeFromNum = Number(rangeFrom);
   const rangeToNum = Number(rangeTo);
   const rangeValidation = rangeFrom.trim() !== '' && rangeTo.trim() !== ''
-    ? validateListRangeAgainstTotal(total, { from: rangeFromNum, to: rangeToNum })
+    ? validateListRangeAgainstTotal(filteredTotal, { from: rangeFromNum, to: rangeToNum })
     : null;
-  const rangeAppliedOnFilteredSet = Boolean(search || fromDate || toDate);
+  const rangeScopeLabel = [
+    campaignStatus === 'not_in_campaign' ? 'Chưa vào Campaign' : campaignStatus === 'in_campaign' ? 'Đã vào Campaign' : '',
+    datasetFilter ? (datasets.find(ds => ds.id === datasetFilter)?.name || 'Dataset đã chọn') : '',
+    search || fromDate || toDate ? 'tìm kiếm/ngày' : '',
+  ].filter(Boolean).join(' · ');
+  const isRowInRange = (stt: number) => Boolean(rangeValidation?.ok) && stt >= rangeFromNum && stt <= rangeToNum;
 
   if (authLoading || crmModuleLoading) return null;
 
@@ -984,6 +1023,12 @@ export default function KhachHangPage() {
           (giống "chọn tất cả theo bộ lọc"), độc lập với checkbox selectedIds. */}
       {isAdmin && total > 0 && (
         <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Chia nhanh:</span>
+          <input type="number" min={1} className="form-input" style={{ width: 80 }} value={quickCount} onChange={e => setQuickCount(e.target.value)} aria-label="Số khách chia nhanh" />
+          <button className="btn btn-primary btn-sm" onClick={startQuickDistribute} disabled={!(Number(quickCount) >= 1)}>
+            Chọn {Number(quickCount) >= 1 ? Math.floor(Number(quickCount)) : ''} khách chưa vào Campaign
+          </button>
+          <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--border)', margin: '0 4px' }} />
           <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Chọn khách:</span>
           <span style={{ fontSize: 13 }}>Từ</span>
           <input type="number" min={1} className="form-input" style={{ width: 90 }} value={rangeFrom} onChange={e => setRangeFrom(e.target.value)} />
@@ -992,7 +1037,7 @@ export default function KhachHangPage() {
           {rangeValidation && (
             rangeValidation.ok
               ? <span style={{ fontSize: 13, fontWeight: 650, color: 'var(--primary)' }}>
-                  → Đã chọn {rangeValidation.count} khách hàng{rangeAppliedOnFilteredSet ? ` (trong ${rangeValidation.total} khách đang lọc theo bộ lọc/tìm kiếm hiện tại)` : ''}
+                  → Đã chọn {rangeValidation.count} khách hàng (STT {rangeFromNum}–{rangeToNum} trên bảng{rangeScopeLabel ? `: ${rangeScopeLabel}` : ''})
                   {rangeCampaignPreview && ` · Đã vào Campaign ${rangeCampaignPreview.inCampaign} · Chưa vào Campaign ${rangeCampaignPreview.notInCampaign}`}
                 </span>
               : <span style={{ fontSize: 12, color: '#b91c1c' }}>{rangeValidation.error}</span>
@@ -1004,6 +1049,11 @@ export default function KhachHangPage() {
           >
             <Layers size={14} /> Tạo Campaign ({rangeValidation?.ok ? rangeValidation.count : 0})
           </button>
+          {rangeValidation?.ok && campaignStatus !== 'not_in_campaign' && rangeCampaignPreview && rangeCampaignPreview.inCampaign > 0 && (
+            <span style={{ width: '100%', fontSize: 12, color: '#b45309' }}>
+              Đoạn này có {rangeCampaignPreview.inCampaign} khách đã vào Campaign. Để chỉ chia khách chưa ai nhận, bấm “Chọn … khách chưa vào Campaign” hoặc chọn tab “Chưa vào Campaign”.
+            </span>
+          )}
         </div>
       )}
 
@@ -1086,6 +1136,8 @@ export default function KhachHangPage() {
                     // (campaignByCustomer, batch từ server) — KHÔNG dùng telesale_id.
                     // Chỉ visibility/provenance warning, KHÔNG phải global lock:
                     // Customer vẫn được thêm vào Campaign khác bình thường.
+                    const stt = (page - 1) * limit + idx + 1;
+                    const sttInRange = isRowInRange(stt);
                     const campaignNames = campaignByCustomer[kh.id_khach_hang];
                     const inCampaign = Boolean(campaignNames && campaignNames.length > 0);
                     // Badge Nhóm riêng — server đã lọc theo quyền actor
@@ -1098,9 +1150,7 @@ export default function KhachHangPage() {
                       <td>
                         <input type="checkbox" checked={selectedIds.has(kh.id_khach_hang)} onChange={() => toggleSelect(kh.id_khach_hang)} aria-label={`Chọn ${kh.ten_KH}`} />
                       </td>
-                      <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>
-                        {(page - 1) * limit + idx + 1}
-                      </td>
+                      <td style={sttInRange ? RANGE_STT_STYLE : { color: 'var(--text-label)', fontWeight: 500 }}>{stt}</td>
                       <td style={{ fontWeight: 500, color: 'var(--text-title)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
                           <span>
@@ -2248,12 +2298,12 @@ export default function KhachHangPage() {
 
       {showRangeCampaignModal && rangeValidation?.ok && (
         <CampaignDistributeModal
-          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter || undefined, count: rangeValidation.count }}
+          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter || undefined, campaignStatus, count: rangeValidation.count }}
           employees={employees}
           projects={duAnList}
           isAdmin={isAdmin}
           onClose={() => setShowRangeCampaignModal(false)}
-          onDone={() => { setRangeFrom(''); setRangeTo(''); }}
+          onDone={() => { setRangeFrom(''); setRangeTo(''); void fetchData(); }}
         />
       )}
     </div>

@@ -155,5 +155,5 @@ test('regression: fetchData dependency array vẫn gồm cả campaignStatus và
 test('regression: Dataset range (resolveCustomerIdsByRange datasetId) và CampaignDistributeModal forwarding datasetFilter không bị đụng bởi milestone hiển thị này', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   assert.match(src, /customerFilter=\{selectAllMatching \? \{ search, from: fromDate, to: toDate, datasetId: datasetFilter \|\| undefined, count: total \} : undefined\}/);
-  assert.match(src, /customerRange=\{\{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter \|\| undefined, count: rangeValidation\.count \}\}/);
+  assert.match(src, /customerRange=\{\{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter \|\| undefined, campaignStatus, count: rangeValidation\.count \}\}/);
 });

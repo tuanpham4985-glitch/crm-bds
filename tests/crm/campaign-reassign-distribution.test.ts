@@ -81,3 +81,21 @@ test('members route: chỉ Sale (không full view) được sort mới phân lê
   const src = readFileSync(resolve('src/app/api/campaigns/[id]/members/route.ts'), 'utf8');
   assert.match(src, /hasFullView \? scopedMembers : sortMembershipsNewestAssignedFirst\(scopedMembers\)/);
 });
+
+test('Customer Range theo tab Chưa/Đã vào Campaign: server lọc campaignStatus TRƯỚC khi cắt range, distribute + preview route đều forward', () => {
+  const lib = readFileSync(resolve('src/lib/crm-funnel/campaign.ts'), 'utf8');
+  const fnStart = lib.indexOf('export async function resolveCustomerIdsByRange');
+  const fnBody = lib.slice(fnStart, lib.indexOf('\n}', fnStart));
+  assert.ok(fnBody.indexOf('matchesCampaignStatusFilter(') < fnBody.indexOf('resolveListRange('));
+  const distribute = readFileSync(resolve('src/app/api/campaigns/[id]/distribute/route.ts'), 'utf8');
+  assert.match(distribute, /campaignStatus: parseCampaignStatusFilter\(rangeInput\.campaignStatus\)/);
+  const preview = readFileSync(resolve('src/app/api/khach-hang/range-campaign-status/route.ts'), 'utf8');
+  assert.match(preview, /previewCustomerRangeCampaignStatus\(\{ from, to, search, dateFrom, dateTo, datasetId, campaignStatus \}\)/);
+});
+
+test('khach-hang page: "Chia nhanh" bật tab Chưa vào Campaign và chỉ điền Từ 1 đến N SAU lần tải bảng mới', () => {
+  const src = readFileSync(resolve('src/app/khach-hang/page.tsx'), 'utf8');
+  assert.match(src, /setPendingQuickRange\(\{ count, afterVersion: dataVersion \}\)/);
+  assert.match(src, /dataVersion <= pendingQuickRange\.afterVersion/);
+  assert.match(src, /Math\.min\(pendingQuickRange\.count, filteredTotal\)/);
+});

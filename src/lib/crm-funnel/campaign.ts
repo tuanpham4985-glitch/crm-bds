@@ -10,6 +10,7 @@ import { matchesCustomerBulkFilter, type CustomerBulkFilter } from '../khach-han
 import { filterByDataset } from './dataset';
 import { matchesMembershipQueueFilter, resolveMembershipRange, type MembershipQueueFilter } from '../campaign-cskh-range';
 import { resolveListRange } from '../list-range';
+import { matchesCampaignStatusFilter, type CampaignStatusFilter } from '../khach-hang-campaign-status';
 import type { CrmSessionUser } from '../crm-auth';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client';
 
@@ -283,6 +284,12 @@ export interface CustomerRangeSelection {
    * TRƯỚC KHI tính STT/range (xem filterByDataset) — "Từ x đến y" khi có
    * Dataset là vị trí trong tập ĐÃ lọc theo Dataset, không phải toàn bộ. */
   datasetId?: string;
+  /** Tab "Chưa vào Campaign"/"Đã vào Campaign" đang bật trên /khach-hang —
+   * thu hẹp range về ĐÚNG tập bảng đang hiển thị, để STT trên bảng và "Từ x
+   * đến y" luôn là CÙNG một số (trước đây range bỏ qua tab này -> lệch STT,
+   * dễ chọn nhầm khách đã chia). Cùng tiêu chí "đã vào" với GET /api/khach-hang
+   * (có membership ở BẤT KỲ Campaign nào). */
+  campaignStatus?: CampaignStatusFilter;
 }
 
 /**
@@ -306,7 +313,13 @@ export async function resolveCustomerIdsByRange(selection: CustomerRangeSelectio
     select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true },
   });
   const filter: CustomerBulkFilter = { search: selection.search, from: selection.dateFrom, to: selection.dateTo };
-  const orderedFiltered = await filterByDataset(customers.filter(customer => matchesCustomerBulkFilter(customer, filter)), selection.datasetId);
+  const datasetScoped = await filterByDataset(customers.filter(customer => matchesCustomerBulkFilter(customer, filter)), selection.datasetId);
+  const campaignStatus = selection.campaignStatus || 'all';
+  let orderedFiltered = datasetScoped;
+  if (campaignStatus !== 'all') {
+    const membershipSet = new Set((await getCampaignMembershipCustomerRefs()).map(ref => ref.customer_id));
+    orderedFiltered = datasetScoped.filter(customer => matchesCampaignStatusFilter(customer.id_khach_hang, membershipSet, campaignStatus));
+  }
   const result = resolveListRange(orderedFiltered, { from: selection.from, to: selection.to });
   if (!result.ok) return { error: result.error };
   return { customerIds: result.ids.map(customer => customer.id_khach_hang) };

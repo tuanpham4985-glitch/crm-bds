@@ -117,11 +117,14 @@ test('campaign.ts: resolveCustomerIdsByRange orderBy ngay_tao desc — KHÁC cre
   const src = readFileSync(resolve(CAMPAIGN_LIB_PATH), 'utf8');
   const fnStart = src.indexOf('export async function resolveCustomerIdsByRange');
   assert.ok(fnStart >= 0);
-  const fnBody = src.slice(fnStart, fnStart + 800);
+  const fnBody = src.slice(fnStart, src.indexOf('\n}', fnStart));
   assert.match(fnBody, /orderBy:\s*\{\s*ngay_tao:\s*'desc'\s*\}/);
   assert.match(fnBody, /matchesCustomerBulkFilter\(/, 'phải reuse matchesCustomerBulkFilter (KhachHang), không viết lại filter');
   assert.match(fnBody, /resolveListRange\(/, 'phải reuse resolveListRange (utility thuần), không tự cắt mảng bằng slice thủ công');
-  assert.doesNotMatch(fnBody, /campaignMembership|CampaignMembership/, 'resolveCustomerIdsByRange KHÔNG được đụng CampaignMembership — chỉ query KhachHang, tách biệt authority với membership_range');
+  // Tab "Chưa/Đã vào Campaign" (campaignStatus) được áp vào range để STT bảng ==
+  // "Từ x đến y" — CHỈ đọc tập customer_id đã có membership (cùng tiêu chí GET
+  // /api/khach-hang), KHÔNG đụng telesale/assignment (authority membership_range).
+  assert.doesNotMatch(fnBody, /prisma\.campaignMembership|telesale_id|assignment_status/, 'resolveCustomerIdsByRange không query/đụng telesale của CampaignMembership trực tiếp');
 });
 
 test('drift guard: orderBy ngay_tao desc trong resolveCustomerIdsByRange PHẢI khớp ĐÚNG order của PostgresCustomerRepository.findAll() (customer.repo.ts) — nguồn thứ tự GET /api/khach-hang đang hiển thị. Nếu 1 bên đổi mà bên kia không đổi theo, test này fail để nhắc soát lại cả 2', () => {
@@ -235,13 +238,15 @@ test('khach-hang/page.tsx: block "Chọn khách: Từ x đến y" chỉ hiện c
 test('khach-hang/page.tsx: preview range dùng validateListRangeAgainstTotal(total, ...) — KHÔNG tải mảng Customer nào về client để tính, chỉ cần "total" đã có sẵn từ fetchData (không gửi hàng trăm/thousands Customer object)', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   assert.match(src, /import \{ validateListRangeAgainstTotal \} from '@\/lib\/list-range';/);
-  assert.match(src, /validateListRangeAgainstTotal\(total, \{ from: rangeFromNum, to: rangeToNum \}\)/);
+  // filteredTotal = số dòng bảng đang hiển thị (cùng cột STT) — range khớp đúng bảng.
+  assert.match(src, /validateListRangeAgainstTotal\(filteredTotal, \{ from: rangeFromNum, to: rangeToNum \}\)/);
 });
 
 test('khach-hang/page.tsx: hiển thị "Đã chọn N khách hàng" và ghi rõ khi đang lọc — không để Admin tưởng range áp dụng trên toàn dataset khi đang search/filter ngày', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   assert.match(src, /Đã chọn \{rangeValidation\.count\} khách hàng/);
-  assert.match(src, /trong \$\{rangeValidation\.total\} khách đang lọc theo bộ lọc\/tìm kiếm hiện tại/);
+  // Ghi rõ STT x–y trên bảng + phạm vi lọc đang bật (tab Campaign/Dataset/tìm kiếm).
+  assert.match(src, /\(STT \{rangeFromNum\}–\{rangeToNum\} trên bảng\{rangeScopeLabel \? `: \$\{rangeScopeLabel\}` : ''\}\)/);
 });
 
 test('khach-hang/page.tsx: nút hành động dùng ĐÚNG label "Tạo Campaign" (action Campaign hiện có, không tạo UI/flow riêng) và bị disable khi range invalid', () => {
@@ -256,12 +261,12 @@ test('khach-hang/page.tsx: modal range dùng ĐÚNG CampaignDistributeModal có 
   assert.ok(modalCallStart >= 0);
   const modalCall = src.slice(modalCallStart, modalCallStart + 500);
   assert.match(modalCall, /<CampaignDistributeModal/);
-  assert.match(modalCall, /customerRange=\{\{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter \|\| undefined, count: rangeValidation\.count \}\}/);
+  assert.match(modalCall, /customerRange=\{\{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter \|\| undefined, campaignStatus, count: rangeValidation\.count \}\}/);
 });
 
 test('khach-hang/page.tsx: range state (rangeFrom/rangeTo) reset khi search/fromDate/toDate đổi — KHÔNG reset khi chỉ đổi "page" (range không phải theo trang, không phụ thuộc pagination)', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
-  assert.match(src, /useEffect\(\(\) => \{ setRangeFrom\(''\); setRangeTo\(''\); \}, \[search, fromDate, toDate\]\);/);
+  assert.match(src, /useEffect\(\(\) => \{ setRangeFrom\(''\); setRangeTo\(''\); \}, \[search, fromDate, toDate, datasetFilter, campaignStatus\]\);/);
 });
 
 test('khach-hang/page.tsx: range selection ĐỘC LẬP hoàn toàn với checkbox selectedIds/selectAllMatching — modal range không nhận customerIds/customerFilter, tránh mơ hồ 2 cơ chế chọn cùng lúc', () => {

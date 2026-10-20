@@ -174,7 +174,7 @@ test('CampaignDistributeModal.tsx: submit() gửi customer_filter (KHÔNG kèm c
   const submitStart = src.indexOf('async function submit()');
   assert.match(src.slice(submitStart), /body: JSON.stringify\(\{\s*\.\.\.selectionPayload,/);
   const bodyStart = src.indexOf('const selectionPayload = ');
-  const body = src.slice(bodyStart, bodyStart + 500);
+  const body = src.slice(bodyStart, bodyStart + 700);
   assert.match(body, /customerFilter\s*\?\s*\{ customer_filter:/);
   assert.match(body, /:\s*customerRange\s*\n\s*\? \{ customer_range:/);
   assert.match(body, /:\s*\{ customer_ids: customerIds \}\);/);

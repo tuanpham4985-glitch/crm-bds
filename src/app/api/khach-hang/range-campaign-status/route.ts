@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { previewCustomerRangeCampaignStatus } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
+import { parseCampaignStatusFilter } from '@/lib/khach-hang-campaign-status';
 
 // CUSTOMER USED-IN-CAMPAIGN VISIBILITY — preview "Đã vào Campaign X · Chưa
 // vào Campaign Y" cho Customer Range ("Chọn khách: Từ x đến y" trên
@@ -21,7 +22,9 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || undefined;
     const dateFrom = searchParams.get('dateFrom') || undefined;
     const dateTo = searchParams.get('dateTo') || undefined;
-    const result = await previewCustomerRangeCampaignStatus({ from, to, search, dateFrom, dateTo });
+    const datasetId = searchParams.get('datasetId') || undefined;
+    const campaignStatus = parseCampaignStatusFilter(searchParams.get('campaignStatus'));
+    const result = await previewCustomerRangeCampaignStatus({ from, to, search, dateFrom, dateTo, datasetId, campaignStatus });
     if ('error' in result) return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {

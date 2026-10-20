@@ -15,6 +15,11 @@
 // liên quan tới module này).
 export type CampaignStatusFilter = 'all' | 'in_campaign' | 'not_in_campaign';
 
+/** Giá trị lạ/thiếu từ client -> undefined (= 'all'), không tin string bất kỳ. */
+export function parseCampaignStatusFilter(value: unknown): CampaignStatusFilter | undefined {
+  return value === 'in_campaign' || value === 'not_in_campaign' || value === 'all' ? value : undefined;
+}
+
 export function isCustomerInCampaign(customerId: string, membershipCustomerIds: ReadonlySet<string>): boolean {
   return membershipCustomerIds.has(customerId);
 }

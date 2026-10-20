@@ -218,7 +218,7 @@ test('campaign.ts: resolveCustomerIdsByRange áp dụng filterByDataset TRƯỚC
   assert.ok(filterByDatasetIdx > fnStart && resolveListRangeIdx > filterByDatasetIdx, 'filterByDataset phải chạy TRƯỚC resolveListRange (thu hẹp tập rồi mới cắt theo vị trí)');
   const fnBody = src.slice(fnStart, src.indexOf('\n}', fnStart));
   assert.match(fnBody, /orderBy:\s*\{\s*ngay_tao:\s*'desc'\s*\}/, 'order vẫn phải giữ nguyên ngay_tao desc — Dataset chỉ thu hẹp tập, không đổi thứ tự');
-  assert.doesNotMatch(fnBody, /campaignMembership|CampaignMembership/i, 'vẫn KHÔNG được đụng CampaignMembership — Dataset tách biệt hoàn toàn khỏi authority đó');
+  assert.doesNotMatch(fnBody, /prisma\.campaignMembership|telesale_id|assignment_status/, 'không đụng telesale/assignment của CampaignMembership — chỉ lọc theo tab Chưa/Đã vào Campaign');
 });
 
 test('CustomerRangeSelection/CustomerBulkFilter: datasetId là field optional -> mọi call site cũ (không truyền datasetId, VD Sync/Import cũ) vẫn hợp lệ, không breaking change', () => {
@@ -256,7 +256,7 @@ test('CampaignDistributeModal.tsx: customerFilter/customerRange props có datase
 test('khach-hang/page.tsx: cả 2 lời gọi CampaignDistributeModal (selectAllMatching + Customer Range) đều forward datasetFilter hiện tại (|| undefined khi rỗng) — filter Dataset đang xem được áp dụng đúng khi tạo Campaign từ bộ lọc/range', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
   assert.match(src, /customerFilter=\{selectAllMatching \? \{ search, from: fromDate, to: toDate, datasetId: datasetFilter \|\| undefined, count: total \} : undefined\}/);
-  assert.match(src, /customerRange=\{\{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter \|\| undefined, count: rangeValidation\.count \}\}/);
+  assert.match(src, /customerRange=\{\{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter \|\| undefined, campaignStatus, count: rangeValidation\.count \}\}/);
 });
 
 // --- G. Backfill remediation: preflight/apply idempotent, chỉ Customer ĐƯỢC TẠO bởi đúng batch đã chọn ---

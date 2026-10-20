@@ -212,7 +212,7 @@ test('page.tsx: row đã vào Campaign -> opacity 0.6 + badge "Đã vào Campaig
 
 test('page.tsx: Customer Range preview (validateListRangeAgainstTotal) KHÔNG bị đổi bởi campaignStatus — dùng đúng "total" như cũ (regression khoá bởi campaign-customer-range.test.ts), chỉ nối thêm text preview campaign status', () => {
   const src = readFileSync(resolve(PAGE_PATH), 'utf8');
-  assert.match(src, /validateListRangeAgainstTotal\(total, \{ from: rangeFromNum, to: rangeToNum \}\)/);
+  assert.match(src, /validateListRangeAgainstTotal\(filteredTotal, \{ from: rangeFromNum, to: rangeToNum \}\)/);
   assert.match(src, /rangeCampaignPreview && ` · Đã vào Campaign \$\{rangeCampaignPreview\.inCampaign\} · Chưa vào Campaign \$\{rangeCampaignPreview\.notInCampaign\}`/);
 });
 
@@ -222,7 +222,9 @@ test('page.tsx: fetch range-campaign-status KHÔNG gửi campaignStatus — Cust
   const fetchIdx = src.indexOf('/api/khach-hang/range-campaign-status');
   assert.ok(paramsStart >= 0 && fetchIdx > paramsStart);
   const codeOnly = src.slice(paramsStart, fetchIdx);
-  assert.doesNotMatch(codeOnly, /params\.set\('campaignStatus'/, 'không được set campaignStatus vào query của range preview — Customer Range chỉ nhận search/dateFrom/dateTo');
+  // Preview gửi ĐỦ bộ lọc của bảng (Dataset + tab Campaign) — cùng tập với lúc ghi.
+  assert.match(codeOnly, /params\.set\('campaignStatus', campaignStatus\)/);
+  assert.match(codeOnly, /params\.set\('datasetId', datasetFilter\)/);
 });
 
 test('page.tsx: "Chọn tất cả N phù hợp bộ lọc" banner ẩn khi campaignStatus khác "all" — tránh Admin chọn nhầm tập rộng hơn tập đang xem trong tab Đã/Chưa vào Campaign', () => {

@@ -55,7 +55,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
    * KhachHang MỚI để đưa vào Campaign). from/to là vị trí (STT), 1-indexed.
    * `count` chỉ để hiển thị — server resolve lại thật khi submit.
    */
-  customerRange?: { from: number; to: number; search?: string; dateFrom?: string; dateTo?: string; datasetId?: string; count: number };
+  customerRange?: { from: number; to: number; search?: string; dateFrom?: string; dateTo?: string; datasetId?: string; campaignStatus?: 'all' | 'in_campaign' | 'not_in_campaign'; count: number };
   employees: NhanVien[];
   projects: DuAn[];
   isAdmin: boolean;
@@ -159,7 +159,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
   const selectionPayload = (customerFilter
     ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to, datasetId: customerFilter.datasetId } }
     : customerRange
-      ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo, datasetId: customerRange.datasetId } }
+      ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo, datasetId: customerRange.datasetId, campaignStatus: customerRange.campaignStatus } }
       : { customer_ids: customerIds });
   // Key dạng chuỗi — prop customerIds có thể là mảng mới mỗi lần parent render.
   const selectionKey = JSON.stringify(selectionPayload);

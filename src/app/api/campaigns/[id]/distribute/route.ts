@@ -6,6 +6,7 @@ import {
   resolveCustomerIdsByFilter, resolveCustomerIdsByRange, type DistributionMode,
 } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
+import { parseCampaignStatusFilter } from '@/lib/khach-hang-campaign-status';
 
 const MODES: DistributionMode[] = ['round_robin', 'quantity', 'none'];
 
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         dateFrom: typeof rangeInput.dateFrom === 'string' ? rangeInput.dateFrom : undefined,
         dateTo: typeof rangeInput.dateTo === 'string' ? rangeInput.dateTo : undefined,
         datasetId: typeof rangeInput.datasetId === 'string' ? rangeInput.datasetId : undefined,
+        campaignStatus: parseCampaignStatusFilter(rangeInput.campaignStatus),
       });
       if ('error' in resolvedRange) {
         return NextResponse.json({ success: false, error: resolvedRange.error }, { status: 400 });
