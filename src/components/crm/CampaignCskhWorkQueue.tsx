@@ -21,7 +21,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { bucketOf, CSKH_BUCKETS, isOverdue, type MembershipBucket } from '@/lib/campaign-cskh-bucket';
 import {
   isMembershipAssigned, matchesMembershipQueueFilter, membershipAssignmentBreakdown, resolveMembershipRange,
-  summarizeMembersBySale, type MembershipAssignmentFilter, type SaleProgressSummary,
+  summarizeMembersBySale, applyContactTimeView, isContactTimeViewActive,
+  type ContactSort, type MembershipAssignmentFilter, type SaleProgressSummary,
 } from '@/lib/campaign-cskh-range';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
@@ -96,6 +97,10 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   const [bucketFilter, setBucketFilter] = useState<MembershipBucket | ''>('');
   // Addendum — "Tất cả | Chưa chia | Đã chia": lọc thêm theo CampaignMembership.telesale_id.
   const [assignmentFilter, setAssignmentFilter] = useState<MembershipAssignmentFilter>('all');
+  // Xem tiến độ gọi: sắp xếp theo lần gọi gần nhất + lọc khoảng ngày gọi.
+  const [contactSort, setContactSort] = useState<ContactSort>('default');
+  const [contactFrom, setContactFrom] = useState('');
+  const [contactTo, setContactTo] = useState('');
   // "Thu hồi" khách chưa gọi của 1 Sale (bảng Tiến độ Sale).
   const [revokeTarget, setRevokeTarget] = useState<{ telesaleId: string; telesaleName: string } | null>(null);
   // CSKH Sale Progress (V1) — drill-down từ bảng "Tiến độ Sale": click 1 ô
@@ -170,8 +175,13 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // tách biệt khỏi rangeResult/rangeBreakdown/stats/assignmentSummary bên dưới
   // (những cái đó vẫn phải tính trên "members"/"filtered" toàn bộ).
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [campaignId, search, bucketFilter, assignmentFilter, summaryFilter]);
-  const pageWindow = useMemo(() => paginate(filtered, page, MEMBERS_PAGE_SIZE), [filtered, page]);
+  useEffect(() => { setPage(1); }, [campaignId, search, bucketFilter, assignmentFilter, summaryFilter, contactSort, contactFrom, contactTo]);
+  // Bảng hiển thị = filtered + view thời gian gọi. "filtered" giữ nguyên làm
+  // thứ tự tham chiếu cho "Chọn khách: Từ x đến y" (bị tắt khi view này bật).
+  const contactView = useMemo(() => ({ sort: contactSort, from: contactFrom || undefined, to: contactTo || undefined }), [contactSort, contactFrom, contactTo]);
+  const contactViewActive = isContactTimeViewActive(contactView);
+  const displayed = useMemo(() => applyContactTimeView(filtered, contactView), [filtered, contactView]);
+  const pageWindow = useMemo(() => paginate(displayed, page, MEMBERS_PAGE_SIZE), [displayed, page]);
 
   const stats = useMemo(() => {
     const counts = new Map<MembershipBucket, number>();
@@ -367,6 +377,11 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
               <option value="unassigned">Chưa chia</option>
               <option value="assigned">Đã chia</option>
             </select>
+            {contactViewActive ? (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
+                Đang sắp xếp/lọc theo thời gian gọi — bỏ để dùng "Chọn khách: Từ… đến…" (STT sẽ khớp lại bảng).
+              </span>
+            ) : <>
             <span style={{ fontSize: 13, color: 'var(--text-label)', marginLeft: 8 }}>Chọn khách:</span>
             <span style={{ fontSize: 13 }}>Từ</span>
             <input type="number" min={1} className="form-input" style={{ width: 80 }} value={rangeFrom} onChange={event => setRangeFrom(event.target.value)} />
@@ -387,6 +402,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
             >
               {rangeSubmitting ? <Loader2 size={14} className="spin" /> : <Users size={14} />} Chia đều cho Sale
             </button>
+            </>}
           </div>
           {rangeEligibility?.blocked && <div style={{ fontSize: 12, color: '#9a3412', marginTop: 6 }}>{rangeEligibility.reason}</div>}
         </div>
@@ -473,6 +489,26 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
       <div className="card" style={{ padding: 12, marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <div className="search-wrapper" style={{ flex: 1, minWidth: 240 }}><Search size={15} className="search-icon" /><input className="form-input" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tìm tên, số điện thoại hoặc Sale..." /></div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: 13 }}>
+          <span style={{ color: 'var(--text-label)' }}>Lần gọi gần nhất:</span>
+          <select className="form-select" style={{ width: 'auto', fontSize: 12.5 }} value={contactSort} onChange={event => setContactSort(event.target.value as ContactSort)}>
+            <option value="default">Mặc định</option>
+            <option value="last_contact_asc">Cũ nhất → mới nhất</option>
+            <option value="last_contact_desc">Mới nhất → cũ nhất</option>
+          </select>
+          <span style={{ color: 'var(--text-label)', marginLeft: 6 }}>Gọi từ</span>
+          <input type="date" className="form-input" style={{ width: 'auto' }} value={contactFrom} onChange={event => setContactFrom(event.target.value)} />
+          <span style={{ color: 'var(--text-label)' }}>đến</span>
+          <input type="date" className="form-input" style={{ width: 'auto' }} value={contactTo} onChange={event => setContactTo(event.target.value)} />
+          {contactViewActive && (
+            <>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                {displayed.length} khách{(contactFrom || contactTo) ? ' đã gọi trong khoảng này' : ''}{contactSort !== 'default' && !(contactFrom || contactTo) ? ' · khách chưa gọi ở cuối' : ''}
+              </span>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setContactSort('default'); setContactFrom(''); setContactTo(''); }}>Bỏ lọc thời gian</button>
+            </>
+          )}
         </div>
       </div>
       <MembershipTable

@@ -75,7 +75,9 @@ test('paginate: page <= 0 hoặc không phải số nguyên -> vẫn clamp về 
 
 test('CampaignCskhWorkQueue.tsx: pageWindow = paginate(filtered, page, MEMBERS_PAGE_SIZE) — pagination tính trên "filtered" (toàn tập đã lọc, search/bucket/assignment), KHÔNG phải trên 1 trang', () => {
   const src = readFileSync(resolve(WORK_QUEUE_PATH), 'utf8');
-  assert.match(src, /const pageWindow = useMemo\(\(\) => paginate\(filtered, page, MEMBERS_PAGE_SIZE\), \[filtered, page\]\);/);
+  // displayed = filtered + sắp xếp/lọc theo thời gian gọi (applyContactTimeView).
+  assert.match(src, /const displayed = useMemo\(\(\) => applyContactTimeView\(filtered, contactView\), \[filtered, contactView\]\);/);
+  assert.match(src, /const pageWindow = useMemo\(\(\) => paginate\(displayed, page, MEMBERS_PAGE_SIZE\), \[displayed, page\]\);/);
   assert.match(src, /const MEMBERS_PAGE_SIZE = 50;/);
 });
 
@@ -109,7 +111,7 @@ test('CampaignCskhWorkQueue.tsx: reset về trang 1 khi campaignId/search/bucket
   // CSKH Sale Progress (V1) thêm summaryFilter (drill-down) vào deps — "filtered"
   // cũng đổi theo summaryFilter (xem test filtered useMemo ở trên) nên trang
   // phải reset cùng lúc, không phải regression.
-  assert.match(src, /useEffect\(\(\) => \{ setPage\(1\); \}, \[campaignId, search, bucketFilter, assignmentFilter, summaryFilter\]\);/);
+  assert.match(src, /useEffect\(\(\) => \{ setPage\(1\); \}, \[campaignId, search, bucketFilter, assignmentFilter, summaryFilter, contactSort, contactFrom, contactTo\]\);/);
 });
 
 test('CampaignCskhWorkQueue.tsx: STT hiển thị = startIndex + idx + 1 (tiếp tục qua các trang, VD trang 2 bắt đầu 51) — không phải idx + 1 (sẽ reset về 1 mỗi trang)', () => {

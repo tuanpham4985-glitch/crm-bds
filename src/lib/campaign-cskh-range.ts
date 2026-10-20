@@ -201,3 +201,52 @@ export function sortMembershipsNewestAssignedFirst<T extends MembershipAssignedT
     .sort((a, b) => b.time - a.time || a.index - b.index)
     .map(entry => entry.member);
 }
+
+// CSKH — xem tiến độ gọi của Sale: sắp xếp theo lần gọi gần nhất
+// (ngay_lien_he_cuoi) và/hoặc lọc theo khoảng ngày gọi. CHỈ cho bảng hiển
+// thị — KHÔNG đổi thứ tự tham chiếu của "Chọn khách: Từ x đến y" (UI tắt
+// chọn theo khoảng khi view này đang bật). Khách chưa gọi lần nào luôn ở
+// cuối khi sắp xếp, và bị loại khi có lọc ngày gọi.
+export type ContactSort = 'default' | 'last_contact_asc' | 'last_contact_desc';
+
+export interface ContactTimeView {
+  sort: ContactSort;
+  /** YYYY-MM-DD theo giờ máy người xem, bao gồm cả 2 đầu. */
+  from?: string;
+  to?: string;
+}
+
+function localDayKey(value: string): string | null {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function isContactTimeViewActive(view: ContactTimeView): boolean {
+  return view.sort !== 'default' || Boolean(view.from) || Boolean(view.to);
+}
+
+export function applyContactTimeView<T extends { ngay_lien_he_cuoi?: string | null }>(members: readonly T[], view: ContactTimeView): T[] {
+  let result = [...members];
+  if (view.from || view.to) {
+    result = result.filter(member => {
+      const day = member.ngay_lien_he_cuoi ? localDayKey(member.ngay_lien_he_cuoi) : null;
+      if (!day) return false;
+      if (view.from && day < view.from) return false;
+      if (view.to && day > view.to) return false;
+      return true;
+    });
+  }
+  if (view.sort === 'default') return result;
+  const direction = view.sort === 'last_contact_asc' ? 1 : -1;
+  return result
+    .map((member, index) => ({ member, index, time: member.ngay_lien_he_cuoi ? new Date(member.ngay_lien_he_cuoi).getTime() : NaN }))
+    .sort((a, b) => {
+      const aMissing = !Number.isFinite(a.time);
+      const bMissing = !Number.isFinite(b.time);
+      if (aMissing || bMissing) return aMissing === bMissing ? a.index - b.index : aMissing ? 1 : -1;
+      return (a.time - b.time) * direction || a.index - b.index;
+    })
+    .map(entry => entry.member);
+}
