@@ -754,6 +754,70 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
   });
 }
 
+// --- Thu hồi khách chưa gọi của 1 Sale ----------------------------------
+//
+// Nút "Thu hồi" trên bảng "Tiến độ Sale" (CSKH → Theo Campaign): lấy lại các
+// khách Sale được giao nhưng CHƯA đụng tới lần nào để chuyển Sale khác hoặc
+// trả về "Chưa phân". Chỉ khách thật sự chưa xử lý — khách Sale đã gọi/hẹn
+// lịch/ghi lịch sử/chuyển giao luôn giữ nguyên (không mất công chăm sóc).
+
+/** Thuần — WHERE cho membership "chưa gọi lần nào" của 1 Sale trong 1 Campaign. */
+export function buildRevocableMembershipWhere(campaignId: string, telesaleId: string): Prisma.CampaignMembershipWhereInput {
+  return {
+    campaign_id: campaignId,
+    telesale_id: telesaleId,
+    assignment_status: 'ASSIGNED',
+    handoff_id: null,
+    so_lan_lien_he: 0,
+    ngay_lien_he_tiep: null,
+    AND: [
+      { OR: [{ trang_thai_cham_soc: null }, { trang_thai_cham_soc: 'Chưa gọi' }] },
+      { OR: [{ lich_su_cham_soc: null }, { lich_su_cham_soc: '' }, { lich_su_cham_soc: '[]' }] },
+    ],
+  };
+}
+
+export interface RevokeSaleMembershipsInput {
+  campaignId: string;
+  fromTelesaleId: string;
+  /** null = trả về "Chưa phân" để chia lại sau. */
+  to: TelesaleRef | null;
+  actor: CrmSessionUser;
+}
+
+export async function countRevocableMemberships(campaignId: string, telesaleId: string): Promise<number> {
+  assertTransactionalCrm();
+  return prisma.campaignMembership.count({ where: buildRevocableMembershipWhere(campaignId, telesaleId) });
+}
+
+/** 1 câu updateMany theo đúng WHERE "chưa gọi" — membership nào Sale vừa gọi
+ * trong lúc Admin đang xác nhận sẽ không khớp nữa và được giữ nguyên. */
+export async function revokeSaleMemberships(input: RevokeSaleMembershipsInput): Promise<{ revoked: number }> {
+  assertTransactionalCrm();
+  const now = new Date();
+  const data: Prisma.CampaignMembershipUpdateManyMutationInput = input.to
+    ? {
+        telesale_id: input.to.id_nhan_vien,
+        telesale_name: input.to.ho_ten,
+        assigned_at: now,
+        assigned_by_id: input.actor.id_nhan_vien,
+        assigned_by_name: input.actor.ho_ten,
+      }
+    : {
+        telesale_id: null,
+        telesale_name: null,
+        assignment_status: 'UNASSIGNED',
+        assigned_at: null,
+        assigned_by_id: null,
+        assigned_by_name: null,
+      };
+  const result = await prisma.campaignMembership.updateMany({
+    where: buildRevocableMembershipWhere(input.campaignId, input.fromTelesaleId),
+    data,
+  });
+  return { revoked: result.count };
+}
+
 // --- Admin Test Data Cleanup: xóa Campaign (+ memberships) an toàn --------
 //
 // CampaignMembership.campaign_id -> Campaign.id là FK thật với

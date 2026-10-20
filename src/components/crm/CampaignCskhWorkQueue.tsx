@@ -96,6 +96,8 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   const [bucketFilter, setBucketFilter] = useState<MembershipBucket | ''>('');
   // Addendum — "Tất cả | Chưa chia | Đã chia": lọc thêm theo CampaignMembership.telesale_id.
   const [assignmentFilter, setAssignmentFilter] = useState<MembershipAssignmentFilter>('all');
+  // "Thu hồi" khách chưa gọi của 1 Sale (bảng Tiến độ Sale).
+  const [revokeTarget, setRevokeTarget] = useState<{ telesaleId: string; telesaleName: string } | null>(null);
   // CSKH Sale Progress (V1) — drill-down từ bảng "Tiến độ Sale": click 1 ô
   // metric của 1 Sale set filter này (telesaleId exact-match + buckets gộp,
   // xem campaign-cskh-range.ts). Độc lập với search/bucketFilter/assignmentFilter
@@ -429,6 +431,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
                 <th>Sale CSKH</th>
                 {SALE_PROGRESS_METRICS.map(metric => <th key={metric.key} style={{ textAlign: 'right' }}>{metric.label}</th>)}
                 <th style={{ width: 140 }}>Tiến độ</th>
+                <th style={{ width: 90 }} />
               </tr></thead>
               <tbody>{saleProgress.map(sale => (
                 <tr key={sale.telesaleId} style={summaryFilter?.telesaleId === sale.telesaleId ? { background: '#f8fafc' } : undefined}>
@@ -450,6 +453,15 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
                       </div>
                       <span style={{ fontSize: 12, fontWeight: 650, minWidth: 34, textAlign: 'right' }}>{sale.progressPercent}%</span>
                     </div>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {sale.unprocessed > 0 && (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        title="Thu hồi khách chưa gọi của Sale này để chuyển cho người khác"
+                        onClick={() => setRevokeTarget({ telesaleId: sale.telesaleId, telesaleName: sale.telesaleName })}
+                      >Thu hồi</button>
+                    )}
                   </td>
                 </tr>
               ))}</tbody>
@@ -541,6 +553,16 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         isAdmin={isAdmin}
         onClose={() => setHandoffMember(null)}
         onDone={message => { setHandoffMember(null); setNotice({ type: 'ok', text: message }); void loadMembers(campaignId); }}
+      />
+    )}
+
+    {revokeTarget && selectedCampaign && (
+      <RevokeSaleModal
+        campaignId={selectedCampaign.id}
+        from={revokeTarget}
+        sales={(rangeEligibility && !rangeEligibility.blocked ? rangeEligibility.sales : []).filter(item => item.id_nhan_vien !== revokeTarget.telesaleId)}
+        onClose={() => setRevokeTarget(null)}
+        onDone={message => { setRevokeTarget(null); setNotice({ type: 'ok', text: message }); void loadMembers(campaignId); }}
       />
     )}
 
@@ -862,4 +884,86 @@ function MembershipHandoffModal({ campaignId, campaign, membership, employees, p
       </button>
     </div>
   </div></div>;
+}
+
+// "Thu hồi" — 1 popup làm trọn: xem số khách chưa gọi sẽ thu hồi, chọn Sale
+// nhận (hoặc để Chưa phân), xác nhận. Server chỉ đụng khách chưa gọi lần nào.
+function RevokeSaleModal({ campaignId, from, sales, onClose, onDone }: {
+  campaignId: string;
+  from: { telesaleId: string; telesaleName: string };
+  sales: NhanVien[];
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  const [count, setCount] = useState<number | null>(null);
+  const [toName, setToName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/revoke`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telesale_id: from.telesaleId, preview: true }),
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.success) setCount(data.data.count); else setError(data.error || 'Không kiểm tra được số khách.');
+      } catch { if (!cancelled) setError('Không kiểm tra được số khách.'); }
+    })();
+    return () => { cancelled = true; };
+  }, [campaignId, from.telesaleId]);
+
+  async function submit() {
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/revoke`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telesale_id: from.telesaleId, to_telesale_name: toName || undefined }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      onDone(data.data.toName
+        ? `Đã thu hồi ${data.data.revoked} khách của ${from.telesaleName} và chuyển cho ${data.data.toName}.`
+        : `Đã thu hồi ${data.data.revoked} khách của ${from.telesaleName} về Chưa phân.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không thể thu hồi.');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{ maxWidth: 480 }} onClick={event => event.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Thu hồi khách — {from.telesaleName}</h3>
+          <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="modal-body">
+          {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
+          <div style={{ padding: 10, background: '#f8fafc', borderRadius: 7, marginBottom: 14, fontSize: 13 }}>
+            {count === null
+              ? <><Loader2 size={13} className="spin" style={{ verticalAlign: -2 }} /> Đang đếm khách chưa gọi…</>
+              : <>Sẽ thu hồi <strong>{count}</strong> khách <strong>chưa gọi lần nào</strong>. Khách {from.telesaleName} đã gọi/đang chăm sóc được giữ nguyên.</>}
+          </div>
+          <div className="form-group">
+            <label className="form-label">Chuyển cho</label>
+            <select className="form-select" value={toName} onChange={event => setToName(event.target.value)}>
+              <option value="">— Để Chưa phân (chia lại sau) —</option>
+              {sales.map(item => <option key={item.id_nhan_vien} value={item.ho_ten}>{item.ho_ten}{item.phong_KD ? ` · ${item.phong_KD}` : ''}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>Hủy</button>
+          <button className="btn btn-primary" onClick={() => void submit()} disabled={submitting || !count}>
+            {submitting ? <Loader2 size={15} className="spin" /> : <UserCheck size={15} />} Thu hồi{count ? ` ${count} khách` : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
