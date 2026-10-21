@@ -23,6 +23,13 @@ export function getTemplateFile(category: ContractCategory, department: Departme
 }
 
 /**
+ * Chức danh thuộc Khối Kinh doanh nhưng tên không chứa "KD" — dùng mẫu hợp
+ * đồng Khối KD (theo yêu cầu người dùng 2026-10-21: CSKH/Telesale dùng chung
+ * mẫu với Khối Kinh doanh). So khớp không phân biệt hoa thường.
+ */
+const KD_POSITIONS_WITHOUT_KD_SUFFIX = new Set(['nhân viên cskh/telesale']);
+
+/**
  * Detect department and contract_category from role (vai_tro), position (employee_type) and base contract label.
  */
 export function detectEmployeeClassification(
@@ -33,7 +40,7 @@ export function detectEmployeeClassification(
   // Priority 1: Detect by position
   let department: Department = 'KD';
   if (position) {
-    department = position.includes('KD') ? 'KD' : 'BO';
+    department = position.includes('KD') || KD_POSITIONS_WITHOUT_KD_SUFFIX.has(position.trim().toLowerCase()) ? 'KD' : 'BO';
   } else {
     // Fallback: Priority 2: Detect by role
     department = role?.toLowerCase() === 'admin' ? 'BO' : 'KD';

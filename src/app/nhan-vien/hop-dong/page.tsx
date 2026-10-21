@@ -53,6 +53,9 @@ const SALARY_DEFAULTS: Record<string, number> = {
   'TPKD':  5_500_000,
   'GĐKD':  6_000_000,
   'GDDA':  6_000_000,
+  // CSKH/Telesale chuyển sang mẫu Khối KD (2026-10-21) nhưng giữ mức LCB
+  // 7.000.000 đang áp dụng khi còn tính theo Khối BO.
+  'Nhân viên CSKH/Telesale': 7_000_000,
 };
 // Các chức danh được loại trừ khỏi mức BO mặc định
 const BO_SALARY_EXCLUDE = new Set(['NVKD', 'TPKD', 'GĐKD', 'GDDA', 'Chủ tịch', 'CEO']);

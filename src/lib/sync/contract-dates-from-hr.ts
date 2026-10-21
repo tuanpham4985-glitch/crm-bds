@@ -35,7 +35,7 @@ function extractEmployeeNumber(id: string): string {
 // Mirror hop-dong/page.tsx's getDefaultSalary — chỉ dùng khi TẠO MỚI hợp đồng
 // (file HR không có cột lương). TKKD CỐ Ý không có mức mặc định — lương TKKD
 // dao động không cố định như NVKD/TPKD/GĐKD (theo xác nhận người dùng 2026-09-15).
-const SALARY_DEFAULTS: Record<string, number> = { NVKD: 5_350_000, TPKD: 5_500_000, GĐKD: 6_000_000, GDDA: 6_000_000 };
+const SALARY_DEFAULTS: Record<string, number> = { NVKD: 5_350_000, TPKD: 5_500_000, GĐKD: 6_000_000, GDDA: 6_000_000, 'Nhân viên CSKH/Telesale': 7_000_000 };
 const BO_SALARY_EXCLUDE = new Set(['NVKD', 'TPKD', 'GĐKD', 'GDDA', 'Chủ tịch', 'CEO']);
 const BO_DEFAULT_SALARY = 7_000_000;
 function getDefaultSalary(employeeType: string, department: string): number {
