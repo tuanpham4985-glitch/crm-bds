@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { getKhachHangImportDedupFields, addKhachHang, addKhachHangWithBatch, addKhachHangBatchWithImportBatch } from '@/lib/data-access';
 import type { KhachHang } from '@/lib/types';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
-import { classifyRow, detectDuplicateNameWarnings, findImportSheets, phoneKey, type ExcelColumnMap } from '@/lib/khach-hang-excel-import';
+import { classifyRow, detectDuplicateNameWarnings, findImportSheets, phoneKey, phoneKeys, type ExcelColumnMap } from '@/lib/khach-hang-excel-import';
 import { isPostgresEnabled } from '@/lib/db/feature-flags';
 import { checkpointImportBatchCounts, completeImportBatch, createImportBatch } from '@/lib/crm-funnel/import-batch';
 import { createDataset, ensureCustomerDatasetMemberships, getDataset } from '@/lib/crm-funnel/dataset';
@@ -139,11 +139,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // DUY NHẤT được đọc từ `existing` trong toàn bộ route này) — getKhachHangImportDedupFields()
     // narrow-select thay cho getKhachHang() (full ~48 cột × toàn bộ customer).
     const existing = await getKhachHangImportDedupFields();
-    const existingDbPhoneKeys = new Set(existing.map(kh => phoneKey(kh.so_dien_thoai)));
+    const existingDbPhoneKeys = new Set(existing.flatMap(kh => phoneKeys(kh.so_dien_thoai)));
     // CUSTOMER DATASET — tra cứu id_khach_hang từ phoneKey cho nhánh
     // "already_exists" bên dưới, để ghi CustomerDatasetMembership cho Customer
     // đã tồn tại (không chỉ Customer mới tạo) — xem existingCustomerIdsForDataset.
-    const phoneKeyToCustomerId = new Map(existing.map(kh => [phoneKey(kh.so_dien_thoai), kh.id_khach_hang]));
+    const phoneKeyToCustomerId = new Map(existing.flatMap(kh => phoneKeys(kh.so_dien_thoai).map(key => [key, kh.id_khach_hang] as const)));
     const seenInFilePhoneKeys = new Set<string>();
 
     // Import Batch: PG-CRM-only, giống mọi tính năng Qualified Lead Funnel khác.
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (classification.status === 'already_exists') {
         alreadyExistsList.push({ ten_KH: classification.ten_KH, so_dien_thoai: classification.so_dien_thoai });
         if (pgCrmEnabled && resolvedDatasetId) {
-          const existingId = phoneKeyToCustomerId.get(phoneKey(classification.so_dien_thoai));
+          const existingId = phoneKeys(classification.so_dien_thoai).map(key => phoneKeyToCustomerId.get(key)).find(Boolean);
           if (existingId) existingCustomerIdsForDataset.add(existingId);
         }
         continue;
@@ -271,7 +271,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // DB xong) — bắt buộc để dedupe đúng trong 1 chunk chưa flush: 2 dòng
       // trùng SĐT nằm cùng 1 chunk (chưa kịp ghi DB) vẫn phải nhận diện đúng
       // dòng thứ 2 là duplicate_in_file, không phải chờ dòng đầu "ghi xong".
-      seenInFilePhoneKeys.add(phoneKey(classification.so_dien_thoai));
+      for (const key of phoneKeys(classification.so_dien_thoai)) seenInFilePhoneKeys.add(key);
 
       // Import Excel CHỈ ghi tên/SĐT/email — các field CRM khác giữ default
       // theo contract hiện tại, không suy diễn từ bất kỳ cột nào khác trong file.

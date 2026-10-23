@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   classifyRow, detectDuplicateNameWarnings, findImportSheets, MAX_HEADER_SCAN_ROWS,
-  normalizeHeader, normalizeName, normalizePhone, phoneKey, resolveCellPhone, resolveColumns, resolveRowPhone,
+  normalizeHeader, normalizeName, normalizePhone, phoneKey, resolveCellPhone, resolveCellPhones, resolveColumns, resolveRowPhone, resolveRowPhones,
 } from '../../src/lib/khach-hang-excel-import';
 
 const NO_DB_DUP = new Set<string>();
@@ -205,6 +205,13 @@ test('Phone 1 và Phone 2 là 2 số THỰC SỰ khác nhau -> chọn determinis
   const row = ['1', 'Khách D', 'A104', '0901111111', '0902222222', 'Căn hộ'];
   const phone = resolveRowPhone(row, columns.phone);
   assert.equal(phone, '0901111111'); // cột đầu tiên (Số điện thoại 1) thắng, không phải nối 2 số
+});
+
+test('một ô chứa 2-3 SĐT phân tách bằng dấu chấm phẩy -> giữ toàn bộ số, loại số trùng', () => {
+  assert.deepEqual(resolveCellPhones("'+84933313931; +84931902929; +84988088731"), ['0933313931', '0931902929', '0988088731']);
+  const columns = resolveColumns(['Tên KH', 'SĐT'])!;
+  const phones = resolveRowPhones(['Khách nhiều số', '+84933313931; +84931902929; +84933313931'], columns.phone);
+  assert.deepEqual(phones, ['0933313931', '0931902929']);
 });
 
 test('cả 2 cột phone đều trống -> null (thiếu SĐT, invalid)', () => {
@@ -592,7 +599,7 @@ test('only Tên/SĐT/Email populate trên đúng header Solari thật: Building/
   const columns = resolveColumns(SOLARI_HEADER)!;
   const row = ['BS7', 'BS710.03', 'Đoàn Văn Quốc Huy', '0918676628;0918686628', '1PN + 1', 'Ghi chú nội bộ nào đó'];
   const result = classifyRow(row, columns, NO_DB_DUP, NO_FILE_DUP);
-  assert.deepEqual(result, { status: 'ready', ten_KH: 'Đoàn Văn Quốc Huy', so_dien_thoai: '0918676628', email: '' });
+  assert.deepEqual(result, { status: 'ready', ten_KH: 'Đoàn Văn Quốc Huy', so_dien_thoai: '0918676628; 0918686628', email: '' });
   assert.equal(Object.keys(result).length, 4);
 });
 

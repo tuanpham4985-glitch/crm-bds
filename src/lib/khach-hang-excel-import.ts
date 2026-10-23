@@ -120,6 +120,8 @@ export function cellToText(value: unknown): string {
  */
 export function normalizePhone(raw: string): string {
   const compact = raw.replace(/\s+/g, '');
+  const digits = compact.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('84')) return `0${digits.slice(2)}`;
   return compact.startsWith('0') ? compact : '0' + compact;
 }
 
@@ -128,8 +130,16 @@ export function normalizePhone(raw: string): string {
  * /api/khach-hang (manual create/update), tránh bug import trùng do khác
  * định dạng (đầu số quốc gia, khoảng trắng, số 0 đầu...).
  */
+export function phoneKeys(value: string): string[] {
+  const parts = value.split(MULTI_PHONE_SEPARATORS);
+  const keys = parts.map(part => part.replace(/\D/g, ''))
+    .filter(digits => digits.length === 9 || digits.length === 10)
+    .map(digits => digits.slice(-9));
+  return [...new Set(keys)];
+}
+
 export function phoneKey(value: string): string {
-  return value.replace(/\D/g, '').slice(-9);
+  return phoneKeys(value)[0] ?? value.replace(/\D/g, '').slice(-9);
 }
 
 // Ký tự phân tách khi 1 cell chứa nhiều số ĐT thực sự khác nhau — cả 4 đều
@@ -141,7 +151,7 @@ const MULTI_PHONE_SEPARATORS = /[-/,;]/;
 
 /** SĐT VN hợp lệ (trước khi khôi phục số 0 đầu) luôn có đúng 9 (thiếu số 0) hoặc 10 (đủ) chữ số — dùng làm gate chống đoán bừa ở cả 2 nơi bên dưới. */
 function isValidVnRawDigitLength(digitsOnly: string): boolean {
-  return digitsOnly.length === 9 || digitsOnly.length === 10;
+  return digitsOnly.length === 9 || digitsOnly.length === 10 || (digitsOnly.length === 11 && digitsOnly.startsWith('84'));
 }
 
 /**
@@ -166,15 +176,25 @@ function isValidVnRawDigitLength(digitsOnly: string): boolean {
  * ý nhét vào CRM như 1 SĐT không đáng tin.
  */
 export function resolveCellPhone(text: string): string | null {
+  return resolveCellPhones(text)[0] ?? null;
+}
+
+/** Trích xuất và chuẩn hóa toàn bộ SĐT hợp lệ trong một ô Excel. */
+export function resolveCellPhones(text: string): string[] {
   const compact = text.replace(/\s+/g, '');
   const digitsOnly = compact.replace(/\D/g, '');
   if (!isValidVnRawDigitLength(digitsOnly) && MULTI_PHONE_SEPARATORS.test(compact)) {
+    const phones: string[] = [];
     for (const segment of compact.split(MULTI_PHONE_SEPARATORS)) {
       const segDigits = segment.replace(/\D/g, '');
-      if (isValidVnRawDigitLength(segDigits)) return normalizePhone(segment);
+      if (isValidVnRawDigitLength(segDigits)) {
+        const phone = normalizePhone(segment);
+        if (!phones.some(existing => phoneKey(existing) === phoneKey(phone))) phones.push(phone);
+      }
     }
+    return phones;
   }
-  return isValidVnRawDigitLength(digitsOnly) ? normalizePhone(compact) : null;
+  return isValidVnRawDigitLength(digitsOnly) ? [normalizePhone(compact)] : [];
 }
 
 /**
@@ -189,12 +209,16 @@ export function resolveCellPhone(text: string): string | null {
  *  - không có candidate hợp lệ nào -> null (thiếu SĐT hoặc toàn bộ sai độ dài).
  */
 export function resolveRowPhone(row: readonly unknown[], phoneColumns: readonly number[]): string | null {
+  return resolveRowPhones(row, phoneColumns)[0] ?? null;
+}
+
+/** Gộp toàn bộ số hợp lệ từ tất cả cột SĐT, giữ thứ tự xuất hiện và loại trùng. */
+export function resolveRowPhones(row: readonly unknown[], phoneColumns: readonly number[]): string[] {
   const candidates = phoneColumns
     .map(index => cellToText(row[index]))
     .filter(text => text.length > 0)
-    .map(text => resolveCellPhone(text))
-    .filter((phone): phone is string => phone !== null);
-  return candidates.length > 0 ? candidates[0] : null;
+    .flatMap(text => resolveCellPhones(text));
+  return candidates.filter((phone, index) => candidates.findIndex(other => phoneKey(other) === phoneKey(phone)) === index);
 }
 
 export function normalizeName(raw: string): string {
@@ -225,7 +249,8 @@ export function classifyRow(
   seenInFilePhoneKeys: ReadonlySet<string>,
 ): RowClassification {
   const tenKH = cellToText(row[columns.name]);
-  const resolvedPhone = resolveRowPhone(row, columns.phone);
+  const resolvedPhones = resolveRowPhones(row, columns.phone);
+  const resolvedPhone = resolvedPhones[0] ?? null;
   const email = columns.email >= 0 ? cellToText(row[columns.email]) : '';
   // resolvedPhone null có 2 nguyên nhân khác nhau — phân biệt để "report rõ"
   // (yêu cầu): cột phone hoàn toàn trống (Thiếu SĐT) vs có text nhưng không
@@ -244,10 +269,10 @@ export function classifyRow(
     return { status: 'invalid', reason };
   }
 
-  const so_dien_thoai = resolvedPhone;
-  const key = phoneKey(so_dien_thoai);
-  if (existingDbPhoneKeys.has(key)) return { status: 'already_exists', ten_KH: tenKH, so_dien_thoai };
-  if (seenInFilePhoneKeys.has(key)) return { status: 'duplicate_in_file', ten_KH: tenKH, so_dien_thoai };
+  const so_dien_thoai = resolvedPhones.join('; ');
+  const keys = resolvedPhones.map(phoneKey);
+  if (keys.some(key => existingDbPhoneKeys.has(key))) return { status: 'already_exists', ten_KH: tenKH, so_dien_thoai };
+  if (keys.some(key => seenInFilePhoneKeys.has(key))) return { status: 'duplicate_in_file', ten_KH: tenKH, so_dien_thoai };
 
   return { status: 'ready', ten_KH: tenKH, so_dien_thoai, email };
 }
