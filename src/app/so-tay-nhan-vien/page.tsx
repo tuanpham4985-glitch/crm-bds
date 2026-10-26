@@ -34,7 +34,11 @@ const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<Ha
 function formatDate(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+  if (Number.isNaN(d.getTime())) return '';
+  // Năm đủ 4 chữ số (dd/MM/yyyy HH:mm) — dateStyle 'short' của vi-VN ra năm 2
+  // chữ số (26/10/26), dễ nhầm ngày với năm.
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function renderContent(text: string): ReactNode {
