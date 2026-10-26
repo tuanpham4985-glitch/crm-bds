@@ -6,7 +6,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Building2, LayoutList, Users, PhoneCall, BadgeCheck, GitBranch,
-  ClipboardList, BarChart3, TrendingUp, Briefcase, UserCog, FileText, BadgeDollarSign, MapPin, Award,
+  ClipboardList, BarChart3, TrendingUp, Briefcase, UserCog, FileText, BadgeDollarSign, MapPin, Award, BookOpen,
 } from 'lucide-react';
 
 // Tag khai báo "cần business rule nào" — KHÔNG phải RBAC engine mới. Sidebar
@@ -44,6 +44,7 @@ export interface MenuRootDef {
 // vào cuối theo đúng vị trí khai báo tại đây).
 export const MENU_REGISTRY: MenuRootDef[] = [
   { key: 'dashboard', label: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { key: 'employeeHandbook', label: 'Sổ tay nhân viên', href: '/so-tay-nhan-vien', icon: BookOpen },
   { key: 'projects', label: 'Dự án', href: '/du-an', icon: Building2 },
   { key: 'stacking', label: 'Bảng hàng', href: '/stacking', icon: LayoutList },
   {
