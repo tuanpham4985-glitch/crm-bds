@@ -51,6 +51,14 @@ const statusColors: Record<string, { bg: string; color: string }> = {
   'Quan tâm': { bg: '#ecfdf5', color: '#047857' }, 'Không phù hợp': { bg: '#fef2f2', color: '#b91c1c' },
   'Sai số': { bg: '#fdf2f8', color: '#be185d' },
 };
+const bucketCardColors: Record<MembershipBucket, { border: string; bg: string; color: string }> = {
+  'Quan tâm': { border: '#16a34a', bg: '#f0fdf4', color: '#15803d' },
+  'Chưa gọi': { border: '#64748b', bg: '#f8fafc', color: '#475569' },
+  'Gọi lại hôm nay': { border: '#2563eb', bg: '#eff6ff', color: '#1d4ed8' },
+  'Đang chăm sóc': { border: '#0891b2', bg: '#ecfeff', color: '#0e7490' },
+  'Quá lịch': { border: '#dc2626', bg: '#fef2f2', color: '#b91c1c' },
+  'Hoàn tất / Không phù hợp': { border: '#7c3aed', bg: '#f5f3ff', color: '#6d28d9' },
+};
 
 // CSKH Sale Progress (V1) — LOCKED mapping (ChatGPT Architecture Review):
 // 'Gọi lại hôm nay' CHỈ gộp vào 'Đang chăm sóc' ở summary này, KHÔNG đổi
@@ -118,6 +126,8 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // CAMPAIGN-FIRST CSKH — Admin-only "Gán Dự án"/"Sửa Dự án" cho Campaign
   // legacy (id_du_an=null) hoặc đổi Dự án — cùng pattern với showLeaderEdit.
   const [showProjectEdit, setShowProjectEdit] = useState(false);
+  const [projectCustomer, setProjectCustomer] = useState<CampaignMembershipWithCustomer | null>(null);
+  const [projectSaving, setProjectSaving] = useState(false);
   const [handoffMember, setHandoffMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [acceptRejectBusyId, setAcceptRejectBusyId] = useState('');
   // "Chọn khách: Từ [x] đến [y]" -> "Chia đều cho Sale" — string (không phải
@@ -241,6 +251,26 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
       replaceMember({ ...data.data, customer: interactionMember.customer }); setInteractionMember(null);
       setNotice({ type: 'ok', text: 'Đã lưu kết quả chăm sóc.' });
     } catch (error) { setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không thể lưu chăm sóc.' }); } finally { setBusyId(''); }
+  }
+
+  async function saveCustomerProject(projectId: string) {
+    if (!projectCustomer?.customer) return;
+    const project = projects.find(item => item.id_du_an === projectId);
+    if (!project) return;
+    setProjectSaving(true);
+    try {
+      const response = await fetch('/api/khach-hang', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_khach_hang: projectCustomer.customer_id, du_an: project.ten_du_an }),
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Không thể cập nhật Dự án');
+      replaceMember({ ...projectCustomer, customer: { ...projectCustomer.customer, du_an: project.ten_du_an } });
+      setProjectCustomer(null);
+      setNotice({ type: 'ok', text: `Đã gán Dự án ${project.ten_du_an} cho ${projectCustomer.customer.ten_KH}.` });
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không thể cập nhật Dự án.' });
+    } finally { setProjectSaving(false); }
   }
 
   // M1B.2 — Accept/Reject tái dùng nguyên POST /api/crm/telesale/handoff hiện
@@ -415,13 +445,15 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
 
     {campaignId && <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, marginBottom: 16 }}>
-        {CSKH_BUCKETS.map(bucket => (
-          <button key={bucket} className="card" style={{ padding: '12px 14px', textAlign: 'left', cursor: 'pointer', border: bucketFilter === bucket ? '2px solid var(--primary)' : undefined }}
+        {(['Quan tâm', ...CSKH_BUCKETS.filter(bucket => bucket !== 'Quan tâm')] as MembershipBucket[]).map(bucket => {
+          const palette = bucketCardColors[bucket];
+          const active = bucketFilter === bucket;
+          return <button key={bucket} className="card" aria-pressed={active} style={{ padding: '12px 14px', textAlign: 'left', cursor: 'pointer', border: `2px solid ${active ? palette.border : '#e2e8f0'}`, background: active ? palette.bg : '#fff', boxShadow: active ? `0 0 0 3px ${palette.border}33, 0 6px 16px ${palette.border}22` : undefined, transform: active ? 'translateY(-1px)' : undefined, transition: 'all 120ms ease' }}
             onClick={() => setBucketFilter(current => current === bucket ? '' : bucket)}>
-            <div style={{ fontSize: 12, color: 'var(--text-label)' }}>{bucket}</div>
-            <div style={{ fontSize: 22, fontWeight: 750, marginTop: 3 }}>{stats.get(bucket) || 0}</div>
+            <div style={{ fontSize: 12, color: active ? palette.color : 'var(--text-label)', fontWeight: active ? 700 : 500 }}>{bucket}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 3, color: palette.color }}>{stats.get(bucket) || 0}</div>
           </button>
-        ))}
+        })}
       </div>
 
       {/* CSKH Sale Progress (V1) — chỉ Admin/Leader phụ trách Campaign này
@@ -515,6 +547,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         members={pageWindow.items} loading={loading} canActOn={canActOn}
         onInteraction={openInteraction} onQualification={setQualificationMember} onHistory={setHistoryMember}
         canManageThisCampaign={canManageThisCampaign} currentUserName={user?.ho_ten}
+        projectEditable={isAdmin} onProject={setProjectCustomer}
         onHandoff={setHandoffMember} onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
         startIndex={pageWindow.startIndex} page={pageWindow.page} totalPages={pageWindow.totalPages}
         totalCount={pageWindow.total} pageSize={MEMBERS_PAGE_SIZE}
@@ -579,6 +612,15 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
       />
     )}
 
+    {projectCustomer && <CustomerProjectModal
+      member={projectCustomer}
+      projects={projects}
+      campaigns={campaigns}
+      saving={projectSaving}
+      onClose={() => { if (!projectSaving) setProjectCustomer(null); }}
+      onSave={projectId => void saveCustomerProject(projectId)}
+    />}
+
     {handoffMember && selectedCampaign && (
       <MembershipHandoffModal
         campaignId={campaignId}
@@ -618,12 +660,14 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
 
 function MembershipTable({
   members, loading, canActOn, onInteraction, onQualification, onHistory, canManageThisCampaign, currentUserName, onHandoff, onAcceptReject, acceptRejectBusyId,
+  onProject, projectEditable,
   startIndex, page, totalPages, totalCount, pageSize, onPrevPage, onNextPage,
 }: {
   members: CampaignMembershipWithCustomer[]; loading: boolean; canActOn: (member: CampaignMembershipWithCustomer) => boolean;
   onInteraction: (member: CampaignMembershipWithCustomer) => void; onQualification: (member: CampaignMembershipWithCustomer) => void; onHistory: (member: CampaignMembershipWithCustomer) => void;
   canManageThisCampaign: boolean; currentUserName?: string;
   onHandoff: (member: CampaignMembershipWithCustomer) => void; onAcceptReject: (member: CampaignMembershipWithCustomer, action: 'accept' | 'reject') => void; acceptRejectBusyId: string;
+  onProject: (member: CampaignMembershipWithCustomer) => void; projectEditable: boolean;
   // CSKH TABLE UX — "trang 50 dòng" thuần presentation (xem table-pagination.ts).
   startIndex: number; page: number; totalPages: number; totalCount: number; pageSize: number;
   onPrevPage: () => void; onNextPage: () => void;
@@ -650,7 +694,7 @@ function MembershipTable({
     <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table cskh-compact" style={{ minWidth: 980 }}>
     <thead><tr>
       <th style={{ width: 40 }}>STT</th>
-      <th style={{ width: 190 }}>Khách hàng</th><th style={{ width: 110 }}>Sale CSKH</th><th style={{ width: 120 }}>Trạng thái</th>
+      <th style={{ width: 190 }}>Khách hàng</th><th style={{ width: 150 }}>Dự án</th><th style={{ width: 110 }}>Sale CSKH</th><th style={{ width: 120 }}>Trạng thái</th>
       <th style={{ width: 100 }}>Mức độ tiềm năng</th><th style={{ width: 90 }}>Điểm / Xếp hạng</th>
       <th style={{ width: 100 }}>Lịch tiếp theo</th><th style={{ width: 76 }}>Bàn giao</th>
       <th style={{ textAlign: 'right', width: 150 }}>Thao tác</th>
@@ -671,6 +715,7 @@ function MembershipTable({
       return <tr key={member.id} style={isOverdue(member.ngay_lien_he_tiep) ? { background: '#fff7f7' } : undefined}>
         <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>{startIndex + idx + 1}</td>
         <td><div style={{ fontWeight: 700 }}>{member.customer?.ten_KH || member.customer_id}</div>{member.customer?.so_dien_thoai && <a href={`tel:${member.customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(member.customer.so_dien_thoai)}</a>}</td>
+        <td>{member.customer && projectEditable ? <button className="btn btn-secondary btn-sm" style={{ maxWidth: 140, whiteSpace: 'normal', textAlign: 'left' }} onClick={() => onProject(member)}>{member.customer.du_an || 'Chọn dự án'}</button> : <span style={{ fontSize: 12 }}>{member.customer?.du_an || '—'}</span>}</td>
         <td>
           {assigned
             ? <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -751,6 +796,54 @@ function MembershipHistoryModal({ member, onClose }: { member: CampaignMembershi
 // Active employee eligibility giống hệt Leader picker trong
 // CampaignDistributeModal.tsx (employees.filter trang_thai !== 'Nghỉ việc') —
 // không phát minh rule mới.
+function CustomerProjectModal({ member, projects, campaigns, saving, onClose, onSave }: {
+  member: CampaignMembershipWithCustomer;
+  projects: DuAn[];
+  campaigns: CampaignType[];
+  saving: boolean;
+  onClose: () => void;
+  onSave: (projectId: string) => void;
+}) {
+  const [projectId, setProjectId] = useState(projects.find(item => item.ten_du_an === member.customer?.du_an)?.id_du_an || '');
+  const [investor, setInvestor] = useState('');
+  const [campaignId, setCampaignId] = useState('');
+  const [search, setSearch] = useState('');
+  const investors = [...new Set(projects.map(item => item.chu_dau_tu?.trim()).filter(Boolean))] as string[];
+  const filteredProjects = projects.filter(item => {
+    if (item.hien_thi === 0) return false;
+    if (investor && item.chu_dau_tu?.trim() !== investor) return false;
+    if (campaignId && !campaigns.some(campaign => campaign.id === campaignId && campaign.id_du_an === item.id_du_an)) return false;
+    const query = search.trim().toLowerCase();
+    return !query || `${item.ten_du_an} ${item.ma_du_an} ${item.chu_dau_tu || ''}`.toLowerCase().includes(query);
+  });
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-content" style={{ maxWidth: 460 }} onClick={event => event.stopPropagation()}>
+      <div className="modal-header"><h3 className="modal-title">Chọn Dự án</h3><button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button></div>
+      <div style={{ padding: 20 }}>
+        <div style={{ marginBottom: 12, color: 'var(--text-label)', fontSize: 13 }}>Khách hàng: <strong style={{ color: 'var(--text-title)' }}>{member.customer?.ten_KH || member.customer_id}</strong></div>
+        <label className="form-label">Dự án</label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <select className="form-select" value={investor} onChange={event => setInvestor(event.target.value)}>
+            <option value="">Tất cả Chủ đầu tư</option>
+            {investors.map(item => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <select className="form-select" value={campaignId} onChange={event => setCampaignId(event.target.value)}>
+            <option value="">Tất cả Campaign</option>
+            {campaigns.filter(item => item.id_du_an).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </div>
+        <input className="form-input" style={{ marginBottom: 8 }} placeholder="Tìm tên hoặc mã dự án..." value={search} onChange={event => setSearch(event.target.value)} />
+        <select className="form-select" value={projectId} onChange={event => setProjectId(event.target.value)}>
+          <option value="">— Chọn dự án —</option>
+          {filteredProjects.map(item => <option key={item.id_du_an} value={item.id_du_an}>{item.ten_du_an}{item.chu_dau_tu ? ` · ${item.chu_dau_tu}` : ''}</option>)}
+        </select>
+        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>{filteredProjects.length} dự án phù hợp</div>
+      </div>
+      <div className="modal-footer"><button className="btn btn-secondary" onClick={onClose} disabled={saving}>Hủy</button><button className="btn btn-primary" onClick={() => onSave(projectId)} disabled={!projectId || saving}>{saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />} Lưu Dự án</button></div>
+    </div>
+  </div>;
+}
+
 function CampaignLeaderEditModal({ campaign, employees, onClose, onSaved }: {
   campaign: CampaignType; employees: NhanVien[]; onClose: () => void; onSaved: (updated: CampaignType) => void;
 }) {

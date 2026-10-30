@@ -149,7 +149,7 @@ export async function getCampaignMembersWithCustomers(campaignId: string, scopeT
   const customers = customerIds.length
     ? await prisma.khachHang.findMany({
         where: { id_khach_hang: { in: customerIds } },
-        select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true },
+        select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, du_an: true },
       })
     : [];
   const customerMap = new Map(customers.map(customer => [customer.id_khach_hang, customer]));
@@ -168,6 +168,7 @@ export async function getCampaignMembersWithCustomers(campaignId: string, scopeT
           ten_KH: customerMap.get(member.customer_id)!.ten_KH,
           so_dien_thoai: customerMap.get(member.customer_id)!.so_dien_thoai || '',
           email: customerMap.get(member.customer_id)!.email || '',
+          du_an: customerMap.get(member.customer_id)!.du_an || '',
         }
       : null,
     handoff: member.handoff_id ? handoffMap.get(member.handoff_id) ?? null : null,
