@@ -373,21 +373,16 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         )}
         <button className="btn btn-secondary" style={canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 ? undefined : { marginLeft: 'auto' }} onClick={() => loadMembers(campaignId)} disabled={!campaignId || loading}><RefreshCw size={15} /> Làm mới</button>
       </div>
-      {/* CAMPAIGN-FIRST CSKH — hiển thị rõ Campaign/Dự án/Leader khi đã chọn
-          Campaign (không chỉ giấu Dự án trong text option của dropdown như
-          trước). Campaign legacy chưa gắn Dự án (id_du_an=null, VD "Vinhomes
-          HLX" production) hiện cảnh báo rõ + Admin có action "Gán Dự án" —
-          Leader chỉ thấy cảnh báo, không sửa được Project linkage của chính
-          Campaign mình phụ trách (canManageCampaign qua owner_name KHÔNG đủ
-          để đổi Dự án — xem campaignProjectFieldTouched, crm-auth.ts). */}
+      {/* Campaign có thể là Campaign đa Dự án: khi không có id_du_an ở cấp
+          Campaign, Dự án được chọn theo từng khách trong bảng CSKH. */}
       {selectedCampaign && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 18, fontSize: 13 }}>
           <span style={{ color: 'var(--text-label)' }}>Campaign: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.name}</strong></span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {selectedCampaign.ten_du_an
-              ? <span style={{ color: 'var(--text-label)' }}>Dự án: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.ten_du_an}</strong></span>
-              : <span style={{ color: '#b91c1c', fontWeight: 650 }}>Chưa gắn Dự án — Leader chưa thể chia Sale.</span>}
-            {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setShowProjectEdit(true)}>{selectedCampaign.id_du_an ? 'Sửa Dự án' : 'Gán Dự án'}</button>}
+              ? <span style={{ color: 'var(--text-label)' }}>Dự án mặc định: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.ten_du_an}</strong></span>
+              : <span style={{ color: '#0369a1', fontWeight: 650 }}>Campaign nhiều Dự án — Sale chọn Dự án theo từng khách.</span>}
+            {isAdmin && selectedCampaign.id_du_an && <button className="btn btn-ghost btn-sm" onClick={() => setShowProjectEdit(true)}>Sửa Dự án mặc định</button>}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             Leader phụ trách: <strong style={{ color: 'var(--text-title)' }}>{selectedCampaign.owner_name || 'Chưa cấu hình'}</strong>

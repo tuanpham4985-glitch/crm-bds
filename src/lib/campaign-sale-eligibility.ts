@@ -120,11 +120,10 @@ export type SaleEligibility =
  * (ai đứng đầu roster đó) là 2 khái niệm ĐỘC LẬP — không yêu cầu 2 giá trị
  * này phải trùng nhau ở bất kỳ đâu trong hàm này.
  *
- * Nếu Campaign KHÔNG gắn Dự án, hoặc Dự án đó CHƯA cấu hình ds_sale (thiếu/
- * rỗng/không parse được) — KHÔNG có roster đáng tin cậy nào để thu hẹp.
- * Theo kiến trúc đã duyệt, trường hợp này phải BỊ CHẶN cho Leader (không suy
- * diễn/mở rộng thành "toàn bộ Sale") — trả về blocked:true kèm lý do hiển thị
- * lên UI. Admin không bao giờ bị ảnh hưởng bởi nhánh này.
+ * Nếu Campaign không gắn Dự án, đây là Campaign đa Dự án: không dùng roster
+ * của một Dự án riêng để thu hẹp Sale. Sale sẽ chọn Dự án ở từng khách trong
+ * tab CSKH, nên Leader được phân trong phạm vi toàn bộ Sale đang hoạt động.
+ * Nếu Campaign có gắn Dự án thì vẫn dùng roster ds_sale của Dự án đó.
  */
 export function eligibleCampaignSales(
   actorIsAdmin: boolean,
@@ -134,7 +133,7 @@ export function eligibleCampaignSales(
 ): SaleEligibility {
   const activeSales = employees.filter(isActiveSale);
   if (actorIsAdmin) return { blocked: false, scoped: false, sales: activeSales };
-  if (!campaign.id_du_an) return { blocked: true, reason: NO_SALE_SCOPE_REASON };
+  if (!campaign.id_du_an) return { blocked: false, scoped: false, sales: activeSales };
   const project = projects.find(item => item.id_du_an === campaign.id_du_an);
   const roster = project ? parseSaleRoster(project.ds_sale) : null;
   if (!roster || roster.length === 0) return { blocked: true, reason: NO_SALE_SCOPE_REASON };
