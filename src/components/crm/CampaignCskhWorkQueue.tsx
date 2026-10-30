@@ -259,9 +259,9 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
     if (!project) return;
     setProjectSaving(true);
     try {
-      const response = await fetch('/api/khach-hang', {
+      const response = await fetch(`/api/campaigns/${campaignId}/members/${projectCustomer.id}/project`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_khach_hang: projectCustomer.customer_id, du_an: project.ten_du_an }),
+        body: JSON.stringify({ project_id: project.id_du_an }),
       });
       const data = await response.json();
       if (!data.success) throw new Error(data.error || 'Không thể cập nhật Dự án');
@@ -547,7 +547,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         members={pageWindow.items} loading={loading} canActOn={canActOn}
         onInteraction={openInteraction} onQualification={setQualificationMember} onHistory={setHistoryMember}
         canManageThisCampaign={canManageThisCampaign} currentUserName={user?.ho_ten}
-        projectEditable={isAdmin} onProject={setProjectCustomer}
+        projectEditable onProject={setProjectCustomer}
         onHandoff={setHandoffMember} onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
         startIndex={pageWindow.startIndex} page={pageWindow.page} totalPages={pageWindow.totalPages}
         totalCount={pageWindow.total} pageSize={MEMBERS_PAGE_SIZE}
