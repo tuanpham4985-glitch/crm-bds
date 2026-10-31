@@ -27,6 +27,8 @@ export interface CskhAccessSignals {
   hasLegacyProjectAccess: boolean;
   /** Có Sale CSKH (CampaignMembership.telesale_id) hoặc Leader (Campaign.owner_id/owner_name) ở bất kỳ Campaign nào hay không. */
   hasCampaignCskhAccess: boolean;
+  /** Tài khoản Marketing được cấp quyền xem báo cáo CSKH toàn bộ Campaign. */
+  hasCskhReportingAccess?: boolean;
 }
 
 /**
@@ -39,5 +41,6 @@ export interface CskhAccessSignals {
 export function canAccessCskh(signals: CskhAccessSignals): boolean {
   if (signals.isAdmin) return true;
   if (!signals.crmModuleEnabled) return false;
-  return signals.vaiTro === 'Sale' || signals.hasLegacyProjectAccess || signals.hasCampaignCskhAccess;
+  return Boolean(signals.hasCskhReportingAccess)
+    || signals.vaiTro === 'Sale' || signals.hasLegacyProjectAccess || signals.hasCampaignCskhAccess;
 }

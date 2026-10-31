@@ -6,6 +6,7 @@ import { buildCrmManagerScope } from '@/lib/crm-auth';
 import { hasCampaignCskhAccess } from '@/lib/crm-funnel/campaign';
 import { isCrmModuleEnabled } from '@/lib/crm-module';
 import { canAccessCskh } from '@/lib/crm-access-authority';
+import { isCskhReportingViewerEmail } from '@/lib/crm-reporting-access';
 
 export async function GET() {
   try {
@@ -71,6 +72,7 @@ export async function GET() {
       vaiTro: userData.vai_tro,
       hasLegacyProjectAccess: accessibleIds.length > 0,
       hasCampaignCskhAccess: hasCampaignAccess,
+      hasCskhReportingAccess: isCskhReportingViewerEmail(userData.email),
     });
     return NextResponse.json({
       canKH: false, phanKhachIds: accessibleIds, handoffCount,

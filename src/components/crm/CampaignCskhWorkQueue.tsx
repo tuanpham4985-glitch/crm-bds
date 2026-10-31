@@ -29,6 +29,7 @@ import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
 import { qualificationStatusLabel } from '@/lib/crm-funnel/quality-labels';
 import { INTEREST_OPTIONS, interestTone } from '@/lib/crm-funnel/interest';
 import { paginate } from '@/lib/table-pagination';
+import { isCskhReportingViewerEmail } from '@/lib/crm-reporting-access';
 import { CampaignDistributeModal } from './CampaignDistributeModal';
 import { MembershipQualificationModal } from './MembershipQualificationModal';
 
@@ -96,6 +97,7 @@ type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTa
 
 export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }: { employees: NhanVien[]; projects: DuAn[]; initialCampaignId?: string }) {
   const { user, isAdmin } = useAuth();
+  const isReportingViewer = Boolean(user && isCskhReportingViewerEmail(user.email));
   const [campaigns, setCampaigns] = useState<CampaignType[]>([]);
   // initialCampaignId (từ ?campaignId= trên /phan-khach — link "đi thẳng" sau
   // khi tạo Campaign ở /khach-hang): nếu có, effect auto-select bên dưới
@@ -260,6 +262,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   };
 
   function canActOn(member: CampaignMembershipWithCustomer): boolean {
+    if (isReportingViewer) return false;
     return canActOnMembership(user, isAdmin, member, selectedCampaign, employees);
   }
 
@@ -359,7 +362,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // Leader phụ trách (canManageCampaign, server-side) HOẶC Admin mới được phân
   // Sale cho membership CHƯA PHÂN của Campaign này — cùng authority với
   // canManageMembership's Campaign-owner nhánh, không suy diễn theo Customer.du_an.
-  const canManageThisCampaign = Boolean(user && (isAdmin || selectedCampaign?.owner_name === user.ho_ten));
+  const canManageThisCampaign = Boolean(!isReportingViewer && user && (isAdmin || selectedCampaign?.owner_name === user.ho_ten));
   const unassignedMembers = useMemo(() => members.filter(member => member.assignment_status === 'UNASSIGNED'), [members]);
 
   // "Chọn khách: Từ x đến y" — preview client-side (non-authoritative, chỉ để
@@ -513,7 +516,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
           tiến độ của Sale khác (khớp /api/campaigns/[id]/members: nhánh
           non-manager chỉ trả về đúng membership của chính mình). Derive-only
           từ `members` đã fetch sẵn — KHÔNG gọi API/DB nào thêm. */}
-      {canManageThisCampaign && saleProgress.length > 0 && (
+      {(canManageThisCampaign || isReportingViewer) && saleProgress.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 13.5 }}>Tiến độ Sale</strong>
@@ -618,8 +621,8 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         members={pageWindow.items} loading={loading} canActOn={canActOn}
         onInteraction={openInteraction} onHistory={setHistoryMember}
         canManageThisCampaign={canManageThisCampaign} currentUserName={user?.ho_ten}
-        projectEditable={Boolean(selectedCampaign && !selectedCampaign.id_du_an) || isAdmin} onProject={setProjectCustomer}
-        sharedPool={Boolean(selectedCampaign && !selectedCampaign.id_du_an)} onClaim={claimMember} claimBusyId={claimBusyId}
+        projectEditable={!isReportingViewer && (Boolean(selectedCampaign && !selectedCampaign.id_du_an) || isAdmin)} onProject={setProjectCustomer}
+        sharedPool={!isReportingViewer && Boolean(selectedCampaign && !selectedCampaign.id_du_an)} onClaim={claimMember} claimBusyId={claimBusyId}
         onHandoff={setHandoffMember} onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
         startIndex={pageWindow.startIndex} page={pageWindow.page} totalPages={pageWindow.totalPages}
         totalCount={pageWindow.total} pageSize={MEMBERS_PAGE_SIZE}

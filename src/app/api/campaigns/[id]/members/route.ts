@@ -3,6 +3,7 @@ import { canManageCampaign, getCrmSessionUser } from '@/lib/crm-auth';
 import { getCampaign, getCampaignMembersWithCustomers } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import { sortMembershipsNewestAssignedFirst } from '@/lib/campaign-cskh-range';
+import { isCskhReportingViewerEmail } from '@/lib/crm-reporting-access';
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCrmSessionUser();
@@ -21,7 +22,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     // Campaign không gắn Dự án là "Kho khách chung": mọi Sale có quyền vào
     // CSKH được nhìn toàn bộ danh sách để tự nhận khách, thay vì bị lọc theo
     // telesale_id ngay từ bước đọc.
-    const hasFullView = canManageCampaign(user, campaign) || !campaign.id_du_an;
+    const hasFullView = canManageCampaign(user, campaign) || !campaign.id_du_an || isCskhReportingViewerEmail(user.email);
     const scopedMembers = await getCampaignMembersWithCustomers(id, hasFullView ? undefined : user.id_nhan_vien);
     // Sale: khách mới được phân lên đầu (không bị chìm ở trang cuối). Admin/
     // Leader giữ created_at ASC — thứ tự tham chiếu của "Chọn khách: Từ x đến y".
