@@ -13,7 +13,7 @@ export function canActOnMembership(
   actor: ActingUser | null | undefined,
   isAdmin: boolean,
   member: { telesale_id?: string | null },
-  campaign: { owner_name?: string | null } | undefined,
+  campaign: { owner_name?: string | null; id_du_an?: string | null } | undefined,
   employees: { id_nhan_vien: string; ql_truc_tiep?: string | null }[],
 ): boolean {
   if (!actor) return false;

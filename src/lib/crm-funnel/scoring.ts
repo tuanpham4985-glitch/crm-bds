@@ -40,6 +40,9 @@ function timeframePoints(value: ThoiGianDuKien | string | null | undefined): num
 
 function interestPoints(value: MucDoQuanTam | string | null | undefined): number {
   switch (value) {
+    case 'Quan tâm': return 12;
+    case 'Nét': return 3;
+    case 'Rác': return 0;
     case 'Rất cao': return 15;
     case 'Cao': return 12;
     case 'Trung bình': return 8;

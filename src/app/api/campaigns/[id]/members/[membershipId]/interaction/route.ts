@@ -5,9 +5,10 @@ import { getCampaign, getCampaignMembers } from '@/lib/crm-funnel/campaign';
 import { recordMembershipInteractionTransactional } from '@/lib/crm-funnel/membership-workflow';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import type { MucDoQuanTam, TrangThaiChamSoc } from '@/lib/types';
+import { ALL_INTEREST_OPTIONS } from '@/lib/crm-funnel/interest';
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
-const INTERESTS: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'];
+const INTERESTS: MucDoQuanTam[] = ALL_INTEREST_OPTIONS;
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string; membershipId: string }> }) {
   const user = await getCrmSessionUser();
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       actor: user,
       idempotencyKey: body.idempotency_key,
       result: body.ket_qua,
-      interest: body.muc_do_quan_tam || 'Chưa xác định',
+      interest: body.muc_do_quan_tam || 'Nét',
       note: String(body.ghi_chu || '').trim(),
       nextContact: body.ngay_lien_he_tiep || undefined,
     });

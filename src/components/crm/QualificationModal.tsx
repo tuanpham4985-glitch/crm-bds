@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { BadgeCheck, Save, X } from 'lucide-react';
 import type { KhachHang, MucDichLead, MucDoQuanTam, ThoiGianDuKien } from '@/lib/types';
+import { INTEREST_OPTIONS } from '@/lib/crm-funnel/interest';
 
 export function QualificationModal({ customer, onClose, onSaved }: { customer: KhachHang; onClose: () => void; onSaved: (customer: KhachHang, message: string) => void }) {
   const [saving, setSaving] = useState(false);
@@ -12,7 +13,7 @@ export function QualificationModal({ customer, onClose, onSaved }: { customer: K
     ngan_sach_min: customer.ngan_sach_min || '', ngan_sach_max: customer.ngan_sach_max || '',
     muc_dich: customer.muc_dich || '' as MucDichLead | '', thoi_gian_du_kien: customer.thoi_gian_du_kien || 'Chưa xác định' as ThoiGianDuKien,
     phuong_an_tai_chinh: customer.phuong_an_tai_chinh || '', khu_vuc_yeu_cau: customer.khu_vuc_yeu_cau || '',
-    muc_do_quan_tam: customer.muc_do_quan_tam || 'Chưa xác định' as MucDoQuanTam,
+    muc_do_quan_tam: customer.muc_do_quan_tam || 'Nét' as MucDoQuanTam,
     hanh_dong_tiep_theo: customer.hanh_dong_tiep_theo || '', nguon: customer.nguon || '',
   });
   const set = (key: keyof typeof form, value: string | number) => setForm(current => ({ ...current, [key]: value }));
@@ -43,7 +44,7 @@ export function QualificationModal({ customer, onClose, onSaved }: { customer: K
       <Field label="Mục đích"><select className="form-select" value={form.muc_dich} onChange={event => set('muc_dich', event.target.value)}><option value="">Chưa xác định</option>{['Để ở', 'Đầu tư', 'Cho thuê', 'Khác'].map(item => <option key={item}>{item}</option>)}</select></Field>
       <Field label="Thời gian dự kiến"><select className="form-select" value={form.thoi_gian_du_kien} onChange={event => set('thoi_gian_du_kien', event.target.value)}>{['Chưa xác định', 'Trong 1 tháng', '1-3 tháng', '3-6 tháng', '6-12 tháng', 'Trên 12 tháng'].map(item => <option key={item}>{item}</option>)}</select></Field>
       <Field label="Phương án tài chính"><input className="form-input" value={form.phuong_an_tai_chinh} onChange={event => set('phuong_an_tai_chinh', event.target.value)} placeholder="Tiền mặt / vay ngân hàng / tỷ lệ vay..." /></Field>
-      <Field label="Mức độ quan tâm"><select className="form-select" value={form.muc_do_quan_tam} onChange={event => set('muc_do_quan_tam', event.target.value)}>{['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'].map(item => <option key={item}>{item}</option>)}</select></Field>
+      <Field label="Mức độ quan tâm"><select className="form-select" value={form.muc_do_quan_tam} onChange={event => set('muc_do_quan_tam', event.target.value)}>{INTEREST_OPTIONS.map(item => <option key={item}>{item}</option>)}</select></Field>
       <Field label="Nguồn data"><input className="form-input" value={form.nguon} onChange={event => set('nguon', event.target.value)} /></Field>
       <Field label="Hành động tiếp theo"><input className="form-input" value={form.hanh_dong_tiep_theo} onChange={event => set('hanh_dong_tiep_theo', event.target.value)} placeholder="Gửi bảng giá, hẹn xem, gọi lại..." /></Field>
     </div>

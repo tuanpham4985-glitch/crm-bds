@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, Clock3, Eye, History, Phone, RefreshCw, Save, Search, Send, Settings, UserCheck, Users, X } from 'lucide-react';
 import type { CrmBanGiaoEntry, CrmChamSocEntry, DuAn, KhachHang, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
+import { INTEREST_OPTIONS, interestTone } from '@/lib/crm-funnel/interest';
 import { formatPhone } from '@/lib/utils';
 import { useCrmAccess } from '@/hooks/useCrmAccess';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,7 +15,7 @@ import { PrivateGroupCskhWorkQueue } from '@/components/crm/PrivateGroupCskhWork
 import { isCustomerDistributionExempt } from '@/lib/campaign-sale-eligibility';
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
-const INTERESTS: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'];
+const INTERESTS = INTEREST_OPTIONS;
 const statusColors: Record<string, { bg: string; color: string }> = {
   'Chưa gọi': { bg: '#f1f5f9', color: '#475569' }, 'Không nghe máy': { bg: '#fff7ed', color: '#c2410c' },
   'Gọi lại': { bg: '#fffbeb', color: '#a16207' }, 'Đã liên hệ': { bg: '#eff6ff', color: '#1d4ed8' },
@@ -87,7 +88,7 @@ function PhanKhachContent() {
   const [qualificationCustomer, setQualificationCustomer] = useState<KhachHang | null>(null);
   const [showTeam, setShowTeam] = useState(false);
   const [teamForm, setTeamForm] = useState({ truong_nhom: '', ds_sale: [] as string[] });
-  const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '' });
+  const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Nét', ghi_chu: '', ngay_lien_he_tiep: '' });
 
   const selectedProject = projects.find(project => project.id_du_an === selectedProjectId);
   const managesAssignedTelesale = customers.some(customer => employees.some(employee =>
@@ -158,7 +159,7 @@ function PhanKhachContent() {
 
   function openInteraction(customer: KhachHang) {
     setInteractionCustomer(customer);
-    setInteraction({ ket_qua: customer.trang_thai_cham_soc === 'Chưa gọi' ? 'Đã liên hệ' : customer.trang_thai_cham_soc || 'Đã liên hệ', muc_do_quan_tam: customer.muc_do_quan_tam || 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '' });
+    setInteraction({ ket_qua: customer.trang_thai_cham_soc === 'Chưa gọi' ? 'Đã liên hệ' : customer.trang_thai_cham_soc || 'Đã liên hệ', muc_do_quan_tam: customer.muc_do_quan_tam || 'Nét', ghi_chu: '', ngay_lien_he_tiep: '' });
   }
 
   async function saveInteraction() {
@@ -265,7 +266,7 @@ function CustomerTable({ customers, loading, busyId, canManage, userName, telesa
       <td><div style={{ fontWeight: 700 }}>{customer.ten_KH}</div><a href={`tel:${customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(customer.so_dien_thoai)}</a><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{customer.nguon || 'Không rõ nguồn'}</div></td>
       <td><div style={{ fontWeight: 600, fontSize: 13 }}>{customer.du_an || '—'}</div><div style={{ maxWidth: 220, fontSize: 12, color: 'var(--text-label)', marginTop: 5, whiteSpace: 'normal' }}>{customer.nhu_cau || 'Chưa có nhu cầu'}</div></td>
       <td>{canManage ? <select className="form-select" style={{ minWidth: 165, fontSize: 12 }} disabled={busyId === customer.id_khach_hang} value={customer.telesale_phu_trach || ''} onChange={event => void onAssign(customer, event.target.value)}><option value="">— Chưa phân —</option>{telesales.map(item => <option key={item.id_nhan_vien} value={item.ho_ten}>{item.ho_ten}</option>)}</select> : <><div style={{ fontWeight: 600, fontSize: 13 }}>{customer.telesale_phu_trach || 'Chưa phân'}</div>{assignee && <span style={{ fontSize: 11, color: '#047857' }}>Data của bạn</span>}</>}</td>
-      <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '4px 9px', fontSize: 12, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 7 }}>{customer.so_lan_lien_he || 0} lần · {customer.muc_do_quan_tam || 'Chưa xác định'}</div></td>
+      <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '4px 9px', fontSize: 12, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 7, display: 'flex', alignItems: 'center', gap: 5 }}>{customer.so_lan_lien_he || 0} lần · <span style={{ ...interestTone(customer.muc_do_quan_tam), borderRadius: 999, padding: '2px 7px', fontWeight: 650 }}>{customer.muc_do_quan_tam || 'Nét'}</span></div></td>
       <td><div style={{ display: 'flex', gap: 5, alignItems: 'center', color: isOverdue(customer.ngay_lien_he_tiep) ? '#dc2626' : 'var(--text-body)', fontSize: 12 }}><CalendarClock size={14} />{localDate(customer.ngay_lien_he_tiep)}</div>{customer.ngay_lien_he_cuoi && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>Gần nhất: {localDate(customer.ngay_lien_he_cuoi)}</div>}</td>
       <td><div style={{ fontWeight: 650, fontSize: 13 }}>{customer.sale_nhan_khach || 'Chưa bàn giao'}</div><div style={{ fontSize: 11, marginTop: 4, color: customer.trang_thai_ban_giao === 'Đã nhận' ? '#15803d' : customer.trang_thai_ban_giao === 'Thiếu người nhận' || customer.trang_thai_ban_giao === 'Từ chối' ? '#dc2626' : '#a16207' }}>{customer.trang_thai_ban_giao || 'Chưa bàn giao'}</div>{canManage && status === 'Quan tâm' && customer.trang_thai_ban_giao !== 'Đã nhận' && <select className="form-select" style={{ marginTop: 6, minWidth: 160, fontSize: 11 }} value="" onChange={event => { if (event.target.value) void onHandoff(customer, 'handoff', event.target.value); }}><option value="">Chuyển cho Sale…</option>{sales.map(item => <option key={item.id_nhan_vien} value={item.ho_ten}>{item.ho_ten}</option>)}</select>}</td>
       <td><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>{(assignee || canManage) && customer.trang_thai_ban_giao !== 'Đã nhận' && <button className="btn btn-primary btn-sm" title="Cập nhật kết quả chăm sóc khách hàng" onClick={() => onInteraction(customer)}><Phone size={13} /> Chăm sóc</button>}{(assignee || canManage) && <button className="btn btn-secondary btn-sm" title="Đánh giá nhu cầu và mức độ tiềm năng của khách hàng" onClick={() => onQualification(customer)}><BadgeCheck size={13} /> Đánh giá</button>}{receiver && customer.trang_thai_ban_giao === 'Chờ xác nhận' && <><button className="btn btn-primary btn-sm" onClick={() => void onHandoff(customer, 'accept')}><UserCheck size={13} /> Nhận khách</button><button className="btn btn-secondary btn-sm" onClick={() => void onHandoff(customer, 'reject')}><X size={13} /> Từ chối</button></>}<button className="btn btn-secondary btn-sm" title="Xem lịch sử chăm sóc" onClick={() => onHistory(customer)}><History size={13} /> Lịch sử</button></div></td>

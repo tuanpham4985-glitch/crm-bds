@@ -14,7 +14,7 @@
 // Accept/Reject của Sale tái dùng nguyên POST /api/crm/telesale/handoff hiện
 // có — không tạo endpoint/API riêng.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BadgeCheck, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, History, Layers, Loader2, Phone, RefreshCw, Save, Search, Send, UserCheck, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BadgeCheck, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, History, Layers, Loader2, Phone, RefreshCw, Save, Search, Send, UserCheck, Users, X } from 'lucide-react';
 import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamSocEntry, DuAn, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,6 +27,7 @@ import {
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
 import { qualificationStatusLabel, leadQualityRankLabel } from '@/lib/crm-funnel/quality-labels';
+import { INTEREST_OPTIONS, interestTone } from '@/lib/crm-funnel/interest';
 import { paginate } from '@/lib/table-pagination';
 import { CampaignDistributeModal } from './CampaignDistributeModal';
 import { MembershipQualificationModal } from './MembershipQualificationModal';
@@ -44,7 +45,7 @@ function isHandoffCandidate(member: CampaignMembershipWithCustomer): boolean {
 }
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
-const INTERESTS: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'];
+const INTERESTS = INTEREST_OPTIONS;
 const statusColors: Record<string, { bg: string; color: string }> = {
   'Chưa gọi': { bg: '#f1f5f9', color: '#475569' }, 'Không nghe máy': { bg: '#fff7ed', color: '#c2410c' },
   'Gọi lại': { bg: '#fffbeb', color: '#a16207' }, 'Đã liên hệ': { bg: '#eff6ff', color: '#1d4ed8' },
@@ -77,6 +78,9 @@ const SALE_PROGRESS_METRICS: readonly {
   { key: 'interested', label: 'Quan tâm', buckets: ['Quan tâm'] },
   { key: 'completed', label: 'Hoàn tất/KPH', buckets: ['Hoàn tất / Không phù hợp'] },
 ];
+
+type SaleProgressSortColumn = 'telesaleName' | 'assigned' | 'unprocessed' | 'inProgress' | 'overdue' | 'interested' | 'completed' | 'progressPercent';
+type SaleProgressSort = { column: SaleProgressSortColumn; direction: 'asc' | 'desc' };
 
 function parseList<T>(raw?: string | null): T[] {
   if (!raw) return [];
@@ -116,18 +120,21 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // xem campaign-cskh-range.ts). Độc lập với search/bucketFilter/assignmentFilter
   // — click lại ĐÚNG ô đang active để tắt (cùng convention toggle với bucketFilter).
   const [summaryFilter, setSummaryFilter] = useState<{ telesaleId: string; telesaleName: string; metricLabel: string; buckets?: MembershipBucket[] } | null>(null);
+  const [saleProgressSort, setSaleProgressSort] = useState<SaleProgressSort | null>(null);
+  const [saleProgressExpanded, setSaleProgressExpanded] = useState(true);
   const [notice, setNotice] = useState<{ type: 'ok' | 'error' | 'warn'; text: string } | null>(null);
   const [interactionMember, setInteractionMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [qualificationMember, setQualificationMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [historyMember, setHistoryMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [showDistribute, setShowDistribute] = useState(false);
-  const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '' });
+  const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Nét', ghi_chu: '', ngay_lien_he_tiep: '' });
   const [showLeaderEdit, setShowLeaderEdit] = useState(false);
   // CAMPAIGN-FIRST CSKH — Admin-only "Gán Dự án"/"Sửa Dự án" cho Campaign
   // legacy (id_du_an=null) hoặc đổi Dự án — cùng pattern với showLeaderEdit.
   const [showProjectEdit, setShowProjectEdit] = useState(false);
   const [projectCustomer, setProjectCustomer] = useState<CampaignMembershipWithCustomer | null>(null);
   const [projectSaving, setProjectSaving] = useState(false);
+  const [claimBusyId, setClaimBusyId] = useState('');
   const [handoffMember, setHandoffMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [acceptRejectBusyId, setAcceptRejectBusyId] = useState('');
   // "Chọn khách: Từ [x] đến [y]" -> "Chia đều cho Sale" — string (không phải
@@ -210,6 +217,42 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
   // summaryFilter hiện tại), derive-only từ dữ liệu ĐÃ fetch sẵn cho detail
   // queue — KHÔNG fetch/query thêm (NEON_TRANSFER_AUDIT: zero incremental cost).
   const saleProgress = useMemo(() => summarizeMembersBySale(members), [members]);
+  const sortedSaleProgress = useMemo(() => {
+    if (!saleProgressSort) return saleProgress;
+    return [...saleProgress].sort((a, b) => {
+      const va = a[saleProgressSort.column];
+      const vb = b[saleProgressSort.column];
+      const comparison = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb), 'vi');
+      return (saleProgressSort.direction === 'asc' ? comparison : -comparison)
+        || a.telesaleName.localeCompare(b.telesaleName, 'vi');
+    });
+  }, [saleProgress, saleProgressSort]);
+
+  function toggleSaleProgressSort(column: SaleProgressSortColumn) {
+    setSaleProgressSort(current => {
+      if (!current || current.column !== column) return { column, direction: 'asc' };
+      if (current.direction === 'asc') return { column, direction: 'desc' };
+      return null;
+    });
+  }
+
+  function saleProgressHeader(column: SaleProgressSortColumn, label: string, align: 'left' | 'right' = 'right') {
+    const direction = saleProgressSort?.column === column ? saleProgressSort.direction : null;
+    return <th key={column} style={{ textAlign: align, padding: 0 }}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={() => toggleSaleProgressSort(column)}
+        title="Bấm để sắp xếp"
+        style={{ width: '100%', justifyContent: align === 'right' ? 'flex-end' : 'flex-start', gap: 5, fontWeight: 650, color: 'inherit' }}
+      >
+        {label}
+        {direction === 'asc' ? <ArrowUp size={12} /> : direction === 'desc' ? <ArrowDown size={12} /> : <ArrowUpDown size={11} style={{ opacity: 0.45 }} />}
+      </button>
+    </th>;
+  }
 
   const replaceMember = (updated: CampaignMembershipWithCustomer) => {
     setMembers(current => current.map(item => item.id === updated.id ? updated : item));
@@ -218,6 +261,20 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
 
   function canActOn(member: CampaignMembershipWithCustomer): boolean {
     return canActOnMembership(user, isAdmin, member, selectedCampaign, employees);
+  }
+
+  async function claimMember(member: CampaignMembershipWithCustomer) {
+    setClaimBusyId(member.id);
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/members/${member.id}/claim`, { method: 'POST' });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error);
+      replaceMember({ ...data.data, customer: member.customer });
+      setNotice({ type: 'ok', text: `Đã nhận khách ${member.customer?.ten_KH || member.customer_id}.` });
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Không thể nhận khách.' });
+      void loadMembers(campaignId);
+    } finally { setClaimBusyId(''); }
   }
 
   // CSKH Sale Progress (V1) drill-down — click lại ĐÚNG ô (Sale + metric)
@@ -235,7 +292,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
     setInteractionMember(member);
     setInteraction({
       ket_qua: member.trang_thai_cham_soc === 'Chưa gọi' || !member.trang_thai_cham_soc ? 'Đã liên hệ' : member.trang_thai_cham_soc,
-      muc_do_quan_tam: member.muc_do_quan_tam || 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '',
+      muc_do_quan_tam: member.muc_do_quan_tam || 'Nét', ghi_chu: '', ngay_lien_he_tiep: '',
     });
   }
 
@@ -467,18 +524,38 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
                 <button className="btn btn-ghost btn-sm" onClick={() => setSummaryFilter(null)}>Xóa lọc</button>
               </span>
             )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              onClick={() => setSaleProgressExpanded(current => !current)}
+              title={saleProgressExpanded ? 'Thu gọn bảng Tiến độ Sale' : 'Mở rộng bảng Tiến độ Sale'}
+              aria-label={saleProgressExpanded ? 'Thu gọn bảng Tiến độ Sale' : 'Mở rộng bảng Tiến độ Sale'}
+              style={{ marginLeft: 'auto' }}
+            >
+              {saleProgressExpanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
+            </button>
           </div>
-          <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+          {saleProgressExpanded && <div className="table-wrapper" style={{ overflowX: 'auto' }}>
             <table className="data-table cskh-compact" style={{ minWidth: 780 }}>
               <thead><tr>
-                <th>Sale CSKH</th>
-                {SALE_PROGRESS_METRICS.map(metric => <th key={metric.key} style={{ textAlign: 'right' }}>{metric.label}</th>)}
-                <th style={{ width: 140 }}>Tiến độ</th>
+                {saleProgressHeader('telesaleName', 'Sale CSKH', 'left')}
+                {SALE_PROGRESS_METRICS.map(metric => saleProgressHeader(metric.key, metric.label))}
+                {saleProgressHeader('progressPercent', 'Tiến độ')}
                 <th style={{ width: 90 }} />
               </tr></thead>
-              <tbody>{saleProgress.map(sale => (
+              <tbody>{sortedSaleProgress.map(sale => (
                 <tr key={sale.telesaleId} style={summaryFilter?.telesaleId === sale.telesaleId ? { background: '#f8fafc' } : undefined}>
-                  <td style={{ fontWeight: 600 }}>{sale.telesaleName}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => toggleSummaryFilter(sale, 'Tất cả khách')}
+                      title={`Xem danh sách khách của ${sale.telesaleName}`}
+                      style={{ padding: '4px 6px', fontWeight: 650, color: 'var(--primary)', textDecoration: summaryFilter?.telesaleId === sale.telesaleId && summaryFilter.metricLabel === 'Tất cả khách' ? 'underline' : undefined }}
+                    >
+                      {sale.telesaleName}
+                    </button>
+                  </td>
                   {SALE_PROGRESS_METRICS.map(metric => {
                     const active = summaryFilter?.telesaleId === sale.telesaleId && summaryFilter?.metricLabel === metric.label;
                     return <td key={metric.key} style={{ textAlign: 'right' }}>
@@ -509,7 +586,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
                 </tr>
               ))}</tbody>
             </table>
-          </div>
+          </div>}
         </div>
       )}
 
@@ -542,7 +619,8 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
         members={pageWindow.items} loading={loading} canActOn={canActOn}
         onInteraction={openInteraction} onQualification={setQualificationMember} onHistory={setHistoryMember}
         canManageThisCampaign={canManageThisCampaign} currentUserName={user?.ho_ten}
-        projectEditable onProject={setProjectCustomer}
+        projectEditable={Boolean(selectedCampaign && !selectedCampaign.id_du_an) || isAdmin} onProject={setProjectCustomer}
+        sharedPool={Boolean(selectedCampaign && !selectedCampaign.id_du_an)} onClaim={claimMember} claimBusyId={claimBusyId}
         onHandoff={setHandoffMember} onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
         startIndex={pageWindow.startIndex} page={pageWindow.page} totalPages={pageWindow.totalPages}
         totalCount={pageWindow.total} pageSize={MEMBERS_PAGE_SIZE}
@@ -655,7 +733,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
 
 function MembershipTable({
   members, loading, canActOn, onInteraction, onQualification, onHistory, canManageThisCampaign, currentUserName, onHandoff, onAcceptReject, acceptRejectBusyId,
-  onProject, projectEditable,
+  onProject, projectEditable, sharedPool, onClaim, claimBusyId,
   startIndex, page, totalPages, totalCount, pageSize, onPrevPage, onNextPage,
 }: {
   members: CampaignMembershipWithCustomer[]; loading: boolean; canActOn: (member: CampaignMembershipWithCustomer) => boolean;
@@ -663,6 +741,7 @@ function MembershipTable({
   canManageThisCampaign: boolean; currentUserName?: string;
   onHandoff: (member: CampaignMembershipWithCustomer) => void; onAcceptReject: (member: CampaignMembershipWithCustomer, action: 'accept' | 'reject') => void; acceptRejectBusyId: string;
   onProject: (member: CampaignMembershipWithCustomer) => void; projectEditable: boolean;
+  sharedPool: boolean; onClaim: (member: CampaignMembershipWithCustomer) => Promise<void>; claimBusyId: string;
   // CSKH TABLE UX — "trang 50 dòng" thuần presentation (xem table-pagination.ts).
   startIndex: number; page: number; totalPages: number; totalCount: number; pageSize: number;
   onPrevPage: () => void; onNextPage: () => void;
@@ -719,7 +798,7 @@ function MembershipTable({
               </div>
             : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 6px', fontSize: 11, fontWeight: 650 }}>Chưa chia</span>}
         </td>
-        <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>{member.so_lan_lien_he || 0} lần · {member.muc_do_quan_tam || 'Chưa xác định'}</div></td>
+        <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 5 }}>{member.so_lan_lien_he || 0} lần · <span style={{ ...interestTone(member.muc_do_quan_tam), borderRadius: 999, padding: '2px 7px', fontWeight: 650 }}>{member.muc_do_quan_tam || 'Nét'}</span></div></td>
         <td><span style={{ fontSize: 12, fontWeight: 600 }}>{qualificationStatusLabel(member.qualification_status)}</span></td>
         <td><span style={{ fontSize: 12 }}>{member.lead_quality_score}/100 · {leadQualityRankLabel(member.lead_quality_rank)}</span></td>
         {/* REMEDIATION — Lịch tiếp theo giữ nguyên field/dữ liệu, chỉ compact
@@ -745,6 +824,7 @@ function MembershipTable({
           {!member.outcome && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
         </td>
         <td><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' }}>
+          {sharedPool && !assigned && <button className="btn btn-primary btn-sm" disabled={claimBusyId === member.id} onClick={() => void onClaim(member)}><UserCheck size={13} /> Nhận khách</button>}
           {actionable && <button className="btn btn-primary btn-sm" onClick={() => onInteraction(member)}><Phone size={13} /> Chăm sóc</button>}
           {actionable && <button className="btn btn-secondary btn-sm" onClick={() => onQualification(member)}><BadgeCheck size={13} /> Đánh giá</button>}
           {canManageThisCampaign && isHandoffCandidate(member) && <button className="btn btn-secondary btn-sm" onClick={() => onHandoff(member)}><Send size={13} /> Bàn giao</button>}

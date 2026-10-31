@@ -1,8 +1,9 @@
 import type { MucDichLead, MucDoQuanTam, ThoiGianDuKien } from '../types';
+import { ALL_INTEREST_OPTIONS } from './interest';
 
 export const PURPOSE_VALUES: MucDichLead[] = ['Để ở', 'Đầu tư', 'Cho thuê', 'Khác'];
 export const TIMEFRAME_VALUES: ThoiGianDuKien[] = ['Trong 1 tháng', '1-3 tháng', '3-6 tháng', '6-12 tháng', 'Trên 12 tháng', 'Chưa xác định'];
-export const INTEREST_VALUES: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'];
+export const INTEREST_VALUES: MucDoQuanTam[] = ALL_INTEREST_OPTIONS;
 
 export function validateQualificationInput(body: Record<string, unknown>): string | null {
   if ('lead_quality_score' in body || 'lead_quality_rank' in body || 'qualification_status' in body) {

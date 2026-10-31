@@ -410,7 +410,8 @@ export type TrangThaiChamSoc =
   | 'Không phù hợp'
   | 'Sai số';
 
-export type MucDoQuanTam = 'Chưa xác định' | 'Thấp' | 'Trung bình' | 'Cao' | 'Rất cao';
+// Ba nhãn mới dùng trong CSKH; các giá trị cũ giữ lại để tương thích dữ liệu lịch sử.
+export type MucDoQuanTam = 'Nét' | 'Quan tâm' | 'Rác' | 'Chưa xác định' | 'Thấp' | 'Trung bình' | 'Cao' | 'Rất cao';
 
 export type TrangThaiBanGiao =
   | 'Chưa bàn giao'

@@ -21,13 +21,14 @@ import { bucketOf, CSKH_BUCKETS, isOverdue, type MembershipBucket } from '@/lib/
 import { matchesPrivateGroupCustomerQueueFilter } from '@/lib/private-group-cskh-queue';
 import { canActOnPrivateGroupCustomer } from '@/lib/private-group-cskh-authority';
 import { qualificationStatusLabel, leadQualityRankLabel } from '@/lib/crm-funnel/quality-labels';
+import { INTEREST_OPTIONS, interestTone } from '@/lib/crm-funnel/interest';
 import { paginate } from '@/lib/table-pagination';
 import { PrivateGroupQualificationModal } from './PrivateGroupQualificationModal';
 
 const MEMBERS_PAGE_SIZE = 50;
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
-const INTERESTS: MucDoQuanTam[] = ['Chưa xác định', 'Thấp', 'Trung bình', 'Cao', 'Rất cao'];
+const INTERESTS = INTEREST_OPTIONS;
 const statusColors: Record<string, { bg: string; color: string }> = {
   'Chưa gọi': { bg: '#f1f5f9', color: '#475569' }, 'Không nghe máy': { bg: '#fff7ed', color: '#c2410c' },
   'Gọi lại': { bg: '#fffbeb', color: '#a16207' }, 'Đã liên hệ': { bg: '#eff6ff', color: '#1d4ed8' },
@@ -62,7 +63,7 @@ export function PrivateGroupCskhWorkQueue() {
   const [interactionRelation, setInteractionRelation] = useState<PrivateGroupCustomer | null>(null);
   const [qualificationRelation, setQualificationRelation] = useState<PrivateGroupCustomer | null>(null);
   const [historyRelation, setHistoryRelation] = useState<PrivateGroupCustomer | null>(null);
-  const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '' });
+  const [interaction, setInteraction] = useState<InteractionForm>({ ket_qua: 'Đã liên hệ', muc_do_quan_tam: 'Nét', ghi_chu: '', ngay_lien_he_tiep: '' });
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
@@ -123,7 +124,7 @@ export function PrivateGroupCskhWorkQueue() {
     setInteractionRelation(relation);
     setInteraction({
       ket_qua: relation.trang_thai_cham_soc === 'Chưa gọi' || !relation.trang_thai_cham_soc ? 'Đã liên hệ' : relation.trang_thai_cham_soc,
-      muc_do_quan_tam: relation.muc_do_quan_tam || 'Chưa xác định', ghi_chu: '', ngay_lien_he_tiep: '',
+      muc_do_quan_tam: relation.muc_do_quan_tam || 'Nét', ghi_chu: '', ngay_lien_he_tiep: '',
     });
   }
 
@@ -253,7 +254,7 @@ function RelationTable({
         <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>{startIndex + idx + 1}</td>
         <td><div style={{ fontWeight: 700 }}>{relation.customer?.ten_KH || relation.customer_id}</div>{relation.customer?.so_dien_thoai && <a href={`tel:${relation.customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(relation.customer.so_dien_thoai)}</a>}</td>
         <td><span style={{ fontWeight: 600, fontSize: 12.5 }}>{relation.assigned_to_name}</span></td>
-        <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>{relation.so_lan_lien_he || 0} lần · {relation.muc_do_quan_tam || 'Chưa xác định'}</div></td>
+        <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 5 }}>{relation.so_lan_lien_he || 0} lần · <span style={{ ...interestTone(relation.muc_do_quan_tam), borderRadius: 999, padding: '2px 7px', fontWeight: 650 }}>{relation.muc_do_quan_tam || 'Nét'}</span></div></td>
         <td><span style={{ fontSize: 12, fontWeight: 600 }}>{qualificationStatusLabel(relation.qualification_status)}</span></td>
         <td><span style={{ fontSize: 12 }}>{relation.lead_quality_score}/100 · {leadQualityRankLabel(relation.lead_quality_rank)}</span></td>
         <td><div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', color: isOverdue(relation.ngay_lien_he_tiep) ? '#dc2626' : 'var(--text-body)', fontSize: 12 }}><CalendarClock size={14} />{localDate(relation.ngay_lien_he_tiep)}</div>{relation.ngay_lien_he_cuoi && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Gần nhất: {localDate(relation.ngay_lien_he_cuoi)}</div>}</td>

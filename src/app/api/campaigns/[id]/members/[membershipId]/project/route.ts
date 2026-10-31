@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getDuAn, findKhachHangById, updateKhachHang } from '@/lib/data-access';
+import { getDuAn, findKhachHangById, updateKhachHang, getNhanVien } from '@/lib/data-access';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { getCampaign } from '@/lib/crm-funnel/campaign';
+import { isActiveSale } from '@/lib/campaign-sale-eligibility';
 import { prisma } from '@/lib/db/client';
 
 /**
@@ -25,7 +26,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (!membership || membership.campaign_id !== campaignId) {
       return NextResponse.json({ success: false, error: 'Không tìm thấy khách trong Campaign' }, { status: 404 });
     }
-    const canEdit = isCrmAdmin(user) || campaign.owner_name === user.ho_ten || membership.telesale_id === user.id_nhan_vien;
+    const actorIsActiveSale = (await getNhanVien()).some(item => item.id_nhan_vien === user.id_nhan_vien && isActiveSale(item));
+    const canEdit = isCrmAdmin(user) || campaign.owner_name === user.ho_ten || membership.telesale_id === user.id_nhan_vien
+      || (!campaign.id_du_an && !membership.telesale_id && actorIsActiveSale);
     if (!canEdit) return NextResponse.json({ success: false, error: 'Bạn không có quyền cập nhật Dự án cho khách này' }, { status: 403 });
 
     const body = await request.json().catch(() => null) as { project_id?: unknown } | null;

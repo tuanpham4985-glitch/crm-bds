@@ -18,7 +18,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     // THẲNG Prisma WHERE (telesale_id) cho actor không quản lý toàn Campaign —
     // Postgres chỉ trả đúng M membership của actor thay vì N của cả campaign
     // rồi mới lọc. KHÔNG đổi authority/kết quả cuối cùng actor nhìn thấy.
-    const hasFullView = canManageCampaign(user, campaign);
+    // Campaign không gắn Dự án là "Kho khách chung": mọi Sale có quyền vào
+    // CSKH được nhìn toàn bộ danh sách để tự nhận khách, thay vì bị lọc theo
+    // telesale_id ngay từ bước đọc.
+    const hasFullView = canManageCampaign(user, campaign) || !campaign.id_du_an;
     const scopedMembers = await getCampaignMembersWithCustomers(id, hasFullView ? undefined : user.id_nhan_vien);
     // Sale: khách mới được phân lên đầu (không bị chìm ở trang cuối). Admin/
     // Leader giữ created_at ASC — thứ tự tham chiếu của "Chọn khách: Từ x đến y".
