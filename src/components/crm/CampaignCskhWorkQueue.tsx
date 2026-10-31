@@ -14,7 +14,7 @@
 // Accept/Reject của Sale tái dùng nguyên POST /api/crm/telesale/handoff hiện
 // có — không tạo endpoint/API riêng.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BadgeCheck, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, History, Layers, Loader2, Phone, RefreshCw, Save, Search, Send, UserCheck, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BadgeCheck, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, History, Layers, Loader2, Phone, Save, Search, Send, UserCheck, Users, X } from 'lucide-react';
 import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamSocEntry, DuAn, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,7 +26,7 @@ import {
 } from '@/lib/campaign-cskh-range';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
-import { qualificationStatusLabel, leadQualityRankLabel } from '@/lib/crm-funnel/quality-labels';
+import { qualificationStatusLabel } from '@/lib/crm-funnel/quality-labels';
 import { INTEREST_OPTIONS, interestTone } from '@/lib/crm-funnel/interest';
 import { paginate } from '@/lib/table-pagination';
 import { CampaignDistributeModal } from './CampaignDistributeModal';
@@ -428,7 +428,6 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
             <Users size={15} /> Phân Sale ({unassignedMembers.length} chưa phân)
           </button>
         )}
-        <button className="btn btn-secondary" style={canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 ? undefined : { marginLeft: 'auto' }} onClick={() => loadMembers(campaignId)} disabled={!campaignId || loading}><RefreshCw size={15} /> Làm mới</button>
       </div>
       {/* Campaign có thể là Campaign đa Dự án: khi không có id_du_an ở cấp
           Campaign, Dự án được chọn theo từng khách trong bảng CSKH. */}
@@ -617,7 +616,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
       </div>
       <MembershipTable
         members={pageWindow.items} loading={loading} canActOn={canActOn}
-        onInteraction={openInteraction} onQualification={setQualificationMember} onHistory={setHistoryMember}
+        onInteraction={openInteraction} onHistory={setHistoryMember}
         canManageThisCampaign={canManageThisCampaign} currentUserName={user?.ho_ten}
         projectEditable={Boolean(selectedCampaign && !selectedCampaign.id_du_an) || isAdmin} onProject={setProjectCustomer}
         sharedPool={Boolean(selectedCampaign && !selectedCampaign.id_du_an)} onClaim={claimMember} claimBusyId={claimBusyId}
@@ -652,7 +651,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
           <div className="form-group"><label className="form-label">Lịch liên hệ tiếp theo</label><input type="datetime-local" className="form-input" value={interaction.ngay_lien_he_tiep} onChange={event => setInteraction(current => ({ ...current, ngay_lien_he_tiep: event.target.value }))} /></div>
           {interaction.ket_qua === 'Quan tâm' && <div style={{ padding: 12, background: '#eff6ff', color: '#1d4ed8', borderRadius: 8, fontSize: 13, display: 'flex', gap: 8 }}><BadgeCheck size={16} /> Membership sẽ chuyển sang trạng thái Quan tâm trong Campaign này — chưa bàn giao Sale (M1B.2).</div>}
         </div>
-        <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setInteractionMember(null)}>Hủy</button><button className="btn btn-primary" disabled={busyId === interactionMember.id} onClick={() => void saveInteraction()}><Save size={15} /> Lưu chăm sóc</button></div>
+        <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setInteractionMember(null)}>Hủy</button><button className="btn btn-ghost btn-sm" onClick={() => { setQualificationMember(interactionMember); setInteractionMember(null); }}>Cập nhật thông tin chi tiết</button><button className="btn btn-primary" disabled={busyId === interactionMember.id} onClick={() => void saveInteraction()}><Save size={15} /> Lưu chăm sóc</button></div>
       </div>
     </div>}
 
@@ -732,12 +731,12 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
 }
 
 function MembershipTable({
-  members, loading, canActOn, onInteraction, onQualification, onHistory, canManageThisCampaign, currentUserName, onHandoff, onAcceptReject, acceptRejectBusyId,
+  members, loading, canActOn, onInteraction, onHistory, canManageThisCampaign, currentUserName, onHandoff, onAcceptReject, acceptRejectBusyId,
   onProject, projectEditable, sharedPool, onClaim, claimBusyId,
   startIndex, page, totalPages, totalCount, pageSize, onPrevPage, onNextPage,
 }: {
   members: CampaignMembershipWithCustomer[]; loading: boolean; canActOn: (member: CampaignMembershipWithCustomer) => boolean;
-  onInteraction: (member: CampaignMembershipWithCustomer) => void; onQualification: (member: CampaignMembershipWithCustomer) => void; onHistory: (member: CampaignMembershipWithCustomer) => void;
+  onInteraction: (member: CampaignMembershipWithCustomer) => void; onHistory: (member: CampaignMembershipWithCustomer) => void;
   canManageThisCampaign: boolean; currentUserName?: string;
   onHandoff: (member: CampaignMembershipWithCustomer) => void; onAcceptReject: (member: CampaignMembershipWithCustomer, action: 'accept' | 'reject') => void; acceptRejectBusyId: string;
   onProject: (member: CampaignMembershipWithCustomer) => void; projectEditable: boolean;
@@ -765,12 +764,12 @@ function MembershipTable({
         tác không set width cứng — dựa vào flexWrap có sẵn trong cell để tự
         xuống dòng thay vì ép cột "Thao tác" rộng ra (cột ưu tiên hiển thị đủ
         trong viewport, không phải cột chiếm nhiều không gian nhất). */}
-    <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table cskh-compact" style={{ minWidth: 980 }}>
+    <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table cskh-compact" style={{ minWidth: 860 }}>
     <thead><tr>
       <th style={{ width: 40 }}>STT</th>
       <th style={{ width: 190 }}>Khách hàng</th><th style={{ width: 150 }}>Dự án</th><th style={{ width: 110 }}>Sale CSKH</th><th style={{ width: 120 }}>Trạng thái</th>
-      <th style={{ width: 100 }}>Mức độ tiềm năng</th><th style={{ width: 90 }}>Điểm / Xếp hạng</th>
-      <th style={{ width: 100 }}>Lịch tiếp theo</th><th style={{ width: 76 }}>Bàn giao</th>
+      <th style={{ width: 100 }}>Mức độ tiềm năng</th>
+      <th style={{ width: 100 }}>Lịch tiếp theo</th>
       <th style={{ textAlign: 'right', width: 150 }}>Thao tác</th>
     </tr></thead>
     <tbody>{members.map((member, idx) => {
@@ -800,33 +799,17 @@ function MembershipTable({
         </td>
         <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 5 }}>{member.so_lan_lien_he || 0} lần · <span style={{ ...interestTone(member.muc_do_quan_tam), borderRadius: 999, padding: '2px 7px', fontWeight: 650 }}>{member.muc_do_quan_tam || 'Nét'}</span></div></td>
         <td><span style={{ fontSize: 12, fontWeight: 600 }}>{qualificationStatusLabel(member.qualification_status)}</span></td>
-        <td><span style={{ fontSize: 12 }}>{member.lead_quality_score}/100 · {leadQualityRankLabel(member.lead_quality_rank)}</span></td>
         {/* REMEDIATION — Lịch tiếp theo giữ nguyên field/dữ liệu, chỉ compact
             hiển thị: flexWrap để icon+giờ tự xuống dòng thay vì ép cột rộng;
             localDate() đã tự trả "—" khi ngay_lien_he_tiep rỗng (không đổi). */}
         <td><div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', color: isOverdue(member.ngay_lien_he_tiep) ? '#dc2626' : 'var(--text-body)', fontSize: 12 }}><CalendarClock size={14} />{localDate(member.ngay_lien_he_tiep)}</div>{member.ngay_lien_he_cuoi && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Gần nhất: {localDate(member.ngay_lien_he_cuoi)}</div>}</td>
-        {/* REMEDIATION — Bàn giao giữ nguyên business information (Handoff
-            status + Sale nhận), chỉ compact hiển thị: badge ngắn "Chờ nhận"/
-            "Đã nhận"/"Từ chối" thay vì "Chờ xác nhận · {tên}"/"Đã nhận · {tên}"
-            dài, tên Sale chuyển vào title (tooltip) thay vì render trực tiếp
-            trong cell — KHÔNG đổi outcome/handoff.status/authority nào, chỉ
-            đổi cách trình bày. */}
-        <td>
-          {member.outcome === 'HANDOFF_ACCEPTED' && <span title={member.handoff?.sale_name ? `Đã nhận · ${member.handoff.sale_name}` : undefined} style={{ background: '#ecfdf5', color: '#047857', borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>Đã nhận</span>}
-          {member.outcome === 'HANDOFF_REJECTED' && <span style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>Từ chối</span>}
-          {member.outcome === 'HANDOFF_INITIATED' && <>
-            <span title={member.handoff?.sale_name ? `Chờ nhận · ${member.handoff.sale_name}` : undefined} style={{ background: '#fffbeb', color: '#a16207', borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>Chờ nhận</span>
-            {isReceiver && member.handoff?.status === 'WAITING_ACCEPTANCE' && <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'accept')}><UserCheck size={12} /> Nhận</button>
-              <button className="btn btn-secondary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'reject')}><X size={12} /> Từ chối</button>
-            </div>}
-          </>}
-          {!member.outcome && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
-        </td>
         <td><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' }}>
           {sharedPool && !assigned && <button className="btn btn-primary btn-sm" disabled={claimBusyId === member.id} onClick={() => void onClaim(member)}><UserCheck size={13} /> Nhận khách</button>}
+          {isReceiver && member.handoff?.status === 'WAITING_ACCEPTANCE' && <>
+            <button className="btn btn-primary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'accept')}><UserCheck size={12} /> Nhận</button>
+            <button className="btn btn-secondary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'reject')}><X size={12} /> Từ chối</button>
+          </>}
           {actionable && <button className="btn btn-primary btn-sm" onClick={() => onInteraction(member)}><Phone size={13} /> Chăm sóc</button>}
-          {actionable && <button className="btn btn-secondary btn-sm" onClick={() => onQualification(member)}><BadgeCheck size={13} /> Đánh giá</button>}
           {canManageThisCampaign && isHandoffCandidate(member) && <button className="btn btn-secondary btn-sm" onClick={() => onHandoff(member)}><Send size={13} /> Bàn giao</button>}
           <button className="btn btn-secondary btn-sm" onClick={() => onHistory(member)}><History size={13} /> Lịch sử</button>
         </div></td>
