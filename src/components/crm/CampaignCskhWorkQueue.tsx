@@ -638,10 +638,10 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group"><label className="form-label">Kết quả cuộc gọi *</label>
               <select className="form-select" value={interaction.ket_qua} onChange={event => setInteraction(current => ({ ...current, ket_qua: event.target.value as TrangThaiChamSoc }))}>
-                {STATUSES.filter(item => item !== 'Chưa gọi').map(item => <option key={item}>{item}</option>)}
+                {STATUSES.filter(item => item !== 'Chưa gọi' && item !== 'Quan tâm').map(item => <option key={item}>{item}</option>)}
               </select>
             </div>
-            <div className="form-group"><label className="form-label">Mức độ quan tâm</label>
+            <div className="form-group"><label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>Mức độ quan tâm <span style={{ ...interestTone(interaction.muc_do_quan_tam), borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 700 }}>{interaction.muc_do_quan_tam}</span></label>
               <select className="form-select" value={interaction.muc_do_quan_tam} onChange={event => setInteraction(current => ({ ...current, muc_do_quan_tam: event.target.value as MucDoQuanTam }))}>
                 {INTERESTS.map(item => <option key={item}>{item}</option>)}
               </select>
@@ -649,7 +649,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }
           </div>
           <div className="form-group"><label className="form-label">Ghi chú cuộc gọi</label><textarea className="form-textarea" rows={4} value={interaction.ghi_chu} onChange={event => setInteraction(current => ({ ...current, ghi_chu: event.target.value }))} /></div>
           <div className="form-group"><label className="form-label">Lịch liên hệ tiếp theo</label><input type="datetime-local" className="form-input" value={interaction.ngay_lien_he_tiep} onChange={event => setInteraction(current => ({ ...current, ngay_lien_he_tiep: event.target.value }))} /></div>
-          {interaction.ket_qua === 'Quan tâm' && <div style={{ padding: 12, background: '#eff6ff', color: '#1d4ed8', borderRadius: 8, fontSize: 13, display: 'flex', gap: 8 }}><BadgeCheck size={16} /> Membership sẽ chuyển sang trạng thái Quan tâm trong Campaign này — chưa bàn giao Sale (M1B.2).</div>}
+          {interaction.muc_do_quan_tam === 'Quan tâm' && <div style={{ padding: 12, background: '#ecfdf5', color: '#047857', borderRadius: 8, fontSize: 13, display: 'flex', gap: 8 }}><BadgeCheck size={16} /> Khách sẽ được đưa vào nhóm Quan tâm để Sale ưu tiên theo dõi.</div>}
         </div>
         <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setInteractionMember(null)}>Hủy</button><button className="btn btn-ghost btn-sm" onClick={() => { setQualificationMember(interactionMember); setInteractionMember(null); }}>Cập nhật thông tin chi tiết</button><button className="btn btn-primary" disabled={busyId === interactionMember.id} onClick={() => void saveInteraction()}><Save size={15} /> Lưu chăm sóc</button></div>
       </div>

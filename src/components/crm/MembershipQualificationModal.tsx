@@ -7,9 +7,8 @@
 // thuộc CSKH theo Campaign).
 import { useState } from 'react';
 import { BadgeCheck, Save, X } from 'lucide-react';
-import type { CampaignMembershipWithCustomer, MucDoQuanTam } from '@/lib/types';
+import type { CampaignMembershipWithCustomer } from '@/lib/types';
 import { leadQualityRankLabel } from '@/lib/crm-funnel/quality-labels';
-import { INTEREST_OPTIONS } from '@/lib/crm-funnel/interest';
 
 export function MembershipQualificationModal({ campaignId, membership, onClose, onSaved }: {
   campaignId: string;
@@ -24,7 +23,6 @@ export function MembershipQualificationModal({ campaignId, membership, onClose, 
     ngan_sach_min: membership.ngan_sach_min ?? '', ngan_sach_max: membership.ngan_sach_max ?? '',
     muc_dich: membership.muc_dich || '', thoi_gian_du_kien: membership.thoi_gian_du_kien || 'Chưa xác định',
     phuong_an_tai_chinh: membership.phuong_an_tai_chinh || '', khu_vuc_yeu_cau: membership.khu_vuc_yeu_cau || '',
-    muc_do_quan_tam: membership.muc_do_quan_tam || 'Nét' as MucDoQuanTam,
     hanh_dong_tiep_theo: membership.hanh_dong_tiep_theo || '',
   });
   const set = (key: keyof typeof form, value: string | number) => setForm(current => ({ ...current, [key]: value }));
@@ -54,7 +52,6 @@ export function MembershipQualificationModal({ campaignId, membership, onClose, 
       <Field label="Mục đích"><select className="form-select" value={form.muc_dich} onChange={event => set('muc_dich', event.target.value)}><option value="">Chưa xác định</option>{['Để ở', 'Đầu tư', 'Cho thuê', 'Khác'].map(item => <option key={item}>{item}</option>)}</select></Field>
       <Field label="Thời gian dự kiến"><select className="form-select" value={form.thoi_gian_du_kien} onChange={event => set('thoi_gian_du_kien', event.target.value)}>{['Chưa xác định', 'Trong 1 tháng', '1-3 tháng', '3-6 tháng', '6-12 tháng', 'Trên 12 tháng'].map(item => <option key={item}>{item}</option>)}</select></Field>
       <Field label="Phương án tài chính"><input className="form-input" value={form.phuong_an_tai_chinh} onChange={event => set('phuong_an_tai_chinh', event.target.value)} placeholder="Tiền mặt / vay ngân hàng / tỷ lệ vay..." /></Field>
-      <Field label="Mức độ quan tâm"><select className="form-select" value={form.muc_do_quan_tam} onChange={event => set('muc_do_quan_tam', event.target.value)}>{INTEREST_OPTIONS.map(item => <option key={item}>{item}</option>)}</select></Field>
       <Field label="Hành động tiếp theo"><input className="form-input" value={form.hanh_dong_tiep_theo} onChange={event => set('hanh_dong_tiep_theo', event.target.value)} placeholder="Gửi bảng giá, hẹn xem, gọi lại..." /></Field>
     </div>
     <div style={{ background: '#eff6ff', color: '#1d4ed8', padding: 10, borderRadius: 7, fontSize: 12, marginTop: 12 }}>Điểm và Xếp hạng tiềm năng do server tự tính, riêng cho Campaign này. Sale không thể nhập hoặc sửa điểm trực tiếp.</div>

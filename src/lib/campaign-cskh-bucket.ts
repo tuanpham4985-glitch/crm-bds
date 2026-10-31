@@ -19,12 +19,12 @@ export function isToday(value?: string | null, now: Date = new Date()): boolean 
 }
 
 export function bucketOf(
-  member: { trang_thai_cham_soc?: string | null; ngay_lien_he_tiep?: string | null },
+  member: { trang_thai_cham_soc?: string | null; muc_do_quan_tam?: string | null; ngay_lien_he_tiep?: string | null },
   now: Date = new Date(),
 ): MembershipBucket {
   const status = member.trang_thai_cham_soc || 'Chưa gọi';
   if (status === 'Không phù hợp' || status === 'Sai số') return 'Hoàn tất / Không phù hợp';
-  if (status === 'Quan tâm') return 'Quan tâm';
+  if (status === 'Quan tâm' || member.muc_do_quan_tam === 'Quan tâm') return 'Quan tâm';
   if (isOverdue(member.ngay_lien_he_tiep, now)) return 'Quá lịch';
   if (status === 'Gọi lại' && isToday(member.ngay_lien_he_tiep, now)) return 'Gọi lại hôm nay';
   if (status === 'Đã liên hệ' || status === 'Không nghe máy' || status === 'Gọi lại') return 'Đang chăm sóc';
