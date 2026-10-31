@@ -66,17 +66,18 @@ export async function GET() {
       hasCampaignCskhAccess(userData),
       isCrmModuleEnabled(),
     ]);
+    const canViewCskhReports = isCskhReportingViewerEmail(userData.email);
     const canPhanKhach = canAccessCskh({
       isAdmin: false,
       crmModuleEnabled,
       vaiTro: userData.vai_tro,
       hasLegacyProjectAccess: accessibleIds.length > 0,
       hasCampaignCskhAccess: hasCampaignAccess,
-      hasCskhReportingAccess: isCskhReportingViewerEmail(userData.email),
+      hasCskhReportingAccess: canViewCskhReports,
     });
     return NextResponse.json({
       canKH: false, phanKhachIds: accessibleIds, handoffCount,
-      canQualityDashboard: scope.canManageQuality, canPhanKhach,
+      canQualityDashboard: scope.canManageQuality, canPhanKhach, canViewCskhReports,
     });
   } catch {
     return NextResponse.json({ canKH: false, phanKhachIds: [] });

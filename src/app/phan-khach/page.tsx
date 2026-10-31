@@ -40,7 +40,7 @@ function isOverdue(value?: string): boolean { return Boolean(value && new Date(v
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
 function PhanKhachContent() {
-  const { phanKhachIds, canPhanKhach, isLoading: crmAccessLoading } = useCrmAccess();
+  const { phanKhachIds, canPhanKhach, canViewCskhReports, isLoading: crmAccessLoading } = useCrmAccess();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
   const { enabled: crmEnabled, isLoading: crmModuleLoading } = useCrmModule();
   const searchParams = useSearchParams();
@@ -222,7 +222,7 @@ function PhanKhachContent() {
       </div>
     )}
 
-    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} projects={projects} initialCampaignId={initialCampaignId} />
+    {mode === 'campaign' ? <CampaignCskhWorkQueue employees={employees} projects={projects} initialCampaignId={initialCampaignId} canViewReports={canViewCskhReports} />
       : mode === 'private_group' ? <PrivateGroupCskhWorkQueue /> : <>
     {notice && <div style={{ padding: '11px 14px', marginBottom: 16, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', background: notice.type === 'ok' ? '#ecfdf5' : notice.type === 'warn' ? '#fffbeb' : '#fef2f2', color: notice.type === 'ok' ? '#047857' : notice.type === 'warn' ? '#a16207' : '#b91c1c' }}>{notice.type === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}<span style={{ flex: 1 }}>{notice.text}</span><button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)}><X size={14} /></button></div>}
     <div className="card" style={{ padding: 16, marginBottom: 16 }}><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><div style={{ minWidth: 280 }}><label className="form-label">Dự án</label><div style={{ position: 'relative' }}><select className="form-select" value={selectedProjectId} onChange={event => setSelectedProjectId(event.target.value)}><option value="">— Chọn dự án —</option>{accessibleProjects.map(project => <option key={project.id_du_an} value={project.id_du_an}>{project.ten_du_an}</option>)}</select><ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} /></div></div>{selectedProject && <><div style={{ fontSize: 13, color: 'var(--text-label)', paddingBottom: 9 }}>Trưởng nhóm: <strong style={{ color: 'var(--text-title)' }}>{selectedProject.truong_nhom || 'Chưa cấu hình'}</strong></div>{canManage && <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto', marginBottom: 3 }} onClick={openTeam}><Settings size={14} /> Cấu hình team</button>}</>}</div></div>

@@ -95,9 +95,9 @@ function localDate(value?: string | null): string {
 
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
-export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId }: { employees: NhanVien[]; projects: DuAn[]; initialCampaignId?: string }) {
+export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, canViewReports }: { employees: NhanVien[]; projects: DuAn[]; initialCampaignId?: string; canViewReports?: boolean }) {
   const { user, isAdmin } = useAuth();
-  const isReportingViewer = Boolean(user && isCskhReportingViewerEmail(user.email));
+  const isReportingViewer = Boolean(canViewReports || (user && isCskhReportingViewerEmail(user.email)));
   const [campaigns, setCampaigns] = useState<CampaignType[]>([]);
   // initialCampaignId (từ ?campaignId= trên /phan-khach — link "đi thẳng" sau
   // khi tạo Campaign ở /khach-hang): nếu có, effect auto-select bên dưới
