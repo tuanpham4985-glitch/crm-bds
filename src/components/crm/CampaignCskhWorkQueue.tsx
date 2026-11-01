@@ -100,9 +100,9 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   const isReportingViewer = Boolean(canViewReports || (user && isCskhReportingViewerEmail(user.email)));
   const [campaigns, setCampaigns] = useState<CampaignType[]>([]);
   // initialCampaignId (từ ?campaignId= trên /phan-khach — link "đi thẳng" sau
-  // khi tạo Campaign ở /khach-hang): nếu có, effect auto-select bên dưới
-  // (`if (!campaignId && campaigns.length > 0)`) sẽ tự bỏ qua vì campaignId
-  // đã có giá trị sẵn — không cần sửa effect đó.
+  // khi tạo Campaign ở /khach-hang). Sau khi API trả về danh sách đã scope
+  // theo Sale, effect bên dưới sẽ bỏ qua deep-link không thuộc quyền và chọn
+  // Campaign đầu tiên mà Sale thực sự được giao.
   const [campaignId, setCampaignId] = useState(initialCampaignId || '');
   const [members, setMembers] = useState<CampaignMembershipWithCustomer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,7 +173,15 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
 
   useEffect(() => { void loadCampaigns(); }, [loadCampaigns]);
   useEffect(() => { void loadMembers(campaignId); }, [campaignId, loadMembers]);
-  useEffect(() => { if (!campaignId && campaigns.length > 0) setCampaignId(campaigns[0].id); }, [campaigns, campaignId]);
+  useEffect(() => {
+    if (campaigns.length === 0) {
+      if (campaignId) setCampaignId('');
+      return;
+    }
+    if (!campaignId || !campaigns.some(campaign => campaign.id === campaignId)) {
+      setCampaignId(campaigns[0].id);
+    }
+  }, [campaigns, campaignId]);
 
   // Cùng 1 hàm với server (resolveCampaignMembershipCustomerIdsByRange,
   // campaign.ts) — bắt buộc để "Từ x đến y" trên UI luôn khớp đúng với id

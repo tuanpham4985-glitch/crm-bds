@@ -3,12 +3,18 @@ import { getDuAn } from '@/lib/data-access';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { createCampaign, listCampaigns } from '@/lib/crm-funnel/campaign';
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
+import { isCskhReportingViewerEmail } from '@/lib/crm-reporting-access';
 
 export async function GET() {
   const user = await getCrmSessionUser();
   if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
   try {
-    const campaigns = await listCampaigns();
+    // Regular Sale chỉ được đưa vào selector những Campaign có khách đã
+    // phân cho chính mình. Admin/Leader/báo cáo vẫn xem toàn bộ phạm vi
+    // Campaign cần quản trị hoặc báo cáo.
+    const campaigns = isCrmAdmin(user) || isCskhReportingViewerEmail(user.email)
+      ? await listCampaigns()
+      : await listCampaigns({ telesaleId: user.id_nhan_vien, ownerId: user.id_nhan_vien, ownerName: user.ho_ten });
     return NextResponse.json({ success: true, data: campaigns });
   } catch (error) {
     if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });

@@ -48,9 +48,28 @@ export async function createCampaign(input: CreateCampaignInput) {
   });
 }
 
-export async function listCampaigns() {
+/**
+ * List Campaigns visible in the CSKH selector.
+ *
+ * A regular Sale must not receive every Campaign just because they are
+ * logged in: the client otherwise defaults to the newest Campaign and can
+ * show a misleading empty/wrong context before the membership request is
+ * scoped.  Admin/Leader callers omit the scope and keep the full list.
+ */
+export async function listCampaigns(scope?: { telesaleId: string; ownerId: string; ownerName: string }) {
   assertTransactionalCrm();
-  return prisma.campaign.findMany({ orderBy: { created_at: 'desc' } });
+  return prisma.campaign.findMany({
+    where: scope
+      ? {
+          OR: [
+            { memberships: { some: { telesale_id: scope.telesaleId } } },
+            { owner_id: scope.ownerId },
+            { owner_name: scope.ownerName },
+          ],
+        }
+      : undefined,
+    orderBy: { created_at: 'desc' },
+  });
 }
 
 export async function getCampaign(id: string) {
