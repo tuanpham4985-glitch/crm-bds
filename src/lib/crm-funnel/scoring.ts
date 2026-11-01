@@ -102,7 +102,7 @@ export function calculateLeadQuality(lead: ScoreableLead): LeadScoreResult {
     { key: 'need', label: 'Nhu cầu', points: filled(lead.nhu_cau) ? 10 : 0, maxPoints: 10, reason: filled(lead.nhu_cau) ? 'Đã xác định' : 'Chưa xác định' },
     { key: 'budget', label: 'Ngân sách', points: budgetPoints, maxPoints: LEAD_SCORE_WEIGHTS.budget, reason: budgetPoints ? 'Có khoảng ngân sách' : 'Chưa có ngân sách' },
     { key: 'purpose', label: 'Mục đích', points: filled(lead.muc_dich) ? 10 : 0, maxPoints: 10, reason: filled(lead.muc_dich) ? String(lead.muc_dich) : 'Chưa xác định' },
-    { key: 'timeframe', label: 'Thời gian dự kiến', points: timePoints, maxPoints: 15, reason: lead.thoi_gian_du_kien || 'Chưa xác định' },
+    { key: 'timeframe', label: 'Dự kiến mua trong', points: timePoints, maxPoints: 15, reason: lead.thoi_gian_du_kien || 'Chưa xác định' },
     { key: 'finance', label: 'Phương án tài chính', points: filled(lead.phuong_an_tai_chinh) ? 10 : 0, maxPoints: 10, reason: filled(lead.phuong_an_tai_chinh) ? 'Đã xác định' : 'Chưa xác định' },
     { key: 'region', label: 'Khu vực / yêu cầu', points: filled(lead.khu_vuc_yeu_cau) ? 5 : 0, maxPoints: 5, reason: filled(lead.khu_vuc_yeu_cau) ? 'Đã xác định' : 'Chưa xác định' },
     { key: 'interest', label: 'Mức độ quan tâm', points: interest, maxPoints: LEAD_SCORE_WEIGHTS.interest, reason: lead.muc_do_quan_tam || 'Chưa xác định' },

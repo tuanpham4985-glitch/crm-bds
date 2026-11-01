@@ -4,7 +4,7 @@ import { leadQualityRankLabel, qualificationStatusLabel } from './quality-labels
 
 export const QUALITY_EXPORT_HEADERS = [
   'Tên khách', 'SĐT', 'Dự án', 'Sản phẩm', 'Nhu cầu', 'Ngân sách từ', 'Ngân sách đến',
-  'Mục đích', 'Thời gian dự kiến', 'Phương án tài chính', 'Khu vực / yêu cầu',
+  'Mục đích', 'Dự kiến mua trong', 'Phương án tài chính', 'Khu vực / yêu cầu',
   'Mức quan tâm', 'Điểm', 'Xếp hạng', 'Nguồn data', 'Sale CSKH', 'Sale nhận khách',
   'Ngày quan tâm', 'Ngày bàn giao', 'Ngày Sale nhận', 'Trạng thái',
   'Trạng thái Bàn giao', 'Trạng thái Giao dịch', 'Hành động tiếp theo', 'Ghi chú gần nhất',
@@ -20,7 +20,7 @@ export function qualityExportRecords(rows: QualityLeadRow[]): QualityExportRecor
     'Tên khách': row.ten_KH, 'SĐT': row.so_dien_thoai, 'Dự án': row.du_an,
     'Sản phẩm': row.san_pham_quan_tam, 'Nhu cầu': row.nhu_cau,
     'Ngân sách từ': row.ngan_sach_min, 'Ngân sách đến': row.ngan_sach_max,
-    'Mục đích': row.muc_dich, 'Thời gian dự kiến': row.thoi_gian_du_kien,
+    'Mục đích': row.muc_dich, 'Dự kiến mua trong': row.thoi_gian_du_kien,
     'Phương án tài chính': row.phuong_an_tai_chinh, 'Khu vực / yêu cầu': row.khu_vuc_yeu_cau,
     'Mức quan tâm': row.muc_do_quan_tam, 'Điểm': row.lead_quality_score,
     'Xếp hạng': leadQualityRankLabel(row.lead_quality_rank), 'Nguồn data': row.nguon_data, 'Sale CSKH': row.telesale,

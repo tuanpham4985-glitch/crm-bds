@@ -10,7 +10,7 @@ export function validateQualificationInput(body: Record<string, unknown>): strin
     return 'Score/rank/status do server tính, không được nhập trực tiếp';
   }
   if (body.muc_dich && !PURPOSE_VALUES.includes(body.muc_dich as MucDichLead)) return 'Mục đích không hợp lệ';
-  if (body.thoi_gian_du_kien && !TIMEFRAME_VALUES.includes(body.thoi_gian_du_kien as ThoiGianDuKien)) return 'Thời gian dự kiến không hợp lệ';
+  if (body.thoi_gian_du_kien && !TIMEFRAME_VALUES.includes(body.thoi_gian_du_kien as ThoiGianDuKien)) return 'Dự kiến mua trong không hợp lệ';
   if (body.muc_do_quan_tam && !INTEREST_VALUES.includes(body.muc_do_quan_tam as MucDoQuanTam)) return 'Mức độ quan tâm không hợp lệ';
   const min = body.ngan_sach_min === '' || body.ngan_sach_min == null ? undefined : Number(body.ngan_sach_min);
   const max = body.ngan_sach_max === '' || body.ngan_sach_max == null ? undefined : Number(body.ngan_sach_max);
