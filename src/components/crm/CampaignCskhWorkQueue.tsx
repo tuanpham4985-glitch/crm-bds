@@ -890,13 +890,13 @@ function CustomerProjectModal({ member, projects, campaigns, saving, onClose, on
       <div className="modal-header"><h3 className="modal-title">Chọn Dự án</h3><button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button></div>
       <div style={{ padding: 20 }}>
         <div style={{ marginBottom: 12, color: 'var(--text-label)', fontSize: 13 }}>Khách hàng: <strong style={{ color: 'var(--text-title)' }}>{member.customer?.ten_KH || member.customer_id}</strong></div>
-        <label className="form-label">Dự án</label>
+        <label className="form-label">Bộ lọc danh sách</label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-          <select className="form-select" value={investor} onChange={event => setInvestor(event.target.value)}>
+          <select className="form-select" aria-label="Lọc theo Chủ đầu tư" value={investor} onChange={event => setInvestor(event.target.value)}>
             <option value="">Tất cả Chủ đầu tư</option>
             {investors.map(item => <option key={item} value={item}>{item}</option>)}
           </select>
-          <select className="form-select" value={campaignId} onChange={event => setCampaignId(event.target.value)}>
+          <select className="form-select" aria-label="Lọc theo Campaign" value={campaignId} onChange={event => setCampaignId(event.target.value)}>
             <option value="">Tất cả Campaign</option>
             {campaigns.filter(item => item.id_du_an).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
