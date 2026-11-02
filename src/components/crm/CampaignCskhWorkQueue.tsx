@@ -82,6 +82,8 @@ const SALE_PROGRESS_METRICS: readonly {
 
 type SaleProgressSortColumn = 'telesaleName' | 'assigned' | 'unprocessed' | 'inProgress' | 'overdue' | 'interested' | 'completed' | 'progressPercent';
 type SaleProgressSort = { column: SaleProgressSortColumn; direction: 'asc' | 'desc' };
+type MembershipSortColumn = 'customer' | 'project' | 'sale' | 'status' | 'potential' | 'nextContact';
+type MembershipSort = { column: MembershipSortColumn; direction: 'asc' | 'desc' };
 
 function parseList<T>(raw?: string | null): T[] {
   if (!raw) return [];
@@ -134,6 +136,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   // — click lại ĐÚNG ô đang active để tắt (cùng convention toggle với bucketFilter).
   const [summaryFilter, setSummaryFilter] = useState<{ telesaleId: string; telesaleName: string; metricLabel: string; buckets?: MembershipBucket[] } | null>(null);
   const [saleProgressSort, setSaleProgressSort] = useState<SaleProgressSort | null>(null);
+  const [membershipSort, setMembershipSort] = useState<MembershipSort | null>(null);
   const [saleProgressExpanded, setSaleProgressExpanded] = useState(true);
   const [notice, setNotice] = useState<{ type: 'ok' | 'error' | 'warn'; text: string } | null>(null);
   const [interactionMember, setInteractionMember] = useState<CampaignMembershipWithCustomer | null>(null);
@@ -213,13 +216,41 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   // tách biệt khỏi rangeResult/rangeBreakdown/stats/assignmentSummary bên dưới
   // (những cái đó vẫn phải tính trên "members"/"filtered" toàn bộ).
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [campaignId, search, bucketFilter, assignmentFilter, summaryFilter, contactSort, contactFrom, contactTo]);
+  useEffect(() => { setPage(1); }, [campaignId, search, bucketFilter, assignmentFilter, summaryFilter, contactSort, contactFrom, contactTo, membershipSort]);
   // Bảng hiển thị = filtered + view thời gian gọi. "filtered" giữ nguyên làm
   // thứ tự tham chiếu cho "Chọn khách: Từ x đến y" (bị tắt khi view này bật).
   const contactView = useMemo(() => ({ sort: contactSort, from: contactFrom || undefined, to: contactTo || undefined }), [contactSort, contactFrom, contactTo]);
   const contactViewActive = isContactTimeViewActive(contactView);
   const displayed = useMemo(() => applyContactTimeView(filtered, contactView), [filtered, contactView]);
-  const pageWindow = useMemo(() => paginate(displayed, page, MEMBERS_PAGE_SIZE), [displayed, page]);
+  const sortedDisplayed = useMemo(() => {
+    if (!membershipSort) return displayed;
+    const statusOrder = new Map(STATUSES.map((status, index) => [status, index]));
+    const valueOf = (member: CampaignMembershipWithCustomer): string | number => {
+      switch (membershipSort.column) {
+        case 'customer': return member.customer?.ten_KH || member.customer_id;
+        case 'project': return member.customer?.du_an || '';
+        case 'sale': return member.telesale_name || '';
+        case 'status': return statusOrder.get(member.trang_thai_cham_soc || 'Chưa gọi') ?? STATUSES.length;
+        case 'potential': return qualificationStatusLabel(member.qualification_status);
+        case 'nextContact': return member.ngay_lien_he_tiep ? new Date(member.ngay_lien_he_tiep).getTime() : Number.POSITIVE_INFINITY;
+      }
+    };
+    return [...displayed].sort((a, b) => {
+      const va = valueOf(a);
+      const vb = valueOf(b);
+      if (membershipSort.column === 'nextContact') {
+        const aMissing = !a.ngay_lien_he_tiep;
+        const bMissing = !b.ngay_lien_he_tiep;
+        if (aMissing !== bMissing) return aMissing ? 1 : -1;
+      }
+      const comparison = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb), 'vi');
+      return (membershipSort.direction === 'asc' ? comparison : -comparison)
+        || a.customer_id.localeCompare(b.customer_id, 'vi');
+    });
+  }, [displayed, membershipSort]);
+  const pageWindow = useMemo(() => paginate(sortedDisplayed, page, MEMBERS_PAGE_SIZE), [sortedDisplayed, page]);
 
   const stats = useMemo(() => {
     const counts = new Map<MembershipBucket, number>();
@@ -253,6 +284,14 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
 
   function toggleSaleProgressSort(column: SaleProgressSortColumn) {
     setSaleProgressSort(current => {
+      if (!current || current.column !== column) return { column, direction: 'asc' };
+      if (current.direction === 'asc') return { column, direction: 'desc' };
+      return null;
+    });
+  }
+
+  function toggleMembershipSort(column: MembershipSortColumn) {
+    setMembershipSort(current => {
       if (!current || current.column !== column) return { column, direction: 'asc' };
       if (current.direction === 'asc') return { column, direction: 'desc' };
       return null;
@@ -645,6 +684,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
         onHandoff={setHandoffMember} onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
         startIndex={pageWindow.startIndex} page={pageWindow.page} totalPages={pageWindow.totalPages}
         totalCount={pageWindow.total} pageSize={MEMBERS_PAGE_SIZE}
+        membershipSort={membershipSort} onMembershipSort={toggleMembershipSort}
         onPrevPage={() => setPage(current => Math.max(1, current - 1))}
         onNextPage={() => setPage(current => Math.min(pageWindow.totalPages, current + 1))}
       />
@@ -755,7 +795,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
 function MembershipTable({
   members, loading, canActOn, onInteraction, onHistory, canManageThisCampaign, currentUserName, onHandoff, onAcceptReject, acceptRejectBusyId,
   onProject, projectEditable, sharedPool, onClaim, claimBusyId,
-  startIndex, page, totalPages, totalCount, pageSize, onPrevPage, onNextPage,
+  startIndex, page, totalPages, totalCount, pageSize, membershipSort, onMembershipSort, onPrevPage, onNextPage,
 }: {
   members: CampaignMembershipWithCustomer[]; loading: boolean; canActOn: (member: CampaignMembershipWithCustomer) => boolean;
   onInteraction: (member: CampaignMembershipWithCustomer) => void; onHistory: (member: CampaignMembershipWithCustomer) => void;
@@ -765,10 +805,27 @@ function MembershipTable({
   sharedPool: boolean; onClaim: (member: CampaignMembershipWithCustomer) => Promise<void>; claimBusyId: string;
   // CSKH TABLE UX — "trang 50 dòng" thuần presentation (xem table-pagination.ts).
   startIndex: number; page: number; totalPages: number; totalCount: number; pageSize: number;
+  membershipSort: MembershipSort | null; onMembershipSort: (column: MembershipSortColumn) => void;
   onPrevPage: () => void; onNextPage: () => void;
 }) {
   if (loading) return <div className="card"><div className="loading-spinner"><div className="spinner" /></div></div>;
   if (members.length === 0) return <div className="card"><div className="empty-state"><Layers size={38} /><h3>Không có khách hàng phù hợp</h3></div></div>;
+  function membershipHeader(column: MembershipSortColumn, label: string, width: number) {
+    const direction = membershipSort?.column === column ? membershipSort.direction : null;
+    return <th key={column} style={{ width, padding: 0 }}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={() => onMembershipSort(column)}
+        title={`Sắp xếp theo ${label}`}
+        aria-label={`Sắp xếp theo ${label}`}
+        style={{ width: '100%', justifyContent: 'flex-start', gap: 5, fontWeight: 650, color: 'inherit' }}
+      >
+        {label}
+        {direction === 'asc' ? <ArrowUp size={12} /> : direction === 'desc' ? <ArrowDown size={12} /> : <ArrowUpDown size={11} style={{ opacity: 0.45 }} />}
+      </button>
+    </th>;
+  }
   return <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
     {/* CSKH TABLE UX — bounded overflowY + maxHeight khiến horizontal
         scrollbar (overflowX) luôn nằm ở đáy MỘT KHUNG cố định trong viewport
@@ -789,9 +846,12 @@ function MembershipTable({
     <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table cskh-compact" style={{ minWidth: 860 }}>
     <thead><tr>
       <th style={{ width: 40 }}>STT</th>
-      <th style={{ width: 190 }}>Khách hàng</th><th style={{ width: 150 }}>Dự án</th><th style={{ width: 110 }}>Sale CSKH</th><th style={{ width: 120 }}>Trạng thái</th>
-      <th style={{ width: 100 }}>Mức độ tiềm năng</th>
-      <th style={{ width: 100 }}>Lịch tiếp theo</th>
+      {membershipHeader('customer', 'Khách hàng', 190)}
+      {membershipHeader('project', 'Dự án', 150)}
+      {membershipHeader('sale', 'Sale CSKH', 110)}
+      {membershipHeader('status', 'Trạng thái', 120)}
+      {membershipHeader('potential', 'Mức độ tiềm năng', 100)}
+      {membershipHeader('nextContact', 'Lịch tiếp theo', 100)}
       <th style={{ textAlign: 'right', width: 150 }}>Thao tác</th>
     </tr></thead>
     <tbody>{members.map((member, idx) => {
