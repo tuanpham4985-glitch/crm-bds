@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Download, Filter, Loader2, Phone, RefreshCw, Sheet, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Download, Filter, Loader2, Phone, RefreshCw, Sheet, TrendingUp, Users } from 'lucide-react';
 import type { QualifiedLeadFilters } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import { useCrmModule } from '@/hooks/useCrmModule';
@@ -22,6 +22,8 @@ interface DashboardData {
   byTelesale: GroupMetric[]; bySource: GroupMetric[];
   options: { projects: string[]; telesales: string[]; sales: string[]; sources: string[]; pipelineStatuses: string[] };
 }
+type LeadSortColumn = 'customer' | 'project' | 'sale' | 'status' | 'potential' | 'handoff';
+interface LeadSort { column: LeadSortColumn; direction: 'asc' | 'desc' }
 
 const emptyFilters: QualifiedLeadFilters = {};
 function percent(value: number): string { return `${Math.round(value * 100)}%`; }
@@ -38,6 +40,14 @@ function interestTone(interest: string): { bg: string; color: string } {
   if (interest === 'Trung bình') return { bg: '#eff6ff', color: '#1d4ed8' };
   return { bg: '#f1f5f9', color: '#64748b' };
 }
+function leadSortValue(row: QualityRow, column: LeadSortColumn): string | number {
+  if (column === 'customer') return row.ten_KH || '';
+  if (column === 'project') return row.du_an || '';
+  if (column === 'sale') return row.telesale || '';
+  if (column === 'status') return qualificationStatusLabel(row.qualification_status);
+  if (column === 'potential') return row.lead_quality_score || 0;
+  return `${row.handoff_status || ''} ${row.pipeline_status || ''}`;
+}
 
 export default function DataChatLuongPage() {
   const { isAdmin, isLoading: authLoading } = useAuth();
@@ -47,6 +57,7 @@ export default function DataChatLuongPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState('');
   const [error, setError] = useState('');
+  const [leadSort, setLeadSort] = useState<LeadSort | null>(null);
 
   const params = useMemo(() => {
     const query = new URLSearchParams();
@@ -95,6 +106,32 @@ export default function DataChatLuongPage() {
     ['Đủ điều kiện', data.metrics.qualified, '#059669'], ['Tiềm năng cao', data.metrics.hot, '#dc2626'],
     ['Giao dịch', data.metrics.transactions, '#7c3aed'],
   ] as const : [];
+  const sortedRows = useMemo(() => {
+    if (!data || !leadSort) return data?.rows ?? [];
+    const direction = leadSort.direction === 'asc' ? 1 : -1;
+    return [...data.rows].sort((left, right) => {
+      const leftValue = leadSortValue(left, leadSort.column);
+      const rightValue = leadSortValue(right, leadSort.column);
+      if (typeof leftValue === 'number' && typeof rightValue === 'number') return (leftValue - rightValue) * direction;
+      return String(leftValue).localeCompare(String(rightValue), 'vi', { sensitivity: 'base' }) * direction;
+    });
+  }, [data, leadSort]);
+
+  function toggleLeadSort(column: LeadSortColumn) {
+    setLeadSort(current => current?.column === column
+      ? { column, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+      : { column, direction: 'asc' });
+  }
+
+  function sortableHeader(column: LeadSortColumn, label: string, width: number) {
+    const direction = leadSort?.column === column ? leadSort.direction : null;
+    return <th key={column} style={{ width, padding: 0 }}>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleLeadSort(column)} title={`Sắp xếp theo ${label}`} aria-label={`Sắp xếp theo ${label}`} style={{ width: '100%', justifyContent: 'flex-start', gap: 5, fontWeight: 650, color: 'inherit' }}>
+        {label}
+        {direction === 'asc' ? <ArrowUp size={12} /> : direction === 'desc' ? <ArrowDown size={12} /> : <ArrowUpDown size={11} style={{ opacity: 0.45 }} />}
+      </button>
+    </th>;
+  }
 
   if (authLoading || crmModuleLoading) return null;
 
@@ -165,8 +202,8 @@ export default function DataChatLuongPage() {
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700 }}>Danh sách lead sau lọc ({data.rows.length})</div>
         <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}>
           <table className="data-table cskh-compact" style={{ minWidth: 860 }}>
-            <thead><tr><th style={{ width: 42 }}>STT</th><th style={{ width: 190 }}>Khách hàng</th><th style={{ width: 150 }}>Dự án</th><th style={{ width: 120 }}>Sale CSKH</th><th style={{ width: 135 }}>Trạng thái</th><th style={{ width: 120 }}>Tiềm năng</th><th style={{ width: 145 }}>Bàn giao / GD</th></tr></thead>
-            <tbody>{data.rows.map((row, index) => {
+            <thead><tr><th style={{ width: 42 }}>STT</th>{sortableHeader('customer', 'Khách hàng', 190)}{sortableHeader('project', 'Dự án', 150)}{sortableHeader('sale', 'Sale CSKH', 120)}{sortableHeader('status', 'Trạng thái', 135)}{sortableHeader('potential', 'Tiềm năng', 120)}{sortableHeader('handoff', 'Bàn giao / GD', 145)}</tr></thead>
+            <tbody>{sortedRows.map((row, index) => {
               const status = statusTone(row.qualification_status);
               const rank = statusTone(row.lead_quality_rank);
               const interest = interestTone(row.muc_do_quan_tam);
