@@ -109,7 +109,7 @@ function compactProjectSearch(value: string): string {
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
 export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, canViewReports }: { employees: NhanVien[]; projects: DuAn[]; initialCampaignId?: string; canViewReports?: boolean }) {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
   const isReportingViewer = Boolean(canViewReports || (user && isCskhReportingViewerEmail(user.email)));
   const [campaigns, setCampaigns] = useState<CampaignType[]>([]);
   // initialCampaignId (từ ?campaignId= trên /phan-khach — link "đi thẳng" sau
@@ -192,10 +192,22 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
       if (campaignId) setCampaignId('');
       return;
     }
-    if (!campaignId || !campaigns.some(campaign => campaign.id === campaignId)) {
+    if (campaignId && !campaigns.some(campaign => campaign.id === campaignId)) {
+      setCampaignId('');
+      return;
+    }
+    // Admin không tự mở Campaign đầu tiên: chỉ tải membership sau khi Admin
+    // chủ động chọn/mở Campaign. Deep-link ?campaignId= vẫn được phép mở ngay
+    // vì đó là lựa chọn explicit từ màn hình trước.
+    if (initialCampaignId && campaigns.some(campaign => campaign.id === initialCampaignId)) {
+      if (!campaignId) setCampaignId(initialCampaignId);
+      return;
+    }
+    if (authLoading || isAdmin || campaignId) return;
+    if (!campaignId) {
       setCampaignId(campaigns[0].id);
     }
-  }, [campaigns, campaignId]);
+  }, [campaigns, campaignId, authLoading, isAdmin, initialCampaignId]);
 
   // Cùng 1 hàm với server (resolveCampaignMembershipCustomerIdsByRange,
   // campaign.ts) — bắt buộc để "Từ x đến y" trên UI luôn khớp đúng với id
@@ -417,6 +429,8 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   }
 
   const selectedCampaign = campaigns.find(item => item.id === campaignId);
+  const defaultAdminCampaign = campaigns.find(item => normalizeProjectSearch(item.name) === normalizeProjectSearch('Sài Gòn 21 ngày rực lửa'));
+  const campaignSelectValue = campaignId || (isAdmin ? defaultAdminCampaign?.id || '' : '');
   // Leader phụ trách (canManageCampaign, server-side) HOẶC Admin mới được phân
   // Sale cho membership CHƯA PHÂN của Campaign này — cùng authority với
   // canManageMembership's Campaign-owner nhánh, không suy diễn theo Customer.du_an.
@@ -477,13 +491,18 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
         <div style={{ minWidth: 280 }}>
           <label className="form-label">Campaign</label>
           <div style={{ position: 'relative' }}>
-            <select className="form-select" value={campaignId} onChange={event => setCampaignId(event.target.value)}>
+            <select className="form-select" value={campaignSelectValue} onChange={event => setCampaignId(event.target.value)}>
               <option value="">— Chọn Campaign —</option>
               {campaigns.map(item => <option key={item.id} value={item.id}>{item.name}{item.ten_du_an ? ` · ${item.ten_du_an}` : ''}</option>)}
             </select>
             <ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} />
           </div>
         </div>
+        {isAdmin && !campaignId && defaultAdminCampaign && (
+          <button className="btn btn-primary" onClick={() => setCampaignId(defaultAdminCampaign.id)}>
+            Mở Campaign
+          </button>
+        )}
         {canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 && (
           <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setShowDistribute(true)}>
             <Users size={15} /> Phân Sale ({unassignedMembers.length} chưa phân)
