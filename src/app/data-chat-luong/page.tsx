@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Download, Filter, Loader2, RefreshCw, Sheet, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, Download, Filter, Loader2, Phone, RefreshCw, Sheet, TrendingUp, Users } from 'lucide-react';
 import type { QualifiedLeadFilters } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import { useCrmModule } from '@/hooks/useCrmModule';
@@ -25,8 +25,19 @@ interface DashboardData {
 
 const emptyFilters: QualifiedLeadFilters = {};
 function percent(value: number): string { return `${Math.round(value * 100)}%`; }
-function money(value: number): string { return value ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value) : '—'; }
-function rankColor(rank: string): string { return rank === 'HOT' ? '#dc2626' : rank === 'QUALIFIED' ? '#059669' : rank === 'WARM' ? '#d97706' : '#64748b'; }
+function statusTone(status: string): { bg: string; color: string } {
+  if (status === 'HOT' || status === 'Tiềm năng cao') return { bg: '#fef2f2', color: '#b91c1c' };
+  if (status === 'QUALIFIED' || status === 'Đủ điều kiện') return { bg: '#ecfdf5', color: '#047857' };
+  if (status === 'INTERESTED' || status === 'Quan tâm') return { bg: '#eff6ff', color: '#1d4ed8' };
+  if (status === 'CONTACTED' || status === 'Đã liên hệ') return { bg: '#fefce8', color: '#a16207' };
+  return { bg: '#f1f5f9', color: '#64748b' };
+}
+function interestTone(interest: string): { bg: string; color: string } {
+  if (interest === 'Rất cao') return { bg: '#fce7f3', color: '#be185d' };
+  if (interest === 'Cao') return { bg: '#fff7ed', color: '#c2410c' };
+  if (interest === 'Trung bình') return { bg: '#eff6ff', color: '#1d4ed8' };
+  return { bg: '#f1f5f9', color: '#64748b' };
+}
 
 export default function DataChatLuongPage() {
   const { isAdmin, isLoading: authLoading } = useAuth();
@@ -143,14 +154,36 @@ export default function DataChatLuongPage() {
     </div><div style={{ marginTop: 10 }}><button className="btn btn-ghost btn-sm" onClick={() => setFilters(emptyFilters)}>Xóa bộ lọc</button></div></div>
 
     {loading && !data ? <div className="loading-spinner"><div className="spinner" /></div> : data && <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(120px,1fr))', gap: 10, overflowX: 'auto', marginBottom: 14 }}>{funnel.map(([label, value, color], index) => <div className="card" key={label} style={{ padding: 14, minWidth: 120, borderTop: `3px solid ${color}` }}><div style={{ fontSize: 12, color: 'var(--text-label)' }}>{label}</div><div style={{ fontSize: 25, fontWeight: 800, color, marginTop: 4 }}>{value}</div>{index > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{percent(value / Math.max(1, funnel[index - 1][1]))} bước trước</div>}</div>)}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(120px,1fr))', gap: 10, overflowX: 'auto', marginBottom: 14 }}>{funnel.map(([label, value, color], index) => <div className="card" key={label} style={{ padding: 14, minWidth: 120, border: `2px solid ${color}55`, borderTop: `4px solid ${color}`, background: `${color}08` }}><div style={{ fontSize: 12, color: 'var(--text-label)' }}>{label}</div><div style={{ fontSize: 25, fontWeight: 800, color, marginTop: 4 }}>{value}</div>{index > 0 && <div style={{ fontSize: 11, color, marginTop: 4 }}>{percent(value / Math.max(1, funnel[index - 1][1]))} bước trước</div>}</div>)}</div>
       {/* DATA_TIEM_NANG_BUSINESS_REDESIGN_APPROVED — chỉ còn 3 conversion card
           trong phạm vi Data tiềm năng (contactRate/interestRate đo trên toàn
           bộ CSKH, ra khỏi trang này — API vẫn trả 2 field đó vì summarize()
           dùng chung cho mọi population, chỉ không hiển thị ở đây). */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>{(['qualifiedRate', 'hotRate', 'transactionRate'] as const).map(key => <div className="card" key={key} style={{ padding: 12 }}><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{({ qualifiedRate: 'Tiềm năng → Đủ điều kiện', hotRate: 'Đủ điều kiện → Tiềm năng cao', transactionRate: 'Đủ điều kiện → Giao dịch' } as Record<string, string>)[key]}</div><div style={{ fontSize: 20, fontWeight: 750, marginTop: 3 }}>{percent(data.conversion[key])}</div></div>)}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}><GroupTable title="Chất lượng theo nguồn data" icon={<TrendingUp size={17} />} rows={data.bySource} /><GroupTable title="Chuyển đổi theo Sale CSKH" icon={<Users size={17} />} rows={data.byTelesale} /></div>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}><div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700 }}>Danh sách lead sau lọc ({data.rows.length})</div><div className="table-wrapper" style={{ overflowX: 'auto' }}><table className="data-table" style={{ minWidth: 1250 }}><thead><tr><th>Khách hàng</th><th>Dự án / sản phẩm</th><th>Điểm</th><th>Trạng thái</th><th>Nguồn</th><th>Sale CSKH</th><th>Sale nhận khách</th><th>Ngân sách</th><th>Bàn giao / Giao dịch</th><th>Ghi chú gần nhất</th></tr></thead><tbody>{data.rows.map(row => <tr key={row.id_khach_hang}><td><strong>{row.ten_KH}</strong><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{row.so_dien_thoai}</div></td><td>{row.du_an || '—'}<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{row.san_pham_quan_tam || 'Chưa rõ sản phẩm'}</div></td><td><span style={{ color: rankColor(row.lead_quality_rank), fontWeight: 800 }}>{row.lead_quality_score}</span><div style={{ fontSize: 10, color: rankColor(row.lead_quality_rank) }}>{leadQualityRankLabel(row.lead_quality_rank)}</div></td><td>{qualificationStatusLabel(row.qualification_status)}</td><td>{row.nguon_data || '—'}</td><td>{row.telesale || '—'}</td><td>{row.sale_nhan || '—'}</td><td>{money(row.ngan_sach_min)} – {money(row.ngan_sach_max)}</td><td>{row.handoff_status}<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{row.pipeline_status || 'Chưa có Giao dịch'}</div></td><td style={{ maxWidth: 220, whiteSpace: 'normal' }}>{row.latest_note || '—'}</td></tr>)}</tbody></table></div></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700 }}>Danh sách lead sau lọc ({data.rows.length})</div>
+        <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}>
+          <table className="data-table cskh-compact" style={{ minWidth: 860 }}>
+            <thead><tr><th style={{ width: 42 }}>STT</th><th style={{ width: 190 }}>Khách hàng</th><th style={{ width: 150 }}>Dự án</th><th style={{ width: 120 }}>Sale CSKH</th><th style={{ width: 135 }}>Trạng thái</th><th style={{ width: 120 }}>Tiềm năng</th><th style={{ width: 145 }}>Bàn giao / GD</th></tr></thead>
+            <tbody>{data.rows.map((row, index) => {
+              const status = statusTone(row.qualification_status);
+              const rank = statusTone(row.lead_quality_rank);
+              const interest = interestTone(row.muc_do_quan_tam);
+              const interested = row.qualification_status === 'INTERESTED' || row.muc_do_quan_tam === 'Quan tâm';
+              return <tr key={row.id_khach_hang} style={interested ? { background: '#F0FDF4' } : undefined}>
+                <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>{index + 1}</td>
+                <td><div style={{ fontWeight: 700 }}>{row.ten_KH}</div>{row.so_dien_thoai && <a href={`tel:${row.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{row.so_dien_thoai}</a>}</td>
+                <td><span style={{ display: 'inline-block', maxWidth: 150, background: row.du_an ? 'linear-gradient(135deg, #EEF2FF 0%, #DBEAFE 100%)' : '#f8fafc', color: row.du_an ? '#3730A3' : 'var(--text-muted)', border: row.du_an ? '1px solid #818CF8' : '1px solid var(--border)', borderRadius: 12, padding: '6px 9px', fontWeight: row.du_an ? 700 : 500, lineHeight: 1.25 }}>{row.du_an || 'Chưa chọn dự án'}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>{row.san_pham_quan_tam || 'Chưa rõ sản phẩm'}</div></td>
+                <td>{row.telesale ? <><span style={{ background: '#ecfdf5', color: '#047857', borderRadius: 20, padding: '2px 6px', fontSize: 11, fontWeight: 650 }}>Đã chia</span><div style={{ fontWeight: 600, fontSize: 12, marginTop: 4 }}>{row.telesale}</div></> : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 6px', fontSize: 11, fontWeight: 650 }}>Chưa chia</span>}</td>
+                <td><span style={{ background: status.bg, color: status.color, borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>{qualificationStatusLabel(row.qualification_status)}</span><div style={{ fontSize: 11, color: interest.color, background: interest.bg, borderRadius: 999, padding: '2px 7px', fontWeight: 650, display: 'inline-block', marginTop: 5 }}>{row.muc_do_quan_tam || 'Chưa xác định'}</div></td>
+                <td><span style={{ color: rank.color, fontWeight: 800, fontSize: 16 }}>{row.lead_quality_score}</span><div style={{ fontSize: 11, color: rank.color }}>{leadQualityRankLabel(row.lead_quality_rank)}</div></td>
+                <td><div style={{ fontSize: 12, fontWeight: 600 }}>{row.handoff_status || 'Chưa bàn giao'}</div><div style={{ fontSize: 11, color: row.pipeline_status ? '#047857' : 'var(--text-muted)', marginTop: 4 }}>{row.pipeline_status || 'Chưa có Giao dịch'}</div></td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+      </div>
     </>}
   </div>;
 }
