@@ -429,8 +429,6 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   }
 
   const selectedCampaign = campaigns.find(item => item.id === campaignId);
-  const defaultAdminCampaign = campaigns.find(item => normalizeProjectSearch(item.name) === normalizeProjectSearch('Sài Gòn 21 ngày rực lửa'));
-  const campaignSelectValue = campaignId || (isAdmin ? defaultAdminCampaign?.id || '' : '');
   // Leader phụ trách (canManageCampaign, server-side) HOẶC Admin mới được phân
   // Sale cho membership CHƯA PHÂN của Campaign này — cùng authority với
   // canManageMembership's Campaign-owner nhánh, không suy diễn theo Customer.du_an.
@@ -491,18 +489,13 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
         <div style={{ minWidth: 280 }}>
           <label className="form-label">Campaign</label>
           <div style={{ position: 'relative' }}>
-            <select className="form-select" value={campaignSelectValue} onChange={event => setCampaignId(event.target.value)}>
+            <select className="form-select" value={campaignId} onChange={event => setCampaignId(event.target.value)}>
               <option value="">— Chọn Campaign —</option>
               {campaigns.map(item => <option key={item.id} value={item.id}>{item.name}{item.ten_du_an ? ` · ${item.ten_du_an}` : ''}</option>)}
             </select>
             <ChevronDown size={15} style={{ position: 'absolute', right: 10, top: 11, pointerEvents: 'none' }} />
           </div>
         </div>
-        {isAdmin && !campaignId && defaultAdminCampaign && (
-          <button className="btn btn-primary" onClick={() => setCampaignId(defaultAdminCampaign.id)}>
-            Mở Campaign
-          </button>
-        )}
         {canManageThisCampaign && selectedCampaign && unassignedMembers.length > 0 && (
           <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setShowDistribute(true)}>
             <Users size={15} /> Phân Sale ({unassignedMembers.length} chưa phân)
