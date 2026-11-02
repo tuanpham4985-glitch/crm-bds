@@ -8,7 +8,7 @@ import { GIAI_DOAN_PIPELINE } from '@/lib/constants';
 import { SENIOR_EMPLOYEE_TYPES } from '@/lib/constants';
 import { buildComparedRevenueSeries, buildMonthlyRevenueSeries, getComparisonRange, selectDashboardRevenueSeries } from '@/lib/dashboard-revenue';
 import type { DashboardCompareMode } from '@/lib/dashboard-revenue';
-import { buildTravelSalesLeaderboard, applyLeaderboardDisplayRules } from '@/lib/dashboard-travel-sales';
+import { buildDashboardSalesLeaderboard, applyLeaderboardDisplayRules } from '@/lib/dashboard-travel-sales';
 import { cached } from '@/lib/mem-cache';
 
 // Batch 1 item 1 — Dashboard "double-fetch": trang Dashboard (page.tsx) tự
@@ -965,11 +965,9 @@ export async function GET(request: NextRequest) {
       };
     };
 
-    // "Doanh số tính du lịch" — authoritative calculation cho Bảng xếp hạng
-    // (doanh_thu_theo_sale), xem dashboard-travel-sales.ts cho rule đã khoá
-    // (group Sale bán, value Giá tính HH, eligible <=70% tỷ lệ phí hh/thực
-    // nhận, loại Đối tác) + golden case Trần Võ Khánh (verified qua audit
-    // đối chiếu workbook, tests/crm/dashboard-travel-sales.test.ts).
+    // Bảng xếp hạng Dashboard — tổng hợp toàn bộ doanh số theo Sale bán trong
+    // kỳ. Không dùng rule riêng của chương trình thưởng du lịch (tỷ lệ phí HH
+    // <=70%), vì rule đó có thể loại toàn bộ giao dịch dù KPI vẫn có dữ liệu.
     // Áp dụng THÊM 2 filter route-specific mà pure function không biết:
     //   1. leaderboardExcludedNames (Nghỉ việc/CTV) — cùng Set đã release
     //      trước đây, filter theo tên SAU KHI gộp (1 entry/tên).
@@ -980,7 +978,7 @@ export async function GET(request: NextRequest) {
     // (dashboard-travel-sales.ts) — cùng 1 authoritative helper dùng chung với
     // /api/dashboard/leaderboard (endpoint mới, race widget), không copy/paste
     // lại rule ở 2 nơi. Hành vi byte-identical với bản inline cũ.
-    const travelSalesLeaderboard = applyLeaderboardDisplayRules(buildTravelSalesLeaderboard(tongHopRows), allEmployeesRaw);
+    const dashboardSalesLeaderboard = applyLeaderboardDisplayRules(buildDashboardSalesLeaderboard(tongHopRows), allEmployeesRaw);
     const raceDuAn = buildRaceDuAn(tongHopRows);
     const tongHopTheoThang = buildTongHopTheoThang(tongHopRows);
     const tonghop = wantCharts
@@ -1000,7 +998,7 @@ export async function GET(request: NextRequest) {
     // mode khác (default/race, nơi tongHopRows CÓ dữ liệu) dùng authoritative
     // travelSalesLeaderboard — đây CHÍNH LÀ "Bảng xếp hạng" mặc định hiển thị
     // (report_mode không truyền -> 'default').
-    const selectedLeaderboard = reportMode === 'standard' ? leaderboard : travelSalesLeaderboard;
+    const selectedLeaderboard = reportMode === 'standard' ? leaderboard : dashboardSalesLeaderboard;
     const selectedDuAn = useRaceSource
       ? raceDuAn
       : Array.from(duAnMap.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);

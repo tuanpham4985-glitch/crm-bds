@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isTravelSalesEligible, buildTravelSalesLeaderboard } from '../../src/lib/dashboard-travel-sales';
+import { isTravelSalesEligible, buildTravelSalesLeaderboard, buildDashboardSalesLeaderboard } from '../../src/lib/dashboard-travel-sales';
 import type { TongHopRow } from '../../src/lib/google-sheets';
 
 function row(overrides: Partial<TongHopRow> & Pick<TongHopRow, 'gia_tri' | 'sale_phu_trach'>): TongHopRow {
@@ -107,6 +107,17 @@ test('buildTravelSalesLeaderboard: sale_phu_trach rỗng -> "Chưa phân" (KHÔN
 
 test('buildTravelSalesLeaderboard: mảng rỗng -> mảng rỗng, không throw', () => {
   assert.deepEqual(buildTravelSalesLeaderboard([]), []);
+});
+
+test('buildDashboardSalesLeaderboard: vẫn xếp hạng giao dịch có doanh số dù thiếu tỷ lệ phí HH', () => {
+  const result = buildDashboardSalesLeaderboard([
+    row({ gia_tri: 10_000_000, sale_phu_trach: 'A' }),
+    row({ gia_tri: 5_000_000, sale_phu_trach: 'B', ty_le_phi_hh_thuc_nhan: 0.9 }),
+  ]);
+  assert.deepEqual(result.map(r => [r.nhan_vien, r.doanh_thu, r.so_deal]), [
+    ['A', 10_000_000, 1],
+    ['B', 5_000_000, 1],
+  ]);
 });
 
 test('buildTravelSalesLeaderboard: deal Đối tác bị loại không tạo entry rác trong kết quả', () => {

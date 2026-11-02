@@ -98,6 +98,23 @@ export function buildTravelSalesLeaderboard(rows: readonly TongHopRow[]): DoanhT
   return Array.from(map.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
 }
 
+/** Tổng hợp doanh số Dashboard theo Sale trong kỳ, không áp dụng điều kiện
+ * riêng của chương trình thưởng du lịch (tỷ lệ phí HH/thực nhận). */
+export function buildDashboardSalesLeaderboard(rows: readonly TongHopRow[]): DoanhThuTheoSale[] {
+  const map = new Map<string, DoanhThuTheoSale>();
+  for (const row of rows) {
+    if (!row.gia_tri || row.gia_tri <= 0) continue;
+    if (isDoiTacStr(row.loai_nguon) || isDoiTacStr(row.phong_kd)) continue;
+
+    const key = stripRoleSuffix(row.sale_phu_trach || '') || 'Chưa phân';
+    const existing = map.get(key) || { nhan_vien: key, doanh_thu: 0, hoa_hong: 0, so_deal: 0 };
+    existing.doanh_thu += row.gia_tri;
+    existing.so_deal += 1;
+    map.set(key, existing);
+  }
+  return Array.from(map.values()).sort((a, b) => b.doanh_thu - a.doanh_thu);
+}
+
 /** DASHBOARD_RACE_LEADERBOARD_LIGHTWEIGHT_ENDPOINT — display-rule step trước
  * đây nằm THẲNG trong dashboard/route.ts (leaderboardExcludedNames + avatar
  * enrichment), giờ tách ra đây làm authoritative helper DUY NHẤT — cả

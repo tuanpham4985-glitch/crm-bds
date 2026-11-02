@@ -161,10 +161,10 @@ test('leaderboard/route.ts: dùng CHÍNH applyLeaderboardDisplayRules/buildTrave
   assert.doesNotMatch(src, /leaderboardExcludedNames|trang_thai === 'Nghỉ việc'/, 'không được tự viết lại inline exclude/enrich logic — phải gọi helper');
 });
 
-test('dashboard/route.ts: travelSalesLeaderboard giờ gọi applyLeaderboardDisplayRules() (CÙNG helper với endpoint mới) — không còn 2 bản logic song song', () => {
+test('dashboard/route.ts: dashboardSalesLeaderboard gọi applyLeaderboardDisplayRules() để dùng chung rule hiển thị', () => {
   const src = readFileSync(resolve(DASHBOARD_ROUTE_PATH), 'utf8');
-  assert.match(src, /import \{ buildTravelSalesLeaderboard, applyLeaderboardDisplayRules \} from '@\/lib\/dashboard-travel-sales';/);
-  assert.match(src, /const travelSalesLeaderboard = applyLeaderboardDisplayRules\(buildTravelSalesLeaderboard\(tongHopRows\), allEmployeesRaw\);/);
+  assert.match(src, /import \{ buildDashboardSalesLeaderboard, applyLeaderboardDisplayRules \} from '@\/lib\/dashboard-travel-sales';/);
+  assert.match(src, /const dashboardSalesLeaderboard = applyLeaderboardDisplayRules\(buildDashboardSalesLeaderboard\(tongHopRows\), allEmployeesRaw\);/);
 });
 
 test('dashboard/route.ts: allEmployees/leaderboardExcludedNames vẫn tồn tại (còn dùng cho sinhNhatThangNay + Pipeline-based leaderboard ở reportMode="standard") — KHÔNG bị xoá nhầm khi extract', () => {

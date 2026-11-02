@@ -26,9 +26,9 @@ test('doanh_thu_theo_sale (contract cũ, KHÔNG đổi) tiếp tục nhận giá
   assert.equal(matches.length, 2, 'cả 2 nhánh isAdmin/non-admin đều phải dùng selectedLeaderboard, không đổi field name/shape');
 });
 
-test('selectedLeaderboard dùng travelSalesLeaderboard (authoritative, KHÔNG phải raceLeaderboard cũ) cho mọi mode trừ "standard" — ngăn regression quay lại raw transaction total (test bắt buộc #8)', () => {
+test('selectedLeaderboard dùng dashboardSalesLeaderboard (toàn bộ doanh số trong kỳ) cho mọi mode trừ "standard"', () => {
   const src = read(ROUTE_PATH);
-  assert.match(src, /const selectedLeaderboard = reportMode === 'standard' \? leaderboard : travelSalesLeaderboard;/);
+  assert.match(src, /const selectedLeaderboard = reportMode === 'standard' \? leaderboard : dashboardSalesLeaderboard;/);
 });
 
 // DASHBOARD_RACE_LEADERBOARD_LIGHTWEIGHT_ENDPOINT — display-rule step (loại
@@ -40,10 +40,10 @@ test('selectedLeaderboard dùng travelSalesLeaderboard (authoritative, KHÔNG ph
 // (loại Nghỉ việc/CTV, enrich avatar) không đổi, chỉ đổi CHỖ đặt code — xem
 // tests/dashboard/race-leaderboard.test.ts cho equivalence proof + unit test
 // của chính applyLeaderboardDisplayRules().
-test('travelSalesLeaderboard được tính từ buildTravelSalesLeaderboard(tongHopRows) rồi applyLeaderboardDisplayRules() — ĐÚNG 2 hàm authoritative trong dashboard-travel-sales.ts, KHÔNG tự tính lại (test bắt buộc #8)', () => {
+test('dashboardSalesLeaderboard được tính từ buildDashboardSalesLeaderboard(tongHopRows) rồi applyLeaderboardDisplayRules()', () => {
   const src = read(ROUTE_PATH);
-  assert.match(src, /import \{ buildTravelSalesLeaderboard, applyLeaderboardDisplayRules \} from '@\/lib\/dashboard-travel-sales';/);
-  assert.match(src, /const travelSalesLeaderboard = applyLeaderboardDisplayRules\(buildTravelSalesLeaderboard\(tongHopRows\), allEmployeesRaw\);/);
+  assert.match(src, /import \{ buildDashboardSalesLeaderboard, applyLeaderboardDisplayRules \} from '@\/lib\/dashboard-travel-sales';/);
+  assert.match(src, /const dashboardSalesLeaderboard = applyLeaderboardDisplayRules\(buildDashboardSalesLeaderboard\(tongHopRows\), allEmployeesRaw\);/);
 });
 
 test('buildRaceSaleLeaderboard (hàm cũ, tính raw gia_tri không lọc ratio) KHÔNG còn tồn tại như function definition — chỉ còn trong comment giải thích lịch sử (regression guard, test bắt buộc #8)', () => {
