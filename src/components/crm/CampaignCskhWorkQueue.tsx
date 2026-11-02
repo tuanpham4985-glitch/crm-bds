@@ -93,6 +93,17 @@ function localDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+// Project picker search — tolerate Vietnamese accents, repeated spaces and
+// separators in project codes so typing a natural version of the name/code
+// still finds the project shown in the dropdown.
+function normalizeProjectSearch(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function compactProjectSearch(value: string): string {
+  return normalizeProjectSearch(value).replace(/[^a-z0-9]/g, '');
+}
+
 type InteractionForm = { ket_qua: TrangThaiChamSoc; muc_do_quan_tam: MucDoQuanTam; ghi_chu: string; ngay_lien_he_tiep: string };
 
 export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, canViewReports }: { employees: NhanVien[]; projects: DuAn[]; initialCampaignId?: string; canViewReports?: boolean }) {
@@ -796,10 +807,25 @@ function MembershipTable({
       // (chữ xám nhạt). Badge màu ở cột Sale CSKH đã đủ để phân biệt trực
       // quan Đã chia/Chưa chia mà không cần giảm độ rõ của cả dòng.
       const assigned = isMembershipAssigned(member);
-      return <tr key={member.id} style={isOverdue(member.ngay_lien_he_tiep) ? { background: '#fff7f7' } : undefined}>
+      const isInterested = member.muc_do_quan_tam === 'Quan tâm' || member.trang_thai_cham_soc === 'Quan tâm';
+      return <tr key={member.id} style={isInterested ? { background: '#F0FDF4' } : isOverdue(member.ngay_lien_he_tiep) ? { background: '#FFF7F7' } : undefined}>
         <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>{startIndex + idx + 1}</td>
         <td><div style={{ fontWeight: 700 }}>{member.customer?.ten_KH || member.customer_id}</div>{member.customer?.so_dien_thoai && <a href={`tel:${member.customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(member.customer.so_dien_thoai)}</a>}</td>
-        <td>{member.customer && projectEditable ? <button className="btn btn-secondary btn-sm" style={{ maxWidth: 140, whiteSpace: 'normal', textAlign: 'left' }} onClick={() => onProject(member)}>{member.customer.du_an || 'Chọn dự án'}</button> : <span style={{ fontSize: 12 }}>{member.customer?.du_an || '—'}</span>}</td>
+        <td>{member.customer && projectEditable
+          ? <button
+              className="btn btn-sm"
+              title="Bấm để chọn hoặc đổi dự án"
+              style={{
+                maxWidth: 150, whiteSpace: 'normal', textAlign: 'left', justifyContent: 'flex-start',
+                lineHeight: 1.25, borderRadius: 12, padding: '7px 10px', fontWeight: 700,
+                background: member.customer.du_an ? 'linear-gradient(135deg, #EEF2FF 0%, #DBEAFE 100%)' : '#FFFFFF',
+                color: member.customer.du_an ? '#3730A3' : 'var(--text-body)',
+                border: member.customer.du_an ? '1px solid #818CF8' : '1px solid var(--border)',
+                boxShadow: member.customer.du_an ? '0 2px 5px rgba(79, 70, 229, 0.14)' : undefined,
+              }}
+              onClick={() => onProject(member)}
+            >{member.customer.du_an || 'Chọn dự án'}</button>
+          : <span style={{ fontSize: 12 }}>{member.customer?.du_an || '—'}</span>}</td>
         <td>
           {assigned
             ? <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -882,8 +908,11 @@ function CustomerProjectModal({ member, projects, campaigns, saving, onClose, on
     if (item.hien_thi === 0) return false;
     if (investor && item.chu_dau_tu?.trim() !== investor) return false;
     if (campaignId && !campaigns.some(campaign => campaign.id === campaignId && campaign.id_du_an === item.id_du_an)) return false;
-    const query = search.trim().toLowerCase();
-    return !query || `${item.ten_du_an} ${item.ma_du_an} ${item.chu_dau_tu || ''}`.toLowerCase().includes(query);
+    const query = normalizeProjectSearch(search);
+    if (!query) return true;
+    const fields = [item.ten_du_an, item.ma_du_an, item.chu_dau_tu || ''];
+    const compactQuery = compactProjectSearch(search);
+    return fields.some(field => normalizeProjectSearch(field).includes(query) || compactProjectSearch(field).includes(compactQuery));
   });
   return <div className="modal-overlay" onClick={onClose}>
     <div className="modal-content" style={{ maxWidth: 460 }} onClick={event => event.stopPropagation()}>
@@ -901,7 +930,7 @@ function CustomerProjectModal({ member, projects, campaigns, saving, onClose, on
             {campaigns.filter(item => item.id_du_an).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </div>
-        <input className="form-input" style={{ marginBottom: 8 }} placeholder="Tìm tên hoặc mã dự án..." value={search} onChange={event => setSearch(event.target.value)} />
+        <input className="form-input" style={{ marginBottom: 8 }} placeholder="Tìm tên, mã hoặc chủ đầu tư..." value={search} onChange={event => setSearch(event.target.value)} />
         <select className="form-select" value={projectId} onChange={event => setProjectId(event.target.value)}>
           <option value="">— Chọn dự án —</option>
           {filteredProjects.map(item => <option key={item.id_du_an} value={item.id_du_an}>{item.ten_du_an}{item.chu_dau_tu ? ` · ${item.chu_dau_tu}` : ''}</option>)}
