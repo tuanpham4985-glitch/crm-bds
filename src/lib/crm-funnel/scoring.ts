@@ -53,11 +53,17 @@ function interestPoints(value: MucDoQuanTam | string | null | undefined): number
 
 function qualificationStatus(lead: ScoreableLead, score: number): QualificationStatus {
   if (lead.trang_thai_cham_soc === 'Sai số' || lead.trang_thai_cham_soc === 'Không phù hợp') return 'UNQUALIFIED';
+  // "Quan tâm" là dữ kiện độc lập với kết quả cuộc gọi. CSKH có thể ghi
+  // kết quả là "Đã liên hệ" rồi chọn mức độ quan tâm là "Quan tâm"; trường
+  // hợp này vẫn phải vào phễu INTERESTED và được đồng bộ sang Data tiềm năng.
+  const interested = lead.trang_thai_cham_soc === 'Quan tâm' || lead.muc_do_quan_tam === 'Quan tâm';
+  if (interested) {
+    if (score >= LEAD_SCORE_THRESHOLDS.HOT) return 'HOT';
+    if (score >= LEAD_SCORE_THRESHOLDS.QUALIFIED) return 'QUALIFIED';
+    return 'INTERESTED';
+  }
   if (!lead.trang_thai_cham_soc || lead.trang_thai_cham_soc === 'Chưa gọi') return 'RAW';
-  if (lead.trang_thai_cham_soc !== 'Quan tâm') return 'CONTACTED';
-  if (score >= LEAD_SCORE_THRESHOLDS.HOT) return 'HOT';
-  if (score >= LEAD_SCORE_THRESHOLDS.QUALIFIED) return 'QUALIFIED';
-  return 'INTERESTED';
+  return 'CONTACTED';
 }
 
 // CAMPAIGN_CUSTOMER_QUALIFICATION_SYNC — thứ tự tăng dần của phễu qualification,

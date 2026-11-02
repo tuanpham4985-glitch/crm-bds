@@ -27,6 +27,11 @@ test('Quan tâm alone is not Qualified Lead', () => {
   assert.ok(result.score < LEAD_SCORE_THRESHOLDS.QUALIFIED);
 });
 
+test('Mức độ quan tâm = Quan tâm vẫn là INTERESTED khi kết quả cuộc gọi là Đã liên hệ', () => {
+  const result = calculateLeadQuality({ ...emptyLead, trang_thai_cham_soc: 'Đã liên hệ', muc_do_quan_tam: 'Quan tâm' });
+  assert.equal(result.qualificationStatus, 'INTERESTED');
+});
+
 test('complete near-term lead reaches HOT with explainable 100 points', () => {
   const result = calculateLeadQuality({
     ...emptyLead, trang_thai_cham_soc: 'Quan tâm', muc_do_quan_tam: 'Rất cao',
