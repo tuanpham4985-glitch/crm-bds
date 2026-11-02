@@ -671,6 +671,10 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
     }
   }
 
+  // Phân hàng loạt có thể cập nhật hàng trăm membership trong cùng một
+  // transaction. Prisma mặc định chỉ chờ 5 giây, khiến luồng 132 khách bị
+  // P2028 dù dữ liệu và quyền đều hợp lệ. Giữ tính nguyên tử nhưng cho phép
+  // đủ thời gian xử lý batch lớn.
   return prisma.$transaction(async tx => {
     // Khách thuộc Nhóm riêng đã có người chăm sóc riêng — KHÔNG BAO GIỜ thêm/
     // phân vào Campaign (dù chọn theo khoảng, bộ lọc hay tick tay), tránh 2
@@ -771,7 +775,7 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       lockedHandoff: plan.lockedHandoff,
       stillUnassigned: plan.stillUnassigned,
     };
-  });
+  }, { timeout: 30_000 });
 }
 
 // --- Thu hồi khách chưa gọi của 1 Sale ----------------------------------
