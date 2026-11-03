@@ -23,7 +23,6 @@ import {
 } from '@/lib/campaign-cskh-range';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
 import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
-import { qualificationStatusLabel } from '@/lib/crm-funnel/quality-labels';
 import { INTEREST_OPTIONS, interestTone } from '@/lib/crm-funnel/interest';
 import { paginate } from '@/lib/table-pagination';
 import { isCskhReportingViewerEmail } from '@/lib/crm-reporting-access';
@@ -73,7 +72,7 @@ const SALE_PROGRESS_METRICS: readonly {
 
 type SaleProgressSortColumn = 'telesaleName' | 'assigned' | 'unprocessed' | 'inProgress' | 'overdue' | 'interested' | 'completed' | 'progressPercent';
 type SaleProgressSort = { column: SaleProgressSortColumn; direction: 'asc' | 'desc' };
-type MembershipSortColumn = 'customer' | 'project' | 'sale' | 'status' | 'potential' | 'nextContact';
+type MembershipSortColumn = 'customer' | 'project' | 'sale' | 'status' | 'nextContact';
 type MembershipSort = { column: MembershipSortColumn; direction: 'asc' | 'desc' };
 
 function parseList<T>(raw?: string | null): T[] {
@@ -233,7 +232,6 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
         case 'project': return member.customer?.du_an || '';
         case 'sale': return member.telesale_name || '';
         case 'status': return statusOrder.get(member.trang_thai_cham_soc || 'Chưa gọi') ?? STATUSES.length;
-        case 'potential': return qualificationStatusLabel(member.qualification_status);
         case 'nextContact': return member.ngay_lien_he_tiep ? new Date(member.ngay_lien_he_tiep).getTime() : Number.POSITIVE_INFINITY;
       }
     };
@@ -827,8 +825,8 @@ function MembershipTable({
     {/* REMEDIATION (Compact CSKH table columns) — className "cskh-compact"
         (globals.css) co padding th/td cho riêng bảng này + cho phép header
         wrap 2 dòng thay vì ép cột rộng theo nowrap mặc định. Width hint theo
-        đúng thứ tự ưu tiên: STT/Thao tác rất hẹp, Trạng thái/Mức độ tiềm
-        năng/Điểm-Xếp hạng/Lịch tiếp theo hẹp, Khách hàng/Sale CSKH vừa, Thao
+        đúng thứ tự ưu tiên: STT/Thao tác rất hẹp, Trạng thái/Lịch tiếp theo
+        hẹp, Khách hàng/Sale CSKH vừa, Thao
         tác không set width cứng — dựa vào flexWrap có sẵn trong cell để tự
         xuống dòng thay vì ép cột "Thao tác" rộng ra (cột ưu tiên hiển thị đủ
         trong viewport, không phải cột chiếm nhiều không gian nhất). */}
@@ -838,8 +836,7 @@ function MembershipTable({
       {membershipHeader('customer', 'Khách hàng', 190)}
       {membershipHeader('project', 'Dự án', 150)}
       {membershipHeader('sale', 'Sale CSKH', 110)}
-      {membershipHeader('status', 'Trạng thái', 120)}
-      {membershipHeader('potential', 'Mức độ tiềm năng', 100)}
+      {membershipHeader('status', 'Trạng thái', 180)}
       {membershipHeader('nextContact', 'Lịch tiếp theo', 100)}
       <th style={{ textAlign: 'right', width: 150 }}>Thao tác</th>
     </tr></thead>
@@ -884,7 +881,6 @@ function MembershipTable({
             : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 6px', fontSize: 11, fontWeight: 650 }}>Chưa chia</span>}
         </td>
         <td><span style={{ background: palette.bg, color: palette.color, borderRadius: 20, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>{status}</span><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 5 }}>{member.so_lan_lien_he || 0} lần · <span style={{ ...interestTone(member.muc_do_quan_tam), borderRadius: 999, padding: '2px 7px', fontWeight: 650 }}>{member.muc_do_quan_tam || 'Nét'}</span></div></td>
-        <td><span style={{ fontSize: 12, fontWeight: 600 }}>{qualificationStatusLabel(member.qualification_status)}</span></td>
         {/* REMEDIATION — Lịch tiếp theo giữ nguyên field/dữ liệu, chỉ compact
             hiển thị: flexWrap để icon+giờ tự xuống dòng thay vì ép cột rộng;
             localDate() đã tự trả "—" khi ngay_lien_he_tiep rỗng (không đổi). */}
