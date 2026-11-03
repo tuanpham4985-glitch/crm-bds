@@ -684,6 +684,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
       </div>
       <MembershipTable
         members={pageWindow.items} loading={loading} canActOn={canActOn}
+        sourceFilter={sourceFilter} onSourceFilterChange={setSourceFilter}
         onInteraction={openInteraction} onHistory={setHistoryMember}
         currentUserName={user?.ho_ten}
         projectEditable={!isReportingViewer && (Boolean(selectedCampaign && !selectedCampaign.id_du_an) || isAdmin)} onProject={setProjectCustomer}
@@ -787,11 +788,12 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
 }
 
 function MembershipTable({
-  members, loading, canActOn, onInteraction, onHistory, currentUserName, onAcceptReject, acceptRejectBusyId,
+  members, loading, canActOn, sourceFilter, onSourceFilterChange, onInteraction, onHistory, currentUserName, onAcceptReject, acceptRejectBusyId,
   onProject, projectEditable, sharedPool, onClaim, claimBusyId,
   startIndex, page, totalPages, totalCount, pageSize, membershipSort, onMembershipSort, onPrevPage, onNextPage,
 }: {
   members: CampaignMembershipWithCustomer[]; loading: boolean; canActOn: (member: CampaignMembershipWithCustomer) => boolean;
+  sourceFilter: string; onSourceFilterChange: (value: string) => void;
   onInteraction: (member: CampaignMembershipWithCustomer) => void; onHistory: (member: CampaignMembershipWithCustomer) => void;
   currentUserName?: string;
   onAcceptReject: (member: CampaignMembershipWithCustomer, action: 'accept' | 'reject') => void; acceptRejectBusyId: string;
@@ -841,7 +843,20 @@ function MembershipTable({
     <thead><tr>
       <th style={{ width: 40 }}>STT</th>
       {membershipHeader('customer', 'Khách hàng', 190)}
-      <th style={{ width: 110 }}>Nguồn</th>
+      <th style={{ width: 130, padding: '5px 8px' }}>
+        <div style={{ fontWeight: 650, marginBottom: 4 }}>Nguồn</div>
+        <select
+          className="form-select"
+          style={{ width: '100%', minWidth: 0, fontSize: 11.5, padding: '4px 6px' }}
+          value={sourceFilter}
+          onChange={event => onSourceFilterChange(event.target.value)}
+          aria-label="Lọc cột Nguồn"
+        >
+          <option value="">Tất cả</option>
+          <option value="Marketing">Marketing</option>
+          <option value="Voucher">Voucher</option>
+        </select>
+      </th>
       {membershipHeader('project', 'Dự án', 150)}
       {membershipHeader('sale', 'Sale CSKH', 110)}
       {membershipHeader('status', 'Trạng thái', 180)}
