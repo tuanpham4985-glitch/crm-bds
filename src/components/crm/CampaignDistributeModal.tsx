@@ -49,7 +49,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
    * để hiển thị — server tự resolve lại id thật theo search/from/to khi submit
    * (xem POST /api/campaigns/[id]/distribute), không tin count từ client.
    */
-  customerFilter?: { search?: string; from?: string; to?: string; nguon?: string; datasetId?: string; count: number };
+  customerFilter?: { search?: string; from?: string; to?: string; nguon?: string; du_an?: string; datasetId?: string; count: number };
   /**
    * REMEDIATION — "Chọn khách: Từ [x] đến [y]" trên /khach-hang (Customer
    * range theo STT, KHÁC hẳn membership_range của CampaignCskhWorkQueue —
@@ -57,7 +57,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
    * KhachHang MỚI để đưa vào Campaign). from/to là vị trí (STT), 1-indexed.
    * `count` chỉ để hiển thị — server resolve lại thật khi submit.
    */
-  customerRange?: { from: number; to: number; search?: string; dateFrom?: string; dateTo?: string; nguon?: string; datasetId?: string; campaignStatus?: 'all' | 'in_campaign' | 'not_in_campaign'; count: number };
+  customerRange?: { from: number; to: number; search?: string; dateFrom?: string; dateTo?: string; nguon?: string; du_an?: string; datasetId?: string; campaignStatus?: 'all' | 'in_campaign' | 'not_in_campaign'; count: number };
   employees: NhanVien[];
   projects: DuAn[];
   isAdmin: boolean;
@@ -159,9 +159,9 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
 
   // Cùng payload chọn khách cho cả lần preview (cảnh báo) lẫn lần ghi thật.
   const selectionPayload = (customerFilter
-    ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to, nguon: customerFilter.nguon, datasetId: customerFilter.datasetId } }
+    ? { customer_filter: { search: customerFilter.search, from: customerFilter.from, to: customerFilter.to, nguon: customerFilter.nguon, du_an: customerFilter.du_an, datasetId: customerFilter.datasetId } }
     : customerRange
-      ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo, nguon: customerRange.nguon, datasetId: customerRange.datasetId, campaignStatus: customerRange.campaignStatus } }
+      ? { customer_range: { from: customerRange.from, to: customerRange.to, search: customerRange.search, dateFrom: customerRange.dateFrom, dateTo: customerRange.dateTo, nguon: customerRange.nguon, du_an: customerRange.du_an, datasetId: customerRange.datasetId, campaignStatus: customerRange.campaignStatus } }
       : { customer_ids: customerIds });
   // Key dạng chuỗi — prop customerIds có thể là mảng mới mỗi lần parent render.
   const selectionKey = JSON.stringify(selectionPayload);

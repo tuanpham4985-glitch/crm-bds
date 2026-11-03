@@ -74,6 +74,10 @@ export default function KhachHangPage() {
   // Chỉ hiển thị cột Nguồn khi người dùng đã chọn một nguồn cụ thể.
   const customerSources = ['Marketing', 'Voucher'] as const;
   const [sourceFilter, setSourceFilter] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
+  const [showAssignSourceModal, setShowAssignSourceModal] = useState(false);
+  const [assignSource, setAssignSource] = useState<typeof customerSources[number]>('Marketing');
+  const [assigningSource, setAssigningSource] = useState(false);
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -230,6 +234,7 @@ export default function KhachHangPage() {
       if (campaignStatus !== 'all') params.set('campaignStatus', campaignStatus);
       if (datasetFilter) params.set('datasetId', datasetFilter);
       if (sourceFilter) params.set('nguon', sourceFilter);
+      if (projectFilter) params.set('du_an', projectFilter);
       const res = await fetch(`/api/khach-hang?${params}`);
       const result = await res.json();
       if (result.success) {
@@ -248,7 +253,7 @@ export default function KhachHangPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, fromDate, toDate, campaignStatus, datasetFilter, sourceFilter]);
+  }, [page, search, fromDate, toDate, campaignStatus, datasetFilter, sourceFilter, projectFilter]);
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -297,7 +302,7 @@ export default function KhachHangPage() {
   // Range theo ĐÚNG cột STT của bảng đang hiển thị (search/ngày/Dataset/tab
   // Chưa-Đã vào Campaign) — KHÔNG phụ thuộc "page". Đổi filter -> STT đổi ->
   // range cũ không còn đúng nghĩa, phải reset.
-  useEffect(() => { setRangeFrom(''); setRangeTo(''); }, [search, fromDate, toDate, datasetFilter, sourceFilter, campaignStatus]);
+  useEffect(() => { setRangeFrom(''); setRangeTo(''); }, [search, fromDate, toDate, datasetFilter, sourceFilter, projectFilter, campaignStatus]);
   useEffect(() => {
     if (pendingQuickRange === null || dataVersion <= pendingQuickRange.afterVersion || campaignStatus !== 'not_in_campaign') return;
     const count = Math.min(pendingQuickRange.count, filteredTotal);
@@ -336,6 +341,7 @@ export default function KhachHangPage() {
     if (toDate) params.set('dateTo', toDate);
     if (datasetFilter) params.set('datasetId', datasetFilter);
     if (sourceFilter) params.set('nguon', sourceFilter);
+    if (projectFilter) params.set('du_an', projectFilter);
     if (campaignStatus !== 'all') params.set('campaignStatus', campaignStatus);
     fetch(`/api/khach-hang/range-campaign-status?${params}`)
       .then(res => res.json())
@@ -345,7 +351,7 @@ export default function KhachHangPage() {
       })
       .catch(() => { if (!cancelled) setRangeCampaignPreview(null); });
     return () => { cancelled = true; };
-  }, [isAdmin, rangeReadyForPreview, rangeFromNumForPreview, rangeToNumForPreview, search, fromDate, toDate, datasetFilter, sourceFilter, campaignStatus]);
+  }, [isAdmin, rangeReadyForPreview, rangeFromNumForPreview, rangeToNumForPreview, search, fromDate, toDate, datasetFilter, sourceFilter, projectFilter, campaignStatus]);
 
   // Load pipeline data in background để hiển thị trạng thái deal của mỗi KH
   useEffect(() => {
@@ -421,6 +427,27 @@ export default function KhachHangPage() {
     } finally {
       setImportingExcel(false);
     }
+  };
+
+  const handleAssignSource = async () => {
+    if (!datasetFilter) return;
+    setAssigningSource(true);
+    try {
+      const res = await fetch(`/api/datasets/${datasetFilter}/assign-source`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: assignSource }),
+      });
+      const result = await res.json();
+      if (!result.success) { alert(result.error || 'Không thể bổ sung Nguồn'); return; }
+      setShowAssignSourceModal(false);
+      setSourceFilter(assignSource);
+      setPage(1);
+      alert(`Đã bổ sung nguồn ${assignSource} cho ${result.data.updated} khách hàng chưa có nguồn.`);
+      void fetchData();
+    } catch (error) {
+      console.error('Assign dataset source error:', error);
+      alert('Lỗi kết nối khi bổ sung Nguồn');
+    } finally { setAssigningSource(false); }
   };
 
   const openExcelPicker = () => {
@@ -827,10 +854,11 @@ export default function KhachHangPage() {
     setToDate('');
     setDatasetFilter('');
     setSourceFilter('');
+    setProjectFilter('');
     setPage(1);
   };
 
-  const hasFilters = searchInput || fromDate || toDate || datasetFilter || sourceFilter;
+  const hasFilters = searchInput || fromDate || toDate || datasetFilter || sourceFilter || projectFilter;
 
   // REMEDIATION — "Chọn khách: Từ x đến y" (Customer range, Admin-only).
   // Validate theo filteredTotal = số dòng của bảng đang hiển thị (cùng cột STT),
@@ -847,6 +875,7 @@ export default function KhachHangPage() {
     campaignStatus === 'not_in_campaign' ? 'Chưa vào Campaign' : campaignStatus === 'in_campaign' ? 'Đã vào Campaign' : '',
     datasetFilter ? (datasets.find(ds => ds.id === datasetFilter)?.name || 'Dataset đã chọn') : '',
     sourceFilter ? `Nguồn: ${sourceFilter}` : '',
+    projectFilter ? `Dự án: ${duAnList.find(item => item.ten_du_an === projectFilter)?.ten_du_an || projectFilter}` : '',
     search || fromDate || toDate ? 'tìm kiếm/ngày' : '',
   ].filter(Boolean).join(' · ');
   const isRowInRange = (stt: number) => Boolean(rangeValidation?.ok) && stt >= rangeFromNum && stt <= rangeToNum;
@@ -1001,7 +1030,7 @@ export default function KhachHangPage() {
         {/* CUSTOMER DATASET — dropdown gọn (không phải tab), lọc theo Dataset
             đã import (VD "Data HLX", "Data VCG"). Server-authoritative, cùng
             tinh thần campaignStatus (không đụng "total"). */}
-        {(datasets.length > 0 || customerSources.length > 0) && (
+        {(datasets.length > 0 || customerSources.length > 0 || duAnList.length > 0) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
             {datasets.length > 0 && <>
               <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', whiteSpace: 'nowrap' }}>Dataset</span>
@@ -1038,6 +1067,23 @@ export default function KhachHangPage() {
               <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 · {filteredTotal} khách
               </span>
+            )}
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', whiteSpace: 'nowrap', marginLeft: 10 }}>Dự án</span>
+            <select
+              className="form-input" style={{ width: 'auto', minWidth: 180 }}
+              value={projectFilter}
+              onChange={(e) => { setProjectFilter(e.target.value); setPage(1); }}
+              aria-label="Lọc theo dự án"
+            >
+              <option value="">Tất cả Dự án</option>
+              {duAnList.filter(project => project.hien_thi !== 0).map(project => (
+                <option key={project.id_du_an} value={project.ten_du_an}>{project.ten_du_an}</option>
+              ))}
+            </select>
+            {datasetFilter && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowAssignSourceModal(true)}>
+                Bổ sung Nguồn cho Dataset
+              </button>
             )}
           </div>
         )}
@@ -1151,7 +1197,7 @@ export default function KhachHangPage() {
                     <th>Tên KH</th>
                     <th>SĐT</th>
                     <th>Email</th>
-                    {sourceFilter && <th>Nguồn</th>}
+                    {(sourceFilter || datasetFilter) && <th>Nguồn</th>}
                     <th>Ngày tạo</th>
                     <th style={{ width: 140, textAlign: 'center' }}>Thao tác</th>
                   </tr>
@@ -1213,7 +1259,7 @@ export default function KhachHangPage() {
                           {kh.email || '—'}
                         </span>
                       </td>
-                      {sourceFilter && <td>{kh.nguon || '—'}</td>}
+                      {(sourceFilter || datasetFilter) && <td>{kh.nguon || '—'}</td>}
                       <td>{formatDate(kh.ngay_tao)}</td>
                       <td>
                         <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
@@ -1812,6 +1858,38 @@ export default function KhachHangPage() {
         </div>
       )}
 
+      {showAssignSourceModal && datasetFilter && (
+        <div className="modal-overlay" onClick={() => !assigningSource && setShowAssignSourceModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Bổ sung Nguồn cho Dataset</h3>
+              <button className="btn btn-ghost btn-icon" disabled={assigningSource} onClick={() => setShowAssignSourceModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: 0 }}>
+                Dataset: <strong style={{ color: 'var(--text-title)' }}>{datasets.find(ds => ds.id === datasetFilter)?.name || 'Đã chọn'}</strong>
+              </p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: 0 }}>
+                Chỉ các khách hàng đang trống Nguồn được cập nhật; dữ liệu đã có Nguồn sẽ không bị ghi đè.
+              </p>
+              <div>
+                <label className="form-label">Nguồn bổ sung</label>
+                <select className="form-input" value={assignSource} onChange={(e) => setAssignSource(e.target.value as typeof customerSources[number])}>
+                  {customerSources.map(source => <option key={source} value={source}>{source}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" disabled={assigningSource} onClick={() => setShowAssignSourceModal(false)}>Hủy</button>
+              <button className="btn btn-primary" disabled={assigningSource} onClick={() => void handleAssignSource()}>
+                {assigningSource ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={15} />}
+                {assigningSource ? 'Đang cập nhật...' : 'Bổ sung Nguồn'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Import History Panel ── */}
       {showImportHistory && (
         <>
@@ -2315,7 +2393,7 @@ export default function KhachHangPage() {
       {showCampaignModal && (
         <CampaignDistributeModal
           customerIds={selectAllMatching ? undefined : [...selectedIds]}
-          customerFilter={selectAllMatching ? { search, from: fromDate, to: toDate, nguon: sourceFilter || undefined, datasetId: datasetFilter || undefined, count: total } : undefined}
+          customerFilter={selectAllMatching ? { search, from: fromDate, to: toDate, nguon: sourceFilter || undefined, du_an: projectFilter || undefined, datasetId: datasetFilter || undefined, count: total } : undefined}
           employees={employees}
           projects={duAnList}
           isAdmin={isAdmin}
@@ -2326,7 +2404,7 @@ export default function KhachHangPage() {
 
       {showRangeCampaignModal && rangeValidation?.ok && (
         <CampaignDistributeModal
-          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, nguon: sourceFilter || undefined, datasetId: datasetFilter || undefined, campaignStatus, count: rangeValidation.count }}
+          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, nguon: sourceFilter || undefined, du_an: projectFilter || undefined, datasetId: datasetFilter || undefined, campaignStatus, count: rangeValidation.count }}
           employees={employees}
           projects={duAnList}
           isAdmin={isAdmin}

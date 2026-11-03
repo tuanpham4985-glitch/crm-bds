@@ -297,7 +297,7 @@ export async function hasCampaignCskhAccess(user: { id_nhan_vien: string; ho_ten
 export async function resolveCustomerIdsByFilter(filter: CustomerBulkFilter): Promise<string[]> {
   assertTransactionalCrm();
   const customers = await prisma.khachHang.findMany({
-    select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true, nguon: true },
+    select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true, nguon: true, du_an: true },
   });
   const matched = customers.filter(customer => matchesCustomerBulkFilter(customer, filter));
   const scoped = await filterByDataset(matched, filter.datasetId);
@@ -324,6 +324,7 @@ export interface CustomerRangeSelection {
    * (có membership ở BẤT KỲ Campaign nào). */
   campaignStatus?: CampaignStatusFilter;
   nguon?: string;
+  du_an?: string;
 }
 
 /**
@@ -344,9 +345,9 @@ export async function resolveCustomerIdsByRange(selection: CustomerRangeSelectio
   assertTransactionalCrm();
   const customers = await prisma.khachHang.findMany({
     orderBy: { ngay_tao: 'desc' },
-    select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true, nguon: true },
+    select: { id_khach_hang: true, ten_KH: true, so_dien_thoai: true, email: true, ngay_tao: true, nguon: true, du_an: true },
   });
-  const filter: CustomerBulkFilter = { search: selection.search, from: selection.dateFrom, to: selection.dateTo, nguon: selection.nguon };
+  const filter: CustomerBulkFilter = { search: selection.search, from: selection.dateFrom, to: selection.dateTo, nguon: selection.nguon, du_an: selection.du_an };
   const datasetScoped = await filterByDataset(customers.filter(customer => matchesCustomerBulkFilter(customer, filter)), selection.datasetId);
   const campaignStatus = selection.campaignStatus || 'all';
   let orderedFiltered = datasetScoped;

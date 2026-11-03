@@ -45,6 +45,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         from: typeof filterInput.from === 'string' ? filterInput.from : undefined,
         to: typeof filterInput.to === 'string' ? filterInput.to : undefined,
         nguon: typeof filterInput.nguon === 'string' ? filterInput.nguon : undefined,
+        du_an: typeof filterInput.du_an === 'string' ? filterInput.du_an : undefined,
         datasetId: typeof filterInput.datasetId === 'string' ? filterInput.datasetId : undefined,
       });
     } else if (body?.customer_range && typeof body.customer_range === 'object') {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         dateFrom: typeof rangeInput.dateFrom === 'string' ? rangeInput.dateFrom : undefined,
         dateTo: typeof rangeInput.dateTo === 'string' ? rangeInput.dateTo : undefined,
         nguon: typeof rangeInput.nguon === 'string' ? rangeInput.nguon : undefined,
+        du_an: typeof rangeInput.du_an === 'string' ? rangeInput.du_an : undefined,
         datasetId: typeof rangeInput.datasetId === 'string' ? rangeInput.datasetId : undefined,
         campaignStatus: parseCampaignStatusFilter(rangeInput.campaignStatus),
       });

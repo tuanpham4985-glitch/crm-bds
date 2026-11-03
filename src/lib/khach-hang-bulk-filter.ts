@@ -13,6 +13,7 @@ export interface CustomerBulkFilter {
   from?: string;
   to?: string;
   nguon?: string;
+  du_an?: string;
   /** CUSTOMER DATASET — KHÔNG dùng trong matchesCustomerBulkFilter (pure, chỉ
    * search/from/to đúng contract cũ). Áp dụng RIÊNG ở call site (campaign.ts
    * resolveCustomerIdsByFilter/resolveCustomerIdsByRange) qua filterByDataset
@@ -21,7 +22,7 @@ export interface CustomerBulkFilter {
 }
 
 export function matchesCustomerBulkFilter(
-  customer: { ten_KH: string; so_dien_thoai?: string | null; email?: string | null; ngay_tao: string; nguon?: string | null },
+  customer: { ten_KH: string; so_dien_thoai?: string | null; email?: string | null; ngay_tao: string; nguon?: string | null; du_an?: string | null },
   filter: CustomerBulkFilter,
 ): boolean {
   if (filter.search) {
@@ -34,5 +35,6 @@ export function matchesCustomerBulkFilter(
   if (filter.from && new Date(customer.ngay_tao) < new Date(filter.from)) return false;
   if (filter.to && new Date(customer.ngay_tao) > new Date(`${filter.to}T23:59:59`)) return false;
   if (filter.nguon && customer.nguon !== filter.nguon) return false;
+  if (filter.du_an && customer.du_an !== filter.du_an) return false;
   return true;
 }
