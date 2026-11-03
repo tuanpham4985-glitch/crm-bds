@@ -78,6 +78,9 @@ export default function KhachHangPage() {
   const [showAssignSourceModal, setShowAssignSourceModal] = useState(false);
   const [assignSource, setAssignSource] = useState<typeof customerSources[number]>('Marketing');
   const [assigningSource, setAssigningSource] = useState(false);
+  const [showAssignProjectModal, setShowAssignProjectModal] = useState(false);
+  const [assignProject, setAssignProject] = useState('');
+  const [assigningProject, setAssigningProject] = useState(false);
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -448,6 +451,27 @@ export default function KhachHangPage() {
       console.error('Assign dataset source error:', error);
       alert('Lỗi kết nối khi bổ sung Nguồn');
     } finally { setAssigningSource(false); }
+  };
+
+  const handleAssignProject = async () => {
+    if (!datasetFilter || !assignProject) return;
+    setAssigningProject(true);
+    try {
+      const res = await fetch(`/api/datasets/${datasetFilter}/assign-project`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectName: assignProject }),
+      });
+      const result = await res.json();
+      if (!result.success) { alert(result.error || 'Không thể bổ sung Dự án'); return; }
+      setShowAssignProjectModal(false);
+      setProjectFilter(assignProject);
+      setPage(1);
+      alert(`Đã bổ sung dự án ${assignProject} cho ${result.data.updated} khách hàng chưa có dự án.`);
+      void fetchData();
+    } catch (error) {
+      console.error('Assign dataset project error:', error);
+      alert('Lỗi kết nối khi bổ sung Dự án');
+    } finally { setAssigningProject(false); }
   };
 
   const openExcelPicker = () => {
@@ -1081,9 +1105,16 @@ export default function KhachHangPage() {
               ))}
             </select>
             {datasetFilter && (
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowAssignSourceModal(true)}>
-                Bổ sung Nguồn cho Dataset
-              </button>
+              <>
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowAssignSourceModal(true)}>
+                  Bổ sung Nguồn cho Dataset
+                </button>
+                {duAnList.some(project => project.hien_thi !== 0) && (
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setAssignProject(projectFilter || duAnList.find(project => project.hien_thi !== 0)?.ten_du_an || ''); setShowAssignProjectModal(true); }}>
+                    Bổ sung Dự án cho Dataset
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
@@ -1884,6 +1915,39 @@ export default function KhachHangPage() {
               <button className="btn btn-primary" disabled={assigningSource} onClick={() => void handleAssignSource()}>
                 {assigningSource ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={15} />}
                 {assigningSource ? 'Đang cập nhật...' : 'Bổ sung Nguồn'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAssignProjectModal && datasetFilter && (
+        <div className="modal-overlay" onClick={() => !assigningProject && setShowAssignProjectModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Bổ sung Dự án cho Dataset</h3>
+              <button className="btn btn-ghost btn-icon" disabled={assigningProject} onClick={() => setShowAssignProjectModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: 0 }}>
+                Dataset: <strong style={{ color: 'var(--text-title)' }}>{datasets.find(ds => ds.id === datasetFilter)?.name || 'Đã chọn'}</strong>
+              </p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: 0 }}>
+                Chỉ các khách hàng đang trống Dự án được cập nhật; Dự án đã có sẽ không bị ghi đè.
+              </p>
+              <div>
+                <label className="form-label">Dự án đang triển khai</label>
+                <select className="form-input" value={assignProject} onChange={(e) => setAssignProject(e.target.value)}>
+                  <option value="">— Chọn Dự án —</option>
+                  {duAnList.filter(project => project.hien_thi !== 0).map(project => <option key={project.id_du_an} value={project.ten_du_an}>{project.ten_du_an}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" disabled={assigningProject} onClick={() => setShowAssignProjectModal(false)}>Hủy</button>
+              <button className="btn btn-primary" disabled={assigningProject || !assignProject} onClick={() => void handleAssignProject()}>
+                {assigningProject ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={15} />}
+                {assigningProject ? 'Đang cập nhật...' : 'Bổ sung Dự án'}
               </button>
             </div>
           </div>
