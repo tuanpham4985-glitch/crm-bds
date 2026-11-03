@@ -111,6 +111,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [search, setSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [bucketFilter, setBucketFilter] = useState<MembershipBucket | ''>('');
   // Addendum — "Tất cả | Chưa chia | Đã chia": lọc thêm theo CampaignMembership.telesale_id.
   const [assignmentFilter, setAssignmentFilter] = useState<MembershipAssignmentFilter>('all');
@@ -205,9 +206,10 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   const filtered = useMemo(
     () => members.filter(member => matchesMembershipQueueFilter(member, {
       search, bucket: bucketFilter, assignment: assignmentFilter,
+      nguon: sourceFilter,
       telesaleId: summaryFilter?.telesaleId, buckets: summaryFilter?.buckets,
     })),
-    [members, search, bucketFilter, assignmentFilter, summaryFilter],
+    [members, search, sourceFilter, bucketFilter, assignmentFilter, summaryFilter],
   );
 
   // CSKH TABLE UX — 50/trang, reset về trang 1 khi Campaign/search/bucket/
@@ -217,7 +219,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   // tách biệt khỏi rangeResult/rangeBreakdown/stats/assignmentSummary bên dưới
   // (những cái đó vẫn phải tính trên "members"/"filtered" toàn bộ).
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [campaignId, search, bucketFilter, assignmentFilter, summaryFilter, contactSort, contactFrom, contactTo, membershipSort]);
+  useEffect(() => { setPage(1); }, [campaignId, search, sourceFilter, bucketFilter, assignmentFilter, summaryFilter, contactSort, contactFrom, contactTo, membershipSort]);
   // Bảng hiển thị = filtered + view thời gian gọi. "filtered" giữ nguyên làm
   // thứ tự tham chiếu cho "Chọn khách: Từ x đến y" (bị tắt khi view này bật).
   const contactView = useMemo(() => ({ sort: contactSort, from: contactFrom || undefined, to: contactTo || undefined }), [contactSort, contactFrom, contactTo]);
@@ -453,7 +455,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
       const response = await fetch(`/api/campaigns/${campaignId}/distribute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          membership_range: { from: rangeFromNum, to: rangeToNum, search, bucket: bucketFilter || undefined, assignment: assignmentFilter },
+          membership_range: { from: rangeFromNum, to: rangeToNum, search, nguon: sourceFilter || undefined, bucket: bucketFilter || undefined, assignment: assignmentFilter },
           telesale_names: saleNames, mode: 'round_robin',
         }),
       });
@@ -653,6 +655,11 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
       <div className="card" style={{ padding: 12, marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <div className="search-wrapper" style={{ flex: 1, minWidth: 240 }}><Search size={15} className="search-icon" /><input className="form-input" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tìm tên, số điện thoại hoặc Sale..." /></div>
+          <select className="form-select" style={{ width: 150 }} value={sourceFilter} onChange={event => setSourceFilter(event.target.value)} aria-label="Lọc theo Nguồn">
+            <option value="">Tất cả Nguồn</option>
+            <option value="Marketing">Marketing</option>
+            <option value="Voucher">Voucher</option>
+          </select>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: 13 }}>
           <span style={{ color: 'var(--text-label)' }}>Lần gọi gần nhất:</span>

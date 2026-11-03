@@ -94,6 +94,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         bucket: typeof rangeInput.bucket === 'string' ? rangeInput.bucket : undefined,
         assignment: typeof rangeInput.assignment === 'string' && ASSIGNMENT_FILTERS.has(rangeInput.assignment)
           ? (rangeInput.assignment as 'all' | 'unassigned' | 'assigned') : undefined,
+        nguon: typeof rangeInput.nguon === 'string' ? rangeInput.nguon : undefined,
       });
       if ('error' in resolved) {
         return NextResponse.json({ success: false, error: resolved.error }, { status: 400 });

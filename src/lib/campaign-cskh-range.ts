@@ -47,6 +47,7 @@ export interface MembershipQueueFilter {
   bucket?: string;
   /** Filter "Tất cả | Chưa chia | Đã chia" — bỏ qua/'all' = không lọc theo assignment. */
   assignment?: MembershipAssignmentFilter;
+  nguon?: string;
   /**
    * CSKH Sale Progress (V1) drill-down — exact-match Sale identity theo
    * CampaignMembership.telesale_id (KHÔNG dùng telesale_name/fuzzy search,
@@ -64,7 +65,7 @@ export interface MembershipQueueFilter {
 }
 
 export interface MembershipQueueFilterable extends MembershipAssignable {
-  customer?: { ten_KH?: string | null; so_dien_thoai?: string | null } | null;
+  customer?: { ten_KH?: string | null; so_dien_thoai?: string | null; nguon?: string | null } | null;
   telesale_name?: string | null;
   trang_thai_cham_soc?: string | null;
   ngay_lien_he_tiep?: string | null;
@@ -84,8 +85,9 @@ export function matchesMembershipQueueFilter(
   const matchesBuckets = !filter.buckets || filter.buckets.length === 0 || filter.buckets.includes(bucket);
   const matchesAssignment = !filter.assignment || filter.assignment === 'all'
     || (filter.assignment === 'assigned' ? isMembershipAssigned(member) : !isMembershipAssigned(member));
+  const matchesSource = !filter.nguon || member.customer?.nguon === filter.nguon;
   const matchesTelesale = !filter.telesaleId || member.telesale_id === filter.telesaleId;
-  return matchesSearch && matchesBucket && matchesBuckets && matchesAssignment && matchesTelesale;
+  return matchesSearch && matchesBucket && matchesBuckets && matchesAssignment && matchesSource && matchesTelesale;
 }
 
 // REMEDIATION (Customer Range Selection): validate+slice thuần chuyển sang
