@@ -1229,6 +1229,7 @@ export default function KhachHangPage() {
                     <th>SĐT</th>
                     <th>Email</th>
                     {(sourceFilter || datasetFilter) && <th>Nguồn</th>}
+                    {(projectFilter || datasetFilter) && <th>Dự án</th>}
                     <th>Ngày tạo</th>
                     <th style={{ width: 140, textAlign: 'center' }}>Thao tác</th>
                   </tr>
@@ -1291,6 +1292,7 @@ export default function KhachHangPage() {
                         </span>
                       </td>
                       {(sourceFilter || datasetFilter) && <td>{kh.nguon || '—'}</td>}
+                      {(projectFilter || datasetFilter) && <td>{kh.du_an || '—'}</td>}
                       <td>{formatDate(kh.ngay_tao)}</td>
                       <td>
                         <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
