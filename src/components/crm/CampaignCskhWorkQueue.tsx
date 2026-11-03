@@ -5,16 +5,13 @@
 // thật ở đây là CampaignMembership (qua membership-workflow.ts), KHÔNG phải
 // KhachHang — khách hàng chỉ được join read-only để hiển thị Tên/SĐT/Email.
 //
-// M1B.2: membership đạt Quan tâm (INTERESTED/QUALIFIED/HOT) chỉ là HANDOFF
-// CANDIDATE — không tự tạo CrmHandoff. Leader/Admin phải bấm "Bàn giao"
-// explicit, chọn Sale trong đúng phạm vi (eligibleCampaignSales — Leader bị
-// thu hẹp theo Project.ds_sale, Admin không giới hạn). Server
-// (POST .../handoff) là authority thật — UI chỉ prefilter cho UX, không tự
-// quyết định. Sale CSKH hiện tại được gợi ý nhưng KHÔNG auto-select.
+// M1B.2: qualification và handoff là hai nghiệp vụ tách biệt. Sale CSKH
+// trực tiếp gọi/chăm sóc khách; đạt Quan tâm/Đủ điều kiện/Tiềm năng cao chỉ
+// cập nhật phễu và điểm, không tự tạo handoff trong luồng CSKH thường ngày.
 // Accept/Reject của Sale tái dùng nguyên POST /api/crm/telesale/handoff hiện
 // có — không tạo endpoint/API riêng.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BadgeCheck, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, History, Layers, Loader2, Phone, Save, Search, Send, UserCheck, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BadgeCheck, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, History, Layers, Loader2, Phone, Save, Search, UserCheck, Users, X } from 'lucide-react';
 import type { CampaignMembershipWithCustomer, Campaign as CampaignType, CrmChamSocEntry, DuAn, MucDoQuanTam, NhanVien, TrangThaiChamSoc } from '@/lib/types';
 import { formatPhone } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -38,12 +35,6 @@ import { MembershipQualificationModal } from './MembershipQualificationModal';
 // là nguồn cho stats/assignmentSummary/rangeResult/rangeBreakdown — pagination
 // KHÔNG được cắt bớt các tính toán đó, chỉ cắt bớt SỐ DÒNG RENDER.
 const MEMBERS_PAGE_SIZE = 50;
-
-const HANDOFF_CANDIDATE_STATUSES = new Set(['INTERESTED', 'QUALIFIED', 'HOT']);
-function isHandoffCandidate(member: CampaignMembershipWithCustomer): boolean {
-  return HANDOFF_CANDIDATE_STATUSES.has(member.qualification_status)
-    && member.outcome !== 'HANDOFF_INITIATED' && member.outcome !== 'HANDOFF_ACCEPTED';
-}
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
 const INTERESTS = INTEREST_OPTIONS;
@@ -151,7 +142,6 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   const [projectCustomer, setProjectCustomer] = useState<CampaignMembershipWithCustomer | null>(null);
   const [projectSaving, setProjectSaving] = useState(false);
   const [claimBusyId, setClaimBusyId] = useState('');
-  const [handoffMember, setHandoffMember] = useState<CampaignMembershipWithCustomer | null>(null);
   const [acceptRejectBusyId, setAcceptRejectBusyId] = useState('');
   // "Chọn khách: Từ [x] đến [y]" -> "Chia đều cho Sale" — string (không phải
   // number) để input rỗng không tự nhảy về 0 khi Admin đang gõ.
@@ -690,10 +680,10 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
       <MembershipTable
         members={pageWindow.items} loading={loading} canActOn={canActOn}
         onInteraction={openInteraction} onHistory={setHistoryMember}
-        canManageThisCampaign={canManageThisCampaign} currentUserName={user?.ho_ten}
+        currentUserName={user?.ho_ten}
         projectEditable={!isReportingViewer && (Boolean(selectedCampaign && !selectedCampaign.id_du_an) || isAdmin)} onProject={setProjectCustomer}
         sharedPool={!isReportingViewer && Boolean(selectedCampaign && !selectedCampaign.id_du_an)} onClaim={claimMember} claimBusyId={claimBusyId}
-        onHandoff={setHandoffMember} onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
+        onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
         startIndex={pageWindow.startIndex} page={pageWindow.page} totalPages={pageWindow.totalPages}
         totalCount={pageWindow.total} pageSize={MEMBERS_PAGE_SIZE}
         membershipSort={membershipSort} onMembershipSort={toggleMembershipSort}
@@ -767,19 +757,6 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
       onSave={projectId => void saveCustomerProject(projectId)}
     />}
 
-    {handoffMember && selectedCampaign && (
-      <MembershipHandoffModal
-        campaignId={campaignId}
-        campaign={selectedCampaign}
-        membership={handoffMember}
-        employees={employees}
-        projects={projects}
-        isAdmin={isAdmin}
-        onClose={() => setHandoffMember(null)}
-        onDone={message => { setHandoffMember(null); setNotice({ type: 'ok', text: message }); void loadMembers(campaignId); }}
-      />
-    )}
-
     {revokeTarget && selectedCampaign && (
       <RevokeSaleModal
         campaignId={selectedCampaign.id}
@@ -805,14 +782,14 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
 }
 
 function MembershipTable({
-  members, loading, canActOn, onInteraction, onHistory, canManageThisCampaign, currentUserName, onHandoff, onAcceptReject, acceptRejectBusyId,
+  members, loading, canActOn, onInteraction, onHistory, currentUserName, onAcceptReject, acceptRejectBusyId,
   onProject, projectEditable, sharedPool, onClaim, claimBusyId,
   startIndex, page, totalPages, totalCount, pageSize, membershipSort, onMembershipSort, onPrevPage, onNextPage,
 }: {
   members: CampaignMembershipWithCustomer[]; loading: boolean; canActOn: (member: CampaignMembershipWithCustomer) => boolean;
   onInteraction: (member: CampaignMembershipWithCustomer) => void; onHistory: (member: CampaignMembershipWithCustomer) => void;
-  canManageThisCampaign: boolean; currentUserName?: string;
-  onHandoff: (member: CampaignMembershipWithCustomer) => void; onAcceptReject: (member: CampaignMembershipWithCustomer, action: 'accept' | 'reject') => void; acceptRejectBusyId: string;
+  currentUserName?: string;
+  onAcceptReject: (member: CampaignMembershipWithCustomer, action: 'accept' | 'reject') => void; acceptRejectBusyId: string;
   onProject: (member: CampaignMembershipWithCustomer) => void; projectEditable: boolean;
   sharedPool: boolean; onClaim: (member: CampaignMembershipWithCustomer) => Promise<void>; claimBusyId: string;
   // CSKH TABLE UX — "trang 50 dòng" thuần presentation (xem table-pagination.ts).
@@ -850,7 +827,7 @@ function MembershipTable({
     {/* REMEDIATION (Compact CSKH table columns) — className "cskh-compact"
         (globals.css) co padding th/td cho riêng bảng này + cho phép header
         wrap 2 dòng thay vì ép cột rộng theo nowrap mặc định. Width hint theo
-        đúng thứ tự ưu tiên: STT/Bàn giao rất hẹp, Trạng thái/Mức độ tiềm
+        đúng thứ tự ưu tiên: STT/Thao tác rất hẹp, Trạng thái/Mức độ tiềm
         năng/Điểm-Xếp hạng/Lịch tiếp theo hẹp, Khách hàng/Sale CSKH vừa, Thao
         tác không set width cứng — dựa vào flexWrap có sẵn trong cell để tự
         xuống dòng thay vì ép cột "Thao tác" rộng ra (cột ưu tiên hiển thị đủ
@@ -919,7 +896,6 @@ function MembershipTable({
             <button className="btn btn-secondary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'reject')}><X size={12} /> Từ chối</button>
           </>}
           {actionable && <button className="btn btn-primary btn-sm" onClick={() => onInteraction(member)}><Phone size={13} /> Chăm sóc</button>}
-          {canManageThisCampaign && isHandoffCandidate(member) && <button className="btn btn-secondary btn-sm" onClick={() => onHandoff(member)}><Send size={13} /> Bàn giao</button>}
           <button className="btn btn-secondary btn-sm" onClick={() => onHistory(member)}><History size={13} /> Lịch sử</button>
         </div></td>
       </tr>;
@@ -1108,79 +1084,6 @@ function CampaignProjectEditModal({ campaign, projects, onClose, onSaved }: {
     <div className="modal-footer">
       <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Hủy</button>
       <button className="btn btn-primary" onClick={() => void save()} disabled={saving || !projectId}>{saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />} Lưu</button>
-    </div>
-  </div></div>;
-}
-
-// M1B.2 — Leader/Admin explicit "Bàn giao": chọn Sale nhận ownership trong
-// đúng phạm vi (eligibleCampaignSales, cùng hàm dùng cho CSKH distribution —
-// Leader bị thu hẹp theo Project.ds_sale, Admin không giới hạn). Đây CHỈ là
-// UX prefilter — server (POST .../handoff) re-validate toàn bộ authority
-// trong transaction, không tin lựa chọn của client. Sale CSKH hiện tại
-// (membership.telesale_name) được gắn nhãn gợi ý trong option nhưng KHÔNG
-// auto-select — Leader/Admin phải tự chọn rồi bấm Xác nhận.
-function MembershipHandoffModal({ campaignId, campaign, membership, employees, projects, isAdmin, onClose, onDone }: {
-  campaignId: string; campaign: CampaignType; membership: CampaignMembershipWithCustomer;
-  employees: NhanVien[]; projects: DuAn[]; isAdmin: boolean;
-  onClose: () => void; onDone: (message: string) => void;
-}) {
-  const [saleId, setSaleId] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-
-  const eligibility = eligibleCampaignSales(isAdmin, campaign, projects, employees);
-  const eligibleSales = eligibility.blocked ? [] : eligibility.sales;
-  const suggestedName = membership.telesale_name;
-
-  async function submit() {
-    if (!saleId) { setError('Chọn Sale nhận bàn giao.'); return; }
-    setSubmitting(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/campaigns/${campaignId}/members/${membership.id}/handoff`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID(), sale_id: saleId }),
-      });
-      const data = await response.json();
-      if (!data.success) throw new Error(data.error || 'Không thể bàn giao khách hàng.');
-      const saleName = eligibleSales.find(item => item.id_nhan_vien === saleId)?.ho_ten || '';
-      onDone(`Đã bàn giao cho ${saleName}, đang chờ xác nhận.`);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Không thể bàn giao khách hàng.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return <div className="modal-overlay" onClick={onClose}><div className="modal-content" style={{ maxWidth: 480 }} onClick={event => event.stopPropagation()}>
-    <div className="modal-header"><h3 className="modal-title"><Send size={17} /> Bàn giao — {membership.customer?.ten_KH || membership.customer_id}</h3><button className="btn btn-ghost btn-icon" onClick={onClose}><X size={18} /></button></div>
-    <div style={{ padding: 20 }}>
-      {error && <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 7, padding: 10, marginBottom: 12 }}>{error}</div>}
-      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, marginBottom: 14, fontSize: 13 }}>
-        <div><strong>{membership.customer?.ten_KH}</strong> · {formatPhone(membership.customer?.so_dien_thoai || '')}</div>
-        <div style={{ marginTop: 4, color: 'var(--text-label)' }}>Mức độ tiềm năng: <strong>{qualificationStatusLabel(membership.qualification_status)}</strong> · {membership.lead_quality_score}/100</div>
-      </div>
-      {eligibility.blocked && <div style={{ padding: 12, background: '#fff7ed', color: '#9a3412', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{eligibility.reason}</div>}
-      {!eligibility.blocked && (
-        <div className="form-group">
-          <label className="form-label">Sale nhận bàn giao *</label>
-          <select className="form-select" value={saleId} onChange={event => setSaleId(event.target.value)}>
-            <option value="">— Chọn Sale —</option>
-            {eligibleSales.map(item => (
-              <option key={item.id_nhan_vien} value={item.id_nhan_vien}>
-                {item.ho_ten}{item.ho_ten === suggestedName ? ' · Sale CSKH hiện tại' : ''}
-              </option>
-            ))}
-          </select>
-          {eligibleSales.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Không có Sale nào đang hoạt động trong phạm vi Campaign này.</p>}
-        </div>
-      )}
-    </div>
-    <div className="modal-footer">
-      <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>Hủy</button>
-      <button className="btn btn-primary" onClick={() => void submit()} disabled={submitting || eligibility.blocked || !saleId}>
-        {submitting ? <Loader2 size={15} className="spin" /> : <Send size={15} />} Xác nhận bàn giao
-      </button>
     </div>
   </div></div>;
 }
