@@ -830,10 +830,11 @@ function MembershipTable({
         tác không set width cứng — dựa vào flexWrap có sẵn trong cell để tự
         xuống dòng thay vì ép cột "Thao tác" rộng ra (cột ưu tiên hiển thị đủ
         trong viewport, không phải cột chiếm nhiều không gian nhất). */}
-    <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table cskh-compact" style={{ minWidth: 860 }}>
+    <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh' }}><table className="data-table cskh-compact" style={{ minWidth: 960 }}>
     <thead><tr>
       <th style={{ width: 40 }}>STT</th>
       {membershipHeader('customer', 'Khách hàng', 190)}
+      <th style={{ width: 110 }}>Nguồn</th>
       {membershipHeader('project', 'Dự án', 150)}
       {membershipHeader('sale', 'Sale CSKH', 110)}
       {membershipHeader('status', 'Trạng thái', 180)}
@@ -857,6 +858,7 @@ function MembershipTable({
       return <tr key={member.id} style={isInterested ? { background: '#F0FDF4' } : isOverdue(member.ngay_lien_he_tiep) ? { background: '#FFF7F7' } : undefined}>
         <td style={{ color: 'var(--text-label)', fontWeight: 500 }}>{startIndex + idx + 1}</td>
         <td><div style={{ fontWeight: 700 }}>{member.customer?.ten_KH || member.customer_id}</div>{member.customer?.so_dien_thoai && <a href={`tel:${member.customer.so_dien_thoai}`} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginTop: 5, color: 'var(--primary)', fontSize: 13 }}><Phone size={13} />{formatPhone(member.customer.so_dien_thoai)}</a>}</td>
+        <td>{member.customer?.nguon || '—'}</td>
         <td>{member.customer && projectEditable
           ? <button
               className="btn btn-sm"

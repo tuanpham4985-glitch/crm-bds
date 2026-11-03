@@ -23,8 +23,9 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom') || undefined;
     const dateTo = searchParams.get('dateTo') || undefined;
     const datasetId = searchParams.get('datasetId') || undefined;
+    const nguon = searchParams.get('nguon') || undefined;
     const campaignStatus = parseCampaignStatusFilter(searchParams.get('campaignStatus'));
-    const result = await previewCustomerRangeCampaignStatus({ from, to, search, dateFrom, dateTo, datasetId, campaignStatus });
+    const result = await previewCustomerRangeCampaignStatus({ from, to, search, dateFrom, dateTo, datasetId, nguon, campaignStatus });
     if ('error' in result) return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {

@@ -70,6 +70,10 @@ export default function KhachHangPage() {
   // lúc Import Excel, và remediation gán Dataset cho batch cũ (Lịch sử Import).
   const [datasets, setDatasets] = useState<CrmDataset[]>([]);
   const [datasetFilter, setDatasetFilter] = useState('');
+  // CUSTOMER SOURCE — nguồn nghiệp vụ dùng để lọc nhanh nhóm data Marketing/Voucher.
+  // Chỉ hiển thị cột Nguồn khi người dùng đã chọn một nguồn cụ thể.
+  const customerSources = ['Marketing', 'Voucher'] as const;
+  const [sourceFilter, setSourceFilter] = useState('');
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -225,6 +229,7 @@ export default function KhachHangPage() {
       if (toDate) params.set('to', toDate);
       if (campaignStatus !== 'all') params.set('campaignStatus', campaignStatus);
       if (datasetFilter) params.set('datasetId', datasetFilter);
+      if (sourceFilter) params.set('nguon', sourceFilter);
       const res = await fetch(`/api/khach-hang?${params}`);
       const result = await res.json();
       if (result.success) {
@@ -243,7 +248,7 @@ export default function KhachHangPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, fromDate, toDate, campaignStatus, datasetFilter]);
+  }, [page, search, fromDate, toDate, campaignStatus, datasetFilter, sourceFilter]);
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -292,7 +297,7 @@ export default function KhachHangPage() {
   // Range theo ĐÚNG cột STT của bảng đang hiển thị (search/ngày/Dataset/tab
   // Chưa-Đã vào Campaign) — KHÔNG phụ thuộc "page". Đổi filter -> STT đổi ->
   // range cũ không còn đúng nghĩa, phải reset.
-  useEffect(() => { setRangeFrom(''); setRangeTo(''); }, [search, fromDate, toDate, datasetFilter, campaignStatus]);
+  useEffect(() => { setRangeFrom(''); setRangeTo(''); }, [search, fromDate, toDate, datasetFilter, sourceFilter, campaignStatus]);
   useEffect(() => {
     if (pendingQuickRange === null || dataVersion <= pendingQuickRange.afterVersion || campaignStatus !== 'not_in_campaign') return;
     const count = Math.min(pendingQuickRange.count, filteredTotal);
@@ -330,6 +335,7 @@ export default function KhachHangPage() {
     if (fromDate) params.set('dateFrom', fromDate);
     if (toDate) params.set('dateTo', toDate);
     if (datasetFilter) params.set('datasetId', datasetFilter);
+    if (sourceFilter) params.set('nguon', sourceFilter);
     if (campaignStatus !== 'all') params.set('campaignStatus', campaignStatus);
     fetch(`/api/khach-hang/range-campaign-status?${params}`)
       .then(res => res.json())
@@ -339,7 +345,7 @@ export default function KhachHangPage() {
       })
       .catch(() => { if (!cancelled) setRangeCampaignPreview(null); });
     return () => { cancelled = true; };
-  }, [isAdmin, rangeReadyForPreview, rangeFromNumForPreview, rangeToNumForPreview, search, fromDate, toDate, datasetFilter, campaignStatus]);
+  }, [isAdmin, rangeReadyForPreview, rangeFromNumForPreview, rangeToNumForPreview, search, fromDate, toDate, datasetFilter, sourceFilter, campaignStatus]);
 
   // Load pipeline data in background để hiển thị trạng thái deal của mỗi KH
   useEffect(() => {
@@ -820,10 +826,11 @@ export default function KhachHangPage() {
     setFromDate('');
     setToDate('');
     setDatasetFilter('');
+    setSourceFilter('');
     setPage(1);
   };
 
-  const hasFilters = searchInput || fromDate || toDate || datasetFilter;
+  const hasFilters = searchInput || fromDate || toDate || datasetFilter || sourceFilter;
 
   // REMEDIATION — "Chọn khách: Từ x đến y" (Customer range, Admin-only).
   // Validate theo filteredTotal = số dòng của bảng đang hiển thị (cùng cột STT),
@@ -839,6 +846,7 @@ export default function KhachHangPage() {
   const rangeScopeLabel = [
     campaignStatus === 'not_in_campaign' ? 'Chưa vào Campaign' : campaignStatus === 'in_campaign' ? 'Đã vào Campaign' : '',
     datasetFilter ? (datasets.find(ds => ds.id === datasetFilter)?.name || 'Dataset đã chọn') : '',
+    sourceFilter ? `Nguồn: ${sourceFilter}` : '',
     search || fromDate || toDate ? 'tìm kiếm/ngày' : '',
   ].filter(Boolean).join(' · ');
   const isRowInRange = (stt: number) => Boolean(rangeValidation?.ok) && stt >= rangeFromNum && stt <= rangeToNum;
@@ -993,16 +1001,28 @@ export default function KhachHangPage() {
         {/* CUSTOMER DATASET — dropdown gọn (không phải tab), lọc theo Dataset
             đã import (VD "Data HLX", "Data VCG"). Server-authoritative, cùng
             tinh thần campaignStatus (không đụng "total"). */}
-        {datasets.length > 0 && (
+        {(datasets.length > 0 || customerSources.length > 0) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', whiteSpace: 'nowrap' }}>Dataset</span>
+            {datasets.length > 0 && <>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', whiteSpace: 'nowrap' }}>Dataset</span>
+              <select
+                className="form-input" style={{ width: 'auto', minWidth: 180 }}
+                value={datasetFilter}
+                onChange={(e) => { setDatasetFilter(e.target.value); setPage(1); }}
+              >
+                <option value="">Tất cả Dataset</option>
+                {datasets.map(ds => <option key={ds.id} value={ds.id}>{ds.name}</option>)}
+              </select>
+            </>}
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', whiteSpace: 'nowrap', marginLeft: datasets.length > 0 ? 10 : 0 }}>Nguồn</span>
             <select
-              className="form-input" style={{ width: 'auto', minWidth: 180 }}
-              value={datasetFilter}
-              onChange={(e) => { setDatasetFilter(e.target.value); setPage(1); }}
+              className="form-input" style={{ width: 'auto', minWidth: 150 }}
+              value={sourceFilter}
+              onChange={(e) => { setSourceFilter(e.target.value); setPage(1); }}
+              aria-label="Lọc theo nguồn khách hàng"
             >
-              <option value="">Tất cả Dataset</option>
-              {datasets.map(ds => <option key={ds.id} value={ds.id}>{ds.name}</option>)}
+              <option value="">Tất cả Nguồn</option>
+              {customerSources.map(source => <option key={source} value={source}>{source}</option>)}
             </select>
             {/* DATASET COUNT UX — filteredTotal đã kết hợp ĐÚNG mọi filter
                 đang bật (search/ngày/campaignStatus/dataset — xem fetchData),
@@ -1010,6 +1030,11 @@ export default function KhachHangPage() {
                 trang. Khi "Tất cả Dataset" (datasetFilter rỗng), header phía
                 trên đã hiện tổng Customer master ({total}) — không lặp lại. */}
             {datasetFilter && (
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                · {filteredTotal} khách
+              </span>
+            )}
+            {sourceFilter && (
               <span style={{ fontSize: '0.8125rem', color: 'var(--text-label)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 · {filteredTotal} khách
               </span>
@@ -1126,6 +1151,7 @@ export default function KhachHangPage() {
                     <th>Tên KH</th>
                     <th>SĐT</th>
                     <th>Email</th>
+                    {sourceFilter && <th>Nguồn</th>}
                     <th>Ngày tạo</th>
                     <th style={{ width: 140, textAlign: 'center' }}>Thao tác</th>
                   </tr>
@@ -1187,6 +1213,7 @@ export default function KhachHangPage() {
                           {kh.email || '—'}
                         </span>
                       </td>
+                      {sourceFilter && <td>{kh.nguon || '—'}</td>}
                       <td>{formatDate(kh.ngay_tao)}</td>
                       <td>
                         <div className="flex items-center gap-2" style={{ justifyContent: 'center' }}>
@@ -2288,7 +2315,7 @@ export default function KhachHangPage() {
       {showCampaignModal && (
         <CampaignDistributeModal
           customerIds={selectAllMatching ? undefined : [...selectedIds]}
-          customerFilter={selectAllMatching ? { search, from: fromDate, to: toDate, datasetId: datasetFilter || undefined, count: total } : undefined}
+          customerFilter={selectAllMatching ? { search, from: fromDate, to: toDate, nguon: sourceFilter || undefined, datasetId: datasetFilter || undefined, count: total } : undefined}
           employees={employees}
           projects={duAnList}
           isAdmin={isAdmin}
@@ -2299,7 +2326,7 @@ export default function KhachHangPage() {
 
       {showRangeCampaignModal && rangeValidation?.ok && (
         <CampaignDistributeModal
-          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, datasetId: datasetFilter || undefined, campaignStatus, count: rangeValidation.count }}
+          customerRange={{ from: rangeFromNum, to: rangeToNum, search, dateFrom: fromDate, dateTo: toDate, nguon: sourceFilter || undefined, datasetId: datasetFilter || undefined, campaignStatus, count: rangeValidation.count }}
           employees={employees}
           projects={duAnList}
           isAdmin={isAdmin}
