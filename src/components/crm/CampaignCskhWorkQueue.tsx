@@ -204,16 +204,25 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   // campaign.ts) — bắt buộc để "Từ x đến y" trên UI luôn khớp đúng với id
   // server thật sự resolve khi bấm "Chia đều" (không có 2 định nghĩa filter
   // lệch nhau). "members" đã sort created_at asc từ server (getCampaignMembersWithCustomers) — đây là thứ tự "Từ/Đến" tham chiếu.
+  const departmentSaleIds = useMemo(
+    () => departmentFilter
+      ? employees.filter(employee => employee.phong_KD === departmentFilter).map(employee => employee.id_nhan_vien)
+      : null,
+    [employees, departmentFilter],
+  );
+  const departmentScopedMembers = useMemo(
+    () => departmentSaleIds === null
+      ? members
+      : members.filter(member => departmentSaleIds.includes(member.telesale_id || '')),
+    [members, departmentSaleIds],
+  );
   const filtered = useMemo(
-    () => members.filter(member => matchesMembershipQueueFilter(member, {
+    () => departmentScopedMembers.filter(member => matchesMembershipQueueFilter(member, {
       search, bucket: bucketFilter, assignment: assignmentFilter,
       nguon: sourceFilter,
-      telesaleIds: departmentFilter
-        ? employees.filter(employee => employee.phong_KD === departmentFilter).map(employee => employee.id_nhan_vien)
-        : undefined,
       telesaleId: summaryFilter?.telesaleId, buckets: summaryFilter?.buckets,
     })),
-    [members, employees, search, sourceFilter, departmentFilter, bucketFilter, assignmentFilter, summaryFilter],
+    [departmentScopedMembers, search, sourceFilter, bucketFilter, assignmentFilter, summaryFilter],
   );
 
   // CSKH TABLE UX — 50/trang, reset về trang 1 khi Campaign/search/bucket/
@@ -274,7 +283,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   // TOÀN "members" (không phụ thuộc search/bucketFilter/assignmentFilter/
   // summaryFilter hiện tại), derive-only từ dữ liệu ĐÃ fetch sẵn cho detail
   // queue — KHÔNG fetch/query thêm (NEON_TRANSFER_AUDIT: zero incremental cost).
-  const saleProgress = useMemo(() => summarizeMembersBySale(members), [members]);
+  const saleProgress = useMemo(() => summarizeMembersBySale(departmentScopedMembers), [departmentScopedMembers]);
   const sortedSaleProgress = useMemo(() => {
     if (!saleProgressSort) return saleProgress;
     return [...saleProgress].sort((a, b) => {
