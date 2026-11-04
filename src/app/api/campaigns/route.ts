@@ -14,7 +14,7 @@ export async function GET() {
     // Campaign cần quản trị hoặc báo cáo.
     const campaigns = isCrmAdmin(user) || isCskhReportingViewerEmail(user.email)
       ? await listCampaigns()
-      : await listCampaigns({ telesaleId: user.id_nhan_vien, ownerId: user.id_nhan_vien, ownerName: user.ho_ten });
+      : await listCampaigns({ telesaleId: user.id_nhan_vien, ownerId: user.id_nhan_vien, ownerName: user.ho_ten, sharedSources: ['Voucher'] });
     return NextResponse.json({ success: true, data: campaigns });
   } catch (error) {
     if (error instanceof TransactionalCrmRequiredError) return NextResponse.json({ success: false, error: error.message }, { status: 503 });
