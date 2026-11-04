@@ -54,6 +54,8 @@ export interface MembershipQueueFilter {
    * tránh trùng tên hiển thị của 2 nhân viên khác nhau). Độc lập với `search`.
    */
   telesaleId?: string;
+  /** Filter theo Phòng của Sale được phân cho membership. */
+  telesaleIds?: readonly string[];
   /**
    * CSKH Sale Progress (V1) drill-down — additive multi-bucket match, dùng
    * khi 1 cột summary (VD "Đang chăm sóc") gộp NHIỀU bucket gốc của
@@ -87,7 +89,8 @@ export function matchesMembershipQueueFilter(
     || (filter.assignment === 'assigned' ? isMembershipAssigned(member) : !isMembershipAssigned(member));
   const matchesSource = !filter.nguon || member.customer?.nguon === filter.nguon;
   const matchesTelesale = !filter.telesaleId || member.telesale_id === filter.telesaleId;
-  return matchesSearch && matchesBucket && matchesBuckets && matchesAssignment && matchesSource && matchesTelesale;
+  const matchesTelesaleDepartment = !filter.telesaleIds || filter.telesaleIds.includes(member.telesale_id || '');
+  return matchesSearch && matchesBucket && matchesBuckets && matchesAssignment && matchesSource && matchesTelesale && matchesTelesaleDepartment;
 }
 
 // REMEDIATION (Customer Range Selection): validate+slice thuần chuyển sang

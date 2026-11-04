@@ -22,7 +22,7 @@ import {
   type ContactSort, type MembershipAssignmentFilter, type SaleProgressSummary,
 } from '@/lib/campaign-cskh-range';
 import { canActOnMembership } from '@/lib/campaign-cskh-authority';
-import { eligibleCampaignSales } from '@/lib/campaign-sale-eligibility';
+import { eligibleCampaignSales, listActiveSaleDepartments } from '@/lib/campaign-sale-eligibility';
 import { INTEREST_OPTIONS, interestTone } from '@/lib/crm-funnel/interest';
 import { paginate } from '@/lib/table-pagination';
 import { isCskhReportingViewerEmail } from '@/lib/crm-reporting-access';
@@ -112,6 +112,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   const [busyId, setBusyId] = useState('');
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
   const [bucketFilter, setBucketFilter] = useState<MembershipBucket | ''>('');
   // Addendum — "Tất cả | Chưa chia | Đã chia": lọc thêm theo CampaignMembership.telesale_id.
   const [assignmentFilter, setAssignmentFilter] = useState<MembershipAssignmentFilter>('all');
@@ -207,9 +208,12 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
     () => members.filter(member => matchesMembershipQueueFilter(member, {
       search, bucket: bucketFilter, assignment: assignmentFilter,
       nguon: sourceFilter,
+      telesaleIds: departmentFilter
+        ? employees.filter(employee => employee.phong_KD === departmentFilter).map(employee => employee.id_nhan_vien)
+        : undefined,
       telesaleId: summaryFilter?.telesaleId, buckets: summaryFilter?.buckets,
     })),
-    [members, search, sourceFilter, bucketFilter, assignmentFilter, summaryFilter],
+    [members, employees, search, sourceFilter, departmentFilter, bucketFilter, assignmentFilter, summaryFilter],
   );
 
   // CSKH TABLE UX — 50/trang, reset về trang 1 khi Campaign/search/bucket/
@@ -219,7 +223,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
   // tách biệt khỏi rangeResult/rangeBreakdown/stats/assignmentSummary bên dưới
   // (những cái đó vẫn phải tính trên "members"/"filtered" toàn bộ).
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [campaignId, search, sourceFilter, bucketFilter, assignmentFilter, summaryFilter, contactSort, contactFrom, contactTo, membershipSort]);
+  useEffect(() => { setPage(1); }, [campaignId, search, sourceFilter, departmentFilter, bucketFilter, assignmentFilter, summaryFilter, contactSort, contactFrom, contactTo, membershipSort]);
   // Bảng hiển thị = filtered + view thời gian gọi. "filtered" giữ nguyên làm
   // thứ tự tham chiếu cho "Chọn khách: Từ x đến y" (bị tắt khi view này bật).
   const contactView = useMemo(() => ({ sort: contactSort, from: contactFrom || undefined, to: contactTo || undefined }), [contactSort, contactFrom, contactTo]);
@@ -455,7 +459,13 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
       const response = await fetch(`/api/campaigns/${campaignId}/distribute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          membership_range: { from: rangeFromNum, to: rangeToNum, search, nguon: sourceFilter || undefined, bucket: bucketFilter || undefined, assignment: assignmentFilter },
+          membership_range: {
+            from: rangeFromNum, to: rangeToNum, search, nguon: sourceFilter || undefined,
+            telesaleIds: departmentFilter
+              ? employees.filter(employee => employee.phong_KD === departmentFilter).map(employee => employee.id_nhan_vien)
+              : undefined,
+            bucket: bucketFilter || undefined, assignment: assignmentFilter,
+          },
           telesale_names: saleNames, mode: 'round_robin',
         }),
       });
@@ -520,6 +530,11 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
               <option value="all">Tất cả</option>
               <option value="unassigned">Chưa chia</option>
               <option value="assigned">Đã chia</option>
+            </select>
+            <span style={{ fontSize: 13, color: 'var(--text-label)', marginLeft: 8 }}>Phòng:</span>
+            <select className="form-select" style={{ width: 180, fontSize: 12 }} value={departmentFilter} onChange={event => setDepartmentFilter(event.target.value)} aria-label="Lọc theo Phòng">
+              <option value="">Tất cả Phòng</option>
+              {listActiveSaleDepartments(employees).map(department => <option key={department} value={department}>{department}</option>)}
             </select>
             {contactViewActive ? (
               <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
