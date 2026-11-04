@@ -56,23 +56,8 @@ export async function createCampaign(input: CreateCampaignInput) {
  * show a misleading empty/wrong context before the membership request is
  * scoped.  Admin/Leader callers omit the scope and keep the full list.
  */
-export async function listCampaigns(scope?: { telesaleId: string; ownerId: string; ownerName: string; sharedSources?: readonly string[] }) {
+export async function listCampaigns(scope?: { telesaleId: string; ownerId: string; ownerName: string }) {
   assertTransactionalCrm();
-  const sharedSourceCampaignIds = scope?.sharedSources?.length
-    ? await prisma.campaignMembership.findMany({
-        where: {
-          customer_id: {
-            in: (await prisma.khachHang.findMany({
-              where: { nguon: { in: [...scope.sharedSources] } },
-              select: { id_khach_hang: true },
-            })).map(customer => customer.id_khach_hang),
-          },
-        },
-        select: { campaign_id: true },
-        distinct: ['campaign_id'],
-      })
-    : [];
-  const sharedCampaignIds = sharedSourceCampaignIds.map(item => item.campaign_id);
   return prisma.campaign.findMany({
     where: scope
       ? {
@@ -80,7 +65,6 @@ export async function listCampaigns(scope?: { telesaleId: string; ownerId: strin
             { memberships: { some: { telesale_id: scope.telesaleId } } },
             { owner_id: scope.ownerId },
             { owner_name: scope.ownerName },
-            ...(sharedCampaignIds.length > 0 ? [{ id: { in: sharedCampaignIds } }] : []),
           ],
         }
       : undefined,
@@ -170,23 +154,15 @@ export async function getCampaignMembers(campaignId: string) {
  * (Admin/Campaign owner/full-view caller); có giá trị -> đúng 1 điều kiện
  * bổ sung telesale_id, KHÔNG đổi campaign_id đã có.
  */
-export function buildCampaignMembershipReadWhere(campaignId: string, scopeTelesaleId?: string, sharedCustomerIds?: readonly string[]): Prisma.CampaignMembershipWhereInput {
+export function buildCampaignMembershipReadWhere(campaignId: string, scopeTelesaleId?: string): Prisma.CampaignMembershipWhereInput {
   return scopeTelesaleId
-    ? sharedCustomerIds?.length
-      ? { campaign_id: campaignId, OR: [{ telesale_id: scopeTelesaleId }, { customer_id: { in: [...sharedCustomerIds] } }] }
-      : { campaign_id: campaignId, telesale_id: scopeTelesaleId }
+    ? { campaign_id: campaignId, telesale_id: scopeTelesaleId }
     : { campaign_id: campaignId };
 }
 
-export async function getCampaignMembersWithCustomers(campaignId: string, scopeTelesaleId?: string, sharedSources: readonly string[] = ['Voucher']) {
+export async function getCampaignMembersWithCustomers(campaignId: string, scopeTelesaleId?: string) {
   assertTransactionalCrm();
-  const sharedCustomerIds = sharedSources?.length
-    ? (await prisma.khachHang.findMany({
-        where: { nguon: { in: [...sharedSources] } },
-        select: { id_khach_hang: true },
-      })).map(customer => customer.id_khach_hang)
-    : [];
-  const where = buildCampaignMembershipReadWhere(campaignId, scopeTelesaleId, sharedCustomerIds);
+  const where = buildCampaignMembershipReadWhere(campaignId, scopeTelesaleId);
   const members = await prisma.campaignMembership.findMany({ where, orderBy: { created_at: 'asc' } });
   const customerIds = [...new Set(members.map(member => member.customer_id))];
   const customers = customerIds.length

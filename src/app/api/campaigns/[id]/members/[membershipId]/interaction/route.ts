@@ -6,7 +6,6 @@ import { recordMembershipInteractionTransactional } from '@/lib/crm-funnel/membe
 import { TransactionalCrmRequiredError } from '@/lib/crm-funnel/transactional-workflow';
 import type { MucDoQuanTam, TrangThaiChamSoc } from '@/lib/types';
 import { ALL_INTEREST_OPTIONS } from '@/lib/crm-funnel/interest';
-import { prisma } from '@/lib/db/client';
 
 const STATUSES: TrangThaiChamSoc[] = ['Chưa gọi', 'Không nghe máy', 'Gọi lại', 'Đã liên hệ', 'Quan tâm', 'Không phù hợp', 'Sai số'];
 const INTERESTS: MucDoQuanTam[] = ALL_INTEREST_OPTIONS;
@@ -32,15 +31,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const membership = members.find(item => item.id === membershipId);
     if (!membership) return NextResponse.json({ success: false, error: 'Không tìm thấy membership' }, { status: 404 });
 
-    // Voucher là kho dùng chung: mọi thành viên có thể ghi nhận lịch sử chăm
-    // sóc trên cùng khách, không đổi người phụ trách và không khóa cạnh tranh.
-    const customer = await prisma.khachHang.findUnique({
-      where: { id_khach_hang: membership.customer_id },
-      select: { nguon: true },
-    });
     const employees = await getNhanVien();
-    const canWriteSharedVoucherHistory = customer?.nguon === 'Voucher';
-    if (!canWriteSharedVoucherHistory && !canManageMembership(user, membership, campaign) && !isMembershipDirectManager(user, membership, employees)) {
+    if (!canManageMembership(user, membership, campaign) && !isMembershipDirectManager(user, membership, employees)) {
       return NextResponse.json({ success: false, error: 'Khách hàng này không được giao cho bạn trong Campaign' }, { status: 403 });
     }
 

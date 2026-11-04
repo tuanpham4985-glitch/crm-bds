@@ -687,7 +687,6 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
         sourceFilter={sourceFilter} onSourceFilterChange={setSourceFilter}
         onInteraction={openInteraction} onHistory={setHistoryMember}
         currentUserName={user?.ho_ten}
-        reportingViewer={isReportingViewer}
         projectEditable={!isReportingViewer && (Boolean(selectedCampaign && !selectedCampaign.id_du_an) || isAdmin)} onProject={setProjectCustomer}
         sharedPool={!isReportingViewer && Boolean(selectedCampaign && !selectedCampaign.id_du_an)} onClaim={claimMember} claimBusyId={claimBusyId}
         onAcceptReject={handleAcceptReject} acceptRejectBusyId={acceptRejectBusyId}
@@ -789,7 +788,7 @@ export function CampaignCskhWorkQueue({ employees, projects, initialCampaignId, 
 }
 
 function MembershipTable({
-  members, loading, canActOn, sourceFilter, onSourceFilterChange, onInteraction, onHistory, currentUserName, reportingViewer, onAcceptReject, acceptRejectBusyId,
+  members, loading, canActOn, sourceFilter, onSourceFilterChange, onInteraction, onHistory, currentUserName, onAcceptReject, acceptRejectBusyId,
   onProject, projectEditable, sharedPool, onClaim, claimBusyId,
   startIndex, page, totalPages, totalCount, pageSize, membershipSort, onMembershipSort, onPrevPage, onNextPage,
 }: {
@@ -797,7 +796,6 @@ function MembershipTable({
   sourceFilter: string; onSourceFilterChange: (value: string) => void;
   onInteraction: (member: CampaignMembershipWithCustomer) => void; onHistory: (member: CampaignMembershipWithCustomer) => void;
   currentUserName?: string;
-  reportingViewer: boolean;
   onAcceptReject: (member: CampaignMembershipWithCustomer, action: 'accept' | 'reject') => void; acceptRejectBusyId: string;
   onProject: (member: CampaignMembershipWithCustomer) => void; projectEditable: boolean;
   sharedPool: boolean; onClaim: (member: CampaignMembershipWithCustomer) => Promise<void>; claimBusyId: string;
@@ -912,13 +910,12 @@ function MembershipTable({
             localDate() đã tự trả "—" khi ngay_lien_he_tiep rỗng (không đổi). */}
         <td><div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', color: isOverdue(member.ngay_lien_he_tiep) ? '#dc2626' : 'var(--text-body)', fontSize: 12 }}><CalendarClock size={14} />{localDate(member.ngay_lien_he_tiep)}</div>{member.ngay_lien_he_cuoi && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Gần nhất: {localDate(member.ngay_lien_he_cuoi)}</div>}</td>
         <td><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' }}>
-          {sharedPool && !assigned && member.customer?.nguon !== 'Voucher' && <button className="btn btn-primary btn-sm" disabled={claimBusyId === member.id} onClick={() => void onClaim(member)}><UserCheck size={13} /> Nhận khách</button>}
+          {sharedPool && !assigned && <button className="btn btn-primary btn-sm" disabled={claimBusyId === member.id} onClick={() => void onClaim(member)}><UserCheck size={13} /> Nhận khách</button>}
           {isReceiver && member.handoff?.status === 'WAITING_ACCEPTANCE' && <>
             <button className="btn btn-primary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'accept')}><UserCheck size={12} /> Nhận</button>
             <button className="btn btn-secondary btn-sm" disabled={acceptRejectBusyId === member.id} onClick={() => onAcceptReject(member, 'reject')}><X size={12} /> Từ chối</button>
           </>}
           {actionable && <button className="btn btn-primary btn-sm" onClick={() => onInteraction(member)}><Phone size={13} /> Chăm sóc</button>}
-          {!actionable && member.customer?.nguon === 'Voucher' && !reportingViewer && <button className="btn btn-primary btn-sm" onClick={() => onInteraction(member)}><Phone size={13} /> Chăm sóc</button>}
           <button className="btn btn-secondary btn-sm" onClick={() => onHistory(member)}><History size={13} /> Lịch sử</button>
         </div></td>
       </tr>;
