@@ -48,6 +48,17 @@ model NhanVien {
   @@map("nhan_vien")
 }
 
+// Presence tách khỏi hồ sơ nhân viên/Google Sheets: chỉ là trạng thái phiên
+// gần nhất, không phải dữ liệu HRM nguồn sự thật.
+model UserPresence {
+  employee_id  String   @id
+  last_seen_at DateTime
+  updated_at   DateTime @updatedAt
+
+  @@index([last_seen_at])
+  @@map("user_presence")
+}
+
 model KhachHang {
   id_khach_hang   String   @id
   ngay_tao        String

@@ -6,7 +6,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Building2, LayoutList, Users, PhoneCall, BadgeCheck, GitBranch,
-  ClipboardList, BarChart3, TrendingUp, Briefcase, UserCog, FileText, BadgeDollarSign, MapPin, Award, BookOpen,
+  ClipboardList, BarChart3, TrendingUp, Briefcase, UserCog, FileText, BadgeDollarSign, MapPin, Award, BookOpen, Activity,
 } from 'lucide-react';
 
 // Tag khai báo "cần business rule nào" — KHÔNG phải RBAC engine mới. Sidebar
@@ -63,6 +63,7 @@ export const MENU_REGISTRY: MenuRootDef[] = [
     key: 'hrm', label: 'HRM', icon: Briefcase,
     children: [
       { key: 'hrm.employees', label: 'Nhân viên', href: '/nhan-vien', icon: UserCog, businessAccess: 'canEditHRM' },
+      { key: 'hrm.saleOnline', label: 'Sale Online', href: '/admin/sale-online', icon: Activity, businessAccess: 'adminOnly' },
       { key: 'hrm.contracts', label: 'Hợp đồng', href: '/nhan-vien/hop-dong', icon: FileText },
       { key: 'hrm.appointments', label: 'Bổ nhiệm / Miễn nhiệm', href: '/nhan-vien/bo-nhiem-chuc-vu', icon: Award, businessAccess: 'canAccessHrmAppointment' },
       { key: 'hrm.payroll', label: 'Bảng lương', href: '/nhan-vien/bang-luong', icon: BadgeDollarSign },
