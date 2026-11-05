@@ -3,10 +3,12 @@ import { getNhanVien } from '@/lib/data-access';
 import { getCrmSessionUser, isCrmAdmin } from '@/lib/crm-auth';
 import { isActiveSale } from '@/lib/campaign-sale-eligibility';
 import { prisma } from '@/lib/db/client';
+import { PRESENCE_TRACKING_ENABLED } from '@/lib/presence-config';
 
 const ONLINE_WINDOW_MS = 3 * 60 * 1000;
 
 export async function POST() {
+  if (!PRESENCE_TRACKING_ENABLED) return NextResponse.json({ success: false, error: 'Tính năng Sale Online đang tạm dừng' }, { status: 503 });
   const user = await getCrmSessionUser();
   if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
   try {
@@ -23,6 +25,7 @@ export async function POST() {
 }
 
 export async function GET() {
+  if (!PRESENCE_TRACKING_ENABLED) return NextResponse.json({ success: false, error: 'Tính năng Sale Online đang tạm dừng' }, { status: 503 });
   const user = await getCrmSessionUser();
   if (!user) return NextResponse.json({ success: false, error: 'Chưa đăng nhập' }, { status: 401 });
   if (!isCrmAdmin(user)) return NextResponse.json({ success: false, error: 'Chỉ Admin được xem trạng thái online' }, { status: 403 });

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Circle, Loader2, RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { PRESENCE_TRACKING_ENABLED } from '@/lib/presence-config';
 
 type PresenceRow = {
   id_nhan_vien: string;
@@ -44,9 +45,9 @@ export default function SaleOnlinePage() {
     }
   }, []);
 
-  useEffect(() => { if (isAdmin) void load(); }, [isAdmin, load]);
+  useEffect(() => { if (isAdmin && PRESENCE_TRACKING_ENABLED) void load(); }, [isAdmin, load]);
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin || !PRESENCE_TRACKING_ENABLED) return;
     const timer = window.setInterval(() => { void load(); }, 30_000);
     return () => window.clearInterval(timer);
   }, [isAdmin, load]);
@@ -96,6 +97,17 @@ export default function SaleOnlinePage() {
 
   if (authLoading) return null;
   if (!isAdmin) return <div className="empty-state"><Users size={40} /><h3>Không có quyền truy cập</h3></div>;
+  if (!PRESENCE_TRACKING_ENABLED) return <div>
+    <div className="page-header">
+      <div className="page-header-left">
+        <h1>Sale Online</h1>
+        <p>Theo dõi trạng thái đăng nhập của Sale</p>
+      </div>
+    </div>
+    <div className="card" style={{ padding: 18, color: 'var(--text-label)' }}>
+      Tính năng Sale Online đang được tạm dừng để giảm tải hệ thống. Có thể bật lại khi cần.
+    </div>
+  </div>;
 
   return <div>
     <div className="page-header">

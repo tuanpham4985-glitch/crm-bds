@@ -9,6 +9,7 @@ import { useTmStore } from '@/stores/tmStore';
 import { useAuth } from '@/hooks/useAuth';
 import UserAvatar from './UserAvatar';
 import PresenceHeartbeat from './PresenceHeartbeat';
+import { PRESENCE_TRACKING_ENABLED } from '@/lib/presence-config';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -61,7 +62,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className={`app-layout${effectivelyCollapsed ? ' sidebar-is-collapsed' : ''}`}>
       {/* Gắn số đơn chờ duyệt lên icon app đã cài (PWA) */}
       <AppIconBadge />
-      <PresenceHeartbeat />
+      {PRESENCE_TRACKING_ENABLED && <PresenceHeartbeat />}
       {/* Mobile Top Header */}
       <div className="mobile-header">
         <div className="flex items-center gap-3">
