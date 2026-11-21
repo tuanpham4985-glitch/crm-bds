@@ -41,6 +41,34 @@ test('reassignAssigned: thu hồi khách của Sale khác, bỏ qua khách đã 
   assert.equal(plan.stillUnassigned, 0);
 });
 
+test('avoidPreviousAssignees: chia lại round-robin loại Sale từng nhận theo từng khách', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1', 'C2', 'C5'], existingCustomerIds: ALL, existingMemberships: [
+      { customer_id: 'C1', assignment_status: 'ASSIGNED', telesale_id: 'OLD1', handoff_id: null },
+      { customer_id: 'C2', assignment_status: 'ASSIGNED', telesale_id: 'OLD2', handoff_id: null },
+    ],
+    telesales: [TS('T1', 'Lan'), TS('T2', 'Mai'), TS('T3', 'Hương')], mode: 'round_robin',
+    reassignAssigned: true, avoidPreviousAssignees: true,
+    previousTelesaleIdsByCustomer: new Map([
+      ['C1', new Set(['T1'])], ['C2', new Set(['T2'])],
+    ]),
+  });
+  assert.deepEqual(plan.toReassign.map(item => [item.customer_id, item.telesale_id]), [['C1', 'T2'], ['C2', 'T3']]);
+  assert.deepEqual(plan.toCreate.map(item => [item.customer_id, item.telesale_id]), [['C5', 'T1']]);
+  assert.equal(plan.noEligiblePreviousAssignee, 0);
+});
+
+test('avoidPreviousAssignees: không còn Sale hợp lệ thì giữ nguyên khách và báo số lượng', () => {
+  const plan = planBulkDistribution({
+    orderedIds: ['C1'], existingCustomerIds: ALL,
+    existingMemberships: [{ customer_id: 'C1', assignment_status: 'ASSIGNED', telesale_id: 'T1', handoff_id: null }],
+    telesales: [TS('T1', 'Lan')], mode: 'round_robin', reassignAssigned: true, avoidPreviousAssignees: true,
+    previousTelesaleIdsByCustomer: new Map([['C1', new Set(['T1'])]]),
+  });
+  assert.equal(plan.toReassign.length, 0);
+  assert.equal(plan.noEligiblePreviousAssignee, 1);
+});
+
 test('reassignAssigned + quantity: phần dư KHÔNG bị thu hồi (giữ Sale cũ), không tính là chưa phân', () => {
   const plan = planBulkDistribution({
     orderedIds: ['C1', 'C2'], existingCustomerIds: ALL, existingMemberships: EXISTING,

@@ -260,6 +260,7 @@ model Campaign {
   updated_at       DateTime  @updatedAt
 
   memberships      CampaignMembership[]
+  assignment_history CampaignMembershipAssignmentHistory[]
 
   @@index([status])
   @@index([id_du_an])
@@ -326,6 +327,28 @@ model CampaignMembership {
   @@index([telesale_id])
   @@index([assignment_status])
   @@map("campaign_memberships")
+}
+
+// Lịch sử mọi lần khách được gán cho Sale trong một Campaign. Tách khỏi
+// CampaignMembership (chỉ giữ người phụ trách hiện tại) để hỗ trợ chia lại
+// cùng Campaign nhưng không giao lại khách cho Sale đã từng nhận trước đó.
+model CampaignMembershipAssignmentHistory {
+  id              String   @id @default(uuid())
+  campaign_id     String
+  customer_id     String
+  telesale_id     String
+  telesale_name   String?
+  assigned_at     DateTime @default(now())
+  assigned_by_id  String?
+  assigned_by_name String?
+  reason          String?
+
+  campaign        Campaign @relation(fields: [campaign_id], references: [id])
+
+  @@index([campaign_id, customer_id])
+  @@index([customer_id])
+  @@index([telesale_id])
+  @@map("campaign_membership_assignment_history")
 }
 
 // ─── PRIVATE GROUP (Nhóm riêng) ──────────────────────────────

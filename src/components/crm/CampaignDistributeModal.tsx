@@ -26,6 +26,7 @@ interface DistributeResult {
   lockedHandoff?: number;
   privateGroupSkipped?: number;
   stillUnassigned: number;
+  noEligiblePreviousAssignee?: number;
 }
 
 interface DistributePreview {
@@ -88,6 +89,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
   const [preview, setPreview] = useState<DistributePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [reassignAssigned, setReassignAssigned] = useState(false);
+  const [avoidPreviousAssignees, setAvoidPreviousAssignees] = useState(false);
 
   const activeCampaign = fixedCampaign || campaigns.find(item => item.id === campaignId);
   // Chưa chọn/tạo Campaign nào (bước tạo mới của Admin — POST /api/campaigns
@@ -173,6 +175,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
   useEffect(() => {
     setPreview(null);
     setReassignAssigned(false);
+    setAvoidPreviousAssignees(false);
     if (!previewCampaignId) return;
     let cancelled = false;
     setPreviewLoading(true);
@@ -195,7 +198,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
   const selectedSaleIds = new Set(employees.filter(item => selectedSales.includes(item.ho_ten)).map(item => item.id_nhan_vien));
   const reassignableCount = preview && mode !== 'none'
     ? Math.max(0, preview.assignedBySale
-      .filter(item => !(item.telesale_id && selectedSaleIds.has(item.telesale_id)))
+      .filter(item => avoidPreviousAssignees || !(item.telesale_id && selectedSaleIds.has(item.telesale_id)))
       .reduce((sum, item) => sum + item.count, 0) - preview.lockedHandoff)
     : 0;
   const willDistributeCount = preview ? preview.notMember + preview.unassigned + (reassignAssigned ? reassignableCount : 0) : 0;
@@ -244,6 +247,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
           ...selectionPayload,
           telesale_names: selectedSales, mode, quantities,
           reassign_assigned: isAdmin && mode !== 'none' && reassignAssigned,
+          avoid_previous_assignees: isAdmin && mode === 'round_robin' && reassignAssigned && avoidPreviousAssignees,
         }),
       });
       const distributed = await distributeRes.json();
@@ -280,6 +284,7 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                 <div>Vừa phân Sale: <strong>{result.newlyAssigned}</strong></div>
                 {(result.reassigned ?? 0) > 0 && <div>Trong đó thu hồi & chia lại: <strong>{result.reassigned}</strong></div>}
                 {(result.lockedHandoff ?? 0) > 0 && <div>Đã chuyển giao (giữ nguyên): <strong>{result.lockedHandoff}</strong></div>}
+                {(result.noEligiblePreviousAssignee ?? 0) > 0 && <div style={{ gridColumn: '1 / -1', color: '#9a3412' }}>Không còn Sale phù hợp vì đã từng nhận: <strong>{result.noEligiblePreviousAssignee}</strong></div>}
                 {(result.privateGroupSkipped ?? 0) > 0 && <div style={{ gridColumn: '1 / -1' }}>Bỏ qua vì thuộc Nhóm riêng: <strong>{result.privateGroupSkipped}</strong></div>}
                 <div style={{ gridColumn: '1 / -1' }}>Còn chưa phân: <strong>{result.stillUnassigned}</strong></div>
                 {result.notFound.length > 0 && <div style={{ color: '#b91c1c' }}>Không tìm thấy: <strong>{result.notFound.length}</strong></div>}
@@ -475,6 +480,12 @@ export function CampaignDistributeModal({ customerIds, customerFilter, customerR
                         {' '}Sale cũ sẽ không còn thấy các khách này; lịch sử chăm sóc được giữ nguyên.
                         {preview.lockedHandoff > 0 && ` ${preview.lockedHandoff} khách đã chuyển giao luôn giữ nguyên.`}
                       </span>
+                    </label>
+                  )}
+                  {isAdmin && mode === 'round_robin' && reassignAssigned && (
+                    <label style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 10, color: '#166534', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={avoidPreviousAssignees} onChange={event => setAvoidPreviousAssignees(event.target.checked)} style={{ marginTop: 2 }} />
+                      <span><strong>Không chia lại cho Sale đã từng nhận khách</strong>. Áp dụng theo lịch sử của từng khách trong Campaign này; lịch sử chăm sóc vẫn được giữ nguyên.</span>
                     </label>
                   )}
                 </div>

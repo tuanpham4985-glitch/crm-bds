@@ -471,6 +471,8 @@ export interface BulkDistributeInput {
   actor: CrmSessionUser;
   /** Xem planBulkDistribution.reassignAssigned — chỉ Admin (route gate). */
   reassignAssigned?: boolean;
+  /** Khi chia lại, loại mọi Sale đã từng nhận từng customer trong Campaign. */
+  avoidPreviousAssignees?: boolean;
 }
 
 export interface BulkDistributeResult {
@@ -498,6 +500,8 @@ export interface BulkDistributeResult {
    * PHẢI = 1, không phải 0 (đây chính là fix cho counter bị hiểu sai).
    */
   stillUnassigned: number;
+  /** Khách không còn Sale hợp lệ nào sau khi loại các Sale đã từng nhận. */
+  noEligiblePreviousAssignee: number;
 }
 
 interface ExistingMembershipRef {
@@ -518,6 +522,7 @@ interface BulkDistributionPlan {
   lockedHandoff: number;
   /** Xem BulkDistributeResult.stillUnassigned — tính trên toàn bộ id hợp lệ, không riêng toCreate. */
   stillUnassigned: number;
+  noEligiblePreviousAssignee: number;
 }
 
 /**
@@ -543,6 +548,8 @@ export function planBulkDistribution(input: {
   mode: DistributionMode;
   quantities?: Readonly<Record<string, number>>;
   reassignAssigned?: boolean;
+  avoidPreviousAssignees?: boolean;
+  previousTelesaleIdsByCustomer?: ReadonlyMap<string, ReadonlySet<string>>;
 }): BulkDistributionPlan {
   const { orderedIds, existingCustomerIds, existingMemberships, telesales, mode, quantities } = input;
   const canReassign = Boolean(input.reassignAssigned) && mode !== 'none' && telesales.length > 0;
@@ -558,13 +565,19 @@ export function planBulkDistribution(input: {
   const reassignableIds = new Set(
     canReassign
       ? assignedMemberships
-          .filter(m => !m.handoff_id && !(m.telesale_id && targetTelesaleIds.has(m.telesale_id)))
+          .filter(m => !m.handoff_id && (Boolean(input.avoidPreviousAssignees) || !(m.telesale_id && targetTelesaleIds.has(m.telesale_id))))
           .map(m => m.customer_id)
       : [],
   );
 
   const eligibleIds = validIds.filter(id => !alreadyAssignedIds.has(id) || reassignableIds.has(id));
-  const plan = planDistribution({ customerIds: eligibleIds, telesales, mode, quantities });
+  const plan = input.avoidPreviousAssignees && mode === 'round_robin'
+    ? planDistributionAvoidingPrevious({
+        customerIds: eligibleIds,
+        telesales,
+        previousTelesaleIdsByCustomer: input.previousTelesaleIdsByCustomer,
+      })
+    : planDistribution({ customerIds: eligibleIds, telesales, mode, quantities });
 
   const toCreate = plan.filter(item => !membershipByCustomer.has(item.customer_id));
   const toAssignExisting = plan.filter(
@@ -579,6 +592,9 @@ export function planBulkDistribution(input: {
   // lại vẫn UNASSIGNED sau vòng phân này (mới tạo VẪN unassigned, hoặc có sẵn
   // nhưng rớt vào phần dư của quantity/mode 'none') đều nằm trong chính plan.
   const stillUnassigned = plan.filter(item => item.assignment_status === 'UNASSIGNED' && !reassignableIds.has(item.customer_id)).length;
+  const noEligiblePreviousAssignee = input.avoidPreviousAssignees && mode === 'round_robin'
+    ? plan.filter(item => item.assignment_status === 'UNASSIGNED' && reassignableIds.has(item.customer_id)).length
+    : 0;
 
   return {
     notFound,
@@ -589,7 +605,31 @@ export function planBulkDistribution(input: {
     toReassign,
     lockedHandoff,
     stillUnassigned,
+    noEligiblePreviousAssignee,
   };
+}
+
+/** Round-robin nhưng mỗi khách bỏ qua toàn bộ Sale đã từng nhận khách đó. */
+function planDistributionAvoidingPrevious(input: {
+  customerIds: readonly string[];
+  telesales: readonly TelesaleRef[];
+  previousTelesaleIdsByCustomer?: ReadonlyMap<string, ReadonlySet<string>>;
+}): DistributionPlanItem[] {
+  const { customerIds, telesales, previousTelesaleIdsByCustomer } = input;
+  if (telesales.length === 0) return customerIds.map(customer_id => ({ customer_id, telesale_id: null, telesale_name: null, assignment_status: 'UNASSIGNED' }));
+  let cursor = 0;
+  return customerIds.map(customer_id => {
+    const excluded = previousTelesaleIdsByCustomer?.get(customer_id) || new Set<string>();
+    for (let offset = 0; offset < telesales.length; offset++) {
+      const index = (cursor + offset) % telesales.length;
+      const candidate = telesales[index];
+      if (!excluded.has(candidate.id_nhan_vien)) {
+        cursor = (index + 1) % telesales.length;
+        return { customer_id, telesale_id: candidate.id_nhan_vien, telesale_name: candidate.ho_ten, assignment_status: 'ASSIGNED' };
+      }
+    }
+    return { customer_id, telesale_id: null, telesale_name: null, assignment_status: 'UNASSIGNED' };
+  });
 }
 
 export interface CampaignDistributionPreview {
@@ -664,6 +704,7 @@ export async function previewCampaignDistribution(campaignId: string, customerId
  */
 export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<BulkDistributeResult> {
   assertTransactionalCrm();
+  // Membership mới luôn được ghi theo lô bằng tx.campaignMembership.createMany(...).
 
   const seen = new Set<string>();
   const orderedIds: string[] = [];
@@ -704,10 +745,25 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
         })
       : [];
 
+    const previousAssignments = input.avoidPreviousAssignees && orderedIds.length
+      ? await tx.campaignMembershipAssignmentHistory.findMany({
+          where: { campaign_id: input.campaignId, customer_id: { in: orderedIds } },
+          select: { customer_id: true, telesale_id: true },
+        })
+      : [];
+    const previousTelesaleIdsByCustomer = new Map<string, Set<string>>();
+    for (const item of previousAssignments) {
+      const ids = previousTelesaleIdsByCustomer.get(item.customer_id) || new Set<string>();
+      ids.add(item.telesale_id);
+      previousTelesaleIdsByCustomer.set(item.customer_id, ids);
+    }
+
     const plan = planBulkDistribution({
       orderedIds, existingCustomerIds, existingMemberships,
       telesales: input.telesales, mode: input.mode, quantities: input.quantities,
       reassignAssigned: input.reassignAssigned,
+      avoidPreviousAssignees: input.avoidPreviousAssignees,
+      previousTelesaleIdsByCustomer,
     });
 
     if (plan.toCreate.length > 0) {
@@ -724,13 +780,20 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
         })),
         skipDuplicates: true,
       });
+      const historyRows = plan.toCreate.filter(item => item.assignment_status === 'ASSIGNED' && item.telesale_id).map(item => ({
+        id: crypto.randomUUID(), campaign_id: input.campaignId, customer_id: item.customer_id,
+        telesale_id: item.telesale_id as string, telesale_name: item.telesale_name,
+        assigned_at: new Date(), assigned_by_id: input.actor.id_nhan_vien,
+        assigned_by_name: input.actor.ho_ten, reason: input.avoidPreviousAssignees ? 'redistribute_no_repeat' : 'initial_assignment',
+      }));
+      if (historyRows.length > 0) await tx.campaignMembershipAssignmentHistory.createMany({ data: historyRows });
     }
 
     for (const item of plan.toAssignExisting) {
       // WHERE assignment_status: 'UNASSIGNED' là guard chống đụng độ concurrent —
       // nếu một transaction khác đã gán customer này trước, updateMany này
       // khớp 0 dòng thay vì ghi đè assignment đã có.
-      await tx.campaignMembership.updateMany({
+      const updated = await tx.campaignMembership.updateMany({
         where: { campaign_id: input.campaignId, customer_id: item.customer_id, assignment_status: 'UNASSIGNED' },
         data: {
           telesale_id: item.telesale_id,
@@ -741,6 +804,12 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
           assigned_by_name: input.actor.ho_ten,
         },
       });
+      if (updated.count > 0 && item.telesale_id) await tx.campaignMembershipAssignmentHistory.create({ data: {
+        id: crypto.randomUUID(), campaign_id: input.campaignId, customer_id: item.customer_id,
+        telesale_id: item.telesale_id, telesale_name: item.telesale_name,
+        assigned_at: new Date(), assigned_by_id: input.actor.id_nhan_vien,
+        assigned_by_name: input.actor.ho_ten, reason: input.avoidPreviousAssignees ? 'redistribute_no_repeat' : 'assignment',
+      } });
     }
 
     // Thu hồi & chia lại — guard concurrent: chỉ khớp khi membership VẪN đang
@@ -763,6 +832,12 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
         },
       });
       reassigned += updated.count;
+      if (updated.count > 0 && item.telesale_id) await tx.campaignMembershipAssignmentHistory.create({ data: {
+        id: crypto.randomUUID(), campaign_id: input.campaignId, customer_id: item.customer_id,
+        telesale_id: item.telesale_id, telesale_name: item.telesale_name,
+        assigned_at: new Date(), assigned_by_id: input.actor.id_nhan_vien,
+        assigned_by_name: input.actor.ho_ten, reason: input.avoidPreviousAssignees ? 'redistribute_no_repeat' : 'reassign',
+      } });
     }
 
     return {
@@ -777,6 +852,7 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       reassigned,
       lockedHandoff: plan.lockedHandoff,
       stillUnassigned: plan.stillUnassigned,
+      noEligiblePreviousAssignee: plan.noEligiblePreviousAssignee,
     };
   }, { timeout: 30_000 });
 }

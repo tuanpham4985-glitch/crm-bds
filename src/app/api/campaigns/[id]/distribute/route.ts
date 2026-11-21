@@ -27,6 +27,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       customer_ids?: unknown; customer_filter?: unknown; customer_range?: unknown; membership_range?: unknown;
       telesale_names?: unknown; mode?: unknown; quantities?: unknown;
       preview?: unknown; reassign_assigned?: unknown;
+      avoid_previous_assignees?: unknown;
     } | null;
 
     let customerIds: string[];
@@ -168,8 +169,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       return NextResponse.json({ success: false, error: 'Chỉ Admin được thu hồi & chia lại khách đã có Sale' }, { status: 403 });
     }
 
+    const avoidPreviousAssignees = body?.avoid_previous_assignees === true;
+    if (avoidPreviousAssignees && (!reassignAssigned || mode !== 'round_robin')) {
+      return NextResponse.json({ success: false, error: 'Không trùng Sale cũ chỉ hỗ trợ khi chọn Thu hồi & chia lại và Chia đều (round-robin)' }, { status: 400 });
+    }
     const result = await bulkAddAndDistribute({
-      campaignId: id, customerIds, telesales, mode, quantities, actor: user, reassignAssigned,
+      campaignId: id, customerIds, telesales, mode, quantities, actor: user, reassignAssigned, avoidPreviousAssignees,
     });
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
