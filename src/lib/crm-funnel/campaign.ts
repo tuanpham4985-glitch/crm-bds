@@ -766,6 +766,7 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       previousTelesaleIdsByCustomer,
     });
 
+    const assignmentHistoryRows: Prisma.CampaignMembershipAssignmentHistoryCreateManyInput[] = [];
     if (plan.toCreate.length > 0) {
       await tx.campaignMembership.createMany({
         data: plan.toCreate.map(item => ({
@@ -786,7 +787,7 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
         assigned_at: new Date(), assigned_by_id: input.actor.id_nhan_vien,
         assigned_by_name: input.actor.ho_ten, reason: input.avoidPreviousAssignees ? 'redistribute_no_repeat' : 'initial_assignment',
       }));
-      if (historyRows.length > 0) await tx.campaignMembershipAssignmentHistory.createMany({ data: historyRows });
+      assignmentHistoryRows.push(...historyRows);
     }
 
     for (const item of plan.toAssignExisting) {
@@ -804,12 +805,12 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
           assigned_by_name: input.actor.ho_ten,
         },
       });
-      if (updated.count > 0 && item.telesale_id) await tx.campaignMembershipAssignmentHistory.create({ data: {
+      if (updated.count > 0 && item.telesale_id) assignmentHistoryRows.push({
         id: crypto.randomUUID(), campaign_id: input.campaignId, customer_id: item.customer_id,
         telesale_id: item.telesale_id, telesale_name: item.telesale_name,
         assigned_at: new Date(), assigned_by_id: input.actor.id_nhan_vien,
         assigned_by_name: input.actor.ho_ten, reason: input.avoidPreviousAssignees ? 'redistribute_no_repeat' : 'assignment',
-      } });
+      });
     }
 
     // Thu hồi & chia lại — guard concurrent: chỉ khớp khi membership VẪN đang
@@ -832,12 +833,16 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
         },
       });
       reassigned += updated.count;
-      if (updated.count > 0 && item.telesale_id) await tx.campaignMembershipAssignmentHistory.create({ data: {
+      if (updated.count > 0 && item.telesale_id) assignmentHistoryRows.push({
         id: crypto.randomUUID(), campaign_id: input.campaignId, customer_id: item.customer_id,
         telesale_id: item.telesale_id, telesale_name: item.telesale_name,
         assigned_at: new Date(), assigned_by_id: input.actor.id_nhan_vien,
         assigned_by_name: input.actor.ho_ten, reason: input.avoidPreviousAssignees ? 'redistribute_no_repeat' : 'reassign',
-      } });
+      });
+    }
+
+    if (assignmentHistoryRows.length > 0) {
+      await tx.campaignMembershipAssignmentHistory.createMany({ data: assignmentHistoryRows });
     }
 
     return {
@@ -854,7 +859,7 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       stillUnassigned: plan.stillUnassigned,
       noEligiblePreviousAssignee: plan.noEligiblePreviousAssignee,
     };
-  }, { timeout: 30_000 });
+  }, { timeout: 120_000 });
 }
 
 // --- Thu hồi khách chưa gọi của 1 Sale ----------------------------------
