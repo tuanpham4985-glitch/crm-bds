@@ -12,7 +12,8 @@ import { matchesMembershipQueueFilter, resolveMembershipRange, type MembershipQu
 import { resolveListRange } from '../list-range';
 import { matchesCampaignStatusFilter, summarizeCampaignMembership, type CampaignStatusFilter } from '../khach-hang-campaign-status';
 import type { CrmSessionUser } from '../crm-auth';
-import type { Prisma, PrismaClient } from '../../generated/prisma/client';
+import { Prisma } from '../../generated/prisma/client';
+import type { PrismaClient } from '../../generated/prisma/client';
 
 type TxClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -790,25 +791,27 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
       assignmentHistoryRows.push(...historyRows);
     }
 
-    for (const item of plan.toAssignExisting) {
+    if (plan.toAssignExisting.length > 0) {
       // WHERE assignment_status: 'UNASSIGNED' là guard chống đụng độ concurrent —
       // nếu một transaction khác đã gán customer này trước, updateMany này
       // khớp 0 dòng thay vì ghi đè assignment đã có.
-      const updated = await tx.campaignMembership.updateMany({
-        where: { campaign_id: input.campaignId, customer_id: item.customer_id, assignment_status: 'UNASSIGNED' },
-        data: {
-          telesale_id: item.telesale_id,
-          telesale_name: item.telesale_name,
-          assignment_status: 'ASSIGNED',
-          assigned_at: new Date(),
-          assigned_by_id: input.actor.id_nhan_vien,
-          assigned_by_name: input.actor.ho_ten,
-        },
-      });
-      if (updated.count > 0 && item.telesale_id) assignmentHistoryRows.push({
+      const now = new Date();
+      const values = plan.toAssignExisting.map(item => Prisma.sql`(${item.customer_id}, ${item.telesale_id}, ${item.telesale_name}, ${input.campaignId})`);
+      const updated = await tx.$queryRaw<{ customer_id: string }[]>(Prisma.sql`
+        UPDATE "campaign_memberships" AS cm
+        SET "telesale_id" = v.telesale_id, "telesale_name" = v.telesale_name,
+            "assignment_status" = 'ASSIGNED', "assigned_at" = ${now},
+            "assigned_by_id" = ${input.actor.id_nhan_vien}, "assigned_by_name" = ${input.actor.ho_ten}
+        FROM (VALUES ${Prisma.join(values)}) AS v(customer_id, telesale_id, telesale_name, campaign_id)
+        WHERE cm."campaign_id" = v.campaign_id AND cm."customer_id" = v.customer_id
+          AND cm."assignment_status" = 'UNASSIGNED'
+        RETURNING cm."customer_id";
+      `);
+      const updatedIds = new Set(updated.map(item => item.customer_id));
+      for (const item of plan.toAssignExisting) if (updatedIds.has(item.customer_id) && item.telesale_id) assignmentHistoryRows.push({
         id: crypto.randomUUID(), campaign_id: input.campaignId, customer_id: item.customer_id,
         telesale_id: item.telesale_id, telesale_name: item.telesale_name,
-        assigned_at: new Date(), assigned_by_id: input.actor.id_nhan_vien,
+        assigned_at: now, assigned_by_id: input.actor.id_nhan_vien,
         assigned_by_name: input.actor.ho_ten, reason: input.avoidPreviousAssignees ? 'redistribute_no_repeat' : 'assignment',
       });
     }
@@ -818,25 +821,26 @@ export async function bulkAddAndDistribute(input: BulkDistributeInput): Promise<
     // Lịch sử chăm sóc (lich_su_cham_soc, trạng thái...) giữ nguyên để Sale mới
     // xem tiếp được.
     let reassigned = 0;
-    for (const item of plan.toReassign) {
-      const updated = await tx.campaignMembership.updateMany({
-        where: {
-          campaign_id: input.campaignId, customer_id: item.customer_id,
-          assignment_status: 'ASSIGNED', telesale_id: item.previous_telesale_id, handoff_id: null,
-        },
-        data: {
-          telesale_id: item.telesale_id,
-          telesale_name: item.telesale_name,
-          assigned_at: new Date(),
-          assigned_by_id: input.actor.id_nhan_vien,
-          assigned_by_name: input.actor.ho_ten,
-        },
-      });
-      reassigned += updated.count;
-      if (updated.count > 0 && item.telesale_id) assignmentHistoryRows.push({
+    if (plan.toReassign.length > 0) {
+      const now = new Date();
+      const values = plan.toReassign.map(item => Prisma.sql`(${item.customer_id}, ${item.telesale_id}, ${item.telesale_name}, ${item.previous_telesale_id}, ${input.campaignId})`);
+      const updated = await tx.$queryRaw<{ customer_id: string }[]>(Prisma.sql`
+        UPDATE "campaign_memberships" AS cm
+        SET "telesale_id" = v.telesale_id, "telesale_name" = v.telesale_name,
+            "assigned_at" = ${now}, "assigned_by_id" = ${input.actor.id_nhan_vien},
+            "assigned_by_name" = ${input.actor.ho_ten}
+        FROM (VALUES ${Prisma.join(values)}) AS v(customer_id, telesale_id, telesale_name, previous_telesale_id, campaign_id)
+        WHERE cm."campaign_id" = v.campaign_id AND cm."customer_id" = v.customer_id
+          AND cm."assignment_status" = 'ASSIGNED' AND cm."telesale_id" = v.previous_telesale_id
+          AND cm."handoff_id" IS NULL
+        RETURNING cm."customer_id";
+      `);
+      reassigned = updated.length;
+      const updatedIds = new Set(updated.map(item => item.customer_id));
+      for (const item of plan.toReassign) if (updatedIds.has(item.customer_id) && item.telesale_id) assignmentHistoryRows.push({
         id: crypto.randomUUID(), campaign_id: input.campaignId, customer_id: item.customer_id,
         telesale_id: item.telesale_id, telesale_name: item.telesale_name,
-        assigned_at: new Date(), assigned_by_id: input.actor.id_nhan_vien,
+        assigned_at: now, assigned_by_id: input.actor.id_nhan_vien,
         assigned_by_name: input.actor.ho_ten, reason: input.avoidPreviousAssignees ? 'redistribute_no_repeat' : 'reassign',
       });
     }
