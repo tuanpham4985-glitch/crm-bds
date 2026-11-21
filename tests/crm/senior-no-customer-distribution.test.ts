@@ -8,6 +8,7 @@ import {
   eligibleCampaignSales,
   isActiveSale,
   isCustomerDistributionExempt,
+  NO_CUSTOMER_DISTRIBUTION_DEPARTMENTS,
   listActiveSaleDepartments,
   resolveDepartmentSaleNames,
 } from '../../src/lib/campaign-sale-eligibility';
@@ -30,6 +31,13 @@ test('isActiveSale loại CEO / Chủ tịch dù vai_tro = Sale', () => {
   assert.equal(isActiveSale(ceo), false);
   assert.equal(isActiveSale(chuTich), false);
   assert.equal(isActiveSale(sale), true);
+});
+
+test('isActiveSale loại các phòng back office khỏi mọi luồng nhận khách', () => {
+  for (const phong_KD of NO_CUSTOMER_DISTRIBUTION_DEPARTMENTS) {
+    assert.equal(isActiveSale({ vai_tro: 'Sale', trang_thai: 'Chính thức', employee_type: 'NVKD', phong_KD }), false, phong_KD);
+  }
+  assert.equal(isActiveSale({ vai_tro: 'Sale', trang_thai: 'Chính thức', employee_type: 'NVKD', phong_KD: 'VIC-01' }), true);
 });
 
 test('Chọn theo Phòng VIC-03 không kéo theo CEO kiêm nhiệm phòng đó', () => {
